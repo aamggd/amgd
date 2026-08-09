@@ -79,6 +79,19 @@ jobs:
           test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/EmployeeEntities.kt
           test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/HrRulesTest.kt
 
+      - name: Apply Phase 8 accounting and treasury patch
+        shell: bash
+        run: |
+          cat phase8_patch_v2/part_00.b64 phase8_patch_v2/part_01.b64 phase8_patch_v2/part_02.b64 | tr -d '\r\n' > phase8_patch.b64
+          base64 -d phase8_patch.b64 > phase8_patch.tar.gz
+          tar -xzf phase8_patch.tar.gz -C FushERP_Mobile_Phase5
+          grep -q 'version = 8' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q '0.8.0-phase8' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'AccountingScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/AccountingEntities.kt
+          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/AccountingReportMathTest.kt
+
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -92,28 +105,28 @@ jobs:
         working-directory: FushERP_Mobile_Phase5
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Prepare APK and Phase 7 source
+      - name: Prepare APK and Phase 8 source
         shell: bash
         run: |
           mkdir -p apk-out releases
-          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk apk-out/FushERP-Phase7.apk
-          sha256sum apk-out/FushERP-Phase7.apk > apk-out/FushERP-Phase7.apk.sha256
-          cp apk-out/FushERP-Phase7.apk releases/FushERP-Phase7.apk
-          cp apk-out/FushERP-Phase7.apk.sha256 releases/FushERP-Phase7.apk.sha256
-          zip -qr apk-out/FushERP-Mobile-Phase7-Source.zip FushERP_Mobile_Phase5
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk apk-out/FushERP-Phase8.apk
+          sha256sum apk-out/FushERP-Phase8.apk > apk-out/FushERP-Phase8.apk.sha256
+          cp apk-out/FushERP-Phase8.apk releases/FushERP-Phase8.apk
+          cp apk-out/FushERP-Phase8.apk.sha256 releases/FushERP-Phase8.apk.sha256
+          zip -qr apk-out/FushERP-Mobile-Phase8-Source.zip FushERP_Mobile_Phase5
 
-      - name: Upload Phase 7 artifacts
+      - name: Upload Phase 8 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Phase7
+          name: FushERP-Phase8
           path: apk-out/*
           if-no-files-found: error
 
-      - name: Publish Phase 7 APK in repository
+      - name: Publish Phase 8 APK in repository
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/FushERP-Phase7.apk releases/FushERP-Phase7.apk.sha256
-          git commit -m "Publish Fush ERP Phase 7 APK [skip ci]" || exit 0
+          git add releases/FushERP-Phase8.apk releases/FushERP-Phase8.apk.sha256
+          git commit -m "Publish Fush ERP Phase 8 APK [skip ci]" || exit 0
           git push
