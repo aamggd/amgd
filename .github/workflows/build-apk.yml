@@ -1,0 +1,60 @@
+name: Build Fush ERP APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+
+      - name: Reconstruct Phase 5 source archive
+        shell: bash
+        run: |
+          cat apk_source_chunks/part_*.b64 > phase5.b64
+          base64 -d phase5.b64 > FushERP_Mobile_Phase5_Source.zip
+          unzip -q FushERP_Mobile_Phase5_Source.zip
+          test -f FushERP_Mobile_Phase5/settings.gradle.kts
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Build debug APK
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Prepare APK
+        shell: bash
+        run: |
+          mkdir -p apk-out
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk apk-out/FushERP-Phase5.apk
+          sha256sum apk-out/FushERP-Phase5.apk > apk-out/FushERP-Phase5.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase5-APK
+          path: apk-out/*
+          if-no-files-found: error
