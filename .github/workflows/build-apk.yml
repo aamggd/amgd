@@ -82,8 +82,10 @@ jobs:
       - name: Apply Phase 8 accounting and treasury patch
         shell: bash
         run: |
-          cat phase8_patch_v2/part_00.b64 phase8_patch_v2/part_01.b64 phase8_patch_v2/part_02.b64 | tr -d '\r\n' > phase8_patch.b64
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > phase8_patch.b64
+          echo "cf638a07cbd6a0e4521a91dad5c1d7708bda0a3b15a160112848e5ef5812171d  phase8_patch.b64" | sha256sum -c -
           base64 -d phase8_patch.b64 > phase8_patch.tar.gz
+          echo "e146fb404f7813189ff5edd233710d916f20f08246350c76880b15f73793b4da  phase8_patch.tar.gz" | sha256sum -c -
           tar -xzf phase8_patch.tar.gz -C FushERP_Mobile_Phase5
           grep -q 'version = 8' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q '0.8.0-phase8' FushERP_Mobile_Phase5/app/build.gradle.kts
