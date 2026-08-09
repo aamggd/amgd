@@ -31,8 +31,22 @@ jobs:
       - name: Reconstruct Phase 5 source archive
         shell: bash
         run: |
-          cat apk_source_chunks/part_*.b64 > phase5.b64
+          cat \
+            apk_source_chunks/part_00.b64 \
+            apk_source_chunks/part_01.b64 \
+            apk_source_chunks/part_02.b64 \
+            apk_source_chunks/part_03.b64 \
+            apk_source_chunks/fix04_0.b64 \
+            apk_source_chunks/fix04_1.b64 \
+            apk_source_chunks/fix04_2.b64 \
+            apk_source_chunks/part_05.b64 \
+            apk_source_chunks/part_06.b64 \
+            apk_source_chunks/fix07_0.b64 \
+            apk_source_chunks/fix07_1.b64 \
+            apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
           base64 -d phase5.b64 > FushERP_Mobile_Phase5_Source.zip
+          echo "80b25dd47769a042b70bf258268588b3d769d427cb8082634dce8153483f8319  FushERP_Mobile_Phase5_Source.zip" | sha256sum -c -
+          unzip -t FushERP_Mobile_Phase5_Source.zip
           unzip -q FushERP_Mobile_Phase5_Source.zip
           test -f FushERP_Mobile_Phase5/settings.gradle.kts
 
