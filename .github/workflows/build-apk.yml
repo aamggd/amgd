@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Reconstruct Phase 5 source archive
         shell: bash
@@ -49,6 +49,8 @@ jobs:
           unzip -t FushERP_Mobile_Phase5_Source.zip
           unzip -q FushERP_Mobile_Phase5_Source.zip
           test -f FushERP_Mobile_Phase5/settings.gradle.kts
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
