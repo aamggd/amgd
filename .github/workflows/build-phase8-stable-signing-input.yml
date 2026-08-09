@@ -1,0 +1,102 @@
+name: Build Phase 8 Stable Signing Input
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase8-stable-signing-input.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Reconstruct Phase 8 source
+        shell: bash
+        run: |
+          cat \
+            apk_source_chunks/part_00.b64 \
+            apk_source_chunks/part_01.b64 \
+            apk_source_chunks/part_02.b64 \
+            apk_source_chunks/part_03.b64 \
+            apk_source_chunks/fix04_0.b64 \
+            apk_source_chunks/fix04_1.b64 \
+            apk_source_chunks/fix04_2.b64 \
+            apk_source_chunks/part_05.b64 \
+            apk_source_chunks/part_06.b64 \
+            apk_source_chunks/fix07_0.b64 \
+            apk_source_chunks/fix07_1.b64 \
+            apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
+          base64 -d phase5.b64 > phase5.zip
+          unzip -q -o phase5.zip || true
+          test -f FushERP_Mobile_Phase5/settings.gradle.kts
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > phase6_patch.tar.gz
+          tar -xzf phase6_patch.tar.gz -C FushERP_Mobile_Phase5
+          python phase6_patch/phase6_apply.py
+
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > phase7_patch.b64
+          base64 -d phase7_patch.b64 > phase7_patch.tar.gz
+          tar -xzf phase7_patch.tar.gz -C FushERP_Mobile_Phase5
+
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > phase8_patch.b64
+          echo "cf638a07cbd6a0e4521a91dad5c1d7708bda0a3b15a160112848e5ef5812171d  phase8_patch.b64" | sha256sum -c -
+          base64 -d phase8_patch.b64 > phase8_patch.tar.gz
+          echo "e146fb404f7813189ff5edd233710d916f20f08246350c76880b15f73793b4da  phase8_patch.tar.gz" | sha256sum -c -
+          tar -xzf phase8_patch.tar.gz -C FushERP_Mobile_Phase5
+          grep -q 'version = 8' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q '0.8.0-phase8' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build unsigned release APK
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Prepare signing input
+        shell: bash
+        run: |
+          set -e
+          mkdir -p signing-input/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk signing-input/FushERP-Phase8-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" signing-input/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" signing-input/apksigner/lib/apksigner.jar
+          chmod +x signing-input/apksigner/apksigner
+          sha256sum signing-input/FushERP-Phase8-unsigned.apk > signing-input/FushERP-Phase8-unsigned.apk.sha256
+
+      - name: Upload signing input
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase8-StableSigning-Input
+          path: signing-input/*
+          if-no-files-found: error
+          retention-days: 7
