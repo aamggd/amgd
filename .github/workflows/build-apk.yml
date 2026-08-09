@@ -50,7 +50,6 @@ jobs:
             apk_source_chunks/fix07_1.b64 \
             apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
           base64 -d phase5.b64 > FushERP_Mobile_Phase5_Source.zip
-          sha256sum FushERP_Mobile_Phase5_Source.zip
           unzip -q -o FushERP_Mobile_Phase5_Source.zip || true
           test -f FushERP_Mobile_Phase5/settings.gradle.kts
           base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
@@ -58,36 +57,51 @@ jobs:
           sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
           sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
 
+      - name: Apply Phase 6 governance patch
+        shell: bash
+        run: |
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > phase6_patch.tar.gz
+          tar -xzf phase6_patch.tar.gz
+          python phase6_patch/phase6_apply.py
+          grep -q 'version = 6' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'GovernanceScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
 
+      - name: Run unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
       - name: Build debug APK
         working-directory: FushERP_Mobile_Phase5
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Prepare APK
+      - name: Prepare APK and Phase 6 source
         shell: bash
         run: |
           mkdir -p apk-out releases
-          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk apk-out/FushERP-Phase5.apk
-          sha256sum apk-out/FushERP-Phase5.apk > apk-out/FushERP-Phase5.apk.sha256
-          cp apk-out/FushERP-Phase5.apk releases/FushERP-Phase5.apk
-          cp apk-out/FushERP-Phase5.apk.sha256 releases/FushERP-Phase5.apk.sha256
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk apk-out/FushERP-Phase6.apk
+          sha256sum apk-out/FushERP-Phase6.apk > apk-out/FushERP-Phase6.apk.sha256
+          cp apk-out/FushERP-Phase6.apk releases/FushERP-Phase6.apk
+          cp apk-out/FushERP-Phase6.apk.sha256 releases/FushERP-Phase6.apk.sha256
+          zip -qr apk-out/FushERP-Mobile-Phase6-Source.zip FushERP_Mobile_Phase5
 
-      - name: Upload APK artifact
+      - name: Upload Phase 6 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Phase5-APK
+          name: FushERP-Phase6
           path: apk-out/*
           if-no-files-found: error
 
-      - name: Publish APK in repository
+      - name: Publish Phase 6 APK in repository
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/FushERP-Phase5.apk releases/FushERP-Phase5.apk.sha256
-          git commit -m "Publish Fush ERP Phase 5 APK [skip ci]" || exit 0
+          git add releases/FushERP-Phase6.apk releases/FushERP-Phase6.apk.sha256
+          git commit -m "Publish Fush ERP Phase 6 APK [skip ci]" || exit 0
           git push
