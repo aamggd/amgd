@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           base64 -d phase6_patch/phase6_patch.tar.gz.b64 > phase6_patch.tar.gz
-          tar -xzf phase6_patch.tar.gz
+          tar -xzf phase6_patch.tar.gz -C FushERP_Mobile_Phase5
           python phase6_patch/phase6_apply.py
           grep -q 'version = 6' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'GovernanceScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
