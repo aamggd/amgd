@@ -1,0 +1,39 @@
+name: Export Phase 5 Source
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/export-phase5-source.yml'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        shell: bash
+        run: |
+          cat \
+            apk_source_chunks/part_00.b64 \
+            apk_source_chunks/part_01.b64 \
+            apk_source_chunks/part_02.b64 \
+            apk_source_chunks/part_03.b64 \
+            apk_source_chunks/fix04_0.b64 \
+            apk_source_chunks/fix04_1.b64 \
+            apk_source_chunks/fix04_2.b64 \
+            apk_source_chunks/part_05.b64 \
+            apk_source_chunks/part_06.b64 \
+            apk_source_chunks/fix07_0.b64 \
+            apk_source_chunks/fix07_1.b64 \
+            apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
+          base64 -d phase5.b64 > phase5.zip
+          unzip -q phase5.zip
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gzip -d > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase5-Source-Export
+          path: FushERP_Mobile_Phase5
+          if-no-files-found: error
