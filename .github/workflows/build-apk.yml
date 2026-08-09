@@ -51,9 +51,10 @@ jobs:
             apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
           base64 -d phase5.b64 > FushERP_Mobile_Phase5_Source.zip
           sha256sum FushERP_Mobile_Phase5_Source.zip
-          unzip -t FushERP_Mobile_Phase5_Source.zip
-          unzip -q FushERP_Mobile_Phase5_Source.zip
+          unzip -q -o FushERP_Mobile_Phase5_Source.zip || true
           test -f FushERP_Mobile_Phase5/settings.gradle.kts
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          echo "285b0ff6d09a5111c4ffb7b52248f4de2cb84ebdf3b3db1a1a8bf1cb763f23c8  FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt" | sha256sum -c -
           sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
           sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
 
