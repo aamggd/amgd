@@ -29,8 +29,9 @@ jobs:
             apk_source_chunks/fix07_1.b64 \
             apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
           base64 -d phase5.b64 > phase5.zip
-          unzip -q phase5.zip
+          unzip -q phase5.zip || test $? -eq 2
           base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gzip -d > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
