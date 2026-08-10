@@ -1,0 +1,132 @@
+name: Build Fush ERP Phase 10
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase10.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Reconstruct Phase 5 source archive
+        shell: bash
+        run: |
+          cat \
+            apk_source_chunks/part_00.b64 \
+            apk_source_chunks/part_01.b64 \
+            apk_source_chunks/part_02.b64 \
+            apk_source_chunks/part_03.b64 \
+            apk_source_chunks/fix04_0.b64 \
+            apk_source_chunks/fix04_1.b64 \
+            apk_source_chunks/fix04_2.b64 \
+            apk_source_chunks/part_05.b64 \
+            apk_source_chunks/part_06.b64 \
+            apk_source_chunks/fix07_0.b64 \
+            apk_source_chunks/fix07_1.b64 \
+            apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
+          base64 -d phase5.b64 > FushERP_Mobile_Phase5_Source.zip
+          unzip -q -o FushERP_Mobile_Phase5_Source.zip || true
+          test -f FushERP_Mobile_Phase5/settings.gradle.kts
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          echo "285b0ff6d09a5111c4ffb7b52248f4de2cb84ebdf3b3db1a1a8bf1cb763f23c8  FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt" | sha256sum -c -
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - name: Apply Phase 6 governance patch
+        shell: bash
+        run: |
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > phase6_patch.tar.gz
+          tar -xzf phase6_patch.tar.gz -C FushERP_Mobile_Phase5
+          python phase6_patch/phase6_apply.py
+
+      - name: Apply Phase 7 HR patch
+        shell: bash
+        run: |
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > phase7_patch.b64
+          base64 -d phase7_patch.b64 > phase7_patch.tar.gz
+          tar -xzf phase7_patch.tar.gz -C FushERP_Mobile_Phase5
+
+      - name: Apply Phase 8 accounting patch
+        shell: bash
+        run: |
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > phase8_patch.b64
+          echo "cf638a07cbd6a0e4521a91dad5c1d7708bda0a3b15a160112848e5ef5812171d  phase8_patch.b64" | sha256sum -c -
+          base64 -d phase8_patch.b64 > phase8_patch.tar.gz
+          echo "e146fb404f7813189ff5edd233710d916f20f08246350c76880b15f73793b4da  phase8_patch.tar.gz" | sha256sum -c -
+          tar -xzf phase8_patch.tar.gz -C FushERP_Mobile_Phase5
+
+      - name: Apply Phase 9 currencies and geography patch
+        shell: bash
+        run: |
+          cat phase9_patch/part_00.b64 phase9_patch/part_01.b64 phase9_patch/part_02.b64 phase9_patch/part_03.b64 phase9_patch/part_04.b64 phase9_patch/part_05.b64 | tr -d '\r\n' > phase9_patch.b64
+          echo "76f77f36086442e13ee62555a782b4f800afd199863e1f22e5939b98cd9efb24  phase9_patch.b64" | sha256sum -c -
+          base64 -d phase9_patch.b64 > phase9_patch.tar.gz
+          echo "0360c325650c30e2a5d4db342833bedeb63cd4d920d8db723b1481e9fa4b76ae  phase9_patch.tar.gz" | sha256sum -c -
+          tar -xzf phase9_patch.tar.gz -C FushERP_Mobile_Phase5
+
+      - name: Apply Phase 10 advanced inventory patch
+        shell: bash
+        run: |
+          cat phase10_patch/part_00.b64 phase10_patch/part_01.b64 phase10_patch/part_02.b64 phase10_patch/part_03.b64 phase10_patch/part_04.b64 phase10_patch/part_05.b64 phase10_patch/part_06.b64 | tr -d '\r\n' > phase10_patch.b64
+          echo "0e8c6819e3ae726a581a56683eb706ee86eef0e37df84fffb49ddf21f0dec659  phase10_patch.b64" | sha256sum -c -
+          base64 -d phase10_patch.b64 > phase10_patch.tar.gz
+          echo "01f8576d66d1dd1a37bbe263fdd3896890c4e343676017558c860fabd00eb55b  phase10_patch.tar.gz" | sha256sum -c -
+          tar -xzf phase10_patch.tar.gz -C FushERP_Mobile_Phase5
+          grep -q 'version = 10' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q '0.10.0-phase10' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'AdvancedInventoryScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/InventoryMath.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/AdvancedInventoryDao.kt
+          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/InventoryMathTest.kt
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build unsigned release APK
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Prepare Phase 10 artifacts
+        shell: bash
+        run: |
+          mkdir -p phase10-out
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase10-out/FushERP-Phase10-unsigned.apk
+          zip -qr phase10-out/FushERP-Mobile-Phase10-Source.zip FushERP_Mobile_Phase5 -x '*/.gradle/*' '*/.kotlin/*' '*/build/intermediates/*' '*/build/tmp/*'
+          sha256sum phase10-out/FushERP-Phase10-unsigned.apk > phase10-out/FushERP-Phase10-unsigned.apk.sha256
+
+      - name: Upload Phase 10 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase10-Unsigned
+          path: phase10-out/*
+          if-no-files-found: error
+          retention-days: 7
