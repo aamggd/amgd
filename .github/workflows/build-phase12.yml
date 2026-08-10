@@ -53,8 +53,10 @@ jobs:
         shell: bash
         run: |
           set -e
-          cat phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03.b64 | tr -d '\r\n' > p12.b64
+          cat phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03a.b64 phase12_patch/part_03b.b64 | tr -d '\r\n' > p12.b64
           base64 -d p12.b64 > p12.tgz
+          echo 'd5753bdae6d003443e321edd0d2a503385e7292a4aab7a60e1e88e0ea93588be  p12.tgz' | sha256sum -c -
+          gzip -t p12.tgz
           tar -xzf p12.tgz -C FushERP_Mobile_Phase5
           grep -q '0.12.0-phase12' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 12' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
