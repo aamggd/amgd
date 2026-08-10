@@ -1,0 +1,23 @@
+name: Validate Phase 12 Transfer
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/validate-phase12-parts.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate chunks
+        shell: bash
+        run: |
+          wc -c phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03.b64
+          sha256sum phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03.b64
+          cat phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03.b64 | tr -d '\r\n' > p12.b64
+          base64 -d p12.b64 > p12.tgz
+          sha256sum p12.tgz
+          gzip -t p12.tgz
