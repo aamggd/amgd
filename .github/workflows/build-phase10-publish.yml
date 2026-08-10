@@ -1,0 +1,76 @@
+name: Build and Publish Fush ERP Phase 10 Unsigned
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase10-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Reconstruct Phase 5
+        run: |
+          cat apk_source_chunks/part_00.b64 apk_source_chunks/part_01.b64 apk_source_chunks/part_02.b64 apk_source_chunks/part_03.b64 apk_source_chunks/fix04_0.b64 apk_source_chunks/fix04_1.b64 apk_source_chunks/fix04_2.b64 apk_source_chunks/part_05.b64 apk_source_chunks/part_06.b64 apk_source_chunks/fix07_0.b64 apk_source_chunks/fix07_1.b64 apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
+          base64 -d phase5.b64 > phase5.zip
+          unzip -q -o phase5.zip || true
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - name: Apply Phases 6-10
+        run: |
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > p6.tgz
+          tar -xzf p6.tgz -C FushERP_Mobile_Phase5
+          python phase6_patch/phase6_apply.py
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > p7.b64
+          base64 -d p7.b64 > p7.tgz
+          tar -xzf p7.tgz -C FushERP_Mobile_Phase5
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > p8.b64
+          base64 -d p8.b64 > p8.tgz
+          tar -xzf p8.tgz -C FushERP_Mobile_Phase5
+          base64 -d phase9_patch/phase9_patch.tar.gz.b64 > p9.tgz
+          tar -xzf p9.tgz -C FushERP_Mobile_Phase5
+          base64 -d phase10_patch/phase10_patch.tar.gz.b64 > p10.tgz
+          tar -xzf p10.tgz -C FushERP_Mobile_Phase5
+          grep -q 'version = 10' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q '0.10.0-phase10' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Test
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Build release
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Package and publish unsigned build
+        shell: bash
+        run: |
+          mkdir -p releases
+          APK=$(find FushERP_Mobile_Phase5/app/build/outputs/apk/release -maxdepth 1 -type f -name '*unsigned*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" releases/FushERP-Phase10-unsigned.apk
+          rm -f releases/FushERP-Mobile-Phase10-Source.zip
+          zip -qr releases/FushERP-Mobile-Phase10-Source.zip FushERP_Mobile_Phase5
+          sha256sum releases/FushERP-Phase10-unsigned.apk > releases/FushERP-Phase10-unsigned.apk.sha256
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add releases/FushERP-Phase10-unsigned.apk releases/FushERP-Phase10-unsigned.apk.sha256 releases/FushERP-Mobile-Phase10-Source.zip
+          git commit -m 'Publish Fush ERP Phase 10 unsigned build [skip ci]' || exit 0
+          git push
