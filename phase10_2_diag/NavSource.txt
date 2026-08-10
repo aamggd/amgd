@@ -1,0 +1,542 @@
+// SOURCE: FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+package com.fush.erp.ui.screens
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fush.erp.data.AppContainer
+import com.fush.erp.data.entity.*
+import kotlinx.coroutines.launch
+
+private data class ModuleCard(val title: String, val subtitle: String, val phase: String)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+    var page by remember { mutableStateOf("الرئيسية") }
+    val modules = remember {
+        listOf(
+            ModuleCard("المحاسبة والخزينة", "اليومية، الأستاذ، الخزينة والبنوك، ميزان المراجعة والقوائم المالية", "المرحلة 8 جاهزة"),
+            ModuleCard("الأصناف والوحدات", "مواد خام، تغليف، منتج نهائي وتحويل الوحدات", "موسع في المرحلة 2"),
+            ModuleCard("المخزون والمستودعات", "جرد، فروق، تشغيلات، صلاحية، حجر، إعادة طلب وحركة مخزون", "المرحلة 10 جاهزة"),
+            ModuleCard("الموردون والمشتريات", "موردون، فواتير، مرتجعات وقيود تلقائية", "المرحلة 2"),
+            ModuleCard("الإنتاج والجودة", "BOM، أوامر الإنتاج، الدفعات، الفحص وCAPA", "المرحلة 3 جاهزة"),
+            ModuleCard("المبيعات والعملاء", "نقدي/آجل، تحصيل، عمولات، مرتجعات وتتبع دفعات", "المرحلة 4 جاهزة"),
+            ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "المرحلة 9 جاهزة"),
+            ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "المرحلة 5 جاهزة"),
+            ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "المرحلة 6 جاهزة"),
+            ModuleCard("الموظفون والتدريب", "الكفاءة، التدريب، تصاريح المعدات وربط المشغل بأمر الإنتاج", "المرحلة 7 جاهزة"),
+            ModuleCard("لوحة الإدارة", "KPI، التنبيهات والقرار اليومي", "قيد التوسع")
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Fush ERP — $page") },
+                actions = {
+                    Text(user.displayName, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onLogout) { Text("خروج") }
+                }
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                listOf("الرئيسية", "المبيعات", "الإنتاج", "الصيانة", "الموظفون", "المشتريات", "المخزون", "العملات", "الحوكمة", "الحسابات", "الأصناف").forEach { label ->
+                    NavigationBarItem(
+                        selected = page == label,
+                        onClick = { page = label },
+                        icon = { Text(if (page == label) "●" else "○") },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+        }
+    ) { pad ->
+        when (page) {
+            "المبيعات" -> SalesScreen(container, user, Modifier.padding(pad))
+            "الإنتاج" -> ProductionScreen(container, user, Modifier.padding(pad))
+            "الصيانة" -> MaintenanceScreen(container, user, Modifier.padding(pad))
+            "الموظفون" -> EmployeesScreen(container, user, Modifier.padding(pad))
+            "المشتريات" -> PurchasesScreen(container, user, Modifier.padding(pad))
+            "المخزون" -> AdvancedInventoryScreen(container, user, Modifier.padding(pad), onOpenMasterData = { page = "الأصناف" })
+            "الحوكمة" -> GovernanceScreen(container, user, Modifier.padding(pad))
+            "العملات" -> CurrencyGeographyScreen(container, user, Modifier.padding(pad))
+            "الحسابات" -> AccountingScreen(container, user, Modifier.padding(pad))
+            "الأصناف" -> MasterDataScreen(container, Modifier.padding(pad))
+            else -> DashboardScreen(container, modules, Modifier.padding(pad))
+        }
+    }
+}
+
+@Composable
+private fun DashboardScreen(container: AppContainer, modules: List<ModuleCard>, modifier: Modifier = Modifier) {
+    val itemCount by container.db.itemDao().observeCount().collectAsState(initial = 0)
+    val journalCount by container.db.journalDao().observePostedCount().collectAsState(initial = 0)
+    val supplierCount by container.db.supplierDao().observeCount().collectAsState(initial = 0)
+    val purchaseCount by container.db.purchaseDao().observeInvoiceCount().collectAsState(initial = 0)
+    val returnCount by container.db.purchaseDao().observeReturnCount().collectAsState(initial = 0)
+    val productionCount by container.db.productionDao().observeOrderCount().collectAsState(initial = 0)
+    val qcHoldCount by container.db.productionDao().observeQcHoldCount().collectAsState(initial = 0)
+    val customerCount by container.db.customerDao().observeCount().collectAsState(initial = 0)
+    val salesCount by container.db.salesDao().observeInvoiceCount().collectAsState(initial = 0)
+    val salesReturnCount by container.db.salesDao().observeReturnCount().collectAsState(initial = 0)
+    val receiptCount by container.db.salesDao().observeReceiptCount().collectAsState(initial = 0)
+    val overdueCount by container.db.salesDao().observeOverdueInvoiceCount(System.currentTimeMillis()).collectAsState(initial = 0)
+    val cashSalesPct by container.db.salesDao().observeCashSalesPct().collectAsState(initial = 0.0)
+    val assetCount by container.db.maintenanceDao().observeAssetCount().collectAsState(initial = 0)
+    val openMaintenanceCount by container.db.maintenanceDao().observeOpenWorkOrderCount().collectAsState(initial = 0)
+    val overdueMaintenanceCount by container.db.maintenanceDao().observeOverduePlanCount(System.currentTimeMillis()).collectAsState(initial = 0)
+    val openSafetyCount by container.db.maintenanceDao().observeOpenSafetyIncidentCount().collectAsState(initial = 0)
+    val employeeCount by container.db.employeeDao().observeActiveEmployeeCount().collectAsState(initial = 0)
+    val expiredTrainingCount by container.db.employeeDao().observeExpiredTrainingCount(System.currentTimeMillis()).collectAsState(initial = 0)
+    val activeAuthorizationCount by container.db.employeeDao().observeActiveAuthorizationCount(System.currentTimeMillis()).collectAsState(initial = 0)
+    val lowStockRows by container.db.advancedInventoryDao().observeReorderAlerts().collectAsState(initial = emptyList())
+    val expiryRows by container.db.advancedInventoryDao().observeExpiryAlerts(System.currentTimeMillis() + 30L * 86_400_000L).collectAsState(initial = emptyList())
+    val controlledLots by container.db.advancedInventoryDao().observeControlledLotCount().collectAsState(initial = 0)
+
+    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("لوحة البداية", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("الأصناف", itemCount.toString(), Modifier.weight(1f))
+                Metric("الموردون", supplierCount.toString(), Modifier.weight(1f))
+                Metric("المشتريات", purchaseCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("أوامر الإنتاج", productionCount.toString(), Modifier.weight(1f))
+                Metric("تحت الجودة", qcHoldCount.toString(), Modifier.weight(1f))
+                Metric("الإصدار", "0.10.1", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("العملاء", customerCount.toString(), Modifier.weight(1f))
+                Metric("فواتير البيع", salesCount.toString(), Modifier.weight(1f))
+                Metric("تحصيلات", receiptCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("مرتجع شراء", returnCount.toString(), Modifier.weight(1f))
+                Metric("مرتجع بيع", salesReturnCount.toString(), Modifier.weight(1f))
+                Metric("آجل متأخر", overdueCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("نقدي %", "%.0f".format(cashSalesPct), Modifier.weight(1f))
+                Metric("القيود", journalCount.toString(), Modifier.weight(1f))
+                Metric("الجودة", if (qcHoldCount == 0) "مستقر" else "مراجعة", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("الأصول", assetCount.toString(), Modifier.weight(1f))
+                Metric("أوامر صيانة", openMaintenanceCount.toString(), Modifier.weight(1f))
+                Metric("صيانة متأخرة", overdueMaintenanceCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("سلامة مفتوحة", openSafetyCount.toString(), Modifier.weight(1f))
+                Metric("KPI صيانة", if (overdueMaintenanceCount == 0) "مستقر" else "مراجعة", Modifier.weight(1f))
+                Metric("جاهزية", if (openMaintenanceCount == 0) "جيدة" else "تحقق", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("الموظفون", employeeCount.toString(), Modifier.weight(1f))
+                Metric("تدريب منتهي", expiredTrainingCount.toString(), Modifier.weight(1f))
+                Metric("تصاريح سارية", activeAuthorizationCount.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Metric("تحت إعادة الطلب", lowStockRows.size.toString(), Modifier.weight(1f))
+                Metric("قريب الانتهاء", expiryRows.size.toString(), Modifier.weight(1f))
+                Metric("حجر/موقوف", controlledLots.toString(), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
+            Text("وحدات النظام", style = MaterialTheme.typography.titleLarge)
+        }
+        items(modules) { module ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(module.title, style = MaterialTheme.typography.titleMedium)
+                    Text(module.subtitle, style = MaterialTheme.typography.bodyMedium)
+                    Text(module.phase, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
+    ElevatedCard(modifier) {
+        Column(Modifier.padding(12.dp)) {
+            Text(value, style = MaterialTheme.typography.headlineSmall)
+            Text(label, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun AccountsScreen(container: AppContainer, modifier: Modifier = Modifier) {
+    val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item { Text("دليل الحسابات الأساسي", style = MaterialTheme.typography.headlineSmall) }
+        item { Text("فواتير الشراء تنشئ القيود آلياً: مخزون / صندوق أو موردون.", style = MaterialTheme.typography.bodyMedium) }
+        items(accounts) { a ->
+            ListItem(
+                headlineContent = { Text("${a.code} — ${a.nameAr}") },
+                supportingContent = { Text("${a.nameEn} • ${a.type}") }
+            )
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun InventoryScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    val balances by container.db.stockDao().observeBalances().collectAsState(initial = emptyList())
+    val itemsList by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+    val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
+    var showOpening by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Text("أرصدة المخزون", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = { showOpening = true }) { Text("إدخال رصيد افتتاحي") }
+            Spacer(Modifier.height(6.dp))
+            Text("الرصيد محسوب من حركات المخزون الفعلية؛ الشراء يزيد والمرتجع ينقص.")
+            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        }
+        items(balances) { row ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text(row.nameAr) },
+                    supportingContent = { Text(row.code) },
+                    trailingContent = { Text("${formatQty(row.quantityBase)} ${row.baseUnitName}") }
+                )
+            }
+        }
+    }
+
+    if (showOpening) {
+        OpeningStockDialog(itemsList, warehouses, onDismiss = { showOpening = false }) { item, warehouse, qty, cost, note ->
+            scope.launch {
+                try {
+                    val entryId = container.inventoryService.postOpeningStock(warehouse.id, item.id, qty, cost, user.id, note)
+                    message = "تم ترحيل الرصيد الافتتاحي والقيد رقم $entryId"
+                    showOpening = false
+                } catch (e: Exception) {
+                    message = e.message ?: "تعذر إدخال الرصيد الافتتاحي"
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OpeningStockDialog(
+    items: List<ItemEntity>,
+    warehouses: List<WarehouseEntity>,
+    onDismiss: () -> Unit,
+    onSave: (ItemEntity, WarehouseEntity, Double, Double, String) -> Unit
+) {
+    var item by remember { mutableStateOf<ItemEntity?>(null) }
+    var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+    var qtyText by remember { mutableStateOf("") }
+    var costText by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    LaunchedEffect(items) { if (item == null) item = items.firstOrNull() }
+    LaunchedEffect(warehouses) { if (warehouse == null) warehouse = warehouses.firstOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("رصيد مخزون افتتاحي") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("أدخل الكمية بالوحدة الأساسية للصنف. ينشئ النظام قيد مخزون مقابل حساب الرصيد الافتتاحي.")
+                SelectionField("الصنف", item?.nameAr ?: "اختر", items, { it.nameAr }) { item = it }
+                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                OutlinedTextField(qtyText, { qtyText = it }, label = { Text("الكمية بالوحدة الأساسية") }, singleLine = true)
+                OutlinedTextField(costText, { costText = it }, label = { Text("تكلفة الوحدة بالريال الجديد") }, singleLine = true)
+                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة") })
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = item != null && warehouse != null && qtyText.toDoubleOrNull() != null && costText.toDoubleOrNull() != null,
+                onClick = { onSave(item!!, warehouse!!, qtyText.toDouble(), costText.toDouble(), note) }
+            ) { Text("ترحيل") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
+private fun MasterDataScreen(container: AppContainer, modifier: Modifier = Modifier) {
+    val scope = rememberCoroutineScope()
+    val units by container.db.unitDao().observeAll().collectAsState(initial = emptyList())
+    val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
+    val itemsList by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+    var section by remember { mutableStateOf("المواد والأصناف") }
+    var showItem by remember { mutableStateOf(false) }
+    var showUnit by remember { mutableStateOf(false) }
+    var showConversion by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier.fillMaxSize().padding(12.dp)) {
+        Text("الأصناف والوحدات", style = MaterialTheme.typography.headlineSmall)
+        Text("الأكواد الجديدة ينشئها النظام تلقائياً عند الحفظ.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = section == "المواد والأصناف", onClick = { section = "المواد والأصناف" }, label = { Text("المواد") }, modifier = Modifier.weight(1f))
+            FilterChip(selected = section == "الوحدات", onClick = { section = "الوحدات" }, label = { Text("الوحدات") }, modifier = Modifier.weight(1f))
+            FilterChip(selected = section == "المخازن", onClick = { section = "المخازن" }, label = { Text("المخازن") }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(6.dp))
+        when (section) {
+            "المواد والأصناف" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { showItem = true }, modifier = Modifier.weight(1f), enabled = units.isNotEmpty()) { Text("إضافة مادة/صنف") }
+                OutlinedButton(onClick = { showConversion = true }, modifier = Modifier.weight(1f), enabled = itemsList.isNotEmpty() && units.isNotEmpty()) { Text("تحويل وحدة") }
+            }
+            "الوحدات" -> Button(onClick = { showUnit = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة وحدة جديدة") }
+        }
+        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        Spacer(Modifier.height(6.dp))
+
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            when (section) {
+                "الوحدات" -> {
+                    item { Text("الوحدات (${units.size})", style = MaterialTheme.typography.titleLarge) }
+                    items(units) { unit ->
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(unit.nameAr) },
+                                supportingContent = { Text("${unit.code}${if (unit.nameEn.isNotBlank()) " • ${unit.nameEn}" else ""}") }
+                            )
+                        }
+                    }
+                }
+                "المخازن" -> {
+                    item { Text("المخازن (${warehouses.size})", style = MaterialTheme.typography.titleLarge) }
+                    items(warehouses) { warehouse ->
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            ListItem(headlineContent = { Text(warehouse.nameAr) }, supportingContent = { Text(warehouse.code) })
+                        }
+                    }
+                }
+                else -> {
+                    item { Text("المواد والأصناف (${itemsList.size})", style = MaterialTheme.typography.titleLarge) }
+                    items(itemsList) { item ->
+                        val baseUnit = units.firstOrNull { it.id == item.baseUnitId }
+                        ElevatedCard(Modifier.fillMaxWidth()) {
+                            ListItem(
+                                headlineContent = { Text(item.nameAr) },
+                                supportingContent = { Text("${item.code} • ${itemCategoryAr(item.category)} • ${baseUnit?.nameAr ?: "وحدة"}") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showItem) {
+        AddItemDialog(units = units, onDismiss = { showItem = false }) { nameAr, nameEn, category, baseUnit, reorder, shelfLife, lotTracked, expiryTracked ->
+            scope.launch {
+                try {
+                    val item = container.masterDataService.createItem(
+                        nameAr = nameAr,
+                        nameEn = nameEn,
+                        category = category,
+                        baseUnitId = baseUnit.id,
+                        reorderLevel = reorder,
+                        shelfLifeDays = shelfLife,
+                        lotTracked = lotTracked,
+                        expiryTracked = expiryTracked
+                    )
+                    message = "تمت إضافة ${item.nameAr} بالكود ${item.code}"
+                    showItem = false
+                } catch (e: Exception) {
+                    message = e.message ?: "تعذر إضافة الصنف"
+                }
+            }
+        }
+    }
+
+    if (showUnit) {
+        AddUnitDialog(onDismiss = { showUnit = false }) { nameAr, nameEn ->
+            scope.launch {
+                try {
+                    val unit = container.masterDataService.createUnit(nameAr, nameEn)
+                    message = "تمت إضافة الوحدة بالكود ${unit.code}"
+                    showUnit = false
+                } catch (e: Exception) {
+                    message = e.message ?: "تعذر إضافة الوحدة"
+                }
+            }
+        }
+    }
+
+    if (showConversion) {
+        AddConversionDialog(itemsList, units, onDismiss = { showConversion = false }) { item, unit, factor, purchase, sale ->
+            scope.launch {
+                try {
+                    require(factor > 0) { "عامل التحويل يجب أن يكون أكبر من صفر" }
+                    if (unit.id == item.baseUnitId) require(kotlin.math.abs(factor - 1.0) < 1e-9) { "الوحدة الأساسية يجب أن يكون معاملها 1" }
+                    container.db.itemUnitConversionDao().upsert(
+                        ItemUnitConversionEntity(itemId=item.id, unitId=unit.id, factorToBase=factor, allowPurchase=purchase, allowSale=sale)
+                    )
+                    message = "تم حفظ تحويل الوحدة"
+                    showConversion = false
+                } catch (e: Exception) {
+                    message = e.message ?: "تعذر حفظ التحويل"
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddItemDialog(
+    units: List<UnitEntity>,
+    onDismiss: () -> Unit,
+    onSave: (String, String, String, UnitEntity, Double, Int?, Boolean, Boolean) -> Unit
+) {
+    var nameAr by remember { mutableStateOf("") }
+    var nameEn by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("RAW_MATERIAL") }
+    var unit by remember { mutableStateOf<UnitEntity?>(null) }
+    var reorderText by remember { mutableStateOf("0") }
+    var shelfText by remember { mutableStateOf("") }
+    var lotTracked by remember { mutableStateOf(false) }
+    var expiryTracked by remember { mutableStateOf(false) }
+    LaunchedEffect(units) { if (unit == null) unit = units.firstOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة مادة/صنف") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("الكود: تلقائي عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                OutlinedTextField(nameAr, { nameAr = it }, label = { Text("الاسم العربي") }, singleLine = true)
+                OutlinedTextField(nameEn, { nameEn = it }, label = { Text("الاسم الإنجليزي - اختياري") }, singleLine = true)
+                StringSelectionField("الفئة", itemCategoryAr(category), listOf("RAW_MATERIAL", "PACKAGING", "FINISHED_GOOD")) { category = it }
+                SelectionField("الوحدة الأساسية", unit?.nameAr ?: "اختر", units, { it.nameAr }) { unit = it }
+                OutlinedTextField(reorderText, { reorderText = it }, label = { Text("حد إعادة الطلب") }, singleLine = true)
+                OutlinedTextField(shelfText, { shelfText = it.filter(Char::isDigit) }, label = { Text("مدة الصلاحية بالأيام - اختياري") }, singleLine = true)
+                Row { Checkbox(lotTracked, { lotTracked = it }); Text("تتبع التشغيلة") }
+                Row { Checkbox(expiryTracked, { expiryTracked = it }); Text("تتبع الصلاحية") }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = nameAr.isNotBlank() && unit != null && reorderText.toDoubleOrNull() != null,
+                onClick = { onSave(nameAr, nameEn, category, unit!!, reorderText.toDouble(), shelfText.toIntOrNull(), lotTracked, expiryTracked) }
+            ) { Text("حفظ") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
+private fun AddUnitDialog(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+    var nameAr by remember { mutableStateOf("") }
+    var nameEn by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إضافة وحدة") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("كود الوحدة: تلقائي عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                OutlinedTextField(nameAr, { nameAr = it }, label = { Text("اسم الوحدة بالعربي") }, singleLine = true)
+                OutlinedTextField(nameEn, { nameEn = it }, label = { Text("اسم الوحدة بالإنجليزي - اختياري") }, singleLine = true)
+            }
+        },
+        confirmButton = { Button(enabled = nameAr.isNotBlank(), onClick = { onSave(nameAr, nameEn) }) { Text("حفظ") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+private fun itemCategoryAr(category: String): String = when (category) {
+    "RAW_MATERIAL" -> "مواد خام"
+    "PACKAGING" -> "مواد تغليف"
+    "FINISHED_GOOD" -> "منتج نهائي"
+    else -> category
+}
+
+@Composable
+private fun AddConversionDialog(
+    items: List<ItemEntity>,
+    units: List<UnitEntity>,
+    onDismiss: () -> Unit,
+    onSave: (ItemEntity, UnitEntity, Double, Boolean, Boolean) -> Unit
+) {
+    var item by remember { mutableStateOf<ItemEntity?>(null) }
+    var unit by remember { mutableStateOf<UnitEntity?>(null) }
+    var factorText by remember { mutableStateOf("1") }
+    var purchase by remember { mutableStateOf(true) }
+    var sale by remember { mutableStateOf(false) }
+    LaunchedEffect(items) { if (item == null) item = items.firstOrNull() }
+    LaunchedEffect(units) { if (unit == null) unit = units.firstOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تحويل وحدة للصنف") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SelectionField("الصنف", item?.nameAr ?: "اختر", items, { it.nameAr }) { item = it }
+                SelectionField("الوحدة", unit?.nameAr ?: "اختر", units, { it.nameAr }) { unit = it }
+                OutlinedTextField(factorText, { factorText = it }, label = { Text("كم وحدة أساسية؟") }, singleLine = true)
+                Row { Checkbox(purchase, { purchase = it }); Text("مسموحة للشراء") }
+                Row { Checkbox(sale, { sale = it }); Text("مسموحة للبيع") }
+            }
+        },
+        confirmButton = {
+            Button(enabled = item != null && unit != null && factorText.toDoubleOrNull() != null, onClick = {
+                onSave(item!!, unit!!, factorText.toDouble(), purchase, sale)
+            }) { Text("حفظ") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
+fun <T> SelectionField(
+    label: String,
+    selectedText: String,
+    options: List<T>,
+    optionText: (T) -> String,
+    onSelect: (T) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("$label: $selectedText")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(optionText(option)) },
+                    onClick = { onSelect(option); expanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StringSelectionField(label: String, selectedText: String, options: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) { Text("$label: $selectedText") }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option -> DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false }) }
+        }
+    }
+}
+
+private fun formatQty(value: Double): String = if (kotlin.math.abs(value - value.toLong()) < 0.000001) value.toLong().toString() else "%.3f".format(value)

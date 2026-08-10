@@ -1,0 +1,384 @@
+// SOURCE: FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+package com.fush.erp.ui.screens
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.fush.erp.data.AppContainer
+import com.fush.erp.data.entity.*
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.abs
+
+@Composable
+fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier, onOpenMasterData: () -> Unit = {}) {
+    val scope = rememberCoroutineScope()
+    val balances by container.db.stockDao().observeBalances().collectAsState(initial = emptyList())
+    val reorder by container.db.advancedInventoryDao().observeReorderAlerts().collectAsState(initial = emptyList())
+    val expiryUntil = remember { System.currentTimeMillis() + 30L * 86_400_000L }
+    val expiry by container.db.advancedInventoryDao().observeExpiryAlerts(expiryUntil).collectAsState(initial = emptyList())
+    val lots by container.db.advancedInventoryDao().observeLotBalances().collectAsState(initial = emptyList())
+    val counts by container.db.advancedInventoryDao().observeCounts().collectAsState(initial = emptyList())
+    val movements by container.db.advancedInventoryDao().observeMovements(null).collectAsState(initial = emptyList())
+    val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
+    val itemsList by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+    var section by remember { mutableStateOf("الأرصدة") }
+    var showOpening by remember { mutableStateOf(false) }
+    var showStartCount by remember { mutableStateOf(false) }
+    var editCountId by remember { mutableStateOf<Long?>(null) }
+    var lotToControl by remember { mutableStateOf<InventoryLotAlertRow?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+
+    Column(modifier.fillMaxSize().padding(12.dp)) {
+        Text("المخزون المتقدم والجرد", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f)) { Text("بدء جرد") }
+            OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f)) { Text("رصيد افتتاحي") }
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.fillMaxWidth()) { Text("إدارة المواد والأصناف والوحدات") }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf("الأرصدة", "تنبيهات", "الجرد", "التشغيلات", "الحركة").forEach { label ->
+                FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
+            }
+        }
+        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+        Spacer(Modifier.height(4.dp))
+
+        when (section) {
+            "تنبيهات" -> InventoryAlerts(reorder, expiry)
+            "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
+            "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
+            "الحركة" -> InventoryMovements(movements)
+            else -> InventoryBalances(balances)
+        }
+    }
+
+    if (showOpening) {
+        AdvancedOpeningStockDialog(itemsList, warehouses, onDismiss = { showOpening = false }) { item, warehouse, qty, cost, note ->
+            scope.launch {
+                try {
+                    val entryId = container.inventoryService.postOpeningStock(warehouse.id, item.id, qty, cost, user.id, note)
+                    message = "تم ترحيل الرصيد الافتتاحي والقيد رقم $entryId"
+                    showOpening = false
+                } catch (e: Exception) { message = e.message ?: "تعذر إدخال الرصيد الافتتاحي" }
+            }
+        }
+    }
+
+    if (showStartCount) {
+        StartInventoryCountDialog(warehouses, onDismiss = { showStartCount = false }) { warehouse, note ->
+            scope.launch {
+                try {
+                    val id = container.advancedInventoryService.startCount(warehouse.id, user.id, note)
+                    message = "تم إنشاء محضر الجرد رقم $id. أدخل الكميات الفعلية ثم رحّله."
+                    showStartCount = false
+                    editCountId = id
+                    section = "الجرد"
+                } catch (e: Exception) { message = e.message ?: "تعذر بدء الجرد" }
+            }
+        }
+    }
+
+    editCountId?.let { id ->
+        InventoryCountDialog(container, user, id, itemsList, onDismiss = { editCountId = null }) { text ->
+            message = text
+            editCountId = null
+        }
+    }
+
+    lotToControl?.let { lot ->
+        LotControlDialog(lot, onDismiss = { lotToControl = null }) { status, reason ->
+            scope.launch {
+                try {
+                    container.advancedInventoryService.setLotStatus(lot.warehouseId, lot.itemId, lot.lotNo, lot.expiryDate, status, reason, user.id)
+                    message = "تم تحديث حالة التشغيلة إلى ${statusAr(status)}"
+                    lotToControl = null
+                } catch (e: Exception) { message = e.message ?: "تعذر تحديث حالة التشغيلة" }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryBalances(rows: List<StockBalanceRow>) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item { Text("الأرصدة الحالية", style = MaterialTheme.typography.titleLarge) }
+        items(rows) { row ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text(row.nameAr) },
+                    supportingContent = { Text(row.code) },
+                    trailingContent = { Text("${fmtQty(row.quantityBase)} ${row.baseUnitName}") }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryAlerts(reorder: List<InventoryAlertRow>, expiry: List<InventoryLotAlertRow>) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            Text("تنبيهات إعادة الطلب", style = MaterialTheme.typography.titleLarge)
+            Text("المادة تظهر هنا عندما يصبح الرصيد عند نقطة إعادة الطلب أو أقل.", style = MaterialTheme.typography.bodySmall)
+        }
+        if (reorder.isEmpty()) item { Text("لا توجد مواد تحت حد إعادة الطلب.") }
+        items(reorder) { row ->
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text(row.nameAr) },
+                    supportingContent = { Text("${row.code} • حد الطلب ${fmtQty(row.reorderLevel)} ${row.baseUnitName}") },
+                    trailingContent = { Text(fmtQty(row.quantityBase), color = MaterialTheme.colorScheme.error) }
+                )
+            }
+        }
+        item {
+            Spacer(Modifier.height(8.dp))
+            Text("الصلاحية خلال 30 يوماً", style = MaterialTheme.typography.titleLarge)
+        }
+        if (expiry.isEmpty()) item { Text("لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يوماً.") }
+        items(expiry) { row ->
+            Card(Modifier.fillMaxWidth()) {
+                ListItem(
+                    headlineContent = { Text(row.nameAr) },
+                    supportingContent = { Text("${row.warehouseName} • تشغيلة ${row.lotNo ?: "بدون رقم"} • ${row.expiryDate?.let(::fmtDate) ?: "بدون صلاحية"}") },
+                    trailingContent = { Text(fmtQty(row.quantityBase)) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item { Text("محاضر الجرد", style = MaterialTheme.typography.titleLarge) }
+        if (rows.isEmpty()) item { Text("لا توجد محاضر جرد بعد.") }
+        items(rows) { row ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(row.countNo, style = MaterialTheme.typography.titleMedium)
+                    Text("${row.warehouseName} • ${fmtDate(row.countDate)} • ${statusAr(row.status)}")
+                    Text("الأسطر: ${row.lineCount} • أسطر بفروق: ${row.varianceLines} • قيمة الفرق: ${fmtMoney(row.varianceValueBase)}")
+                    if (row.status == "DRAFT") TextButton(onClick = { onEdit(row.id) }) { Text("إدخال الكميات / الترحيل") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            Text("التشغيلات والحجر", style = MaterialTheme.typography.titleLarge)
+            Text("الحالات المحجورة أو الموقوفة لا تدخل في البيع أو صرف الإنتاج.", style = MaterialTheme.typography.bodySmall)
+        }
+        items(rows) { row ->
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+                    Text("${row.warehouseName} • ${row.code}")
+                    Text("التشغيلة: ${row.lotNo ?: "بدون رقم"} • الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "—"}")
+                    Text("الرصيد: ${fmtQty(row.quantityBase)} • القيمة: ${fmtMoney(row.inventoryValueBase)}")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        AssistChip(onClick = {}, label = { Text(statusAr(row.controlStatus)) })
+                        TextButton(onClick = { onControl(row) }) { Text("تغيير الحالة") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        item { Text("آخر 500 حركة مخزون", style = MaterialTheme.typography.titleLarge) }
+        items(rows) { row ->
+            ListItem(
+                headlineContent = { Text(row.itemName) },
+                supportingContent = { Text("${fmtDate(row.movementDate)} • ${row.warehouseName} • ${movementAr(row.movementType)} • ${row.lotNo ?: "—"}") },
+                trailingContent = { Text((if (row.quantityBase > 0) "+" else "") + fmtQty(row.quantityBase)) }
+            )
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun StartInventoryCountDialog(warehouses: List<WarehouseEntity>, onDismiss: () -> Unit, onStart: (WarehouseEntity, String) -> Unit) {
+    var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+    var note by remember { mutableStateOf("") }
+    LaunchedEffect(warehouses) { if (warehouse == null) warehouse = warehouses.firstOrNull { it.code == "RM" } ?: warehouses.firstOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("بدء جرد فعلي") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("سيحفظ النظام لقطة من الرصيد الحالي حسب الصنف والتشغيلة، ثم تدخل الكمية الفعلية.")
+                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة الجرد") })
+            }
+        },
+        confirmButton = { Button(enabled = warehouse != null, onClick = { onStart(warehouse!!, note) }) { Text("إنشاء الجرد") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
+private fun InventoryCountDialog(
+    container: AppContainer,
+    user: UserEntity,
+    countId: Long,
+    itemsList: List<ItemEntity>,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var count by remember { mutableStateOf<InventoryCountEntity?>(null) }
+    var lines by remember { mutableStateOf(emptyList<InventoryCountLineEntity>()) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
+    LaunchedEffect(countId, refresh) {
+        count = container.db.advancedInventoryDao().countById(countId)
+        lines = container.db.advancedInventoryDao().countLines(countId)
+    }
+    Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
+        Surface(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("الجرد ${count?.countNo ?: countId}", style = MaterialTheme.typography.headlineSmall)
+                Text("أدخل الكمية الفعلية لكل سطر. الفرق = الفعلي - رصيد النظام.")
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(lines, key = { it.id }) { line ->
+                        var qtyText by remember(line.id, line.countedQtyBase) { mutableStateOf(line.countedQtyBase?.let(::fmtQty) ?: "") }
+                        var reason by remember(line.id, line.reason) { mutableStateOf(line.reason) }
+                        val itemName = itemsList.firstOrNull { it.id == line.itemId }?.nameAr ?: "صنف ${line.itemId}"
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(itemName, style = MaterialTheme.typography.titleMedium)
+                                Text("النظام: ${fmtQty(line.systemQtyBase)} • تشغيلة: ${line.lotNo ?: "—"}")
+                                OutlinedTextField(qtyText, { qtyText = it }, label = { Text("الكمية الفعلية") }, singleLine = true)
+                                OutlinedTextField(reason, { reason = it }, label = { Text("سبب الفرق - اختياري") }, singleLine = true)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("الفرق: ${line.countedQtyBase?.let { fmtQty(it - line.systemQtyBase) } ?: "—"}")
+                                    TextButton(onClick = {
+                                        scope.launch {
+                                            try {
+                                                val q = requireNotNull(qtyText.toDoubleOrNull()) { "أدخل كمية صحيحة" }
+                                                container.advancedInventoryService.setCountedQuantity(line.id, q, reason)
+                                                refresh++
+                                                error = null
+                                            } catch (e: Exception) { error = e.message }
+                                        }
+                                    }) { Text("حفظ السطر") }
+                                }
+                            }
+                        }
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إغلاق") }
+                    Spacer(Modifier.width(6.dp))
+                    Button(enabled = !saving && lines.isNotEmpty(), onClick = {
+                        scope.launch {
+                            saving = true
+                            try {
+                                val entry = container.advancedInventoryService.postCount(countId, user.id)
+                                onDone(if (entry == null) "تم ترحيل الجرد بدون فروق" else "تم ترحيل الجرد وقيد الفروق رقم $entry")
+                            } catch (e: Exception) { error = e.message ?: "تعذر ترحيل الجرد" }
+                            finally { saving = false }
+                        }
+                    }) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل الجرد") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LotControlDialog(lot: InventoryLotAlertRow, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
+    var status by remember { mutableStateOf(lot.controlStatus) }
+    var reason by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("حالة التشغيلة") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${lot.nameAr} • ${lot.lotNo ?: "بدون رقم"}")
+                StringSelectionField("الحالة", statusAr(status), listOf("ACCEPTED", "QUARANTINE", "BLOCKED", "RETURNED")) { status = it }
+                OutlinedTextField(reason, { reason = it }, label = { Text("السبب / الملاحظة") })
+                if (status != "ACCEPTED") Text("تنبيه: هذه التشغيلة ستُستبعد من البيع وصرف الإنتاج.", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(status, reason) }) { Text("حفظ") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+@Composable
+private fun AdvancedOpeningStockDialog(
+    items: List<ItemEntity>,
+    warehouses: List<WarehouseEntity>,
+    onDismiss: () -> Unit,
+    onSave: (ItemEntity, WarehouseEntity, Double, Double, String) -> Unit
+) {
+    var item by remember { mutableStateOf<ItemEntity?>(null) }
+    var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+    var qtyText by remember { mutableStateOf("") }
+    var costText by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    LaunchedEffect(items) { if (item == null) item = items.firstOrNull() }
+    LaunchedEffect(warehouses) { if (warehouse == null) warehouse = warehouses.firstOrNull() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("رصيد مخزون افتتاحي") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SelectionField("الصنف", item?.nameAr ?: "اختر", items, { it.nameAr }) { item = it }
+                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                OutlinedTextField(qtyText, { qtyText = it }, label = { Text("الكمية بالوحدة الأساسية") }, singleLine = true)
+                OutlinedTextField(costText, { costText = it }, label = { Text("تكلفة الوحدة بالريال الجديد") }, singleLine = true)
+                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة") })
+            }
+        },
+        confirmButton = { Button(enabled = item != null && warehouse != null && qtyText.toDoubleOrNull() != null && costText.toDoubleOrNull() != null, onClick = { onSave(item!!, warehouse!!, qtyText.toDouble(), costText.toDouble(), note) }) { Text("ترحيل") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
+    )
+}
+
+private fun fmtQty(value: Double): String = if (abs(value - value.toLong()) < 0.000001) value.toLong().toString() else "%.3f".format(Locale.US, value)
+private fun fmtMoney(value: Double): String = "%,.2f".format(Locale.US, value)
+private fun fmtDate(value: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(value))
+private fun statusAr(status: String): String = when (status) {
+    "DRAFT" -> "مسودة"
+    "POSTED" -> "مرحّل"
+    "ACCEPTED" -> "مقبول"
+    "QUARANTINE" -> "محجور"
+    "BLOCKED" -> "موقوف"
+    "RETURNED" -> "مرتجع"
+    else -> status
+}
+private fun movementAr(type: String): String = when (type) {
+    "PURCHASE" -> "شراء"
+    "PURCHASE_RETURN" -> "مرتجع شراء"
+    "SALE" -> "بيع"
+    "SALES_RETURN" -> "مرتجع بيع"
+    "PRODUCTION_ISSUE" -> "صرف إنتاج"
+    "PRODUCTION_RECEIPT" -> "استلام إنتاج"
+    "OPENING" -> "رصيد افتتاحي"
+    "COUNT_ADJUSTMENT" -> "تسوية جرد"
+    else -> type
+}

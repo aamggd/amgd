@@ -1,0 +1,66 @@
+// SOURCE: FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/MasterDataService.kt
+package com.fush.erp.domain
+
+import androidx.room.withTransaction
+import com.fush.erp.data.FushDatabase
+import com.fush.erp.data.entity.ItemEntity
+import com.fush.erp.data.entity.ItemUnitConversionEntity
+import com.fush.erp.data.entity.UnitEntity
+
+class MasterDataService(private val db: FushDatabase) {
+    private val numbering = AutoNumberService(db)
+
+    suspend fun createUnit(nameAr: String, nameEn: String = ""): UnitEntity = db.withTransaction {
+        require(nameAr.isNotBlank()) { "اسم الوحدة مطلوب" }
+        val code = numbering.nextUnitCode()
+        val id = db.unitDao().insert(
+            UnitEntity(
+                code = code,
+                nameAr = nameAr.trim(),
+                nameEn = nameEn.trim()
+            )
+        )
+        UnitEntity(id = id, code = code, nameAr = nameAr.trim(), nameEn = nameEn.trim())
+    }
+
+    suspend fun createItem(
+        nameAr: String,
+        nameEn: String,
+        category: String,
+        baseUnitId: Long,
+        reorderLevel: Double = 0.0,
+        shelfLifeDays: Int? = null,
+        lotTracked: Boolean = false,
+        expiryTracked: Boolean = false
+    ): ItemEntity = db.withTransaction {
+        require(nameAr.isNotBlank()) { "اسم الصنف مطلوب" }
+        require(category in setOf("RAW_MATERIAL", "PACKAGING", "FINISHED_GOOD")) { "فئة الصنف غير صالحة" }
+        require(reorderLevel >= 0.0 && reorderLevel.isFinite()) { "حد إعادة الطلب غير صالح" }
+        require(shelfLifeDays == null || shelfLifeDays > 0) { "مدة الصلاحية يجب أن تكون أكبر من صفر" }
+        require(db.unitDao().byId(baseUnitId) != null) { "الوحدة الأساسية غير موجودة" }
+
+        val code = numbering.nextItemCode(category)
+        val row = ItemEntity(
+            code = code,
+            nameAr = nameAr.trim(),
+            nameEn = nameEn.trim(),
+            category = category,
+            baseUnitId = baseUnitId,
+            reorderLevel = reorderLevel,
+            shelfLifeDays = shelfLifeDays,
+            lotTracked = lotTracked,
+            expiryTracked = expiryTracked
+        )
+        val id = db.itemDao().insert(row)
+        db.itemUnitConversionDao().upsert(
+            ItemUnitConversionEntity(
+                itemId = id,
+                unitId = baseUnitId,
+                factorToBase = 1.0,
+                allowPurchase = category != "FINISHED_GOOD",
+                allowSale = category == "FINISHED_GOOD"
+            )
+        )
+        row.copy(id = id)
+    }
+}
