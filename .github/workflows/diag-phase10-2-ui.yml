@@ -1,0 +1,73 @@
+name: Diagnose Phase 10.2 UI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/diag-phase10-2-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct Phase 10.1 source
+        shell: bash
+        run: |
+          set -e
+          cat apk_source_chunks/part_00.b64 apk_source_chunks/part_01.b64 apk_source_chunks/part_02.b64 apk_source_chunks/part_03.b64 apk_source_chunks/fix04_0.b64 apk_source_chunks/fix04_1.b64 apk_source_chunks/fix04_2.b64 apk_source_chunks/part_05.b64 apk_source_chunks/part_06.b64 apk_source_chunks/fix07_0.b64 apk_source_chunks/fix07_1.b64 apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > phase5.b64
+          base64 -d phase5.b64 > phase5.zip
+          unzip -q -o phase5.zip || true
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > p6.tgz
+          tar -xzf p6.tgz -C FushERP_Mobile_Phase5
+          python phase6_patch/phase6_apply.py
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > p7.b64
+          base64 -d p7.b64 > p7.tgz
+          tar -xzf p7.tgz -C FushERP_Mobile_Phase5
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > p8.b64
+          base64 -d p8.b64 > p8.tgz
+          tar -xzf p8.tgz -C FushERP_Mobile_Phase5
+          cat phase9_patch/part_00.b64 phase9_patch/part_01.b64 phase9_patch/part_02.b64 phase9_patch/part_03.b64 phase9_patch/part_04.b64 phase9_patch/part_05.b64 | tr -d '\r\n' > p9.b64
+          base64 -d p9.b64 > p9.tgz
+          tar -xzf p9.tgz -C FushERP_Mobile_Phase5
+          cat phase10_patch/part_00.b64 phase10_patch/part_01.b64 phase10_patch/part_02.b64 phase10_patch/part_03.b64 phase10_patch/part_04.b64 phase10_patch/part_05.b64 phase10_patch/part_06.b64 | tr -d '\r\n' > p10.b64
+          base64 -d p10.b64 > p10.tgz
+          tar -xzf p10.tgz -C FushERP_Mobile_Phase5
+          cat phase10_1_patch/part_00.b64 phase10_1_patch/part_01.b64 phase10_1_patch/part_02.b64 phase10_1_patch/part_03.b64 phase10_1_patch/part_04.b64 phase10_1_patch/part_05.b64 phase10_1_patch/part_06.b64 phase10_1_patch/part_07.b64 phase10_1_patch/part_08.b64 | tr -d '\r\n' > p101.b64
+          base64 -d p101.b64 > p101.tgz
+          tar -xzf p101.tgz -C FushERP_Mobile_Phase5
+      - name: Capture navigation and master-data sources
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase10_2_diag
+          mkdir -p phase10_2_diag
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp')
+          files = list(root.rglob('*.kt'))
+          nav = next((p for p in files if 'NavigationBar(' in p.read_text(encoding='utf-8', errors='ignore') or 'bottomBar' in p.read_text(encoding='utf-8', errors='ignore')), None)
+          master = next((p for p in files if 'إدارة المواد والأصناف والوحدات' in p.read_text(encoding='utf-8', errors='ignore')), None)
+          units = next((p for p in files if 'MasterData' in p.name or 'Unit' in p.name and 'Screen' in p.name), None)
+          for label, path in [('NavSource', nav), ('MasterSource', master), ('UnitsSource', units)]:
+              if path:
+                  out = Path('phase10_2_diag') / f'{label}.txt'
+                  out.write_text(f'// SOURCE: {path}\n' + path.read_text(encoding='utf-8', errors='ignore'), encoding='utf-8')
+          (Path('phase10_2_diag')/'FILE_LIST.txt').write_text('\n'.join(str(p) for p in files), encoding='utf-8')
+          PY
+          ls -l phase10_2_diag
+      - name: Publish diagnostics
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add phase10_2_diag
+          git commit -m 'Capture Phase 10.1 UI sources for Phase 10.2 [skip ci]' || exit 0
+          git push
