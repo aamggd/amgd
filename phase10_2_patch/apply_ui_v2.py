@@ -1,186 +1,82 @@
-from __future__ import annotations
-
 from pathlib import Path
 import re
 
 ROOT = Path('FushERP_Mobile_Phase5')
-SRC = ROOT / 'app/src/main/java/com/fush/erp'
+home = ROOT / 'app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt'
+s = home.read_text(encoding='utf-8')
 
+start = s.find('@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun HomeShell(')
+if start < 0:
+    raise RuntimeError('HomeShell start not found')
+end_marker = '\n@Composable\nprivate fun DashboardScreen('
+end = s.find(end_marker, start)
+if end < 0:
+    raise RuntimeError('Dashboard marker not found')
 
-def load(p: Path) -> str:
-    return p.read_text(encoding='utf-8')
+new_home = r'''@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+    var page by remember { mutableStateOf("الرئيسية") }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
 
-
-def save(p: Path, s: str) -> None:
-    p.write_text(s, encoding='utf-8')
-
-
-def match_close(s: str, pos: int, left: str, right: str) -> int:
-    depth = 0
-    string = False
-    esc = False
-    for i in range(pos, len(s)):
-        c = s[i]
-        if string:
-            if esc:
-                esc = False
-            elif c == '\\':
-                esc = True
-            elif c == '"':
-                string = False
-            continue
-        if c == '"':
-            string = True
-        elif c == left:
-            depth += 1
-        elif c == right:
-            depth -= 1
-            if depth == 0:
-                return i
-    raise RuntimeError(f'Unbalanced {left}{right}')
-
-
-files = list(SRC.rglob('*.kt'))
-nav = next((p for p in files if 'NavigationBar(' in load(p) and 'NavHost' in load(p)), None)
-if nav is None:
-    nav = next((p for p in files if 'NavigationBar(' in load(p) and '.navigate(' in load(p)), None)
-if nav is None:
-    raise RuntimeError('Navigation source not found')
-
-s = load(nav)
-
-# Find the real NavigationBar call, not its import.
-bar_pos = s.find('NavigationBar(')
-bar_open_paren = s.find('(', bar_pos)
-bar_close_paren = match_close(s, bar_open_paren, '(', ')')
-q = bar_close_paren + 1
-while q < len(s) and s[q].isspace():
-    q += 1
-if q >= len(s) or s[q] != '{':
-    raise RuntimeError('NavigationBar trailing lambda not found')
-bar_open = q
-bar_close = match_close(s, bar_open, '{', '}')
-bar = s[bar_open:bar_close + 1]
-
-loop = re.search(r'([A-Za-z_][A-Za-z0-9_]*)\.forEach\s*\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*->', bar)
-if not loop:
-    raise RuntimeError('Navigation item loop not found')
-items_name, item_name = loop.group(1), loop.group(2)
-
-nav_call = re.search(r'([A-Za-z_][A-Za-z0-9_]*)\.navigate\(\s*' + re.escape(item_name) + r'\.([A-Za-z_][A-Za-z0-9_]*)', bar)
-if not nav_call:
-    raise RuntimeError('Navigation call not found')
-controller, route_field = nav_call.group(1), nav_call.group(2)
-
-label_match = re.search(r'(?:Text\(\s*|text\s*=\s*)' + re.escape(item_name) + r'\.([A-Za-z_][A-Za-z0-9_]*)', bar)
-label_field = label_match.group(1) if label_match else 'label'
-
-# Capture selected expression from the real NavigationBarItem and reuse it in the drawer.
-sel = re.search(r'selected\s*=\s*(.*?),(?:\s*\n|\s*)onClick\s*=', bar, flags=re.S)
-selected_expr = sel.group(1).strip() if sel else 'false'
-selected_expr_drawer = re.sub(r'\b' + re.escape(item_name) + r'\b', '_drawerItem', selected_expr)
-
-# Ensure required imports are available.
-required = [
-    'import androidx.compose.material3.DrawerValue',
-    'import androidx.compose.material3.HorizontalDivider',
-    'import androidx.compose.material3.ModalDrawerSheet',
-    'import androidx.compose.material3.ModalNavigationDrawer',
-    'import androidx.compose.material3.NavigationDrawerItem',
-    'import androidx.compose.material3.rememberDrawerState',
-    'import androidx.compose.runtime.rememberCoroutineScope',
-    'import androidx.compose.ui.unit.dp',
-    'import kotlinx.coroutines.launch',
-]
-for imp in required:
-    if imp not in s:
-        all_imports = list(re.finditer(r'^import .*$', s, flags=re.M))
-        if not all_imports:
-            raise RuntimeError('No imports found')
-        at = all_imports[-1].end()
-        s = s[:at] + '\n' + imp + s[at:]
-
-# Re-find NavigationBar after import edits.
-bar_pos = s.find('NavigationBar(')
-bar_open_paren = s.find('(', bar_pos)
-bar_close_paren = match_close(s, bar_open_paren, '(', ')')
-q = bar_close_paren + 1
-while q < len(s) and s[q].isspace():
-    q += 1
-bar_open = q
-bar_close = match_close(s, bar_open, '{', '}')
-bar = s[bar_open:bar_close + 1]
-
-# Four daily destinations + one menu launcher. All other destinations move to drawer.
-loop_pattern = re.compile(re.escape(items_name) + r'\.forEach\s*\{\s*' + re.escape(item_name) + r'\s*->')
-bar, count = loop_pattern.subn(
-    f'{items_name}.filter {{ it.{label_field} in setOf("الرئيسية", "المبيعات", "الإنتاج", "المخزون") }}.forEach {{ {item_name} ->',
-    bar,
-    count=1,
-)
-if count != 1:
-    raise RuntimeError('Could not reduce bottom navigation')
-
-bar = bar[:-1] + '''
-        NavigationBarItem(
-            selected = false,
-            onClick = { _fushDrawerScope.launch { _fushDrawerState.open() } },
-            icon = { Text("☰") },
-            label = { Text("القائمة", maxLines = 1) }
+    val modules = remember {
+        listOf(
+            ModuleCard("المحاسبة والخزينة", "اليومية، الأستاذ، الخزينة والبنوك، ميزان المراجعة والقوائم المالية", "المرحلة 8 جاهزة"),
+            ModuleCard("الأصناف والوحدات", "مواد خام، تغليف، منتج نهائي وتحويل الوحدات", "موسع في المرحلة 2"),
+            ModuleCard("المخزون والمستودعات", "جرد، فروق، تشغيلات، صلاحية، حجر، إعادة طلب وحركة مخزون", "المرحلة 10 جاهزة"),
+            ModuleCard("الموردون والمشتريات", "موردون، فواتير، مرتجعات وقيود تلقائية", "المرحلة 2"),
+            ModuleCard("الإنتاج والجودة", "BOM، أوامر الإنتاج، الدفعات، الفحص وCAPA", "المرحلة 3 جاهزة"),
+            ModuleCard("المبيعات والعملاء", "نقدي/آجل، تحصيل، عمولات، مرتجعات وتتبع دفعات", "المرحلة 4 جاهزة"),
+            ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "المرحلة 9 جاهزة"),
+            ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "المرحلة 5 جاهزة"),
+            ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "المرحلة 6 جاهزة"),
+            ModuleCard("الموظفون والتدريب", "الكفاءة، التدريب، تصاريح المعدات وربط المشغل بأمر الإنتاج", "المرحلة 7 جاهزة"),
+            ModuleCard("لوحة الإدارة", "KPI، التنبيهات والقرار اليومي", "قيد التوسع")
         )
-''' + bar[-1:]
-s = s[:bar_open] + bar + s[bar_close + 1:]
+    }
 
-# Wrap the app Scaffold with a side drawer.
-sc = re.search(r'\bScaffold\s*\(', s)
-if not sc:
-    raise RuntimeError('Scaffold not found')
-sc_start = sc.start()
-p0 = s.find('(', sc.start())
-p1 = match_close(s, p0, '(', ')')
-end = p1 + 1
-r = end
-while r < len(s) and s[r].isspace():
-    r += 1
-if r < len(s) and s[r] == '{':
-    end = match_close(s, r, '{', '}') + 1
-
-# Direct material/unit entries intentionally open the master-data page, where its own material/unit tabs live.
-data_expr = f'{items_name}.first {{ it.{label_field} == "البيانات" }}.{route_field}'
-
-drawer = f'''
-    val _fushDrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val _fushDrawerScope = rememberCoroutineScope()
+    val drawerItems = remember {
+        listOf(
+            "الرئيسية" to "الرئيسية",
+            "المبيعات" to "المبيعات",
+            "الإنتاج والجودة" to "الإنتاج",
+            "المخزون والمستودعات" to "المخزون",
+            "المشتريات والموردون" to "المشتريات",
+            "الحسابات والخزينة" to "الحسابات",
+            "العملات والمحافظات" to "العملات",
+            "الموظفون والتدريب" to "الموظفون",
+            "الصيانة والسلامة" to "الصيانة",
+            "الحوكمة والتدقيق" to "الحوكمة"
+        )
+    }
 
     ModalNavigationDrawer(
-        drawerState = _fushDrawerState,
-        drawerContent = {{
-            ModalDrawerSheet {{
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
                 Text(
                     "Fush ERP",
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(20.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)
                 )
                 HorizontalDivider()
                 Text(
-                    "الأقسام",
+                    "أقسام النظام",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 )
-                {items_name}.forEach {{ _drawerItem ->
+                drawerItems.forEach { (label, target) ->
                     NavigationDrawerItem(
-                        label = {{ Text(_drawerItem.{label_field}, maxLines = 1) }},
-                        selected = {selected_expr_drawer},
-                        onClick = {{
-                            _fushDrawerScope.launch {{ _fushDrawerState.close() }}
-                            {controller}.navigate(_drawerItem.{route_field}) {{
-                                launchSingleTop = true
-                                restoreState = true
-                            }}
-                        }},
+                        label = { Text(label, maxLines = 1) },
+                        selected = page == target,
+                        onClick = {
+                            page = target
+                            scope.launch { drawerState.close() }
+                        },
                         modifier = Modifier.padding(horizontal = 10.dp)
                     )
-                }}
+                }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                 Text(
                     "البيانات الأساسية",
@@ -188,49 +84,102 @@ drawer = f'''
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                 )
                 NavigationDrawerItem(
-                    label = {{ Text("المواد والأصناف") }},
-                    selected = false,
-                    onClick = {{
-                        _fushDrawerScope.launch {{ _fushDrawerState.close() }}
-                        {controller}.navigate({data_expr}) {{ launchSingleTop = true }}
-                    }},
+                    label = { Text("المواد والأصناف") },
+                    selected = page == "المواد والأصناف",
+                    onClick = {
+                        page = "المواد والأصناف"
+                        scope.launch { drawerState.close() }
+                    },
                     modifier = Modifier.padding(horizontal = 10.dp)
                 )
                 NavigationDrawerItem(
-                    label = {{ Text("الوحدات") }},
-                    selected = false,
-                    onClick = {{
-                        _fushDrawerScope.launch {{ _fushDrawerState.close() }}
-                        {controller}.navigate({data_expr}) {{ launchSingleTop = true }}
-                    }},
+                    label = { Text("الوحدات") },
+                    selected = page == "الوحدات",
+                    onClick = {
+                        page = "الوحدات"
+                        scope.launch { drawerState.close() }
+                    },
                     modifier = Modifier.padding(horizontal = 10.dp)
                 )
-            }}
-        }}
-    ) {{
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Fush ERP — $page") },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Text("☰", style = MaterialTheme.typography.titleLarge)
+                        }
+                    },
+                    actions = {
+                        Text(user.displayName, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = onLogout) { Text("خروج") }
+                    }
+                )
+            },
+            bottomBar = {
+                NavigationBar {
+                    listOf("الرئيسية", "المبيعات", "الإنتاج", "المخزون").forEach { label ->
+                        NavigationBarItem(
+                            selected = page == label,
+                            onClick = { page = label },
+                            icon = { Text(if (page == label) "●" else "○") },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                        )
+                    }
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { scope.launch { drawerState.open() } },
+                        icon = { Text("☰") },
+                        label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                    )
+                }
+            }
+        ) { pad ->
+            when (page) {
+                "المبيعات" -> SalesScreen(container, user, Modifier.padding(pad))
+                "الإنتاج" -> ProductionScreen(container, user, Modifier.padding(pad))
+                "الصيانة" -> MaintenanceScreen(container, user, Modifier.padding(pad))
+                "الموظفون" -> EmployeesScreen(container, user, Modifier.padding(pad))
+                "المشتريات" -> PurchasesScreen(container, user, Modifier.padding(pad))
+                "المخزون" -> AdvancedInventoryScreen(container, user, Modifier.padding(pad), onOpenMasterData = { page = "المواد والأصناف" })
+                "الحوكمة" -> GovernanceScreen(container, user, Modifier.padding(pad))
+                "العملات" -> CurrencyGeographyScreen(container, user, Modifier.padding(pad))
+                "الحسابات" -> AccountingScreen(container, user, Modifier.padding(pad))
+                "المواد والأصناف" -> MasterDataScreen(container, Modifier.padding(pad), initialSection = "المواد والأصناف")
+                "الوحدات" -> MasterDataScreen(container, Modifier.padding(pad), initialSection = "الوحدات")
+                else -> DashboardScreen(container, modules, Modifier.padding(pad))
+            }
+        }
+    }
+}
 '''
 
-s = s[:sc_start] + drawer + s[sc_start:end] + '\n    } // Phase 10.2 drawer\n' + s[end:]
-save(nav, s)
+s = s[:start] + new_home + s[end:]
 
-# Make the existing inventory shortcut shorter and clearer on a phone.
-for p in files:
-    if p == nav:
-        continue
-    t = load(p)
-    if 'إدارة المواد والأصناف والوحدات' in t:
-        save(p, t.replace('إدارة المواد والأصناف والوحدات', 'المواد والأصناف والوحدات'))
-        break
+old_sig = 'private fun MasterDataScreen(container: AppContainer, modifier: Modifier = Modifier) {'
+new_sig = 'private fun MasterDataScreen(container: AppContainer, modifier: Modifier = Modifier, initialSection: String = "المواد والأصناف") {'
+if old_sig not in s:
+    raise RuntimeError('MasterDataScreen signature not found')
+s = s.replace(old_sig, new_sig, 1)
 
-# UI-only release: DB schema remains at v11.
+old_state = 'var section by remember { mutableStateOf("المواد والأصناف") }'
+new_state = 'var section by remember(initialSection) { mutableStateOf(initialSection) }'
+if old_state not in s:
+    raise RuntimeError('MasterData section state not found')
+s = s.replace(old_state, new_state, 1)
+s = s.replace('Metric("الإصدار", "0.10.1", Modifier.weight(1f))', 'Metric("الإصدار", "0.10.2", Modifier.weight(1f))', 1)
+s = s.replace('إدارة المواد والأصناف والوحدات', 'المواد والأصناف والوحدات')
+home.write_text(s, encoding='utf-8')
+
 gradle = ROOT / 'app/build.gradle.kts'
-g = load(gradle)
+g = gradle.read_text(encoding='utf-8')
 g, a = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 12', g, count=1)
 g, b = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.10.2-phase10-ui"', g, count=1)
 if a != 1 or b != 1:
     raise RuntimeError('Version update failed')
-save(gradle, g)
+gradle.write_text(g, encoding='utf-8')
 
 print('PHASE10_2_UI_PATCH_OK')
-print(f'nav={nav}')
-print(f'items={items_name}, item={item_name}, label={label_field}, route={route_field}, controller={controller}')
