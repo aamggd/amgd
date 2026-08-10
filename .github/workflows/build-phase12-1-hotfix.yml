@@ -1,0 +1,129 @@
+name: Build Fush ERP Phase 12.1 Data Safe Hotfix
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase12-1-hotfix.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Reconstruct through Phase 10.2
+        shell: bash
+        run: |
+          set -e
+          cat apk_source_chunks/part_00.b64 apk_source_chunks/part_01.b64 apk_source_chunks/part_02.b64 apk_source_chunks/part_03.b64 apk_source_chunks/fix04_0.b64 apk_source_chunks/fix04_1.b64 apk_source_chunks/fix04_2.b64 apk_source_chunks/part_05.b64 apk_source_chunks/part_06.b64 apk_source_chunks/fix07_0.b64 apk_source_chunks/fix07_1.b64 apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > p5.b64
+          base64 -d p5.b64 > p5.zip
+          unzip -q -o p5.zip || true
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > p6.tgz && tar -xzf p6.tgz -C FushERP_Mobile_Phase5 && python phase6_patch/phase6_apply.py
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > p7.b64 && base64 -d p7.b64 > p7.tgz && tar -xzf p7.tgz -C FushERP_Mobile_Phase5
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > p8.b64 && base64 -d p8.b64 > p8.tgz && tar -xzf p8.tgz -C FushERP_Mobile_Phase5
+          cat phase9_patch/part_00.b64 phase9_patch/part_01.b64 phase9_patch/part_02.b64 phase9_patch/part_03.b64 phase9_patch/part_04.b64 phase9_patch/part_05.b64 | tr -d '\r\n' > p9.b64 && base64 -d p9.b64 > p9.tgz && tar -xzf p9.tgz -C FushERP_Mobile_Phase5
+          cat phase10_patch/part_00.b64 phase10_patch/part_01.b64 phase10_patch/part_02.b64 phase10_patch/part_03.b64 phase10_patch/part_04.b64 phase10_patch/part_05.b64 phase10_patch/part_06.b64 | tr -d '\r\n' > p10.b64 && base64 -d p10.b64 > p10.tgz && tar -xzf p10.tgz -C FushERP_Mobile_Phase5
+          cat phase10_1_patch/part_00.b64 phase10_1_patch/part_01.b64 phase10_1_patch/part_02.b64 phase10_1_patch/part_03.b64 phase10_1_patch/part_04.b64 phase10_1_patch/part_05.b64 phase10_1_patch/part_06.b64 phase10_1_patch/part_07.b64 phase10_1_patch/part_08.b64 | tr -d '\r\n' > p101.b64 && base64 -d p101.b64 > p101.tgz && tar -xzf p101.tgz -C FushERP_Mobile_Phase5
+          python phase10_2_patch/apply_ui_v2.py
+      - name: Apply Phase 11
+        shell: bash
+        run: |
+          set -e
+          cat phase11_patch/part_00.b64 | tr -d '\r\n' > p11.b64
+          base64 -d p11.b64 > p11.tgz
+          tar -xzf p11.tgz -C FushERP_Mobile_Phase5
+      - name: Apply Phase 12
+        shell: bash
+        run: |
+          set -e
+          cat phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03.b64 | tr -d '\r\n' > p12.b64
+          base64 -d p12.b64 > p12.tgz
+          tar -xzf p12.tgz -C FushERP_Mobile_Phase5
+          grep -q '0.12.0-phase12' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - name: Apply Phase 12.1 data-safe hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          dao = Path('FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/Daos.kt')
+          text = dao.read_text(encoding='utf-8')
+          old = '''    @Insert(onConflict = OnConflictStrategy.REPLACE)\n    suspend fun upsertAll(rows: List<CurrencyEntity>)'''
+          new = '''    // Seed default currencies without deleting/reinserting parent rows.\n    // REPLACE is unsafe once suppliers/invoices reference currencies via foreign keys.\n    @Insert(onConflict = OnConflictStrategy.IGNORE)\n    suspend fun upsertAll(rows: List<CurrencyEntity>)'''
+          if old not in text:
+              raise SystemExit('Currency DAO target not found')
+          dao.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          gradle = Path('FushERP_Mobile_Phase5/app/build.gradle.kts')
+          g = gradle.read_text(encoding='utf-8')
+          g = g.replace('versionCode = 14', 'versionCode = 15', 1)
+          g = g.replace('versionName = "0.12.0-phase12"', 'versionName = "0.12.1-phase12-hotfix"', 1)
+          gradle.write_text(g, encoding='utf-8')
+          PY
+          grep -q 'OnConflictStrategy.IGNORE' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/Daos.kt
+          grep -q 'versionCode = 15' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.12.1-phase12-hotfix' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - name: Regression check - existing transactional data must not break currency seeding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sqlite3
+          db = sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=ON')
+          db.execute('CREATE TABLE currencies(code TEXT PRIMARY KEY NOT NULL, nameAr TEXT NOT NULL)')
+          db.execute('CREATE TABLE suppliers(id INTEGER PRIMARY KEY, currencyCode TEXT NOT NULL, FOREIGN KEY(currencyCode) REFERENCES currencies(code) ON DELETE RESTRICT)')
+          db.execute("INSERT INTO currencies VALUES('YER_NEW','ريال يمني')")
+          db.execute("INSERT INTO suppliers(currencyCode) VALUES('YER_NEW')")
+          failed = False
+          try:
+              db.execute("INSERT OR REPLACE INTO currencies VALUES('YER_NEW','ريال يمني - جديد')")
+          except sqlite3.IntegrityError:
+              failed = True
+          assert failed, 'Regression setup did not reproduce unsafe REPLACE behavior'
+          db.execute("INSERT OR IGNORE INTO currencies VALUES('YER_NEW','ريال يمني - جديد')")
+          assert db.execute('SELECT COUNT(*) FROM suppliers').fetchone()[0] == 1
+          assert db.execute('SELECT COUNT(*) FROM currencies').fetchone()[0] == 1
+          print('CURRENCY_FOREIGN_KEY_SEED_REGRESSION_OK')
+          PY
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase12-1-output
+          mkdir -p phase12-1-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase12-1-output/FushERP-Phase12.1-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase12-1-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase12-1-output/apksigner/lib/apksigner.jar
+          chmod +x phase12-1-output/apksigner/apksigner
+          zip -qr phase12-1-output/FushERP-Mobile-Phase12.1-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase12-1-output/FushERP-Phase12.1-unsigned.apk > phase12-1-output/FushERP-Phase12.1-unsigned.apk.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase12.1-Hotfix-Build
+          path: phase12-1-output/
+          if-no-files-found: error
+          retention-days: 7
