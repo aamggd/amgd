@@ -1,0 +1,96 @@
+name: Build Fush ERP Phase 13.2 Material Availability
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase13-2-material-availability.yml'
+      - 'phase13_2_patch/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Reconstruct through Phase 10.2
+        shell: bash
+        run: |
+          set -e
+          cat apk_source_chunks/part_00.b64 apk_source_chunks/part_01.b64 apk_source_chunks/part_02.b64 apk_source_chunks/part_03.b64 apk_source_chunks/fix04_0.b64 apk_source_chunks/fix04_1.b64 apk_source_chunks/fix04_2.b64 apk_source_chunks/part_05.b64 apk_source_chunks/part_06.b64 apk_source_chunks/fix07_0.b64 apk_source_chunks/fix07_1.b64 apk_source_chunks/fix07_2.b64 | tr -d '\r\n' > p5.b64
+          base64 -d p5.b64 > p5.zip
+          unzip -q -o p5.zip || true
+          base64 -d apk_source_chunks/SalesScreens.kt.gz.b64 | gunzip > FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          sed -i 's/compileSdk = 37/compileSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          sed -i 's/targetSdk = 37/targetSdk = 36/' FushERP_Mobile_Phase5/app/build.gradle.kts
+          base64 -d phase6_patch/phase6_patch.tar.gz.b64 > p6.tgz && tar -xzf p6.tgz -C FushERP_Mobile_Phase5 && python phase6_patch/phase6_apply.py
+          cat phase7_patch/part_00.b64 phase7_patch/part_00_tail.b64 phase7_patch/part_01.b64 phase7_patch/part_02.b64 | tr -d '\r\n' > p7.b64 && base64 -d p7.b64 > p7.tgz && tar -xzf p7.tgz -C FushERP_Mobile_Phase5
+          cat phase8_patch_v3/part_00.b64 phase8_patch_v3/part_01.b64 phase8_patch_v3/part_02.b64 phase8_patch_v3/part_03.b64 phase8_patch_v3/part_04.b64 phase8_patch_v3/part_05.b64 phase8_patch_v3/part_06.b64 | tr -d '\r\n' > p8.b64 && base64 -d p8.b64 > p8.tgz && tar -xzf p8.tgz -C FushERP_Mobile_Phase5
+          cat phase9_patch/part_00.b64 phase9_patch/part_01.b64 phase9_patch/part_02.b64 phase9_patch/part_03.b64 phase9_patch/part_04.b64 phase9_patch/part_05.b64 | tr -d '\r\n' > p9.b64 && base64 -d p9.b64 > p9.tgz && tar -xzf p9.tgz -C FushERP_Mobile_Phase5
+          cat phase10_patch/part_00.b64 phase10_patch/part_01.b64 phase10_patch/part_02.b64 phase10_patch/part_03.b64 phase10_patch/part_04.b64 phase10_patch/part_05.b64 phase10_patch/part_06.b64 | tr -d '\r\n' > p10.b64 && base64 -d p10.b64 > p10.tgz && tar -xzf p10.tgz -C FushERP_Mobile_Phase5
+          cat phase10_1_patch/part_00.b64 phase10_1_patch/part_01.b64 phase10_1_patch/part_02.b64 phase10_1_patch/part_03.b64 phase10_1_patch/part_04.b64 phase10_1_patch/part_05.b64 phase10_1_patch/part_06.b64 phase10_1_patch/part_07.b64 phase10_1_patch/part_08.b64 | tr -d '\r\n' > p101.b64 && base64 -d p101.b64 > p101.tgz && tar -xzf p101.tgz -C FushERP_Mobile_Phase5
+          python phase10_2_patch/apply_ui_v2.py
+      - name: Apply Phase 11 to 12.3
+        run: |
+          set -e
+          base64 -d phase11_patch/part_00.b64 > p11.tgz && tar -xzf p11.tgz -C FushERP_Mobile_Phase5
+          cat phase12_patch/part_00.b64 phase12_patch/part_01.b64 phase12_patch/part_02.b64 phase12_patch/part_03a.b64 phase12_patch/part_03b.b64 | tr -d '\r\n' > p12.b64
+          base64 -d p12.b64 > p12.tgz && tar -xzf p12.tgz -C FushERP_Mobile_Phase5
+          python phase12_hotfix/apply_hotfix.py
+          python phase12_2_hotfix/apply_hotfix.py
+          python phase12_3_recipes/apply_patch.py
+      - name: Apply Phase 13 dashboard
+        run: |
+          set -e
+          base64 -d phase13_patch/phase13_patch.tar.gz.b64 > p13.tgz
+          echo '412cf193a5be7b940dceb14ca8bac0c678ea2993018f783325f9ce4b9c7aab16  p13.tgz' | sha256sum -c -
+          tar -xzf p13.tgz -C FushERP_Mobile_Phase5
+      - name: Apply Phase 13.1 safe recipe deletion
+        run: |
+          set -e
+          python phase13_1_recipe_delete/apply_patch.py
+      - name: Apply Phase 13.2 material availability UX
+        run: |
+          set -e
+          python phase13_2_patch/apply_patch.py
+          grep -q 'versionCode = 20' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.13.2-phase13-material-availability' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'suspend fun materialAvailability' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'نتيجة فحص المواد' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+          grep -q 'الذهاب إلى المخزون' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase13-2-output
+          mkdir -p phase13-2-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase13-2-output/FushERP-Phase13.2-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase13-2-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase13-2-output/apksigner/lib/apksigner.jar
+          chmod +x phase13-2-output/apksigner/apksigner
+          zip -qr phase13-2-output/FushERP-Mobile-Phase13.2-Source.zip FushERP_Mobile_Phase5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase13.2-Material-Availability-Build
+          path: phase13-2-output/
+          if-no-files-found: error
+          retention-days: 7
