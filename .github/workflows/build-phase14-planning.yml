@@ -61,7 +61,8 @@ jobs:
       - name: Apply Phase 14 planning and expansion
         run: |
           set -e
-          base64 -d phase14_patch/phase14_patch.tar.gz.b64 > p14.tgz
+          cat phase14_patch/part_00.b64 phase14_patch/part_01.b64 phase14_patch/part_02.b64 phase14_patch/part_03.b64 phase14_patch/part_04.b64 | tr -d '\r\n' > p14.b64
+          base64 -d p14.b64 > p14.tgz
           echo '0c89c48a47d7f42c2f7d326c682ea8fa56e0f93413b53edccf14a2b1ac976a74  p14.tgz' | sha256sum -c -
           tar -xzf p14.tgz -C FushERP_Mobile_Phase5
           grep -q 'versionCode = 23' FushERP_Mobile_Phase5/app/build.gradle.kts
