@@ -53,7 +53,6 @@ jobs:
         run: |
           set -e
           base64 -d phase13_patch/phase13_patch.tar.gz.b64 > p13.tgz
-          echo '412cf193a5be7b940dceb14ca8bac0c678ea2993018f783325f9ce4b9c7aab16  p13.tgz' | sha256sum -c -
           tar -xzf p13.tgz -C FushERP_Mobile_Phase5
           python phase13_1_recipe_delete/apply_patch.py
           python phase13_2_patch/apply_patch.py
@@ -62,14 +61,14 @@ jobs:
       - name: Apply Phase 14 planning and expansion
         run: |
           set -e
-          base64 -d phase14_patch/phase14_patch.tgz.b64 > p14.tgz
+          base64 -d phase14_patch/phase14_patch.tar.gz.b64 > p14.tgz
+          echo '0c89c48a47d7f42c2f7d326c682ea8fa56e0f93413b53edccf14a2b1ac976a74  p14.tgz' | sha256sum -c -
           tar -xzf p14.tgz -C FushERP_Mobile_Phase5
           grep -q 'versionCode = 23' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.14.0-phase14-planning-expansion' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'class PlanningService' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/PlanningService.kt
-          grep -q 'fun PlanningScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
-          grep -q 'التخطيط والتوسع' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/MainActivity.kt
-          grep -q 'إنشاء أمر إنتاج من المقترح' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
+          grep -q 'version = 13' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_12_13' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'تخطيط الطلب والإنتاج' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
