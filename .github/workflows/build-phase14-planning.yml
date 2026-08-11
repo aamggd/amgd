@@ -66,6 +66,7 @@ jobs:
           echo '0c89c48a47d7f42c2f7d326c682ea8fa56e0f93413b53edccf14a2b1ac976a74  p14.tgz' | sha256sum -c -
           tar -xzf p14.tgz -C FushERP_Mobile_Phase5
           sed -i 's/r.standardOutputQtyBase/r.targetOutputQtyBase/' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/PlanningDao.kt
+          sed -i 's/arrayOf(index + 1, 1.0, label, "عامل محايد افتراضياً — عدله حسب المبيعات الفعلية", System.currentTimeMillis())/arrayOf<Any?>(index + 1, 1.0, label, "عامل محايد افتراضياً — عدله حسب المبيعات الفعلية", System.currentTimeMillis())/' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
           grep -q 'versionCode = 23' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.14.0-phase14-planning-expansion' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 13' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
