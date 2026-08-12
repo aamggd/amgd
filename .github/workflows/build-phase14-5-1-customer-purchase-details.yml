@@ -1,0 +1,91 @@
+name: Build Fush ERP Phase 14.5.1 Customer & Purchase Details
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-5-1-customer-purchase-details.yml'
+      - 'phase14_5_1_customer_purchase_details/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5-Production-Planning-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31578461777
+      - name: Restore Phase 14.5 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 39' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4-phase14.5-production-material-planning' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 17' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply Phase 14.5.1 customer and purchase details
+        shell: bash
+        run: |
+          set -e
+          python phase14_5_1_customer_purchase_details/apply_patch.py
+          grep -q 'versionCode = 40' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.1-phase14.5-customer-purchase-details' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 17' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'إجمالي المستحق:' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'بيان فاتورة المشتريات' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-5-1-output
+          mkdir -p phase14-5-1-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-1-output/FushERP-Phase14.5.1-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-1-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-1-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-1-output/apksigner/apksigner
+          zip -qr phase14-5-1-output/FushERP-Mobile-Phase14.5.1-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-1-output/FushERP-Phase14.5.1-unsigned.apk > phase14-5-1-output/FushERP-Phase14.5.1-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.1 — Customer balances & purchase invoice details' \
+            'Version: 0.15.4.1-phase14.5-customer-purchase-details (versionCode 40)' \
+            '' \
+            'Scope:' \
+            '- Customer cards show total net credit due, paid, remaining and overdue balances.' \
+            '- Purchase invoices have a detailed statement with items, units, lots, expiry, costs and returns.' \
+            '- No Room schema change; schema remains 17.' \
+            > phase14-5-1-output/FushERP-Phase14.5.1-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.1-Customer-Purchase-Details-Build
+          path: phase14-5-1-output/
+          if-no-files-found: error
+          retention-days: 7
