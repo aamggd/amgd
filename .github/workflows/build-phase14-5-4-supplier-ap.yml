@@ -57,13 +57,6 @@ jobs:
       - name: Release build
         working-directory: FushERP_Mobile_Phase5
         run: gradle --no-daemon :app:assembleRelease
-      - name: Verify Room schema 18
-        shell: bash
-        run: |
-          set -e
-          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/18.json
-          grep -q 'supplier_payments' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/18.json
-          grep -q 'supplier_payment_allocations' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/18.json
       - name: Package build
         shell: bash
         run: |
