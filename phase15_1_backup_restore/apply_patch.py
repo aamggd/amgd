@@ -34,8 +34,8 @@ if proc.returncode != 0:
 # Kotlin warnings are errors in this project. Replace deprecated createTempDir in the new test.
 test_file = root / 'app/src/test/java/com/fush/erp/backup/BackupArchiveCodecTest.kt'
 test_text = test_file.read_text(encoding='utf-8')
-old = 'val dir = createTempDir(prefix = "fush-backup-test")'
-new = 'val dir = kotlin.io.path.createTempDirectory("fush-backup-test").toFile()'
+old = 'val dir = createTempDir(prefix = "fush-backup-")'
+new = 'val dir = kotlin.io.path.createTempDirectory("fush-backup-").toFile()'
 assert old in test_text
 test_text = test_text.replace(old, new)
 test_file.write_text(test_text, encoding='utf-8')
