@@ -14,9 +14,18 @@ patch = gzip.decompress(raw)
 patch_path = Path(__file__).with_name("phase14_5_4.diff")
 patch_path.write_bytes(patch)
 
+if not PROJECT.is_dir():
+    raise SystemExit(f"Restored project directory not found: {PROJECT}")
+
 subprocess.run(
-    ["git", "apply", "--whitespace=nowarn", str(patch_path)],
-    cwd=PROJECT,
+    [
+        "git",
+        "apply",
+        "--whitespace=nowarn",
+        "--directory=FushERP_Mobile_Phase5",
+        str(patch_path),
+    ],
+    cwd=ROOT,
     check=True,
 )
-print("Phase 14.5.4 supplier AP patch applied successfully")
+print("Phase 14.5.4 supplier AP patch applied successfully to restored project")
