@@ -46,15 +46,15 @@ assert 'versionName = "0.15.4-phase14.5-production-material-planning"' in text
 assert 'version = 17' in database_path.read_text(encoding='utf-8')
 
 checks = {
-    'app/src/main/java/com/fush/erp/data/planning/PlanningEntities.kt': [
+    'app/src/main/java/com/fush/erp/data/entity/PlanningEntities.kt': [
         'InventoryPlanningPolicyEntity', 'ProductionPlanEntity',
         'ProductionPlanMaterialEntity', 'ProductionPlanMaterialView'
     ],
-    'app/src/main/java/com/fush/erp/data/planning/PlanningMath.kt': [
+    'app/src/main/java/com/fush/erp/domain/PlanningMath.kt': [
         'safetyStockQty', 'reorderPointQty', 'requiredBatchCount',
         'componentRequirement', 'suggestedPurchaseQty'
     ],
-    'app/src/main/java/com/fush/erp/data/planning/PlanningService.kt': [
+    'app/src/main/java/com/fush/erp/domain/PlanningService.kt': [
         'generateProductionPlan', 'approveProductionPlan',
         'reopenProductionPlan', 'saveInventoryPlanningPolicy'
     ],
@@ -63,7 +63,7 @@ checks = {
         'production_plans', 'production_plan_materials'
     ],
     'app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt': [
-        'خطة الإنتاج والمواد والمخزون', 'إنشاء خطة الإنتاج والمواد',
+        'خطة الإنتاج والمواد والمخزون', 'توليد خطة الإنتاج والمواد',
         'أيام مخزون الأمان', 'الشراء المقترح'
     ],
     'PHASE14_5_SCOPE.md': [
