@@ -8,13 +8,13 @@ root = Path("FushERP_Mobile_Phase5")
 payload_path = Path("phase13_9_production_export/production_export.diff.gz.b64")
 payload = payload_path.read_text(encoding="utf-8").strip()
 
-expected_payload_sha = "3515e4e83fdd53fe14b4f629715b016c333cf2a57a5c052110d31ac878b6c545"
+expected_payload_sha = "152e5540b8cb90be7475d3d732764088f74f37f97a1ea3b5caeaa69fd43ccfa8"
 actual_payload_sha = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 if actual_payload_sha != expected_payload_sha:
     raise SystemExit(f"Phase 13.9 payload SHA mismatch: {actual_payload_sha}")
 
 diff_bytes = gzip.decompress(base64.b64decode(payload))
-expected_diff_sha = "1ba131d293212abd19be80d41cdb70b6538998e593636ffe95bcc9359b029200"
+expected_diff_sha = "ad86ae60f36d541a0ffc2c90d7a804ce08fe0e1ceda512a54efa84f072e49de2"
 actual_diff_sha = hashlib.sha256(diff_bytes).hexdigest()
 if actual_diff_sha != expected_diff_sha:
     raise SystemExit(f"Phase 13.9 diff SHA mismatch: {actual_diff_sha}")
