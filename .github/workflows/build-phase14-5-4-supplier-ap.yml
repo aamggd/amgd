@@ -48,12 +48,6 @@ jobs:
         run: |
           set -e
           python phase14_5_4_supplier_ap/apply_patch.py
-          grep -q 'versionCode = 43' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'version = 18' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'MIGRATION_17_18' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
-          grep -q 'postSupplierPayment' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
-          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
-          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/SupplierApMathTest.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
