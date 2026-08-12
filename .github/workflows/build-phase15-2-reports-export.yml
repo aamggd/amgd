@@ -75,17 +75,17 @@ jobs:
           chmod +x phase15-2-output/apksigner/apksigner
           zip -qr phase15-2-output/FushERP-Mobile-Phase15.2-Source.zip FushERP_Mobile_Phase5
           sha256sum phase15-2-output/FushERP-Phase15.2-unsigned.apk > phase15-2-output/FushERP-Phase15.2-unsigned.apk.sha256
-          cat > phase15-2-output/FushERP-Phase15.2-BUILD-REPORT.txt <<'REPORT'
-Fush ERP Phase 15.2 — Reports Export
-Version: 0.15.2-phase15-reports-export (versionCode 37)
-
-Scope:
-- PDF and Excel export for executive, sales, purchases, inventory, production, quality and finance reports.
-- Direct Android sharing for generated PDF and Excel files.
-- Android print preview for all comprehensive report tabs.
-- Pre-Android 10 sharing uses FileProvider; Android 10+ uses MediaStore Downloads/FushERP.
-- Room schema remains version 16.
-REPORT
+          printf '%s\n' \
+            'Fush ERP Phase 15.2 — Reports Export' \
+            'Version: 0.15.2-phase15-reports-export (versionCode 37)' \
+            '' \
+            'Scope:' \
+            '- PDF and Excel export for executive, sales, purchases, inventory, production, quality and finance reports.' \
+            '- Direct Android sharing for generated PDF and Excel files.' \
+            '- Android print preview for all comprehensive report tabs.' \
+            '- Pre-Android 10 sharing uses FileProvider; Android 10+ uses MediaStore Downloads/FushERP.' \
+            '- Room schema remains version 16.' \
+            > phase15-2-output/FushERP-Phase15.2-BUILD-REPORT.txt
       - uses: actions/upload-artifact@v4
         with:
           name: FushERP-Phase15.2-Reports-Export-Build
