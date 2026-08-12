@@ -1,0 +1,209 @@
+diff -ruN original/app/build.gradle.kts modified/app/build.gradle.kts
+--- original/app/build.gradle.kts	2026-08-12 23:02:59.000000000 +0000
++++ modified/app/build.gradle.kts	2026-08-12 23:48:14.610656868 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 44
+-        versionName = "0.15.4.5-phase14.5-warehouse-transfers"
++        versionCode = 45
++        versionName = "0.15.4.6-phase14.5-inventory-warehouse-separation"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff -ruN original/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt modified/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+--- original/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt	2026-08-12 23:02:59.000000000 +0000
++++ modified/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt	2026-08-12 23:48:14.610967029 +0000
+@@ -321,4 +321,19 @@
+         ORDER BY i.nameAr
+     """)
+     fun observeBalances(): Flow<List<StockBalanceRow>>
++
++    @Query("""
++        SELECT w.id AS warehouseId, w.code AS warehouseCode, w.nameAr AS warehouseName,
++               i.id AS itemId, i.code AS code, i.nameAr AS nameAr, i.category AS category,
++               COALESCE(SUM(m.quantityBase), 0) AS quantityBase, u.nameAr AS baseUnitName
++        FROM stock_movements m
++        JOIN warehouses w ON w.id = m.warehouseId
++        JOIN items i ON i.id = m.itemId
++        JOIN units u ON u.id = i.baseUnitId
++        WHERE w.isActive = 1 AND i.isActive = 1
++        GROUP BY w.id, w.code, w.nameAr, i.id, i.code, i.nameAr, i.category, u.nameAr
++        HAVING ABS(COALESCE(SUM(m.quantityBase), 0)) > 0.000000001
++        ORDER BY w.nameAr, i.nameAr
++    """)
++    fun observeWarehouseBalances(): Flow<List<WarehouseStockBalanceRow>>
+ }
+diff -ruN original/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt modified/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt
+--- original/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt	2026-08-12 22:16:51.000000000 +0000
++++ modified/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt	2026-08-12 23:48:14.610806691 +0000
+@@ -224,6 +224,18 @@
+     val baseUnitName: String
+ )
+ 
++data class WarehouseStockBalanceRow(
++    val warehouseId: Long,
++    val warehouseCode: String,
++    val warehouseName: String,
++    val itemId: Long,
++    val code: String,
++    val nameAr: String,
++    val category: String,
++    val quantityBase: Double,
++    val baseUnitName: String
++)
++
+ data class PurchaseInvoiceSummary(
+     val id: Long,
+     val invoiceNo: String,
+diff -ruN original/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt modified/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+--- original/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-12 23:02:59.000000000 +0000
++++ modified/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-12 23:48:14.611279293 +0000
+@@ -20,7 +20,7 @@
+ @Composable
+ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier, onOpenMasterData: () -> Unit = {}) {
+     val scope = rememberCoroutineScope()
+-    val balances by container.db.stockDao().observeBalances().collectAsState(initial = emptyList())
++    val balances by container.db.stockDao().observeWarehouseBalances().collectAsState(initial = emptyList())
+     val reorder by container.db.advancedInventoryDao().observeReorderAlerts().collectAsState(initial = emptyList())
+     val expiryUntil = remember { System.currentTimeMillis() + 30L * 86_400_000L }
+     val expiry by container.db.advancedInventoryDao().observeExpiryAlerts(expiryUntil).collectAsState(initial = emptyList())
+@@ -65,7 +65,7 @@
+             "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
+             "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
+             "الحركة" -> InventoryMovements(movements)
+-            else -> InventoryBalances(balances, lots)
++            else -> InventoryBalances(balances, lots, warehouses)
+         }
+     }
+ 
+@@ -138,36 +138,108 @@
+ }
+ 
+ @Composable
+-private fun InventoryBalances(rows: List<StockBalanceRow>, lots: List<InventoryLotAlertRow>) {
++private fun InventoryBalances(
++    rows: List<WarehouseStockBalanceRow>,
++    lots: List<InventoryLotAlertRow>,
++    warehouses: List<WarehouseEntity>
++) {
+     val now = System.currentTimeMillis()
++    var selectedWarehouseId by remember { mutableStateOf<Long?>(null) }
++    var selectedCategory by remember { mutableStateOf<String?>(null) }
++
++    val filtered = remember(rows, selectedWarehouseId, selectedCategory) {
++        rows.filter { row ->
++            (selectedWarehouseId == null || row.warehouseId == selectedWarehouseId) &&
++                (selectedCategory == null || row.category == selectedCategory)
++        }
++    }
++    val grouped = remember(filtered) { filtered.groupBy { it.warehouseId } }
++
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+         item {
+-            Text("الأرصدة الحالية", style = MaterialTheme.typography.titleLarge)
+-            Text("للمنتجات ذات التشغيلات يعرض النظام الرصيد الكلي والمتاح للبيع والمنتهي/المحجور.", style = MaterialTheme.typography.bodySmall)
++            Text("الأرصدة الحالية حسب المخزن", style = MaterialTheme.typography.titleLarge)
++            Text("افصل الرصيد حسب المخزن الفعلي ثم صفِّه إلى منتج نهائي أو مواد خام أو مواد تغليف.", style = MaterialTheme.typography.bodySmall)
++            Spacer(Modifier.height(6.dp))
++            Text("المخزن", style = MaterialTheme.typography.titleSmall)
++            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
++                item { FilterChip(selected = selectedWarehouseId == null, onClick = { selectedWarehouseId = null }, label = { Text("كل المخازن") }) }
++                items(warehouses.filter { it.isActive }) { wh ->
++                    FilterChip(
++                        selected = selectedWarehouseId == wh.id,
++                        onClick = { selectedWarehouseId = wh.id },
++                        label = { Text(warehouseShortName(wh)) }
++                    )
++                }
++            }
++            Spacer(Modifier.height(6.dp))
++            Text("نوع الصنف", style = MaterialTheme.typography.titleSmall)
++            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
++                item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("الكل") }) }
++                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { selectedCategory = "FINISHED_GOOD" }, label = { Text("المنتج النهائي") }) }
++                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { selectedCategory = "RAW_MATERIAL" }, label = { Text("المواد الخام") }) }
++                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { selectedCategory = "PACKAGING" }, label = { Text("مواد التغليف") }) }
++            }
+         }
+-        items(rows) { row ->
+-            val itemLots = lots.filter { it.itemId == row.itemId && it.quantityBase > 0.000000001 }
+-            val sellable = itemLots.filter { (it.expiryDate == null || it.expiryDate >= now) && it.controlStatus == "ACCEPTED" }.sumOf { it.quantityBase }
+-            val expired = itemLots.filter { it.expiryDate != null && it.expiryDate < now }.sumOf { it.quantityBase }
+-            val controlled = itemLots.filter { it.controlStatus != "ACCEPTED" }.sumOf { it.quantityBase }
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                ListItem(
+-                    headlineContent = { Text(row.nameAr) },
+-                    supportingContent = {
+-                        Column {
+-                            Text(row.code)
+-                            if (itemLots.isNotEmpty()) {
+-                                Text("الكلي ${fmtQty(row.quantityBase)} • متاح للبيع ${fmtQty(sellable)} • منتهي ${fmtQty(expired)} • محجور/موقوف ${fmtQty(controlled)}")
++
++        if (filtered.isEmpty()) {
++            item { Text("لا يوجد رصيد مطابق لهذا المخزن/النوع.") }
++        }
++
++        warehouses.filter { wh -> grouped.containsKey(wh.id) }.forEach { wh ->
++            item {
++                Spacer(Modifier.height(4.dp))
++                Text(warehouseDisplayName(wh), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
++                if (wh.location.isNotBlank()) Text(wh.location, style = MaterialTheme.typography.bodySmall)
++            }
++            items(grouped[wh.id].orEmpty(), key = { "${it.warehouseId}-${it.itemId}" }) { row ->
++                val itemLots = lots.filter { it.warehouseId == row.warehouseId && it.itemId == row.itemId && it.quantityBase > 0.000000001 }
++                val sellable = itemLots.filter { (it.expiryDate == null || it.expiryDate >= now) && it.controlStatus == "ACCEPTED" }.sumOf { it.quantityBase }
++                val expired = itemLots.filter { it.expiryDate != null && it.expiryDate < now }.sumOf { it.quantityBase }
++                val controlled = itemLots.filter { it.controlStatus != "ACCEPTED" }.sumOf { it.quantityBase }
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    ListItem(
++                        headlineContent = { Text(row.nameAr) },
++                        supportingContent = {
++                            Column {
++                                Text("${row.code} • ${itemCategoryLabel(row.category)}")
++                                if (itemLots.isNotEmpty()) {
++                                    Text("الكلي ${fmtQty(row.quantityBase)} • متاح ${fmtQty(sellable)} • منتهي ${fmtQty(expired)} • محجور/موقوف ${fmtQty(controlled)}")
++                                }
+                             }
+-                        }
+-                    },
+-                    trailingContent = { Text("${fmtQty(row.quantityBase)} ${row.baseUnitName}") }
+-                )
++                        },
++                        trailingContent = { Text("${fmtQty(row.quantityBase)} ${row.baseUnitName}") }
++                    )
++                }
+             }
+         }
+     }
+ }
+ 
++private fun warehouseShortName(warehouse: WarehouseEntity): String = when (warehouse.code.uppercase(Locale.ROOT)) {
++    "FG" -> "النهائي"
++    "RM" -> "المواد الخام"
++    "FG-QC" -> "حجر النهائي"
++    "RM-QC" -> "حجر الخام"
++    "RET" -> "المرتجعات"
++    else -> warehouse.nameAr
++}
++
++private fun warehouseDisplayName(warehouse: WarehouseEntity): String = when (warehouse.code.uppercase(Locale.ROOT)) {
++    "FG" -> "مخزن المنتج النهائي"
++    "RM" -> "مخزن المواد الخام والتغليف"
++    "FG-QC" -> "حجر المنتج النهائي"
++    "RM-QC" -> "حجر المواد الخام"
++    "RET" -> "مخزن المرتجعات"
++    else -> warehouse.nameAr
++}
++
++private fun itemCategoryLabel(category: String): String = when (category) {
++    "FINISHED_GOOD" -> "منتج نهائي"
++    "RAW_MATERIAL" -> "مواد خام"
++    "PACKAGING" -> "مواد تغليف"
++    else -> "أخرى"
++}
++
+ @Composable
+ private fun InventoryAlerts(reorder: List<InventoryAlertRow>, expiry: List<InventoryLotAlertRow>) {
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
