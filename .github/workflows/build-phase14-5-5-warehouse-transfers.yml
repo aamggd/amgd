@@ -43,21 +43,31 @@ jobs:
           grep -q 'versionCode = 43' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.4-phase14.5-supplier-ap' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 18' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-      - name: Apply and verify Phase 14.5.5 warehouse transfers
+      - name: Apply Phase 14.5.5 warehouse transfers
         shell: bash
         run: |
           set -e
           python phase14_5_5_warehouse_transfers/apply_patch.py
-          grep -q 'versionCode = 44' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q '0.15.4.5-phase14.5-warehouse-transfers' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'MIGRATION_18_19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
-          grep -q 'warehouse_transfers' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
-          grep -q 'postWarehouseTransfer' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
-          grep -q 'TRANSFER_OUT' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
-          grep -q 'TRANSFER_IN' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
-          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/WarehouseTransferMath.kt
-          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/WarehouseTransferMathTest.kt
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('FushERP_Mobile_Phase5')
+          checks = {
+              'app/build.gradle.kts': ['versionCode = 44', '0.15.4.5-phase14.5-warehouse-transfers'],
+              'app/src/main/java/com/fush/erp/data/FushDatabase.kt': ['version = 19'],
+              'app/src/main/java/com/fush/erp/data/Migrations.kt': ['MIGRATION_18_19', 'warehouse_transfers', 'warehouse_transfer_lines'],
+              'app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt': ['postWarehouseTransfer', 'TRANSFER_OUT', 'TRANSFER_IN'],
+          }
+          for rel, needles in checks.items():
+              text = (root / rel).read_text(encoding='utf-8')
+              for needle in needles:
+                  assert needle in text, f'{needle} missing from {rel}'
+          for rel in [
+              'app/src/main/java/com/fush/erp/domain/WarehouseTransferMath.kt',
+              'app/src/test/java/com/fush/erp/domain/WarehouseTransferMathTest.kt',
+          ]:
+              assert (root / rel).is_file(), f'{rel} missing'
+          print('Phase 14.5.5 patch verification passed')
+          PY
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
