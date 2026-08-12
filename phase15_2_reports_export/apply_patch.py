@@ -7,9 +7,13 @@ import subprocess
 workspace = Path('.')
 root = workspace / 'FushERP_Mobile_Phase5'
 chunks_dir = Path('phase15_2_reports_export/payload_chunks')
-payload = ''.join((chunks_dir / name).read_text(encoding='utf-8').strip() for name in sorted(p.name for p in chunks_dir.glob('chunk*.txt')))
+payload = ''.join(
+    (chunks_dir / name).read_text(encoding='utf-8').strip()
+    for name in sorted(p.name for p in chunks_dir.glob('chunk*.txt'))
+)
+
 diff_bytes = gzip.decompress(base64.b64decode(payload))
-expected_diff_sha = '9fff26ce32eb0befe09c51271866dd077ff43061836043490a1ee73bde266759'
+expected_diff_sha = '041126262638ec8405b38f246ee40e806245dd71f79270778d6404c384704ee8'
 actual_diff_sha = hashlib.sha256(diff_bytes).hexdigest()
 if actual_diff_sha != expected_diff_sha:
     raise SystemExit(f'Phase 15.2 diff SHA mismatch: {actual_diff_sha}')
@@ -30,48 +34,38 @@ print(proc.stdout.decode('utf-8', errors='replace'))
 if proc.returncode != 0:
     raise SystemExit(proc.returncode)
 
-reports = root / 'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt'
-reports_text = reports.read_text(encoding='utf-8')
-reports_text = reports_text.replace(
-    'OutlinedButton(Modifier.weight(1f), onClick = {',
-    'OutlinedButton(modifier = Modifier.weight(1f), onClick = {'
-)
-reports_text = reports_text.replace(
-    'OutlinedButton(Modifier.fillMaxWidth(), onClick = {',
-    'OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {'
-)
-reports.write_text(reports_text, encoding='utf-8')
-assert 'OutlinedButton(Modifier.weight(1f), onClick = {' not in reports_text
-assert 'OutlinedButton(Modifier.fillMaxWidth(), onClick = {' not in reports_text
-assert reports_text.count('OutlinedButton(modifier = Modifier.weight(1f), onClick = {') >= 4
-assert 'OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {' in reports_text
-
-scope = root / 'PHASE15_2_SCOPE.md'
-scope.write_text(
-    '# Phase 15.2 — Reports Export\n\n'
-    '- Unified PDF and real XLSX export for the comprehensive report tabs: executive, sales, purchases, inventory, production, quality, and finance.\n'
-    '- Direct Android sharing for generated PDF and Excel files.\n'
-    '- Android print preview / printing for the comprehensive report tabs.\n'
-    '- Android 10+ exports use MediaStore under Downloads/FushERP; older Android sharing uses FileProvider.\n'
-    '- No Room schema change; database schema remains version 16.\n',
-    encoding='utf-8',
-)
-
 text = build.read_text(encoding='utf-8')
 assert 'versionCode = 37' in text
 assert 'versionName = "0.15.2-phase15-reports-export"' in text
 
 checks = {
     'app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt': [
-        'fun share(', 'ACTION_SEND', 'FileProvider.getUriForFile'
+        'fun sharePdf(', 'fun shareXlsx(', 'Intent.ACTION_SEND',
+        'FileProvider.getUriForFile', 'report-share'
+    ],
+    'app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt': [
+        'التصدير والمشاركة والطباعة', 'مشاركة PDF', 'مشاركة Excel',
+        'معاينة قبل الطباعة / طباعة'
     ],
     'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt': [
-        'ReportExportActions', 'buildExecutiveExportDocument', 'buildSalesExportDocument',
-        'buildPurchasesExportDocument', 'buildInventoryExportDocument',
-        'buildQualityExportDocument', 'buildFinanceExportDocument',
-        'مشاركة PDF', 'مشاركة Excel', 'معاينة قبل الطباعة / طباعة'
+        'buildCurrentReportExportDocument', 'buildExecutiveReportExportDocument',
+        'buildSalesReportExportDocument', 'buildPurchasesReportExportDocument',
+        'buildInventoryReportExportDocument', 'buildProductionReportExportDocument',
+        'buildQualityReportExportDocument', 'buildFinanceReportExportDocument',
+        'ReportExportActions('
     ],
-    'PHASE15_2_SCOPE.md': ['Phase 15.2', 'Direct Android sharing', 'No Room schema change']
+    'app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt': [
+        'ReportExportActions(', 'buildProductionOrderExportDocument'
+    ],
+    'app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt': [
+        'BuildConfig.VERSION_NAME', 'المرحلة 15.2 جاهزة'
+    ],
+    'app/src/main/res/xml/file_paths.xml': [
+        'cache-path', 'report_share', 'report-share/'
+    ],
+    'PHASE15_2_SCOPE.md': [
+        'Phase 15.2', 'PDF', 'Excel', 'Room schema يبقى 16'
+    ]
 }
 for relative, needles in checks.items():
     path = root / relative
