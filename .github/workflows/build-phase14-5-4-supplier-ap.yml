@@ -43,11 +43,18 @@ jobs:
           grep -q 'versionCode = 42' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.3-phase14.5-historical-report-fix' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 17' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-      - name: Apply Phase 14.5.4 supplier AP
+      - name: Apply and verify Phase 14.5.4 supplier AP
         shell: bash
         run: |
           set -e
           python phase14_5_4_supplier_ap/apply_patch.py
+          grep -q 'versionCode = 43' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.4-phase14.5-supplier-ap' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 18' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_17_18' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
+          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/SupplierApMathTest.kt
+          grep -q 'postSupplierPayment' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
@@ -68,6 +75,9 @@ jobs:
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-4-output/apksigner/lib/apksigner.jar
           chmod +x phase14-5-4-output/apksigner/apksigner
           zip -qr phase14-5-4-output/FushERP-Mobile-Phase14.5.4-Source.zip FushERP_Mobile_Phase5
+          unzip -p phase14-5-4-output/FushERP-Mobile-Phase14.5.4-Source.zip FushERP_Mobile_Phase5/app/build.gradle.kts | grep -q 'versionCode = 43'
+          unzip -p phase14-5-4-output/FushERP-Mobile-Phase14.5.4-Source.zip FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt | grep -q 'version = 18'
+          unzip -l phase14-5-4-output/FushERP-Mobile-Phase14.5.4-Source.zip | grep -q 'SupplierApMath.kt'
           sha256sum phase14-5-4-output/FushERP-Phase14.5.4-unsigned.apk > phase14-5-4-output/FushERP-Phase14.5.4-unsigned.apk.sha256
           printf '%s\n' \
             'Fush ERP Phase 14.5.4 — Supplier Payments, AP Ledger and Aging' \
