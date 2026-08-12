@@ -6,8 +6,8 @@ import subprocess
 
 workspace = Path('.')
 root = workspace / 'FushERP_Mobile_Phase5'
-payload_path = Path('phase15_1_backup_restore/phase15_1.diff.gz.b64')
-payload = payload_path.read_text(encoding='utf-8').strip()
+chunks_dir = Path('phase15_1_backup_restore/payload_chunks')
+payload = ''.join((chunks_dir / f'chunk{i:02}.txt').read_text(encoding='utf-8').strip() for i in range(1, 5))
 
 diff_bytes = gzip.decompress(base64.b64decode(payload))
 expected_diff_sha = 'db64c1015d1786359a8b7cc9d22fc730eedf85a75e93c07b1b21a6ffe50271e6'
