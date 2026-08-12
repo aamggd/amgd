@@ -1,6 +1,7 @@
 from pathlib import Path
 import base64
 import gzip
+import hashlib
 import subprocess
 
 root = Path('FushERP_Mobile_Phase5')
@@ -10,8 +11,13 @@ text = build.read_text(encoding='utf-8')
 assert 'versionCode = 26' in text
 assert 'versionName = "0.13.6.2-phase13-dashboard-navigation"' in text
 
-payload = Path('phase13_7_production_detail/production_detail.diff.gz.b64').read_text(encoding='utf-8').strip()
-diff_bytes = gzip.decompress(base64.b64decode(payload))
+parts_dir = Path('phase13_7_production_detail')
+payload = ''.join((parts_dir / f'part_{i:02d}.b64').read_text(encoding='utf-8').strip() for i in range(4))
+raw_gz = base64.b64decode(payload, validate=True)
+assert hashlib.sha256(raw_gz).hexdigest() == '1e1db8ccabe79a25bc012511dfda1af2025ef8bf9a1654dbcf5d2a47702ec286'
+diff_bytes = gzip.decompress(raw_gz)
+assert hashlib.sha256(diff_bytes).hexdigest() == 'af5b7a46eb015cc34dfa8f273109aac3e1473c721eb5692032dd04ce2398911a'
+
 proc = subprocess.run(
     ['patch', '-p0', '--forward', '--batch'],
     cwd=root,
