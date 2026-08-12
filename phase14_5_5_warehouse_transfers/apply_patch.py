@@ -11,8 +11,11 @@ PAYLOAD = Path(__file__).with_name("phase14_5_5.diff.gz.b64")
 PATCH = Path(__file__).with_name("phase14_5_5.diff")
 
 PATCH.write_bytes(gzip.decompress(base64.b64decode(PAYLOAD.read_text(encoding="utf-8"))))
+# Use the system patch tool so paths are resolved from the restored Android
+# project directory. `git apply` would otherwise discover the outer GitHub
+# checkout and resolve app/... against the repository root instead.
 subprocess.run(
-    ["git", "apply", "--whitespace=nowarn", str(PATCH)],
+    ["patch", "-p1", "--forward", "--batch", "-i", str(PATCH)],
     cwd=PROJECT,
     check=True,
 )
