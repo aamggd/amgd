@@ -67,4 +67,9 @@ for relative, needles in checks.items():
 database = (root / 'app/src/main/java/com/fush/erp/data/FushDatabase.kt').read_text(encoding='utf-8')
 assert 'version = 16' in database
 
+reports = root / 'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt'
+for number, line in enumerate(reports.read_text(encoding='utf-8').splitlines(), start=1):
+    if 395 <= number <= 455:
+        print(f'P15.2SRC {number:04d}: {line}')
+
 print('Phase 15.2 patch checks passed')
