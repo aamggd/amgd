@@ -1,0 +1,91 @@
+name: Build Fush ERP Phase 14.3.1 Accounting Tables
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-3-1-accounting-tables.yml'
+      - 'phase14_3_1_accounting_tables/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 14.3 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.3-Sales-Budget-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31561883085
+
+      - name: Restore Phase 14.3 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.3-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 34' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.14.3-phase14-sales-budget' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - name: Apply Phase 14.3.1 accounting tables
+        shell: bash
+        run: |
+          set -e
+          python phase14_3_1_accounting_tables/apply_patch.py
+          grep -q 'versionCode = 35' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.14.3.1-phase14-accounting-tables' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'AccountingTableHeader' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'تفصيل الإيرادات' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-3-1-output
+          mkdir -p phase14-3-1-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-3-1-output/FushERP-Phase14.3.1-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-3-1-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-3-1-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-3-1-output/apksigner/apksigner
+          zip -qr phase14-3-1-output/FushERP-Mobile-Phase14.3.1-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-3-1-output/FushERP-Phase14.3.1-unsigned.apk > phase14-3-1-output/FushERP-Phase14.3.1-unsigned.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.3.1-Accounting-Tables-Build
+          path: phase14-3-1-output/
+          if-no-files-found: error
+          retention-days: 7
