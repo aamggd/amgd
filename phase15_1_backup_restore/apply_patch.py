@@ -31,6 +31,16 @@ print(proc.stdout.decode('utf-8', errors='replace'))
 if proc.returncode != 0:
     raise SystemExit(proc.returncode)
 
+# Kotlin warnings are errors in this project. Replace deprecated createTempDir in the new test.
+test_file = root / 'app/src/test/java/com/fush/erp/backup/BackupArchiveCodecTest.kt'
+test_text = test_file.read_text(encoding='utf-8')
+old = 'val dir = createTempDir(prefix = "fush-backup-test")'
+new = 'val dir = kotlin.io.path.createTempDirectory("fush-backup-test").toFile()'
+assert old in test_text
+test_text = test_text.replace(old, new)
+test_file.write_text(test_text, encoding='utf-8')
+assert 'createTempDir(' not in test_text
+
 text = build.read_text(encoding='utf-8')
 assert 'versionCode = 36' in text
 assert 'versionName = "0.15.1-phase15-backup-restore"' in text
@@ -48,7 +58,7 @@ checks = {
     ],
     'app/src/main/java/com/fush/erp/FushErpApplication.kt': ['applyPendingRestore'],
     'app/src/main/AndroidManifest.xml': ['FileProvider', '@xml/file_paths'],
-    'app/src/test/java/com/fush/erp/backup/BackupArchiveCodecTest.kt': ['archive_round_trip_preserves_manifest_and_database_hash'],
+    'app/src/test/java/com/fush/erp/backup/BackupArchiveCodecTest.kt': ['archive_round_trip_preserves_manifest_and_database_hash', 'createTempDirectory'],
     'PHASE15_1_SCOPE.md': ['Phase 15.1', 'WAL FULL checkpoint', 'No Room schema change']
 }
 for relative, needles in checks.items():
