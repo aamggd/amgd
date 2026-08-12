@@ -1,0 +1,94 @@
+name: Build Fush ERP Phase 15.2 Reports Export
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase15-2-reports-export.yml'
+      - 'phase15_2_reports_export/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 15.1 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase15.1-Backup-Restore-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31564710837
+      - name: Restore Phase 15.1 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase15.1-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 36' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.1-phase15-backup-restore' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - name: Apply Phase 15.2 reports export
+        shell: bash
+        run: |
+          set -e
+          python phase15_2_reports_export/apply_patch.py
+          grep -q 'versionCode = 37' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.2-phase15-reports-export' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'fun share(' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'FileProvider.getUriForFile' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'مشاركة PDF' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'مشاركة Excel' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'معاينة قبل الطباعة / طباعة' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase15-2-output
+          mkdir -p phase15-2-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase15-2-output/FushERP-Phase15.2-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase15-2-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase15-2-output/apksigner/lib/apksigner.jar
+          chmod +x phase15-2-output/apksigner/apksigner
+          zip -qr phase15-2-output/FushERP-Mobile-Phase15.2-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase15-2-output/FushERP-Phase15.2-unsigned.apk > phase15-2-output/FushERP-Phase15.2-unsigned.apk.sha256
+          cat > phase15-2-output/FushERP-Phase15.2-BUILD-REPORT.txt <<'REPORT'
+Fush ERP Phase 15.2 — Reports Export
+Version: 0.15.2-phase15-reports-export (versionCode 37)
+
+Scope:
+- PDF and Excel export for executive, sales, purchases, inventory, production, quality and finance reports.
+- Direct Android sharing for generated PDF and Excel files.
+- Android print preview for all comprehensive report tabs.
+- Pre-Android 10 sharing uses FileProvider; Android 10+ uses MediaStore Downloads/FushERP.
+- Room schema remains version 16.
+REPORT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase15.2-Reports-Export-Build
+          path: phase15-2-output/
+          if-no-files-found: error
+          retention-days: 7
