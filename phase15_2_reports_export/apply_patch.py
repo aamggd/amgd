@@ -30,6 +30,17 @@ print(proc.stdout.decode('utf-8', errors='replace'))
 if proc.returncode != 0:
     raise SystemExit(proc.returncode)
 
+scope = root / 'PHASE15_2_SCOPE.md'
+scope.write_text(
+    '# Phase 15.2 — Reports Export\n\n'
+    '- Unified PDF and real XLSX export for the comprehensive report tabs: executive, sales, purchases, inventory, production, quality, and finance.\n'
+    '- Direct Android sharing for generated PDF and Excel files.\n'
+    '- Android print preview / printing for the comprehensive report tabs.\n'
+    '- Android 10+ exports use MediaStore under Downloads/FushERP; older Android sharing uses FileProvider.\n'
+    '- No Room schema change; database schema remains version 16.\n',
+    encoding='utf-8',
+)
+
 text = build.read_text(encoding='utf-8')
 assert 'versionCode = 37' in text
 assert 'versionName = "0.15.2-phase15-reports-export"' in text
