@@ -1,0 +1,89 @@
+name: Build Fush ERP Phase 14.1 Planning
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-1-planning.yml'
+      - 'phase14_1_planning/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 13.9 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase13.9-Production-Export-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31553226884
+
+      - name: Restore Phase 13.9 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase13.9-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 29' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.13.9-phase13-production-export' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - name: Apply Phase 14.1 planning
+        shell: bash
+        run: |
+          set -e
+          python phase14_1_planning/apply_patch.py
+          grep -q 'versionCode = 30' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.14.1-phase14-seasonality-demand' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-1-output
+          mkdir -p phase14-1-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-1-output/FushERP-Phase14.1-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-1-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-1-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-1-output/apksigner/apksigner
+          zip -qr phase14-1-output/FushERP-Mobile-Phase14.1-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-1-output/FushERP-Phase14.1-unsigned.apk > phase14-1-output/FushERP-Phase14.1-unsigned.apk.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.1-Planning-Build
+          path: phase14-1-output/
+          if-no-files-found: error
+          retention-days: 7
