@@ -30,6 +30,22 @@ print(proc.stdout.decode('utf-8', errors='replace'))
 if proc.returncode != 0:
     raise SystemExit(proc.returncode)
 
+reports = root / 'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt'
+reports_text = reports.read_text(encoding='utf-8')
+reports_text = reports_text.replace(
+    'OutlinedButton(Modifier.weight(1f), onClick = {',
+    'OutlinedButton(modifier = Modifier.weight(1f), onClick = {'
+)
+reports_text = reports_text.replace(
+    'OutlinedButton(Modifier.fillMaxWidth(), onClick = {',
+    'OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {'
+)
+reports.write_text(reports_text, encoding='utf-8')
+assert 'OutlinedButton(Modifier.weight(1f), onClick = {' not in reports_text
+assert 'OutlinedButton(Modifier.fillMaxWidth(), onClick = {' not in reports_text
+assert reports_text.count('OutlinedButton(modifier = Modifier.weight(1f), onClick = {') >= 4
+assert 'OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = {' in reports_text
+
 scope = root / 'PHASE15_2_SCOPE.md'
 scope.write_text(
     '# Phase 15.2 — Reports Export\n\n'
@@ -66,10 +82,5 @@ for relative, needles in checks.items():
 
 database = (root / 'app/src/main/java/com/fush/erp/data/FushDatabase.kt').read_text(encoding='utf-8')
 assert 'version = 16' in database
-
-reports = root / 'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt'
-for number, line in enumerate(reports.read_text(encoding='utf-8').splitlines(), start=1):
-    if 395 <= number <= 455:
-        print(f'P15.2SRC {number:04d}: {line}')
 
 print('Phase 15.2 patch checks passed')
