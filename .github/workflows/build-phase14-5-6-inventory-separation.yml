@@ -1,0 +1,102 @@
+name: Build Fush ERP Phase 14.5.6 Inventory Separation
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-5-6-inventory-separation.yml'
+      - 'phase14_5_6_inventory_separation/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.5 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.5-Warehouse-Transfers-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31649359297
+      - name: Restore Phase 14.5.5 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.5-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 44' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.5-phase14.5-warehouse-transfers' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply and verify Phase 14.5.6 inventory separation
+        shell: bash
+        run: |
+          set -e
+          python phase14_5_6_inventory_separation/apply_patch.py
+          grep -q 'versionCode = 45' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.6-phase14.5-inventory-warehouse-separation' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'observeWarehouseBalances' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -q 'WarehouseStockBalanceRow' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt
+          grep -q 'الأرصدة الحالية حسب المخزن' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q 'مواد التغليف' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema unchanged
+        shell: bash
+        run: |
+          set -e
+          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/19.json
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-5-6-output
+          mkdir -p phase14-5-6-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-6-output/FushERP-Phase14.5.6-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-6-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-6-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-6-output/apksigner/apksigner
+          zip -qr phase14-5-6-output/FushERP-Mobile-Phase14.5.6-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-6-output/FushERP-Phase14.5.6-unsigned.apk > phase14-5-6-output/FushERP-Phase14.5.6-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.6 — Inventory Warehouse Separation' \
+            'Version: 0.15.4.6-phase14.5-inventory-warehouse-separation (versionCode 45)' \
+            'Room schema: 19 (unchanged)' \
+            '' \
+            'Added:' \
+            '- Inventory balances are now calculated and shown per physical warehouse instead of only aggregated across all warehouses.' \
+            '- Warehouse filter: all warehouses or a single warehouse.' \
+            '- Item-type filter: finished goods, raw materials, packaging, or all.' \
+            '- Separate visible groups for finished-goods warehouse, raw-materials warehouse, quarantine warehouses, returns, and any custom warehouses.' \
+            '- Lot sellable/expired/quarantine quantities are calculated within the selected warehouse, preventing cross-warehouse mixing.' \
+            '- No Room migration because this is a query/UI separation only.' \
+            > phase14-5-6-output/FushERP-Phase14.5.6-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.6-Inventory-Separation-Build
+          path: phase14-5-6-output/
+          if-no-files-found: error
+          retention-days: 7
