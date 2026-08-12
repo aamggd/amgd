@@ -9,11 +9,6 @@ root = workspace / 'FushERP_Mobile_Phase5'
 payload_path = Path('phase15_1_backup_restore/phase15_1.diff.gz.b64')
 payload = payload_path.read_text(encoding='utf-8').strip()
 
-expected_payload_sha = '703f940b261ee88667cb10117df772895505e86b29d65625bffa6a0056b14dc0'
-actual_payload_sha = hashlib.sha256(payload.encode('utf-8')).hexdigest()
-if actual_payload_sha != expected_payload_sha:
-    raise SystemExit(f'Phase 15.1 payload SHA mismatch: {actual_payload_sha}')
-
 diff_bytes = gzip.decompress(base64.b64decode(payload))
 expected_diff_sha = 'db64c1015d1786359a8b7cc9d22fc730eedf85a75e93c07b1b21a6ffe50271e6'
 actual_diff_sha = hashlib.sha256(diff_bytes).hexdigest()
