@@ -52,7 +52,7 @@ jobs:
           grep -q '0.15.4-phase14.5-production-material-planning' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 17' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_16_17' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
-          grep -q 'generateProductionPlan' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/planning/PlanningService.kt
+          grep -q 'generateProductionPlan' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/PlanningService.kt
           grep -q 'خطة الإنتاج والمواد والمخزون' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
