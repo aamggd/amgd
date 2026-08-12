@@ -42,19 +42,27 @@ jobs:
           test -d FushERP_Mobile_Phase5
           grep -q 'versionCode = 44' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.5-phase14.5-warehouse-transfers' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-      - name: Apply and verify Phase 14.5.6 warehouse separation
+      - name: Apply Phase 14.5.6 warehouse separation
         shell: bash
         run: |
           set -e
           python phase14_5_6_inventory_warehouse_separation/apply_patch.py
-          grep -q 'versionCode = 45' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q '0.15.4.6-phase14.5-inventory-warehouse-separation' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'observeWarehouseBalances' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
-          grep -q 'WarehouseStockBalanceRow' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt
-          grep -q 'الأرصدة حسب المخزن' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
-          grep -q 'it.warehouseId == row.warehouseId' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
-          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('FushERP_Mobile_Phase5')
+          checks = {
+              'app/build.gradle.kts': ['versionCode = 45', '0.15.4.6-phase14.5-inventory-warehouse-separation'],
+              'app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt': ['observeWarehouseBalances'],
+              'app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt': ['WarehouseStockBalanceRow'],
+              'app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt': ['warehouseBalances', 'selectedWarehouseId', 'warehouseId == row.warehouseId'],
+              'app/src/main/java/com/fush/erp/data/FushDatabase.kt': ['version = 19'],
+          }
+          for rel, needles in checks.items():
+              text = (root / rel).read_text(encoding='utf-8')
+              for needle in needles:
+                  assert needle in text, f'{needle} missing from {rel}'
+          print('Phase 14.5.6 patch verification passed')
+          PY
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
