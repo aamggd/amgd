@@ -1,16 +1,10 @@
 from pathlib import Path
-import shutil
+import base64
+import gzip
+import subprocess
 
 ROOT = Path('FushERP_Mobile_Phase5')
-PATCH = Path(__file__).parent / 'payload'
-
-files = {
-    'app/build.gradle.kts': 'build.gradle.kts',
-    'app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt': 'ReportExportSupport.kt',
-    'app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt': 'ReportsScreen.kt',
-}
-for target, source in files.items():
-    dst = ROOT / target
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(PATCH / source, dst)
+PATCH_FILE = Path(__file__).parent / 'phase15_2.diff.gz.b64'
+patch = gzip.decompress(base64.b64decode(PATCH_FILE.read_text().strip())).decode('utf-8')
+subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], input=patch, text=True, check=True)
 print('Phase 15.2 export/print/share patch applied')
