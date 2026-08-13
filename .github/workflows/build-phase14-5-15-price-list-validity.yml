@@ -48,6 +48,7 @@ jobs:
         run: |
           set -e
           python phase14_5_15_price_list_validity/apply_patch.py
+          python phase14_5_15_price_list_validity/fix_compile.py
           grep -q 'versionCode = 54' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.15-phase14.5-price-list-validity' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
@@ -56,6 +57,7 @@ jobs:
           grep -q 'overlappingActivePriceCount' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt
           grep -q 'validateConfiguredUnitPrice' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -q 'لا توجد قائمة أسعار فعالة وسارية' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'import androidx.compose.ui.Alignment' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
