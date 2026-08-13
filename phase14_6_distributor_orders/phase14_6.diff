@@ -1,0 +1,575 @@
+diff -ruN original146/app/build.gradle.kts modified146/app/build.gradle.kts
+--- original146/app/build.gradle.kts	2026-08-12 23:51:41.000000000 +0000
++++ modified146/app/build.gradle.kts	2026-08-13 00:01:38.678448891 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 45
+-        versionName = "0.15.4.6-phase14.5-inventory-warehouse-separation"
++        versionCode = 46
++        versionName = "0.15.4.7-phase14.6-distributor-orders"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff -ruN original146/app/src/main/java/com/fush/erp/data/AppContainer.kt modified146/app/src/main/java/com/fush/erp/data/AppContainer.kt
+--- original146/app/src/main/java/com/fush/erp/data/AppContainer.kt	2026-08-12 23:02:59.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/data/AppContainer.kt	2026-08-13 00:01:38.679454024 +0000
+@@ -25,7 +25,7 @@
+         context.applicationContext,
+         FushDatabase::class.java,
+         "fush_erp.db"
+-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19).build()
++    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20).build()
+ 
+     val purchaseService = PurchaseService(db)
+     val inventoryService = InventoryService(db)
+diff -ruN original146/app/src/main/java/com/fush/erp/data/FushDatabase.kt modified146/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+--- original146/app/src/main/java/com/fush/erp/data/FushDatabase.kt	2026-08-12 23:02:59.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/data/FushDatabase.kt	2026-08-13 00:01:38.678923496 +0000
+@@ -81,9 +81,10 @@
+         SalesBudgetWeekEntity::class,
+         InventoryPlanningPolicyEntity::class,
+         ProductionPlanEntity::class,
+-        ProductionPlanMaterialEntity::class
++        ProductionPlanMaterialEntity::class,
++        DistributorOrderEntity::class
+     ],
+-    version = 19,
++    version = 20,
+     exportSchema = true
+ )
+ abstract class FushDatabase : RoomDatabase() {
+diff -ruN original146/app/src/main/java/com/fush/erp/data/Migrations.kt modified146/app/src/main/java/com/fush/erp/data/Migrations.kt
+--- original146/app/src/main/java/com/fush/erp/data/Migrations.kt	2026-08-12 23:02:59.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/data/Migrations.kt	2026-08-13 00:01:38.679281507 +0000
+@@ -1540,3 +1540,42 @@
+         db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_warehouse_transfer_lines_transferId_itemId_lotKey_expiryKey ON warehouse_transfer_lines(transferId,itemId,lotKey,expiryKey)")
+     }
+ }
++
++
++val MIGRATION_19_20 = object : Migration(19, 20) {
++    override fun migrate(db: SupportSQLiteDatabase) {
++        db.execSQL("""
++            CREATE TABLE IF NOT EXISTS distributor_orders (
++                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
++                orderNo TEXT NOT NULL,
++                customerId INTEGER NOT NULL,
++                itemId INTEGER NOT NULL,
++                provinceCode TEXT NOT NULL,
++                planYear INTEGER NOT NULL,
++                planMonth INTEGER NOT NULL,
++                orderDate INTEGER NOT NULL,
++                quantityBase REAL NOT NULL,
++                status TEXT NOT NULL,
++                notes TEXT NOT NULL,
++                createdBy INTEGER NOT NULL,
++                createdAt INTEGER NOT NULL,
++                updatedBy INTEGER NOT NULL,
++                updatedAt INTEGER NOT NULL,
++                confirmedBy INTEGER,
++                confirmedAt INTEGER,
++                fulfilledBy INTEGER,
++                fulfilledAt INTEGER,
++                cancelReason TEXT NOT NULL,
++                FOREIGN KEY(customerId) REFERENCES customers(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
++                FOREIGN KEY(itemId) REFERENCES items(id) ON UPDATE NO ACTION ON DELETE RESTRICT
++            )
++        """.trimIndent())
++        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_distributor_orders_orderNo ON distributor_orders(orderNo)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_customerId ON distributor_orders(customerId)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_itemId ON distributor_orders(itemId)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_provinceCode ON distributor_orders(provinceCode)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_planYear ON distributor_orders(planYear)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_planMonth ON distributor_orders(planMonth)")
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_distributor_orders_status ON distributor_orders(status)")
++    }
++}
+diff -ruN original146/app/src/main/java/com/fush/erp/data/dao/PlanningDao.kt modified146/app/src/main/java/com/fush/erp/data/dao/PlanningDao.kt
+--- original146/app/src/main/java/com/fush/erp/data/dao/PlanningDao.kt	2026-08-12 08:29:00.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/data/dao/PlanningDao.kt	2026-08-13 00:01:38.678833071 +0000
+@@ -6,6 +6,8 @@
+ import androidx.room.Query
+ import androidx.room.Update
+ import com.fush.erp.data.entity.DemandSeasonalityEntity
++import com.fush.erp.data.entity.DistributorOrderEntity
++import com.fush.erp.data.entity.DistributorOrderView
+ import com.fush.erp.data.entity.InventoryPlanningPolicyEntity
+ import com.fush.erp.data.entity.ProductionPlanEntity
+ import com.fush.erp.data.entity.ProductionPlanMaterialEntity
+@@ -284,4 +286,30 @@
+         fromDate: Long,
+         toDate: Long
+     ): List<MonthlyDemandHistoryRow>
++
++    @Insert(onConflict = OnConflictStrategy.ABORT)
++    suspend fun insertDistributorOrder(row: DistributorOrderEntity): Long
++
++    @Update
++    suspend fun updateDistributorOrder(row: DistributorOrderEntity)
++
++    @Query("SELECT * FROM distributor_orders WHERE id = :id LIMIT 1")
++    suspend fun distributorOrder(id: Long): DistributorOrderEntity?
++
++    @Query("""
++        SELECT d.id AS id, d.orderNo AS orderNo, d.customerId AS customerId,
++               c.code AS distributorCode, c.nameAr AS distributorName,
++               d.itemId AS itemId, i.nameAr AS itemName, u.nameAr AS baseUnitName,
++               d.provinceCode AS provinceCode, d.planYear AS planYear, d.planMonth AS planMonth,
++               d.orderDate AS orderDate, d.quantityBase AS quantityBase, d.status AS status,
++               d.notes AS notes, d.cancelReason AS cancelReason
++        FROM distributor_orders d
++        JOIN customers c ON c.id = d.customerId
++        JOIN items i ON i.id = d.itemId
++        JOIN units u ON u.id = i.baseUnitId
++        WHERE d.itemId = :itemId AND d.provinceCode = :provinceCode
++          AND d.planYear = :planYear AND d.planMonth = :planMonth
++        ORDER BY d.orderDate DESC, d.id DESC
++    """)
++    fun observeDistributorOrders(itemId: Long, provinceCode: String, planYear: Int, planMonth: Int): Flow<List<DistributorOrderView>>
+ }
+diff -ruN original146/app/src/main/java/com/fush/erp/data/entity/PlanningEntities.kt modified146/app/src/main/java/com/fush/erp/data/entity/PlanningEntities.kt
+--- original146/app/src/main/java/com/fush/erp/data/entity/PlanningEntities.kt	2026-08-12 08:29:00.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/data/entity/PlanningEntities.kt	2026-08-13 00:01:38.678710300 +0000
+@@ -295,3 +295,56 @@
+     val availableQtyBase: Double,
+     val shortageQtyBase: Double
+ )
++
++@Entity(
++    tableName = "distributor_orders",
++    foreignKeys = [
++        ForeignKey(entity = CustomerEntity::class, parentColumns = ["id"], childColumns = ["customerId"], onDelete = ForeignKey.RESTRICT),
++        ForeignKey(entity = ItemEntity::class, parentColumns = ["id"], childColumns = ["itemId"], onDelete = ForeignKey.RESTRICT)
++    ],
++    indices = [
++        Index(value = ["orderNo"], unique = true), Index(value = ["customerId"]), Index(value = ["itemId"]),
++        Index(value = ["provinceCode"]), Index(value = ["planYear"]), Index(value = ["planMonth"]), Index(value = ["status"])
++    ]
++)
++data class DistributorOrderEntity(
++    @PrimaryKey(autoGenerate = true) val id: Long = 0,
++    val orderNo: String,
++    val customerId: Long,
++    val itemId: Long,
++    val provinceCode: String,
++    val planYear: Int,
++    val planMonth: Int,
++    val orderDate: Long,
++    val quantityBase: Double,
++    val status: String = "DRAFT",
++    val notes: String = "",
++    val createdBy: Long,
++    val createdAt: Long,
++    val updatedBy: Long,
++    val updatedAt: Long,
++    val confirmedBy: Long? = null,
++    val confirmedAt: Long? = null,
++    val fulfilledBy: Long? = null,
++    val fulfilledAt: Long? = null,
++    val cancelReason: String = ""
++)
++
++data class DistributorOrderView(
++    val id: Long,
++    val orderNo: String,
++    val customerId: Long,
++    val distributorCode: String,
++    val distributorName: String,
++    val itemId: Long,
++    val itemName: String,
++    val baseUnitName: String,
++    val provinceCode: String,
++    val planYear: Int,
++    val planMonth: Int,
++    val orderDate: Long,
++    val quantityBase: Double,
++    val status: String,
++    val notes: String,
++    val cancelReason: String
++)
+diff -ruN original146/app/src/main/java/com/fush/erp/domain/DistributorOrderMath.kt modified146/app/src/main/java/com/fush/erp/domain/DistributorOrderMath.kt
+--- original146/app/src/main/java/com/fush/erp/domain/DistributorOrderMath.kt	1970-01-01 00:00:00.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/domain/DistributorOrderMath.kt	2026-08-13 00:01:38.680244497 +0000
+@@ -0,0 +1,23 @@
++package com.fush.erp.domain
++
++object DistributorOrderMath {
++    fun committedQty(rows: List<Pair<String, Double>>): Double = rows
++        .filter { (status, _) -> status == "CONFIRMED" || status == "FULFILLED" }
++        .sumOf { (_, qty) -> qty }
++        .coerceAtLeast(0.0)
++
++    fun draftQty(rows: List<Pair<String, Double>>): Double = rows
++        .filter { (status, _) -> status == "DRAFT" }
++        .sumOf { (_, qty) -> qty }
++        .coerceAtLeast(0.0)
++
++    fun coveragePct(committedQty: Double, plannedQty: Double): Double =
++        if (plannedQty <= 0.0) 0.0 else (committedQty / plannedQty) * 100.0
++
++    fun remainingQty(committedQty: Double, plannedQty: Double): Double =
++        (plannedQty - committedQty).coerceAtLeast(0.0)
++}
+diff -ruN original146/app/src/main/java/com/fush/erp/domain/PlanningService.kt modified146/app/src/main/java/com/fush/erp/domain/PlanningService.kt
+--- original146/app/src/main/java/com/fush/erp/domain/PlanningService.kt	2026-08-12 11:46:50.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/domain/PlanningService.kt	2026-08-13 00:01:38.680152462 +0000
+@@ -6,6 +6,8 @@
+ import androidx.room.withTransaction
+ import com.fush.erp.data.FushDatabase
+ import com.fush.erp.data.entity.AuditEventEntity
++import com.fush.erp.data.entity.DistributorOrderEntity
++import com.fush.erp.data.entity.DistributorOrderView
+ import com.fush.erp.data.entity.DemandPlanEntity
+ import com.fush.erp.data.entity.DemandSeasonalityEntity
+ import com.fush.erp.data.entity.InventoryPlanningPolicyEntity
+@@ -597,4 +599,74 @@
+         )
+     }
++
++    fun observeDistributorOrders(itemId: Long, provinceCode: String, planYear: Int, planMonth: Int): Flow<List<DistributorOrderView>> =
++        db.planningDao().observeDistributorOrders(itemId, provinceCode, planYear, planMonth)
++
++    suspend fun createDistributorOrder(
++        customerId: Long,
++        itemId: Long,
++        provinceCode: String,
++        planYear: Int,
++        planMonth: Int,
++        quantityBase: Double,
++        notes: String,
++        userId: Long
++    ): Long = db.withTransaction {
++        require(quantityBase.isFinite() && quantityBase > 0.0) { "كمية طلب الموزع يجب أن تكون أكبر من صفر." }
++        val customer = requireNotNull(db.customerDao().byId(customerId)) { "الموزع غير موجود." }
++        require(customer.isActive && customer.channel in setOf("DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT")) { "اختر عميلاً معرفاً كموزع." }
++        val customerProvince = provinceCodeForPlanning(customer.province)
++        require(customerProvince == provinceCode) { "محافظة الموزع لا تطابق محافظة خطة الطلب المحددة." }
++        val item = requireNotNull(db.itemDao().byId(itemId)) { "المنتج غير موجود." }
++        require(item.isActive && item.category == "FINISHED_GOOD") { "طلبات الموزعين متاحة للمنتجات النهائية فقط." }
++        val plan = requireNotNull(db.planningDao().demandPlan(itemId, provinceCode, planYear, planMonth)) { "لا توجد خطة طلب لهذه المحافظة والشهر." }
++        require(plan.status == "APPROVED") { "اعتمد خطة الطلب قبل تسجيل طلبات الموزعين." }
++        val now = System.currentTimeMillis()
++        val orderNo = AutoNumberService(db).nextDocumentNo("DORD", now)
++        val id = db.planningDao().insertDistributorOrder(
++            DistributorOrderEntity(
++                orderNo = orderNo, customerId = customerId, itemId = itemId, provinceCode = provinceCode,
++                planYear = planYear, planMonth = planMonth, orderDate = now, quantityBase = quantityBase,
++                status = "DRAFT", notes = notes.trim(), createdBy = userId, createdAt = now,
++                updatedBy = userId, updatedAt = now
++            )
++        )
++        db.governanceDao().insertAudit(AuditEventEntity(userId=userId, action="CREATE", entityType="DISTRIBUTOR_ORDER", entityId=id.toString(), newValue="$orderNo|$provinceCode|$planYear-$planMonth|qty=$quantityBase|DRAFT", reason=notes.trim().ifBlank { "إنشاء طلب موزع" }))
++        id
++    }
++
++    suspend fun confirmDistributorOrder(id: Long, userId: Long) = db.withTransaction {
++        val dao = db.planningDao()
++        val row = requireNotNull(dao.distributorOrder(id)) { "طلب الموزع غير موجود." }
++        require(row.status == "DRAFT") { "يمكن تأكيد الطلبات المسودة فقط." }
++        val now = System.currentTimeMillis()
++        dao.updateDistributorOrder(row.copy(status="CONFIRMED", updatedBy=userId, updatedAt=now, confirmedBy=userId, confirmedAt=now, cancelReason=""))
++        db.governanceDao().insertAudit(AuditEventEntity(userId=userId, action="CONFIRM", entityType="DISTRIBUTOR_ORDER", entityId=id.toString(), oldValue="DRAFT", newValue="CONFIRMED|qty=${row.quantityBase}", reason="تأكيد طلب الموزع"))
++    }
++
++    suspend fun fulfillDistributorOrder(id: Long, userId: Long) = db.withTransaction {
++        val dao = db.planningDao()
++        val row = requireNotNull(dao.distributorOrder(id)) { "طلب الموزع غير موجود." }
++        require(row.status == "CONFIRMED") { "يجب تأكيد الطلب قبل تسجيل تنفيذه." }
++        val now = System.currentTimeMillis()
++        dao.updateDistributorOrder(row.copy(status="FULFILLED", updatedBy=userId, updatedAt=now, fulfilledBy=userId, fulfilledAt=now))
++        db.governanceDao().insertAudit(AuditEventEntity(userId=userId, action="FULFILL", entityType="DISTRIBUTOR_ORDER", entityId=id.toString(), oldValue="CONFIRMED", newValue="FULFILLED|qty=${row.quantityBase}", reason="تنفيذ طلب الموزع"))
++    }
++
++    suspend fun cancelDistributorOrder(id: Long, reason: String, userId: Long) = db.withTransaction {
++        val clean = reason.trim()
++        require(clean.isNotBlank()) { "سبب إلغاء طلب الموزع مطلوب." }
++        val dao = db.planningDao()
++        val row = requireNotNull(dao.distributorOrder(id)) { "طلب الموزع غير موجود." }
++        require(row.status == "DRAFT" || row.status == "CONFIRMED") { "لا يمكن إلغاء هذا الطلب في حالته الحالية." }
++        val now = System.currentTimeMillis()
++        dao.updateDistributorOrder(row.copy(status="CANCELLED", updatedBy=userId, updatedAt=now, cancelReason=clean))
++        db.governanceDao().insertAudit(AuditEventEntity(userId=userId, action="CANCEL", entityType="DISTRIBUTOR_ORDER", entityId=id.toString(), oldValue=row.status, newValue="CANCELLED|qty=${row.quantityBase}", reason=clean))
++    }
++
++    private fun provinceCodeForPlanning(province: String): String = when {
++        province.contains("تعز") -> "TAIZ"
++        province.contains("عدن") -> "ADEN"
++        province.contains("صنعاء") -> "SANAA"
++        else -> "OTHER"
++    }
++
+ }
+diff -ruN original146/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt modified146/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
+--- original146/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt	2026-08-12 11:46:50.000000000 +0000
++++ modified146/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt	2026-08-13 00:05:17.795824031 +0000
+@@ -42,6 +42,8 @@
+     val policies by container.db.geographyDao().observeProvincePolicies().collectAsState(initial = emptyList())
+     val products = remember(allItems) { allItems.filter { it.category == "FINISHED_GOOD" && it.isActive } }
++    val allCustomers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
++    val distributors = remember(allCustomers) { allCustomers.filter { it.isActive && it.channel in setOf("DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT") } }
+ 
+     var selectedItemId by remember { mutableStateOf<Long?>(null) }
+     var selectedProvinceCode by remember { mutableStateOf<String?>(null) }
+@@ -67,6 +69,8 @@
+     var policyEditorTarget by remember { mutableStateOf<PlanningPolicyEditorTarget?>(null) }
+     var confirmApproveProductionPlan by remember { mutableStateOf(false) }
+     var reopenProductionPlan by remember { mutableStateOf(false) }
++    var showAddDistributorOrder by remember { mutableStateOf(false) }
++    var cancelDistributorOrderId by remember { mutableStateOf<Long?>(null) }
+ 
+     LaunchedEffect(products) {
+         if (selectedItemId == null || products.none { it.id == selectedItemId }) {
+@@ -103,6 +107,15 @@
+     }
+     val weeklyBudget by weeklyBudgetFlow.collectAsState(initial = emptyList())
+ 
++    val distributorOrdersFlow = remember(selectedItemId, selectedProvinceCode, forecast?.forecastYear, forecast?.forecastMonth) {
++        val itemId = selectedItemId
++        val province = selectedProvinceCode
++        val f = forecast
++        if (itemId == null || province == null || f == null) flowOf(emptyList())
++        else container.planningService.observeDistributorOrders(itemId, province, f.forecastYear, f.forecastMonth)
++    }
++    val distributorOrders by distributorOrdersFlow.collectAsState(initial = emptyList())
++
+     val finishedPolicyFlow = remember(selectedItemId) {
+         selectedItemId?.let { container.planningService.observeInventoryPlanningPolicy(it) }
+             ?: flowOf<InventoryPlanningPolicyEntity?>(null)
+@@ -234,7 +247,7 @@
+         LazyColumn(
+             modifier = Modifier.fillMaxSize().padding(12.dp),
+             verticalArrangement = Arrangement.spacedBy(10.dp)
+         ) {
+-            item { Text("التخطيط والموسمية — المرحلة 14.5", style = MaterialTheme.typography.headlineSmall) }
++            item { Text("التخطيط والموسمية — المرحلة 14.6", style = MaterialTheme.typography.headlineSmall) }
+             item {
+                 Text(
+                     "عامل الموسم قابل للضبط لكل شهر. التوقعات وخطط الطلب والمبيعات تقرأ التاريخ الفعلي، وتخطيط الإنتاج يحول الخطط المعتمدة إلى طرحات واحتياجات مواد دون إنشاء حركة مخزون أو قيد محاسبي.",
+@@ -467,6 +480,61 @@
+                 }
+             }
+ 
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Text("طلبات الموزعين مقابل الخطة", style = MaterialTheme.typography.titleMedium)
++                        val plan = demandPlan
++                        if (plan?.status != "APPROVED") {
++                            Text("اعتمد خطة الطلب للشهر المحدد أولاً حتى تتمكن من تسجيل ومقارنة طلبات الموزعين.")
++                        } else {
++                            val statusQty = distributorOrders.map { it.status to it.quantityBase }
++                            val committed = com.fush.erp.domain.DistributorOrderMath.committedQty(statusQty)
++                            val drafts = com.fush.erp.domain.DistributorOrderMath.draftQty(statusQty)
++                            val coverage = com.fush.erp.domain.DistributorOrderMath.coveragePct(committed, plan.plannedQtyBase)
++                            val remaining = com.fush.erp.domain.DistributorOrderMath.remainingQty(committed, plan.plannedQtyBase)
++                            Text("الخطة المعتمدة: ${fmtQty(plan.plannedQtyBase)}")
++                            Text("طلبات مؤكدة/منفذة: ${fmtQty(committed)} • تغطية الخطة: ${String.format(Locale.US, "%.1f", coverage)}%")
++                            Text("المسودات: ${fmtQty(drafts)} • المتبقي من الخطة: ${fmtQty(remaining)}")
++                            if (committed > plan.plannedQtyBase + 0.000001) {
++                                Text("تنبيه: الطلبات المؤكدة تجاوزت الخطة المعتمدة بمقدار ${fmtQty(committed - plan.plannedQtyBase)}.", color = MaterialTheme.colorScheme.error)
++                            }
++                            val eligible = distributors.filter { distributorProvinceCode(it.province) == plan.provinceCode }
++                            if (eligible.isEmpty()) {
++                                Text("لا يوجد عملاء نشطون معرفون كموزعين في ${planningProvinceLabel(plan.provinceCode)}. حدّث قناة العميل ومحافظته من شاشة العملاء.", color = MaterialTheme.colorScheme.error)
++                            } else {
++                                Button(onClick = { showAddDistributorOrder = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة طلب موزع") }
++                            }
++                            if (distributorOrders.isEmpty()) {
++                                Text("لا توجد طلبات موزعين لهذا المنتج والمحافظة والشهر.")
++                            } else {
++                                distributorOrders.forEach { order ->
++                                    ElevatedCard(Modifier.fillMaxWidth()) {
++                                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
++                                            Text("${order.orderNo} • ${order.distributorName}", style = MaterialTheme.typography.titleSmall)
++                                            Text("${planningDate(order.orderDate)} • ${fmtQty(order.quantityBase)} ${order.baseUnitName} • ${distributorOrderStatusLabel(order.status)}")
++                                            if (order.notes.isNotBlank()) Text("ملاحظة: ${order.notes}", style = MaterialTheme.typography.bodySmall)
++                                            if (order.status == "CANCELLED" && order.cancelReason.isNotBlank()) Text("سبب الإلغاء: ${order.cancelReason}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
++                                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                                if (order.status == "DRAFT") {
++                                                    TextButton(onClick = { scope.launch { try { container.planningService.confirmDistributorOrder(order.id, user.id); message = "تم تأكيد طلب ${order.orderNo}" } catch (t: Throwable) { message = t.message ?: "تعذر تأكيد الطلب" } } }) { Text("تأكيد") }
++                                                }
++                                                if (order.status == "CONFIRMED") {
++                                                    TextButton(onClick = { scope.launch { try { container.planningService.fulfillDistributorOrder(order.id, user.id); message = "تم تسجيل تنفيذ طلب ${order.orderNo}" } catch (t: Throwable) { message = t.message ?: "تعذر تنفيذ الطلب" } } }) { Text("تم التنفيذ") }
++                                                }
++                                                if (order.status == "DRAFT" || order.status == "CONFIRMED") {
++                                                    TextButton(onClick = { cancelDistributorOrderId = order.id }) { Text("إلغاء") }
++                                                }
++                                            }
++                                        }
++                                    }
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++
+             item {
+                 ElevatedCard(Modifier.fillMaxWidth()) {
+                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+@@ -836,6 +904,112 @@
+         )
+     }
+ 
++    if (showAddDistributorOrder && demandPlan?.status == "APPROVED") {
++        val plan = requireNotNull(demandPlan)
++        val eligible = distributors.filter { distributorProvinceCode(it.province) == plan.provinceCode }
++        DistributorOrderCreateDialog(
++            distributors = eligible,
++            onDismiss = { showAddDistributorOrder = false },
++            onSave = { distributor, qty, note ->
++                scope.launch {
++                    try {
++                        container.planningService.createDistributorOrder(distributor.id, plan.itemId, plan.provinceCode, plan.planYear, plan.planMonth, qty, note, user.id)
++                        showAddDistributorOrder = false
++                        message = "تم حفظ طلب الموزع كمسودة."
++                    } catch (t: Throwable) {
++                        message = t.message ?: "تعذر حفظ طلب الموزع"
++                    }
++                }
++            }
++        )
++    }
++
++    cancelDistributorOrderId?.let { orderId ->
++        CancelDistributorOrderDialog(
++            onDismiss = { cancelDistributorOrderId = null },
++            onConfirm = { reason ->
++                scope.launch {
++                    try {
++                        container.planningService.cancelDistributorOrder(orderId, reason, user.id)
++                        cancelDistributorOrderId = null
++                        message = "تم إلغاء طلب الموزع."
++                    } catch (t: Throwable) {
++                        message = t.message ?: "تعذر إلغاء طلب الموزع"
++                    }
++                }
++            }
++        )
++    }
++
+ }
++
++private fun distributorProvinceCode(province: String): String = when {
++    province.contains("تعز") -> "TAIZ"
++    province.contains("عدن") -> "ADEN"
++    province.contains("صنعاء") -> "SANAA"
++    else -> "OTHER"
++}
++
++private fun distributorOrderStatusLabel(status: String): String = when (status) {
++    "DRAFT" -> "مسودة"
++    "CONFIRMED" -> "مؤكد"
++    "FULFILLED" -> "منفذ"
++    "CANCELLED" -> "ملغي"
++    else -> status
++}
++
++private fun planningProvinceLabel(code: String): String = when (code) {
++    "TAIZ" -> "تعز"
++    "ADEN" -> "عدن"
++    "SANAA" -> "صنعاء"
++    else -> "أخرى"
++}
++
++private fun planningDate(epoch: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(epoch))
++
++@Composable
++private fun DistributorOrderCreateDialog(
++    distributors: List<CustomerEntity>,
++    onDismiss: () -> Unit,
++    onSave: (CustomerEntity, Double, String) -> Unit
++) {
++    var selectedId by remember { mutableStateOf<Long?>(distributors.firstOrNull()?.id) }
++    var menuOpen by remember { mutableStateOf(false) }
++    var qtyText by remember { mutableStateOf("") }
++    var note by remember { mutableStateOf("") }
++    var error by remember { mutableStateOf<String?>(null) }
++    val selected = distributors.firstOrNull { it.id == selectedId }
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text("طلب موزع جديد") },
++        text = {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                if (distributors.isEmpty()) Text("لا يوجد موزع مؤهل في هذه المحافظة.", color = MaterialTheme.colorScheme.error)
++                else {
++                    ExposedDropdownMenuBox(expanded = menuOpen, onExpandedChange = { menuOpen = !menuOpen }) {
++                        OutlinedTextField(
++                            value = selected?.let { "${it.code} • ${it.nameAr}" } ?: "اختر الموزع",
++                            onValueChange = {}, readOnly = true, label = { Text("الموزع") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuOpen) },
++                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
++                        )
++                        ExposedDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
++                            distributors.forEach { c -> DropdownMenuItem(text = { Text("${c.code} • ${c.nameAr}") }, onClick = { selectedId = c.id; menuOpen = false }) }
++                        }
++                    }
++                    OutlinedTextField(qtyText, { qtyText = it }, label = { Text("الكمية المطلوبة بالوحدة الأساسية") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                    OutlinedTextField(note, { note = it }, label = { Text("ملاحظة") }, modifier = Modifier.fillMaxWidth())
++                }
++                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++            }
++        },
++        confirmButton = {
++            Button(enabled = distributors.isNotEmpty(), onClick = {
++                val qty = qtyText.trim().replace(',', '.').toDoubleOrNull()
++                if (selected == null) error = "اختر الموزع."
++                else if (qty == null || !qty.isFinite() || qty <= 0.0) error = "أدخل كمية أكبر من صفر."
++                else onSave(selected!!, qty, note)
++            }) { Text("حفظ مسودة") }
++        },
++        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++    )
++}
++
++@Composable
++private fun CancelDistributorOrderDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
++    var reason by remember { mutableStateOf("") }
++    var error by remember { mutableStateOf<String?>(null) }
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text("إلغاء طلب الموزع") },
++        text = { Column { OutlinedTextField(reason, { reason = it }, label = { Text("سبب الإلغاء") }, modifier = Modifier.fillMaxWidth()); error?.let { Text(it, color = MaterialTheme.colorScheme.error) } } },
++        confirmButton = { Button(onClick = { if (reason.trim().isBlank()) error = "سبب الإلغاء مطلوب." else onConfirm(reason.trim()) }) { Text("إلغاء الطلب") } },
++        dismissButton = { TextButton(onClick = onDismiss) { Text("تراجع") } }
++    )
++}
+ 
+ @Composable
+ private fun WeeklySalesBudgetDialog(
+     plan: DemandPlanEntity,
+diff -ruN original146/app/src/test/java/com/fush/erp/domain/DistributorOrderMathTest.kt modified146/app/src/test/java/com/fush/erp/domain/DistributorOrderMathTest.kt
+--- original146/app/src/test/java/com/fush/erp/domain/DistributorOrderMathTest.kt	1970-01-01 00:00:00.000000000 +0000
++++ modified146/app/src/test/java/com/fush/erp/domain/DistributorOrderMathTest.kt	2026-08-13 00:01:38.680409321 +0000
+@@ -0,0 +1,31 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class DistributorOrderMathTest {
++    @Test
++    fun committed_excludes_draft_and_cancelled() {
++        val rows = listOf(
++            "DRAFT" to 10.0,
++            "CONFIRMED" to 20.0,
++            "FULFILLED" to 30.0,
++            "CANCELLED" to 40.0
++        )
++        assertEquals(50.0, DistributorOrderMath.committedQty(rows), 0.000001)
++        assertEquals(10.0, DistributorOrderMath.draftQty(rows), 0.000001)
++    }
++
++    @Test
++    fun coverage_and_remaining_follow_approved_plan() {
++        assertEquals(75.0, DistributorOrderMath.coveragePct(75.0, 100.0), 0.000001)
++        assertEquals(25.0, DistributorOrderMath.remainingQty(75.0, 100.0), 0.000001)
++        assertEquals(0.0, DistributorOrderMath.remainingQty(120.0, 100.0), 0.000001)
++    }
++
++    @Test
++    fun zero_plan_has_zero_coverage() {
++        assertEquals(0.0, DistributorOrderMath.coveragePct(10.0, 0.0), 0.000001)
++    }
++}
