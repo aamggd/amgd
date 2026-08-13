@@ -48,12 +48,13 @@ jobs:
         run: |
           set -e
           python phase14_5_7_business_settings/apply_patch.py
-          grep -q 'versionCode = 46' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q '0.15.4.7-phase14.5-business-settings' FushERP_Mobile_Phase5/app/build.gradle.kts
-          grep -q 'version = 20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'MIGRATION_19_20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
-          grep -q 'BusinessSettingsScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/BusinessSettingsScreen.kt
-          grep -q 'snapshotAt(request.invoiceDate)' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesService.kt
+          check() { label="$1"; pattern="$2"; file="$3"; echo "VERIFY: $label"; grep -nF "$pattern" "$file" || { echo "FAILED: $label"; exit 1; }; }
+          check versionCode 'versionCode = 46' FushERP_Mobile_Phase5/app/build.gradle.kts
+          check versionName '0.15.4.7-phase14.5-business-settings' FushERP_Mobile_Phase5/app/build.gradle.kts
+          check dbVersion 'version = 20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          check migration 'MIGRATION_19_20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          check businessScreen 'BusinessSettingsScreen' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/BusinessSettingsScreen.kt
+          check historicalPolicy 'snapshotAt(request.invoiceDate)' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesService.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
