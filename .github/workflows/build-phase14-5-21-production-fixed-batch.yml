@@ -1,0 +1,106 @@
+name: Build Fush ERP Phase 14.5.21 Production Fixed Batch
+
+on:
+  push:
+    branches: [phase14-5-20-build]
+    paths:
+      - '.github/workflows/build-phase14-5-21-production-fixed-batch.yml'
+      - 'phase14_5_21_production_fixed_batch/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.20 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.20-Customer-Statement-Search-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31750521104
+      - name: Restore Phase 14.5.20 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.20-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 59' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.20-phase14.5-customer-statement-search' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply and verify Phase 14.5.21
+        shell: bash
+        run: |
+          set -e
+          python phase14_5_21_production_fixed_batch/apply_patch.py
+          grep -q 'versionCode = 60' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.21-phase14.5-production-order-delete-fixed-batch' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'deleteOrder(orderId' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'fixedBatchComponentQuantity' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'حذف أمر الإنتاج' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+          grep -q 'الناتج المرجعي المتوقع للدفعة' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema 23 unchanged
+        shell: bash
+        run: |
+          set -e
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/23.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/24.json
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-5-21-output
+          mkdir -p phase14-5-21-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-21-output/FushERP-Phase14.5.21-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-21-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-21-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-21-output/apksigner/apksigner
+          zip -qr phase14-5-21-output/FushERP-Mobile-Phase14.5.21-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-21-output/FushERP-Phase14.5.21-unsigned.apk > phase14-5-21-output/FushERP-Phase14.5.21-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.21 — Production Order Delete + Fixed Batch Formula' \
+            'Version: 0.15.4.21-phase14.5-production-order-delete-fixed-batch (versionCode 60)' \
+            'Room schema: 23 (unchanged)' \
+            '' \
+            'Added:' \
+            '- Production orders can be deleted while PLANNED or MATERIALS_RESERVED only.' \
+            '- Deleting a reserved order releases the reservation because no stock issue exists yet.' \
+            '- Orders with material issues/batches cannot be hard-deleted.' \
+            '- Deletion is audit logged.' \
+            '- Recipe material quantities are fixed per batch and no longer scale with planned yield.' \
+            '- Recipe output quantity is now a reference expected yield.' \
+            '- Planned and actual output may be higher or lower with the same fixed recipe inputs.' \
+            '- Existing orders/data are not migrated or rewritten.' \
+            > phase14-5-21-output/FushERP-Phase14.5.21-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.21-Production-Fixed-Batch-Build
+          path: phase14-5-21-output/
+          if-no-files-found: error
+          retention-days: 7
