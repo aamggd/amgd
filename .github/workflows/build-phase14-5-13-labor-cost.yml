@@ -1,0 +1,103 @@
+name: Build Fush ERP Phase 14.5.13 Labor Cost
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-5-13-labor-cost.yml'
+      - 'phase14_5_13_labor_cost/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.12 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.12-Count-Missing-Lines-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31663989154
+      - name: Restore Phase 14.5.12 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.12-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 51' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.12-phase14.5-count-missing-lines' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 21' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply and verify Phase 14.5.13 labor cost
+        shell: bash
+        run: |
+          set -e
+          python phase14_5_13_labor_cost/apply_patch.py
+          grep -q 'versionCode = 52' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.13-phase14.5-labor-cost' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'directLaborCostBase: Double = 0.0' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/ProductionEntities.kt
+          grep -q 'var laborText by remember { mutableStateOf("") }' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+          grep -q 'parseDirectLaborCostInput' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
+          ! grep -q 'directLaborCostBase: Double = 30000.0' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/entity/ProductionEntities.kt
+          ! grep -q 'mutableStateOf("30000")' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema 21 unchanged
+        shell: bash
+        run: |
+          set -e
+          grep -q 'version = 21' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/21.json
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-5-13-output
+          mkdir -p phase14-5-13-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-13-output/FushERP-Phase14.5.13-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-13-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-13-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-13-output/apksigner/apksigner
+          zip -qr phase14-5-13-output/FushERP-Mobile-Phase14.5.13-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-13-output/FushERP-Phase14.5.13-unsigned.apk > phase14-5-13-output/FushERP-Phase14.5.13-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.13 — Per-Batch Direct Labor Cost' \
+            'Version: 0.15.4.13-phase14.5-labor-cost (versionCode 52)' \
+            'Room schema: 21 (unchanged)' \
+            '' \
+            'Fixed:' \
+            '- Removed the hidden 30,000 YER default labor cost from production orders.' \
+            '- New production orders require an explicit labor cost for that batch.' \
+            '- Any valid non-negative labor cost is accepted, including zero.' \
+            '- Existing production orders keep their stored labor cost.' \
+            '- Actual cost and WIP posting continue using the labor cost stored on the order.' \
+            '- Added validation tests for blank, arbitrary and negative labor cost values.' \
+            > phase14-5-13-output/FushERP-Phase14.5.13-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.13-Labor-Cost-Build
+          path: phase14-5-13-output/
+          if-no-files-found: error
+          retention-days: 7
