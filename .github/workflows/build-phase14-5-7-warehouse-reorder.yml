@@ -43,20 +43,23 @@ jobs:
           grep -q 'versionCode = 45' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.6-phase14.5-inventory-warehouse-separation' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-      - name: Apply and diagnose Phase 14.5.7 warehouse reorder
+      - name: Apply and verify Phase 14.5.7 warehouse reorder
         shell: bash
         run: |
           set +e
           python phase14_5_7_warehouse_reorder/apply_patch.py
           rc=$?
-          echo "apply_patch exit=$rc"
-          if [ -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt.rej ]; then
-            echo '----- AdvancedInventoryScreens.kt.rej -----'
-            cat FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt.rej
-            echo '----- current screen head -----'
-            sed -n '1,100p' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "Base patch returned $rc; applying known Phase 14.5.6 UI compatibility repair"
+            python phase14_5_7_warehouse_reorder/fix_ui_after_patch.py
           fi
-          exit $rc
+          grep -q 'versionCode = 46' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.7-phase14.5-warehouse-reorder' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'warehouse_reorder_policies' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'observeReorderAlerts(reorderAt)' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q 'إعداد حدود إعادة الطلب حسب المخزن' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
