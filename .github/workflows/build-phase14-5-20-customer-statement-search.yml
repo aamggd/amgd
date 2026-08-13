@@ -1,7 +1,7 @@
 name: Build Fush ERP Phase 14.5.20 Customer Statement Search
 on:
   push:
-    branches: [master]
+    branches: [master, phase14-5-20-build]
     paths: ['.github/workflows/build-phase14-5-20-customer-statement-search.yml','phase14_5_20_customer_statement_search/**']
   workflow_dispatch:
 jobs:
