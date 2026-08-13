@@ -10,10 +10,16 @@ PROJECT = ROOT / "FushERP_Mobile_Phase5"
 HERE = Path(__file__).resolve().parent
 CHUNKS = HERE / "patch_chunks"
 
-encoded = "".join(path.read_text(encoding="ascii") for path in sorted(CHUNKS.glob("chunk_*.b64")))
-if not encoded:
+chunk_paths = sorted(CHUNKS.glob("chunk_*.b64"))
+if not chunk_paths:
     raise RuntimeError("Phase 14.5.7 patch chunks are missing")
-patch_bytes = base64.b64decode(encoded, validate=True)
+
+# Each repository chunk is independently base64-encoded. Decode each one,
+# then concatenate the raw patch bytes in filename order.
+patch_bytes = b"".join(
+    base64.b64decode(path.read_text(encoding="ascii").strip(), validate=True)
+    for path in chunk_paths
+)
 
 with tempfile.NamedTemporaryFile(prefix="phase14_5_7_", suffix=".diff", delete=False) as handle:
     handle.write(patch_bytes)
