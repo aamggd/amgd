@@ -1,0 +1,102 @@
+name: Build Fush ERP Phase 14.5.11 Production Issue Guard
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-5-11-production-issue-guard.yml'
+      - 'phase14_5_11_production_issue_guard/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.10 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.10-Partial-Purchase-Returns-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31660601750
+      - name: Restore Phase 14.5.10 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.10-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 49' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.10-phase14.5-partial-purchase-returns' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 21' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply and verify Phase 14.5.11 production issue guard
+        shell: bash
+        run: |
+          set -e
+          python phase14_5_11_production_issue_guard/apply_patch.py
+          grep -q 'versionCode = 50' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.11-phase14.5-production-issue-guard' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 21' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'validateOrderBomIntegrity' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'validateIssueLotTracking' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'rejectsProductionMaterialOutsideBom' FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema 21 unchanged
+        shell: bash
+        run: |
+          set -e
+          grep -q 'version = 21' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/21.json
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-5-11-output
+          mkdir -p phase14-5-11-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-11-output/FushERP-Phase14.5.11-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-11-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-11-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-11-output/apksigner/apksigner
+          zip -qr phase14-5-11-output/FushERP-Mobile-Phase14.5.11-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-11-output/FushERP-Phase14.5.11-unsigned.apk > phase14-5-11-output/FushERP-Phase14.5.11-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.11 — Production Issue Guard' \
+            'Version: 0.15.4.11-phase14.5-production-issue-guard (versionCode 50)' \
+            'Room schema: 21 (unchanged)' \
+            '' \
+            'Fixed:' \
+            '- Production-order materials are revalidated against the exact BOM before reservation and before issue.' \
+            '- A material row outside the BOM or linked to the wrong recipe component blocks issue.' \
+            '- Lot-tracked materials cannot be issued from stock without a lot number.' \
+            '- Expiry-tracked materials cannot be issued without a valid expiry date.' \
+            '- Availability for issue uses only usable stock lots with complete required traceability.' \
+            '- Added unit tests for BOM integrity and lot/expiry tracking requirements.' \
+            > phase14-5-11-output/FushERP-Phase14.5.11-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.11-Production-Issue-Guard-Build
+          path: phase14-5-11-output/
+          if-no-files-found: error
+          retention-days: 7
