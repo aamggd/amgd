@@ -1,0 +1,108 @@
+name: Build Fush ERP Phase 14.6 Distributor Orders
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-6-distributor-orders.yml'
+      - 'phase14_6_distributor_orders/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.6 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.6-Inventory-Separation-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31652355941
+      - name: Restore Phase 14.5.6 source
+        shell: bash
+        run: |
+          set -e
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.6-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 45' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.6-phase14.5-inventory-warehouse-separation' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 19' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'observeWarehouseBalances' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+      - name: Apply and verify Phase 14.6 distributor orders
+        shell: bash
+        run: |
+          set -e
+          python phase14_6_distributor_orders/apply_patch.py
+          grep -q 'versionCode = 46' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.7-phase14.6-distributor-orders' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'version = 20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_19_20' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'distributor_orders' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          test -f FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/DistributorOrderMath.kt
+          test -f FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/DistributorOrderMathTest.kt
+          grep -q 'طلبات الموزعين مقابل الخطة' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
+          grep -q 'observeWarehouseBalances' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema 20
+        shell: bash
+        run: |
+          set -e
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/20.json
+          grep -q 'distributor_orders' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/20.json
+      - name: Package build
+        shell: bash
+        run: |
+          set -e
+          rm -rf phase14-6-output
+          mkdir -p phase14-6-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-6-output/FushERP-Phase14.6-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-6-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-6-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-6-output/apksigner/apksigner
+          zip -qr phase14-6-output/FushERP-Mobile-Phase14.6-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-6-output/FushERP-Phase14.6-unsigned.apk > phase14-6-output/FushERP-Phase14.6-unsigned.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.6 — Distributor Orders vs Approved Plan' \
+            'Version: 0.15.4.7-phase14.6-distributor-orders (versionCode 46)' \
+            'Room schema: 20 (migration 19 -> 20)' \
+            '' \
+            'Added:' \
+            '- Distributor-order documents linked to distributor customer, finished product, province and approved monthly demand plan.' \
+            '- Draft, confirmed, fulfilled and cancelled statuses with mandatory cancellation reason.' \
+            '- Confirmed + fulfilled quantities compared with approved plan; draft quantities shown separately.' \
+            '- Coverage percentage, remaining planned quantity and over-plan warning.' \
+            '- Distributor eligibility restricted to active distributor sales channels and matching province.' \
+            '- Audit events for create, confirm, fulfill and cancel.' \
+            '- Unit tests for committed quantity, draft quantity, coverage and remaining plan math.' \
+            '- Phase 14.5.6 warehouse-separated inventory remains included.' \
+            > phase14-6-output/FushERP-Phase14.6-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.6-Distributor-Orders-Build
+          path: phase14-6-output/
+          if-no-files-found: error
+          retention-days: 7
