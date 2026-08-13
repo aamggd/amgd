@@ -7,7 +7,7 @@ from pathlib import Path
 
 repo = Path(__file__).resolve().parents[1]
 project = repo / "FushERP_Mobile_Phase5"
-payload = Path(__file__).with_name("phase14_5_7_rel.diff.gz.b64")
+payload = Path(__file__).with_name("phase14_5_7_rel_v2.diff.gz.b64")
 patch_file = repo / "phase14_5_7_business_settings.diff"
 
 if not project.is_dir():
