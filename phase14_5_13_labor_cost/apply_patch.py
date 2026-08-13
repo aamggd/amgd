@@ -25,7 +25,7 @@ replace(
 
 replace(
     'app/src/main/java/com/fush/erp/domain/ProductionMath.kt',
-    '''    fun actualUnitCost(materialCost: Double, laborCost: Double, acceptedQty: Double): Double {\n        require(materialCost >= 0.0 && materialCost.isFinite()) { "تكلفة المواد غير صالحة" }\n        require(laborCost >= 0.0 && laborCost.isFinite()) { "تكلفة العمالة غير صالحة" }\n        require(acceptedQty > 0.0 && acceptedQty.isFinite()) { "الكمية المقبولة يجب أن تكون أكبر من صفر" }\n        return (materialCost + laborCost) / acceptedQty\n    }\n''',
+    '''    fun actualUnitCost(materialCost: Double, laborCost: Double, acceptedQty: Double {\n        require(materialCost >= 0.0 && materialCost.isFinite()) { "تكلفة المواد غير صالحة" }\n        require(laborCost >= 0.0 && laborCost.isFinite()) { "تكلفة العمالة غير صالحة" }\n        require(acceptedQty > 0.0 && acceptedQty.isFinite()) { "الكمية المقبولة يجب أن تكون أكبر من صفر" }\n        return (materialCost + laborCost) / acceptedQty\n    }\n'''.replace('Double {', 'Double) {'),
     '''    fun validateDirectLaborCost(laborCost: Double): Double {\n        require(laborCost >= 0.0 && laborCost.isFinite()) { "تكلفة العمالة غير صالحة" }\n        return laborCost\n    }\n\n    fun parseDirectLaborCostInput(input: String): Double {\n        require(input.isNotBlank()) { "يجب إدخال أجور هذه الدفعة؛ لا توجد قيمة عمالة ثابتة" }\n        val value = input.trim().toDoubleOrNull()\n            ?: throw IllegalArgumentException("تكلفة العمالة غير صالحة")\n        return validateDirectLaborCost(value)\n    }\n\n    fun actualUnitCost(materialCost: Double, laborCost: Double, acceptedQty: Double): Double {\n        require(materialCost >= 0.0 && materialCost.isFinite()) { "تكلفة المواد غير صالحة" }\n        validateDirectLaborCost(laborCost)\n        require(acceptedQty > 0.0 && acceptedQty.isFinite()) { "الكمية المقبولة يجب أن تكون أكبر من صفر" }\n        return (materialCost + laborCost) / acceptedQty\n    }\n'''
 )
 
@@ -50,7 +50,7 @@ replace(
 replace(
     'app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt',
     '''enabled = recipe != null && raw != null && finished != null && (asset == null || operator != null) && outputText.toDoubleOrNull()?.let { it > 0 } == true && laborText.toDoubleOrNull()?.let { it >= 0 } == true,\n                onClick = { onSave(recipe!!, raw!!, finished!!, asset, operator, outputText.toDouble(), laborText.toDouble(), notes) }''',
-    '''enabled = recipe != null && raw != null && finished != null && (asset == null || operator != null) && outputText.toDoubleOrNull()?.let { it > 0 } == true && runCatching { ProductionMath.parseDirectLaborCostInput(laborText) }.isSuccess,\n                onClick = { onSave(recipe!!, raw!!, finished!!, asset, operator, outputText.toDouble(), ProductionMath.parseDirectLaborCostInput(laborText), notes) }'''
+    '''enabled = recipe != null && raw != null && finished != null && (asset == null || operator != null) && outputText.toDoubleOrNull()?.let { it > 0 } == true && runCatching { com.fush.erp.domain.ProductionMath.parseDirectLaborCostInput(laborText) }.isSuccess,\n                onClick = { onSave(recipe!!, raw!!, finished!!, asset, operator, outputText.toDouble(), com.fush.erp.domain.ProductionMath.parseDirectLaborCostInput(laborText), notes) }'''
 )
 
 test_path = ROOT / 'app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt'
