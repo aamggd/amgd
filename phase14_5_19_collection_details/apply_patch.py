@@ -1,0 +1,39 @@
+from pathlib import Path
+import base64, zlib
+
+ROOT = Path("FushERP_Mobile_Phase5")
+
+def repl(rel: str, old: str, new: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding="utf-8")
+    if old not in text:
+        raise SystemExit(f"Pattern not found in {rel}: {old[:120]!r}")
+    p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+def insert_after(rel: str, anchor: str, addition: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding="utf-8")
+    if addition in text:
+        return
+    if anchor not in text:
+        raise SystemExit(f"Anchor not found in {rel}")
+    p.write_text(text.replace(anchor, anchor + addition, 1), encoding="utf-8")
+
+def write_z(rel: str, payload: str) -> None:
+    p = ROOT / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(zlib.decompress(base64.b64decode(payload)).decode("utf-8"), encoding="utf-8")
+
+repl("app/build.gradle.kts", 'versionCode = 57', 'versionCode = 58')
+repl("app/build.gradle.kts", 'versionName = "0.15.4.18-phase14.5-manual-sales-price"', 'versionName = "0.15.4.19-phase14.5-collection-details"')
+
+insert_after("app/src/main/java/com/fush/erp/data/entity/ReportEntities.kt", 'data class ExecutiveReportRow(\n    val grossSalesBase: Double,\n    val salesReturnsBase: Double,\n    val collectionsBase: Double,\n    val grossPurchasesBase: Double,\n    val purchaseReturnsBase: Double,\n    val inventoryValueBase: Double,\n    val receivablesBase: Double,\n    val overdueBase: Double,\n    val productionOrders: Int,\n    val acceptedQtyBase: Double,\n    val scrapQtyBase: Double,\n    val openNonConformances: Int,\n    val maintenanceCostBase: Double\n)\n\n', 'data class CollectionDetailRow(\n    val eventDate: Long,\n    val entryType: String,\n    val referenceNo: String,\n    val invoiceNo: String,\n    val customerName: String,\n    val province: String,\n    val currencyCode: String,\n    val amountOriginal: Double,\n    val amountBase: Double,\n    val notes: String\n)\n\n')
+insert_after("app/src/main/java/com/fush/erp/data/dao/ReportDao.kt", '    suspend fun executive(from: Long, to: Long): ExecutiveReportRow\n\n', '    @Query("""\n        SELECT cr.receiptDate AS eventDate,\n               \'RECEIPT\' AS entryType,\n               cr.receiptNo AS referenceNo,\n               COALESCE((SELECT GROUP_CONCAT(si.invoiceNo, \', \')\n                         FROM customer_receipt_allocations cra\n                         JOIN sales_invoices si ON si.id = cra.invoiceId\n                         WHERE cra.receiptId = cr.id), \'\') AS invoiceNo,\n               c.nameAr AS customerName,\n               c.province AS province,\n               cr.currencyCode AS currencyCode,\n               cr.amountOriginal AS amountOriginal,\n               cr.amountBase AS amountBase,\n               cr.notes AS notes\n        FROM customer_receipts cr\n        JOIN customers c ON c.id = cr.customerId\n        WHERE cr.receiptDate BETWEEN :from AND :to\n\n        UNION ALL\n\n        SELECT sr.returnDate AS eventDate,\n               \'CASH_REFUND\' AS entryType,\n               sr.returnNo AS referenceNo,\n               si.invoiceNo AS invoiceNo,\n               c.nameAr AS customerName,\n               c.province AS province,\n               sr.currencyCode AS currencyCode,\n               -sr.totalOriginal AS amountOriginal,\n               -sr.totalBase AS amountBase,\n               sr.reason AS notes\n        FROM sales_returns sr\n        JOIN customers c ON c.id = sr.customerId\n        JOIN sales_invoices si ON si.id = sr.salesInvoiceId\n        WHERE sr.status = \'POSTED\'\n          AND sr.settlementType = \'CASH_REFUND\'\n          AND sr.returnDate BETWEEN :from AND :to\n\n        ORDER BY eventDate DESC, referenceNo DESC\n    """)\n    suspend fun collectionDetails(from: Long, to: Long): List<CollectionDetailRow>\n\n')
+
+repl("app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt", '                "المبيعات" -> SalesScreen(container, user, Modifier.padding(pad))\n', '                "المبيعات" -> SalesScreen(container, user, Modifier.padding(pad))\n                "التحصيلات" -> CollectionsDetailScreen(container, Modifier.padding(pad))\n')
+repl("app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt", 'ExecutiveMetric("صافي التحصيل", executive?.collectionsBase, "ريال", Modifier.weight(1f)) { onNavigate("المبيعات") }', 'ExecutiveMetric("صافي التحصيل", executive?.collectionsBase, "ريال", Modifier.weight(1f)) { onNavigate("التحصيلات") }')
+
+write_z("app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt", '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')
+write_z("PHASE14_5_19_SCOPE.md", 'eNp1kk1uGzEMhfc+BYFsbeevXTRdFU6CFC2CIGnWAa2hPQQkcUJKdr3rIXrCnCTUwHEKBF2Nfh4fH7/REdz1aASnn+af56df4OXPX7ilAguJkUJhyQaXVJAj/GQrk8kMfvUE9JtCLbwh6ND6paB2H8p+3H2HLFuQgXzHxUC2GbrRjDqIbjff27U1BNmQGpTRHkMBw0SwrMaZzLxwxZmb9QWEakUSKSgF4sGtE+dqMIgVt158e7h5ur+6fry9dJNI5rpSNVvrd4WhB/Vc1svWbbHQceFE0zczEN3r/bMipRz88q3lFAaVDY9nnDfCbSHKa84YXaVNvwNMUnOZwtLhzj6cYu4cTSE7VkKT3HI91JRQd/tYaxWzw3je3jG3ODV3tq+nhuwd98pjN3YRneX5iQ+2G+e95lic6wVgjNP/ODbdou0bLcBaZHYgi0o+aIi1c7JLClj9uXij3XgzoDqw1QHP03udZ3SZd5B/dC2hP4zW8F4kgYWeEnqOhOxDnJ1/dTD+N9eKbSzgBuG5slI3n7wCjPfzNw==')
+
+print("Phase 14.5.19 patch applied")
