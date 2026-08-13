@@ -48,6 +48,7 @@ jobs:
         run: |
           set -e
           python phase14_5_14_quantitative_quality/apply_patch.py
+          python phase14_5_14_quantitative_quality/fix_compile.py
           grep -q 'versionCode = 53' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q '0.15.4.14-phase14.5-quantitative-quality' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'version = 22' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
@@ -56,6 +57,7 @@ jobs:
           grep -q 'recordQuantitativeQualityCheck' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionService.kt
           grep -q 'qualityDecision' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
           grep -q 'الحد الأدنى لحجم العينة' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+          grep -q 'CloseCapaDialog' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
