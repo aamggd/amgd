@@ -122,15 +122,15 @@ if marker not in s:
 s = s.replace(marker, helper + marker, 1)
 p.write_text(s, encoding="utf-8")
 
-(final / "PHASE14_5_25_SCOPE.md").write_text(
-    """# Phase 14.5.25 — Combined Recovery + Party Subledger + Multi-sample Quality\n\n"
-    "- Combines multi-sample quantitative quality checks with Party Subledger vouchers.\n"
-    "- Room schema 25 non-destructively converges both known schema-24 branches.\n"
-    "- Package com.fush.erp.preview accepts verified backups created by original com.fush.erp.\n"
-    "- Restore still checks archive format, SHA-256, SQLite integrity and schema before staging.\n"
-    "- The original signed FUSH app may remain installed while recovery is verified.\n",
-    encoding="utf-8",
-)
+scope = """# Phase 14.5.25 — Combined Recovery + Party Subledger + Multi-sample Quality
+
+- Combines multi-sample quantitative quality checks with Party Subledger vouchers.
+- Room schema 25 non-destructively converges both known schema-24 branches.
+- Package com.fush.erp.preview accepts verified backups created by original com.fush.erp.
+- Restore still checks archive format, SHA-256, SQLite integrity and schema before staging.
+- The original signed FUSH app may remain installed while recovery is verified.
+"""
+(final / "PHASE14_5_25_SCOPE.md").write_text(scope, encoding="utf-8")
 
 checks = {
     final / "app/build.gradle.kts": ["com.fush.erp.preview", "versionCode = 64", "0.15.4.25-combined-recovery-party-quality"],
