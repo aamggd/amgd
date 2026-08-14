@@ -1,0 +1,5 @@
+الة التشغيلة إلى ${statusAr(status)}"\n                    lotToControl = null\n                } catch (e: Exception) { message = e.message ?: "تعذر تحديث حالة التشغيلة" }\n            }\n        }\n    }\n'''
+insert_after(
+    'app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt',
+    anchor,
+    '''\n    lotToAssign?.let { lot ->\n        val item = itemsList.firstOrNull { it.id == lot.itemId }\n        if (item == null) {\n            lotToAssign = null\n        } else {\n            LegacyTrackingAssignmentDialog(lot, item, onDismiss = { lotToAssign = null }) { qty, lotNo, expiryDate, reason ->\n                scope.launch {\n                    try {\n                        container.advancedInventoryService.assignLegacyTracking(\n                            wareh
