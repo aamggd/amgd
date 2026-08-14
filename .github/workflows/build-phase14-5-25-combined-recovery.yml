@@ -1,0 +1,148 @@
+name: Build Fush ERP Phase 14.5.25 Combined Recovery
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-25-combined-recovery.yml'
+      - 'phase14_5_25_combined_recovery/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 14.5.23 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.23-Legacy-Lot-Assignment-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31757260560
+
+      - name: Restore baseline and create branch worktrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.23-Source.zip
+          test -d FushERP_Mobile_Phase5
+          grep -q 'versionCode = 62' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          mv FushERP_Mobile_Phase5 base-tree
+          cp -a base-tree multi-tree
+          cp -a base-tree party-tree
+
+      - name: Apply original Phase 14.5.24 multi-sample quality patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin phase14-5-24-build
+          git show FETCH_HEAD:phase14_5_24_multi_sample_quality/patch_b64_gz.txt > multi.b64
+          base64 -d multi.b64 | gunzip > multi.diff
+          (cd multi-tree && patch -p1 < ../multi.diff)
+          grep -q 'versionCode = 63' multi-tree/app/build.gradle.kts
+          grep -q '0.15.4.24-phase14.5-multi-sample-quality' multi-tree/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 24' multi-tree/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'quality_check_samples' multi-tree/app/src/main/java/com/fush/erp/data/Migrations.kt
+
+      - name: Apply Phase 14.5.24 Party Subledger patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat phase14_5_24_party_subledger_vouchers/part_*.b64 | base64 -d | gunzip > party.diff
+          (cd party-tree && patch -p1 < ../party.diff)
+          grep -q 'versionCode = 63' party-tree/app/build.gradle.kts
+          grep -q '0.15.4.24-party-subledger-vouchers' party-tree/app/build.gradle.kts
+          grep -q 'PartyVoucherEntity::class' party-tree/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'party_vouchers' party-tree/app/src/main/java/com/fush/erp/data/Migrations.kt
+
+      - name: Merge branches into Phase 14.5.25 recovery app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python phase14_5_25_combined_recovery/merge_combined.py multi-tree party-tree FushERP_Mobile_Phase5
+          grep -q 'applicationId = "com.fush.erp.preview"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 64' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.25-combined-recovery-party-quality' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 25' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_24_25' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'quality_check_samples' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'party_vouchers' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'packageId == "com.fush.erp"' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/backup/BackupRestoreManager.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCHEMA='FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json'
+          test -f "$SCHEMA"
+          grep -q 'quality_check_samples' "$SCHEMA"
+          grep -q 'party_vouchers' "$SCHEMA"
+          grep -q 'party_attachments' "$SCHEMA"
+
+      - name: Package unsigned recovery build
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT='phase14-5-25-output'
+          mkdir -p "$OUT/apksigner/lib"
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk "$OUT/FushERP-Phase14.5.25-Combined-Recovery-unsigned.apk"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" "$OUT/apksigner/apksigner"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" "$OUT/apksigner/lib/apksigner.jar"
+          chmod +x "$OUT/apksigner/apksigner"
+          zip -qr "$OUT/FushERP-Mobile-Phase14.5.25-Combined-Recovery-Source.zip" FushERP_Mobile_Phase5
+          sha256sum "$OUT/FushERP-Phase14.5.25-Combined-Recovery-unsigned.apk" > "$OUT/FushERP-Phase14.5.25-Combined-Recovery-unsigned.apk.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.25 — Combined Recovery' \
+            'Package: com.fush.erp.preview' \
+            'Version: 0.15.4.25-combined-recovery-party-quality (versionCode 64)' \
+            'Room schema: 25' \
+            'Includes: Multi-sample Quality + Party Subledger & Linked Vouchers' \
+            'Restore compatibility: accepts verified original com.fush.erp FUSH backups in recovery package.' \
+            'Migration: 24 -> 25 converges both known schema-24 branches non-destructively.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            > "$OUT/FushERP-Phase14.5.25-BUILD-REPORT.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.25-Combined-Recovery-Build
+          path: phase14-5-25-output/
+          if-no-files-found: error
+          retention-days: 7
