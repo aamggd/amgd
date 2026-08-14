@@ -5,7 +5,7 @@ on:
     branches: [agent/phase14-5-24-party-subledger-vouchers]
     paths:
       - '.github/workflows/build-phase14-5-29-employees-sales-reps.yml'
-      - 'phase14_5_29_patch.gz.b64'
+      - 'phase14_5_29_patch_b64/**'
   workflow_dispatch:
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           unzip -q previous-build/FushERP-Mobile-Phase14.5.28-Linked-Output-Packaging-Correction-Source.zip
-          base64 -d phase14_5_29_patch.gz.b64 | gunzip > /tmp/phase14_5_29.patch
+          cat phase14_5_29_patch_b64/part*.txt | base64 -d | gunzip > /tmp/phase14_5_29.patch
           cd FushERP_Mobile_Phase5
           patch --dry-run -p4 < /tmp/phase14_5_29.patch
           patch -p4 < /tmp/phase14_5_29.patch
