@@ -1,0 +1,143 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 65
+-        versionName = "0.15.4.26-stable-recovery-party-quality"
++        versionCode = 66
++        versionName = "0.15.4.27-net-collections-fix"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
+@@ -11,8 +11,14 @@
+           COALESCE((SELECT SUM(totalBase) FROM sales_invoices WHERE status='POSTED' AND invoiceDate BETWEEN :from AND :to),0) AS grossSalesBase,
+           COALESCE((SELECT SUM(totalBase) FROM sales_returns WHERE status='POSTED' AND returnDate BETWEEN :from AND :to),0) AS salesReturnsBase,
+           (COALESCE((SELECT SUM(amountBase) FROM customer_receipts WHERE receiptDate BETWEEN :from AND :to),0)
++           + COALESCE((SELECT SUM(amountBase) FROM party_vouchers
++                       WHERE status='POSTED' AND partyType='CUSTOMER' AND voucherType='RECEIPT'
++                         AND voucherDate BETWEEN :from AND :to),0)
+            - COALESCE((SELECT SUM(totalBase) FROM sales_returns
+-                       WHERE status='POSTED' AND settlementType='CASH_REFUND' AND returnDate BETWEEN :from AND :to),0)) AS collectionsBase,
++                       WHERE status='POSTED' AND settlementType='CASH_REFUND' AND returnDate BETWEEN :from AND :to),0)
++           - COALESCE((SELECT SUM(amountBase) FROM party_vouchers
++                       WHERE status='POSTED' AND partyType='CUSTOMER' AND voucherType='PAYMENT'
++                         AND voucherDate BETWEEN :from AND :to),0)) AS collectionsBase,
+           COALESCE((SELECT SUM(totalBase) FROM purchase_invoices WHERE status='POSTED' AND invoiceDate BETWEEN :from AND :to),0) AS grossPurchasesBase,
+           COALESCE((SELECT SUM(totalBase) FROM purchase_returns WHERE status='POSTED' AND returnDate BETWEEN :from AND :to),0) AS purchaseReturnsBase,
+           COALESCE((SELECT SUM(quantityBase * unitCostBase) FROM stock_movements WHERE movementDate <= :to),0) AS inventoryValueBase,
+@@ -80,6 +86,44 @@
+           AND sr.settlementType = 'CASH_REFUND'
+           AND sr.returnDate BETWEEN :from AND :to
+ 
++        UNION ALL
++
++        SELECT pv.voucherDate AS eventDate,
++               'VOUCHER_RECEIPT' AS entryType,
++               pv.voucherNo AS referenceNo,
++               '' AS invoiceNo,
++               c.nameAr AS customerName,
++               c.province AS province,
++               pv.currencyCode AS currencyCode,
++               pv.amountOriginal AS amountOriginal,
++               pv.amountBase AS amountBase,
++               CASE WHEN pv.referenceNo <> '' THEN pv.description || ' • مرجع: ' || pv.referenceNo ELSE pv.description END AS notes
++        FROM party_vouchers pv
++        JOIN customers c ON c.id = pv.customerId
++        WHERE pv.status = 'POSTED'
++          AND pv.partyType = 'CUSTOMER'
++          AND pv.voucherType = 'RECEIPT'
++          AND pv.voucherDate BETWEEN :from AND :to
++
++        UNION ALL
++
++        SELECT pv.voucherDate AS eventDate,
++               'VOUCHER_PAYMENT' AS entryType,
++               pv.voucherNo AS referenceNo,
++               '' AS invoiceNo,
++               c.nameAr AS customerName,
++               c.province AS province,
++               pv.currencyCode AS currencyCode,
++               -pv.amountOriginal AS amountOriginal,
++               -pv.amountBase AS amountBase,
++               CASE WHEN pv.referenceNo <> '' THEN pv.description || ' • مرجع: ' || pv.referenceNo ELSE pv.description END AS notes
++        FROM party_vouchers pv
++        JOIN customers c ON c.id = pv.customerId
++        WHERE pv.status = 'POSTED'
++          AND pv.partyType = 'CUSTOMER'
++          AND pv.voucherType = 'PAYMENT'
++          AND pv.voucherDate BETWEEN :from AND :to
++
+         ORDER BY eventDate DESC, referenceNo DESC
+     """)
+     suspend fun collectionDetails(from: Long, to: Long): List<CollectionDetailRow>
+@@ -94,6 +138,10 @@
+             UNION
+             SELECT customerId FROM customer_receipts
+              WHERE receiptDate BETWEEN :from AND :to
++            UNION
++            SELECT customerId FROM party_vouchers
++             WHERE customerId IS NOT NULL AND status='POSTED' AND partyType='CUSTOMER'
++               AND voucherType IN ('RECEIPT','PAYMENT') AND voucherDate BETWEEN :from AND :to
+         )
+         SELECT c.id AS customerId, c.nameAr AS customerName, c.province AS province,
+                COALESCE((SELECT COUNT(*) FROM sales_invoices si
+@@ -104,9 +152,15 @@
+                           WHERE sr.customerId=c.id AND sr.status='POSTED' AND sr.returnDate BETWEEN :from AND :to),0) AS returnsBase,
+                (COALESCE((SELECT SUM(cr.amountBase) FROM customer_receipts cr
+                            WHERE cr.customerId=c.id AND cr.receiptDate BETWEEN :from AND :to),0)
++                + COALESCE((SELECT SUM(pvr.amountBase) FROM party_vouchers pvr
++                             WHERE pvr.customerId=c.id AND pvr.status='POSTED' AND pvr.partyType='CUSTOMER'
++                               AND pvr.voucherType='RECEIPT' AND pvr.voucherDate BETWEEN :from AND :to),0)
+                 - COALESCE((SELECT SUM(srCash.totalBase) FROM sales_returns srCash
+                              WHERE srCash.customerId=c.id AND srCash.status='POSTED'
+-                               AND srCash.settlementType='CASH_REFUND' AND srCash.returnDate BETWEEN :from AND :to),0)) AS collectionsBase,
++                               AND srCash.settlementType='CASH_REFUND' AND srCash.returnDate BETWEEN :from AND :to),0)
++                - COALESCE((SELECT SUM(pvp.amountBase) FROM party_vouchers pvp
++                             WHERE pvp.customerId=c.id AND pvp.status='POSTED' AND pvp.partyType='CUSTOMER'
++                               AND pvp.voucherType='PAYMENT' AND pvp.voucherDate BETWEEN :from AND :to),0)) AS collectionsBase,
+                COALESCE((SELECT SUM(MAX(0,
+                     si2.totalBase
+                     - COALESCE((SELECT SUM(sr2.totalBase) FROM sales_returns sr2
+--- a/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
+@@ -30,12 +30,12 @@
+         loading = false
+     }
+ 
+-    val receiptsBase = rows.filter { it.entryType == "RECEIPT" }.sumOf { it.amountBase }
+-    val refundsBase = -rows.filter { it.entryType == "CASH_REFUND" }.sumOf { it.amountBase }
++    val receiptsBase = rows.filter { it.entryType in setOf("RECEIPT", "VOUCHER_RECEIPT") }.sumOf { it.amountBase }
++    val refundsBase = -rows.filter { it.entryType in setOf("CASH_REFUND", "VOUCHER_PAYMENT") }.sumOf { it.amountBase }
+     val netBase = rows.sumOf { it.amountBase }
+     val visibleRows = when (filter) {
+-        "RECEIPT" -> rows.filter { it.entryType == "RECEIPT" }
+-        "CASH_REFUND" -> rows.filter { it.entryType == "CASH_REFUND" }
++        "RECEIPT" -> rows.filter { it.entryType in setOf("RECEIPT", "VOUCHER_RECEIPT") }
++        "CASH_REFUND" -> rows.filter { it.entryType in setOf("CASH_REFUND", "VOUCHER_PAYMENT") }
+         else -> rows
+     }
+ 
+@@ -79,10 +79,17 @@
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        val isReceipt = row.entryType in setOf("RECEIPT", "VOUCHER_RECEIPT")
++                        val movementTitle = when (row.entryType) {
++                            "RECEIPT" -> "تحصيل فاتورة"
++                            "VOUCHER_RECEIPT" -> "سند قبض عميل"
++                            "VOUCHER_PAYMENT" -> "سند صرف للعميل"
++                            else -> "مبلغ مسترد للعميل"
++                        }
+                         Text(
+-                            if (row.entryType == "RECEIPT") "تحصيل" else "مبلغ مسترد للعميل",
++                            movementTitle,
+                             style = MaterialTheme.typography.titleMedium,
+-                            color = if (row.entryType == "RECEIPT") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
++                            color = if (isReceipt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                         )
+                         Text(collectionDate(row.eventDate), style = MaterialTheme.typography.bodySmall)
+                     }
