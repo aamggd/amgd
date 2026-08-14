@@ -1,0 +1,14 @@
+sert_after(rel: str, anchor: str, addition: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding='utf-8')
+    if addition in text:
+        return
+    if anchor not in text:
+        raise SystemExit(f'Anchor not found in {rel}: {anchor[:100]!r}')
+    p.write_text(text.replace(anchor, anchor + addition, 1), encoding='utf-8')
+
+repl('app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt', 'import com.fush.erp.data.entity.*\n', 'import com.fush.erp.data.entity.*\nimport com.fush.erp.domain.InventoryMath\n')
+repl(
+    'app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt',
+    '    var lotToControl by remember { mutableStateOf<InventoryLotAlertRow?>(null) }\n    var message by remember { mutableStateOf<String?>(null) }\n',
+    '    var lotToControl by
