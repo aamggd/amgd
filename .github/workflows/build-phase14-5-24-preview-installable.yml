@@ -1,0 +1,116 @@
+name: Build Fush ERP Phase 14.5.24 Installable Preview
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-24-preview-installable.yml'
+  workflow_dispatch:
+
+jobs:
+  build-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 14.5.23 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.23-Legacy-Lot-Assignment-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31757260560
+
+      - name: Restore Phase 14.5.23 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.23-Source.zip
+          grep -q 'versionCode = 62' FushERP_Mobile_Phase5/app/build.gradle.kts
+
+      - name: Apply Phase 14.5.24 party subledger patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat phase14_5_24_party_subledger_vouchers/part_*.b64 | base64 -d | gunzip > phase14524.diff
+          cd FushERP_Mobile_Phase5
+          patch -p1 < ../phase14524.diff
+          grep -q 'versionCode = 63' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 24' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Convert to side-by-side preview package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd FushERP_Mobile_Phase5
+          sed -i 's/applicationId = "com.fush.erp"/applicationId = "com.fush.erp.preview"/' app/build.gradle.kts
+          sed -i 's/versionName = "0.15.4.24-party-subledger-vouchers"/versionName = "0.15.4.24-party-subledger-vouchers-preview"/' app/build.gradle.kts
+          sed -i 's#<string name="app_name">Fush ERP</string>#<string name="app_name">Fush ERP 14.5.24</string>#' app/src/main/res/values/strings.xml
+          sed -i 's#<string name="app_name">Fush ERP</string>#<string name="app_name">Fush ERP 14.5.24</string>#' app/src/main/res/values-ar/strings.xml
+          grep -q 'applicationId = "com.fush.erp.preview"' app/build.gradle.kts
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build installable debug APK
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK package and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee package.txt
+          grep -q "package: name='com.fush.erp.preview'" package.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' signature.txt
+
+      - name: Package preview APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p preview-output
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk preview-output/FushERP-Phase14.5.24-Party-Subledger-PREVIEW.apk
+          cp package.txt preview-output/PACKAGE-VERIFY.txt
+          cp signature.txt preview-output/SIGNATURE-VERIFY.txt
+          sha256sum preview-output/FushERP-Phase14.5.24-Party-Subledger-PREVIEW.apk > preview-output/FushERP-Phase14.5.24-Party-Subledger-PREVIEW.apk.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.24 Party Subledger Preview' \
+            'Package: com.fush.erp.preview' \
+            'Install mode: side-by-side with production com.fush.erp' \
+            'Purpose: safe functional testing while original production signing key is unavailable.' \
+            'Do not treat this preview package as an in-place production update.' \
+            > preview-output/README.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.24-Installable-Preview
+          path: preview-output/
+          if-no-files-found: error
+          retention-days: 7
