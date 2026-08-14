@@ -1,0 +1,139 @@
+name: Build Fush ERP Phase 14.5.26 Stable Recovery
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-26-stable-recovery.yml'
+      - 'phase14_5_25_combined_recovery/**'
+      - 'phase14_5_26_stable_recovery/**'
+      - 'phase14_5_24_party_subledger_vouchers/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 14.5.23 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.23-Legacy-Lot-Assignment-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31757260560
+
+      - name: Restore baseline and branch copies
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.23-Source.zip
+          mv FushERP_Mobile_Phase5 baseline
+          cp -a baseline multi
+          cp -a baseline party
+
+      - name: Apply original Phase 14.5.24 multi-sample patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p multi_patch
+          git show phase14-5-24-build:phase14_5_24_multi_sample_quality/apply_patch.py > multi_patch/apply_patch.py
+          git show phase14-5-24-build:phase14_5_24_multi_sample_quality/patch_b64_gz.txt > multi_patch/patch_b64_gz.txt
+          cd multi
+          python ../multi_patch/apply_patch.py
+
+      - name: Apply Phase 14.5.24 Party Subledger patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat phase14_5_24_party_subledger_vouchers/part_*.b64 | base64 -d | gunzip > party.diff
+          cd party
+          patch -p1 < ../party.diff
+
+      - name: Merge to schema 25 and finalize stable recovery identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python phase14_5_25_combined_recovery/merge_combined.py multi party FushERP_Mobile_Phase5
+          python phase14_5_26_stable_recovery/finalize_recovery.py FushERP_Mobile_Phase5
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 65' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 25' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'Fush ERP Recovery' FushERP_Mobile_Phase5/app/src/main/res/values/strings.xml
+          grep -q 'BuildConfig.APPLICATION_ID == "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/backup/BackupRestoreManager.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify merged manifest identity and Room schema 25
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          test -f "$MANIFEST"
+          grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
+          grep -q 'android:authorities="com.fush.erp.recovery.files"' "$MANIFEST"
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json
+          grep -q 'quality_check_samples' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json
+          grep -q 'party_vouchers' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json
+
+      - name: Package unsigned stable recovery build
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=phase14-5-26-output
+          mkdir -p "$OUT/apksigner/lib"
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk "$OUT/FushERP-Phase14.5.26-Stable-Recovery-unsigned.apk"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" "$OUT/apksigner/apksigner"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" "$OUT/apksigner/lib/apksigner.jar"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" "$OUT/zipalign"
+          chmod +x "$OUT/apksigner/apksigner" "$OUT/zipalign"
+          zip -qr "$OUT/FushERP-Mobile-Phase14.5.26-Stable-Recovery-Source.zip" FushERP_Mobile_Phase5
+          sha256sum "$OUT/FushERP-Phase14.5.26-Stable-Recovery-unsigned.apk" > "$OUT/FushERP-Phase14.5.26-Stable-Recovery-unsigned.apk.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.26 — Stable Recovery' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 65' \
+            'Room schema: 25' \
+            'Accepts verified backups from original package com.fush.erp.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            > "$OUT/FushERP-Phase14.5.26-BUILD-REPORT.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.26-Stable-Recovery-Build
+          path: phase14-5-26-output/
+          if-no-files-found: error
+          retention-days: 7
