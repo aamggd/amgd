@@ -48,8 +48,8 @@ jobs:
           unzip -q previous-build/FushERP-Mobile-Phase14.5.29-Employees-Sales-Reps-Source.zip
           base64 -d phase14_5_30_patch.gz.b64 | gunzip > /tmp/phase14_5_30.patch
           cd FushERP_Mobile_Phase5
-          patch --dry-run -p4 < /tmp/phase14_5_30.patch
-          patch -p4 < /tmp/phase14_5_30.patch
+          patch --dry-run -p5 < /tmp/phase14_5_30.patch
+          patch -p5 < /tmp/phase14_5_30.patch
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 69' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.30-product-volume-production-sales"' app/build.gradle.kts
