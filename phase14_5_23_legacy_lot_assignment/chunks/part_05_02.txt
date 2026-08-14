@@ -1,0 +1,1 @@
+emId, lot.lotNo, lot.expiryDate, status, reason, user.id)\n                    message = "تم تحديث ح
