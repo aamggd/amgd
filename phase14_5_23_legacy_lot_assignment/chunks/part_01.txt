@@ -1,0 +1,21 @@
+ate: Long?
+    ) {
+        require(quantityBase.isFinite() && quantityBase > EPS) { "الكمية المراد ربطها يجب أن تكون أكبر من صفر" }
+        require(availableBase.isFinite() && availableBase > EPS) { "لا يوجد رصيد قديم متاح للربط" }
+        require(quantityBase <= availableBase + EPS) { "الكمية المراد ربطها أكبر من الرصيد القديم المتاح" }
+        require(lotTracked || expiryTracked) { "الصنف لا يتطلب تتبع تشغيلة أو صلاحية" }
+        val sourceIncomplete = (lotTracked && lotKey(sourceLotNo).isBlank()) || (expiryTracked && sourceExpiryDate == null)
+        require(sourceIncomplete) { "هذا الرصيد مكتمل التتبع بالفعل" }
+        if (lotTracked) require(lotKey(destinationLotNo).isNotBlank()) { "رقم التشغيلة مطلوب لهذا الصنف" }
+        if (expiryTracked) require(destinationExpiryDate != null && destinationExpiryDate > 0L) { "تاريخ الصلاحية مطلوب لهذا الصنف" }
+        require(
+            lotKey(sourceLotNo) != lotKey(destinationLotNo) || expiryKey(sourceExpiryDate) != expiryKey(destinationExpiryDate)
+        ) { "بيانات التشغيلة/الصلاحية الجديدة مطابقة للرصيد القديم" }
+    }
+'''
+)
+
+insert_before(
+    'app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt',
+    '    suspend fun setLotStatus(\n',
+    '''    suspend fun assignLegacyTracking(\n        warehouseId: Long,\n        itemId: Long,\n        sourceLotNo: String?,\n        sourceExpiryDate: Long?,\n        quantityBase: Double,\n        destinationLotNo: String?,\n        destinationExpiryDate: Long?,\n        reason: String,\n        changedBy: Long\n    ): Long = db.withTransaction {\n        val item = requireNotNull(db.itemDao().byId(itemId)) { "الصنف غير موجود" }\n        require(item.isActive)
