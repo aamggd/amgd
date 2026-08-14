@@ -1,0 +1,122 @@
+name: Build Fush ERP Phase 14.5.28 Linked Output Packaging Correction
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-28-linked-output-packaging-correction.yml'
+      - 'phase14_5_28_patch_parts/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download successful Phase 14.5.27 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.27-Net-Collections-Fix-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31843758492
+
+      - name: Restore Phase 14.5.27 source and apply linked correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.27-Net-Collections-Fix-Source.zip
+          cat phase14_5_28_patch_parts/part*.txt > /tmp/phase14_5_28.patch
+          cd FushERP_Mobile_Phase5
+          patch --dry-run -p1 < /tmp/phase14_5_28.patch
+          patch -p1 < /tmp/phase14_5_28.patch
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 67' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.28-linked-output-packaging-correction"' app/build.gradle.kts
+          grep -q 'packagingPackCount' app/src/main/java/com/fush/erp/domain/ProductionMath.kt
+          grep -q 'PRODUCTION_RECEIPT_CORRECTION' app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'CORRECTION_ISSUE' app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package, schema and linked correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          test -f "$MANIFEST"
+          grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
+          grep -q 'android:authorities="com.fush.erp.recovery.files"' "$MANIFEST"
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json
+          grep -q 'party_vouchers' FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/25.json
+          grep -q 'assertEquals(18.0, ProductionMath.packagingPackCount(410.0, 24)' FushERP_Mobile_Phase5/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
+
+      - name: Zipalign release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-28-output
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-28-output/FushERP-Phase14.5.28-Linked-Output-Packaging-Correction-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-28-output/apksigner
+          mkdir -p phase14-5-28-output/lib
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-28-output/lib/apksigner.jar
+          chmod +x phase14-5-28-output/apksigner
+          zip -qr phase14-5-28-output/FushERP-Mobile-Phase14.5.28-Linked-Output-Packaging-Correction-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.28 — Linked Output & Packaging Correction' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 67' \
+            'Room schema: 25 (no migration required)' \
+            'Allows material issue correction above the standard/current quantity.' \
+            'Bottle correction is treated as the authoritative finished piece count.' \
+            'Small-bottle label target is 1:1 with bottles.' \
+            'Packet target is CEIL(bottles / 24); 410 bottles => 18 packets.' \
+            'Packet labels follow packet target when present.' \
+            'Accepted finished-goods quantity and stock are increased atomically for closed accepted batches.' \
+            'Batch cost, finished inventory, COGS, sales lot allocations and accounting are revalued.' \
+            'Existing issue rows are not deleted; correction movements and audit are retained.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-28-output/FushERP-Phase14.5.28-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.28-Linked-Output-Packaging-Correction-Build
+          path: phase14-5-28-output/
+          if-no-files-found: error
+          retention-days: 7
