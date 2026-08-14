@@ -58,11 +58,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p multi_patch
-          git show origin/phase14-5-24-build:phase14_5_24_multi_sample_quality/apply_patch.py > multi_patch/apply_patch.py
-          git show origin/phase14-5-24-build:phase14_5_24_multi_sample_quality/patch_b64_gz.txt > multi_patch/patch_b64_gz.txt
+          mkdir -p phase14_5_24_multi_sample_quality
+          git show origin/phase14-5-24-build:phase14_5_24_multi_sample_quality/apply_patch.py > phase14_5_24_multi_sample_quality/apply_patch.py
+          git show origin/phase14-5-24-build:phase14_5_24_multi_sample_quality/patch_b64_gz.txt > phase14_5_24_multi_sample_quality/patch_b64_gz.txt
           cd multi
-          python ../multi_patch/apply_patch.py
+          python ../phase14_5_24_multi_sample_quality/apply_patch.py
 
       - name: Apply Phase 14.5.24 Party Subledger patch
         shell: bash
