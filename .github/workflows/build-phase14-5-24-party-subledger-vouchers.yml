@@ -1,4 +1,4 @@
-name: Build Fush ERP Phase 14.5.24 Party Subledger Vouchers
+name: Build & Sign Fush ERP Phase 14.5.24 Party Subledger Vouchers
 
 on:
   push:
@@ -9,23 +9,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-sign:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
       actions: read
+    env:
+      EXPECTED_CERT_SHA256: 8c249dbe6d29f948b93cd04b0ad4b4aca19f05acf6e692b8623c78664ac95c7b
+      KEY_ALIAS: fush_erp
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: android-actions/setup-android@v3
+
       - name: Android SDK
+        shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
       - name: Download Phase 14.5.23 source artifact
         uses: actions/download-artifact@v4
         with:
@@ -34,15 +43,19 @@ jobs:
           github-token: ${{ github.token }}
           repository: aamggd/amgd
           run-id: 31757260560
+
       - name: Restore Phase 14.5.23 source
+        shell: bash
         run: |
+          set -euo pipefail
           unzip -q previous-build/FushERP-Mobile-Phase14.5.23-Source.zip
           grep -q 'versionCode = 62' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
       - name: Apply Phase 14.5.24 party subledger patch
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cat phase14_5_24_party_subledger_vouchers/part_*.b64 | base64 -d | gunzip > phase14524.diff
           cd FushERP_Mobile_Phase5
           patch -p1 < ../phase14524.diff
@@ -54,47 +67,135 @@ jobs:
           grep -q 'customerId: Long? = null' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           grep -q 'يجب تحديد العميل عند استخدام حساب العملاء' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           grep -q 'يجب تحديد المورد عند استخدام حساب الموردين' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
+
       - name: Unit tests
         working-directory: FushERP_Mobile_Phase5
         run: gradle --no-daemon :app:testDebugUnitTest
-      - name: Build debug and release APKs
+
+      - name: Build release APK
         working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
+        run: gradle --no-daemon :app:assembleRelease
+
       - name: Verify Room schema 24
+        shell: bash
         run: |
+          set -euo pipefail
           test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/24.json
-      - name: Package build
+
+      - name: Require permanent FUSH signing material
+        env:
+          FUSH_SIGNING_KEYSTORE_B64: ${{ secrets.FUSH_SIGNING_KEYSTORE_B64 }}
+          FUSH_SIGNING_PASSWORD: ${{ secrets.FUSH_SIGNING_PASSWORD }}
+        shell: bash
         run: |
-          mkdir -p phase14-5-24-output/apksigner/lib
-          cp FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk phase14-5-24-output/FushERP-Phase14.5.24-debug.apk
-          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-24-output/FushERP-Phase14.5.24-unsigned.apk
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-24-output/apksigner/apksigner
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-24-output/apksigner/lib/apksigner.jar
-          chmod +x phase14-5-24-output/apksigner/apksigner
-          zip -qr phase14-5-24-output/FushERP-Mobile-Phase14.5.24-Source.zip FushERP_Mobile_Phase5
-          sha256sum phase14-5-24-output/FushERP-Phase14.5.24-debug.apk > phase14-5-24-output/FushERP-Phase14.5.24-debug.apk.sha256
-          sha256sum phase14-5-24-output/FushERP-Phase14.5.24-unsigned.apk > phase14-5-24-output/FushERP-Phase14.5.24-unsigned.apk.sha256
+          set -euo pipefail
+          if [ -z "${FUSH_SIGNING_KEYSTORE_B64:-}" ]; then
+            echo "::error::Missing repository secret FUSH_SIGNING_KEYSTORE_B64. Refusing to publish a Debug/new-key APK."
+            exit 20
+          fi
+          if [ -z "${FUSH_SIGNING_PASSWORD:-}" ]; then
+            echo "::error::Missing repository secret FUSH_SIGNING_PASSWORD. Refusing to publish an unsigned APK."
+            exit 21
+          fi
+
+      - name: Decode and verify FUSH signing keystore
+        env:
+          FUSH_SIGNING_KEYSTORE_B64: ${{ secrets.FUSH_SIGNING_KEYSTORE_B64 }}
+          FUSH_SIGNING_PASSWORD: ${{ secrets.FUSH_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/FushERP-Update-Signing.p12"
+          printf '%s' "$FUSH_SIGNING_KEYSTORE_B64" | base64 -d > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+
+          CERT_SHA256="$(
+            keytool -exportcert -rfc \
+              -storetype PKCS12 \
+              -keystore "$KEYSTORE" \
+              -alias "$KEY_ALIAS" \
+              -storepass "$FUSH_SIGNING_PASSWORD" 2>/dev/null \
+            | openssl x509 -noout -fingerprint -sha256 \
+            | sed 's/.*=//' | tr -d ':' | tr '[:upper:]' '[:lower:]'
+          )"
+
+          if [ "$CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Wrong FUSH signing certificate: $CERT_SHA256"
+            exit 22
+          fi
+          echo "FUSH signing certificate verified: $CERT_SHA256"
+
+      - name: Zipalign and sign release APK
+        env:
+          FUSH_SIGNING_PASSWORD: ${{ secrets.FUSH_SIGNING_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$RUNNER_TEMP/FushERP-Update-Signing.p12"
+          UNSIGNED="FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED="$RUNNER_TEMP/FushERP-Phase14.5.24-aligned.apk"
+          FINAL="$RUNNER_TEMP/FushERP-Phase14.5.24.apk"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$UNSIGNED" "$ALIGNED"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:FUSH_SIGNING_PASSWORD \
+            --key-pass env:FUSH_SIGNING_PASSWORD \
+            --v1-signing-enabled false \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$FINAL" \
+            "$ALIGNED"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify \
+            --verbose --print-certs "$FINAL" | tee "$RUNNER_TEMP/signature-verify.txt"
+
+          SIGNER_SHA256="$(
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/signature-verify.txt" \
+              | head -1 | tr '[:upper:]' '[:lower:]'
+          )"
+          if [ "$SIGNER_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::Final APK signer mismatch: $SIGNER_SHA256"
+            exit 23
+          fi
+
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$RUNNER_TEMP/signature-verify.txt"
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' "$RUNNER_TEMP/signature-verify.txt"
+
+      - name: Package signed release
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="phase14-5-24-signed-output"
+          FINAL="$RUNNER_TEMP/FushERP-Phase14.5.24.apk"
+          mkdir -p "$OUT"
+          cp "$FINAL" "$OUT/FushERP-Phase14.5.24.apk"
+          cp "$RUNNER_TEMP/signature-verify.txt" "$OUT/FushERP-Phase14.5.24-SIGNATURE-VERIFY.txt"
+          zip -qr "$OUT/FushERP-Mobile-Phase14.5.24-Source.zip" FushERP_Mobile_Phase5
+          sha256sum "$OUT/FushERP-Phase14.5.24.apk" > "$OUT/FushERP-Phase14.5.24.apk.sha256"
           printf '%s\n' \
             'Fush ERP Phase 14.5.24 — Party Subledger & Linked Vouchers' \
             'Version: 0.15.4.24-party-subledger-vouchers (versionCode 63)' \
             'Room schema: 24' \
-            '' \
-            'Implemented:' \
-            '- Separate customer and supplier workspaces with party profiles.' \
-            '- Unified chronological customer/supplier statements including party vouchers and reversals.' \
-            '- General receipt/payment vouchers link by customerId, supplierId or employeeId when required.' \
-            '- Mandatory party validation for customer/supplier control accounts.' \
-            '- Voucher posting, GL entry, party link and audit occur in one Room transaction.' \
-            '- Posted party vouchers are corrected by reversal with reason/user/timestamp; no direct edit/delete path.' \
-            '- Quick receipt/payment creation from customer and supplier profiles.' \
-            '- Party attachments and audit tabs.' \
-            > phase14-5-24-output/FushERP-Phase14.5.24-BUILD-REPORT.txt
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Signing: PASS' \
+            'APK Signature Scheme v2: PASS' \
+            'APK Signature Scheme v3: PASS' \
+            "Signing certificate SHA-256: $EXPECTED_CERT_SHA256" \
+            'Install mode: update over the existing Fush ERP app; do not uninstall when preserving local data.' \
+            > "$OUT/FushERP-Phase14.5.24-BUILD-REPORT.txt"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Phase14.5.24-Party-Subledger-Vouchers-Build
-          path: phase14-5-24-output/
+          name: FushERP-Phase14.5.24-SIGNED-Release
+          path: phase14-5-24-signed-output/
           if-no-files-found: error
           retention-days: 7
