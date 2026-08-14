@@ -5,7 +5,7 @@ on:
     branches: [agent/phase14-5-24-party-subledger-vouchers]
     paths:
       - '.github/workflows/build-phase14-5-31-sales-rep-history-link.yml'
-      - 'phase14_5_31_patch.gz.b64'
+      - 'phase14_5_31.patch'
   workflow_dispatch:
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           unzip -q previous-build/FushERP-Mobile-Phase14.5.30-Product-Volume-Reports-Source.zip
-          base64 -d phase14_5_31_patch.gz.b64 | gunzip > /tmp/phase14_5_31.patch
+          cp phase14_5_31.patch /tmp/phase14_5_31.patch
           cd FushERP_Mobile_Phase5
           patch --dry-run -p2 < /tmp/phase14_5_31.patch
           patch -p2 < /tmp/phase14_5_31.patch
@@ -77,8 +77,7 @@ jobs:
           MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
           test -f "$MANIFEST"
           grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
-          SCHEMA=FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/26.json
-          test -f "$SCHEMA"
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/26.json
           test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
 
       - name: Historical sales representative linking smoke test
@@ -141,11 +140,11 @@ jobs:
             'Package: com.fush.erp.recovery' \
             'Version code: 70' \
             'Room schema remains 26; no database migration required.' \
-            'Linking a customer to a sales rep now backfills prior invoices only where salesRepId is NULL.' \
-            'Existing invoices assigned to another rep are never overwritten.' \
-            'Existing unassigned commission rows for those invoices are linked to the rep without changing amounts or historical rates.' \
-            'Collections and returns become visible automatically because rep metrics join through the invoice.' \
-            'The whole linking operation runs in one Room transaction and writes an audit event.' \
+            'Customer-to-rep linking now backfills prior invoices only where salesRepId is NULL.' \
+            'Invoices already assigned to another rep are never overwritten.' \
+            'Existing unassigned commission rows are linked without changing amounts or historical rates.' \
+            'Collections and returns become visible through their linked invoices.' \
+            'Linking runs atomically in one Room transaction and writes an audit event.' \
             'Unit tests: PASS' \
             'Release build: PASS' \
             'Historical rep-link smoke test: PASS' \
