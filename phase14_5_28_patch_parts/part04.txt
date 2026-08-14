@@ -1,0 +1,82 @@
++            addedCostBase = actualAddedCost,
++            linkedBottleLabelsAddedBase = bottleLabelsAdded,
++            linkedPacksAddedBase = packsAdded,
++            linkedPackLabelsAddedBase = packLabelsAdded,
++            finishedGoodsAddedBase = finishedGoodsAdded
+         )
+     }
+ 
+@@ -976,6 +1298,40 @@
+         )
+     }
+ 
++    private suspend fun postAcceptedIssueIncreaseJournal(
++        order: ProductionOrderEntity,
++        batch: ProductionBatchEntity,
++        addedRawCost: Double,
++        finishedInventoryDelta: Double,
++        cogsDelta: Double,
++        oldUnitCost: Double,
++        newUnitCost: Double,
++        reason: String,
++        createdBy: Long
++    ) {
++        if (kotlin.math.abs(addedRawCost) <= 1e-9 && kotlin.math.abs(finishedInventoryDelta) <= 1e-9 && kotlin.math.abs(cogsDelta) <= 1e-9) return
++        val inventory = requireNotNull(db.accountDao().byCode("1200")) { "حساب المخزون 1200 غير موجود" }
++        val cogs = requireNotNull(db.accountDao().byCode("5000")) { "حساب تكلفة المبيعات 5000 غير موجود" }
++        val wip = requireNotNull(db.accountDao().byCode("1210")) { "حساب الإنتاج تحت التشغيل 1210 غير موجود" }
++        val lines = mutableListOf<DraftJournalLine>()
++        fun addSigned(accountId: Long, amount: Double) {
++            when {
++                amount > 1e-9 -> lines += DraftJournalLine(accountId, amount, 0.0)
++                amount < -1e-9 -> lines += DraftJournalLine(accountId, 0.0, -amount)
++            }
++        }
++        addSigned(inventory.id, finishedInventoryDelta)
++        addSigned(cogs.id, cogsDelta)
++        if (addedRawCost > 1e-9) lines += DraftJournalLine(wip.id, 0.0, addedRawCost)
++        postJournal(
++            sourceType = "PROD_OUTPUT_CORR",
++            sourceId = order.orderNo,
++            description = "زيادة وتصحيح إنتاج الدفعة ${batch.batchNo} وتكلفتها من ${fmt(oldUnitCost)} إلى ${fmt(newUnitCost)} ريال/وحدة: $reason",
++            createdBy = createdBy,
++            lines = lines
++        )
++    }
++
+     private suspend fun postMaterialIssueJournal(order: ProductionOrderEntity, amount: Double, createdBy: Long) {
+         val wip = requireNotNull(db.accountDao().byCode("1210")) { "حساب الإنتاج تحت التشغيل 1210 غير موجود" }
+         val inventory = requireNotNull(db.accountDao().byCode("1200")) { "حساب المخزون 1200 غير موجود" }
+--- a/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+@@ -158,7 +158,7 @@
+     @Query("SELECT * FROM production_issues WHERE orderId = :orderId ORDER BY issueDate, id")
+     suspend fun issuesForOrder(orderId: Long): List<ProductionIssueEntity>
+ 
+-    @Query("SELECT * FROM production_issues WHERE materialId = :materialId AND issueKind = 'ISSUE' ORDER BY issueDate DESC, id DESC")
++    @Query("SELECT * FROM production_issues WHERE materialId = :materialId AND issueKind IN ('ISSUE','CORRECTION_ISSUE') ORDER BY issueDate DESC, id DESC")
+     suspend fun baseIssuesForMaterial(materialId: Long): List<ProductionIssueEntity>
+ 
+     @Query("SELECT COALESCE(SUM(-quantityBase), 0) FROM production_issues WHERE correctionOfIssueId = :issueId AND issueKind = 'CORRECTION_RETURN'")
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -681,11 +681,19 @@
+                         val costText = result.correctedBatchUnitCostBase?.let {
+                             " • تكلفة العبوة بعد التصحيح ${formatMoney(it)} ريال"
+                         } ?: ""
+-                        Toast.makeText(
+-                            context,
+-                            "تم إرجاع ${formatProductionQty(result.returnedQtyBase)} ${material.row.unitName} بقيمة ${formatMoney(result.returnedCostBase)} ريال$costText",
+-                            Toast.LENGTH_LONG
+-                        ).show()
++                        val message = if (result.addedQtyBase > 1e-9) {
++                            buildString {
++                                append("تمت زيادة الصرف ${formatProductionQty(result.addedQtyBase)} ${material.row.unitName}")
++                                if (result.finishedGoodsAddedBase > 1e-9) append(" • المنتج النهائي +${formatProductionQty(result.finishedGoodsAddedBase)} عبوة")
++                                if (result.linkedBottleLabelsAddedBase > 1e-9) append(" • ملصقات العبوات +${formatProductionQty(result.linkedBottleLabelsAddedBase)}")
++                                if (result.linkedPacksAddedBase > 1e-9) append(" • الباكتات +${formatProductionQty(result.linkedPacksAddedBase)}")
++                                if (result.linkedPackLabelsAddedBase > 1e-9) append(" • ملصقات الباكت +${formatProductionQty(result.linkedPackLabelsAddedBase)}")
++                                append(costText)
++                            }
++                        } else {
++                            "تم إرجاع ${formatProductionQty(result.returnedQtyBase)} ${material.row.unitName} ب
