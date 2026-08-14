@@ -1,0 +1,50 @@
+name: Align Fush ERP Phase 14.5.26 Stable Recovery
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/align-phase14-5-26-stable-recovery.yml'
+  workflow_dispatch:
+
+jobs:
+  align:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;36.0.0"
+      - name: Download successful Phase 14.5.26 build
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.26-Stable-Recovery-Build
+          path: input
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31841726668
+      - name: Zipalign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          IN=input/FushERP-Phase14.5.26-Stable-Recovery-unsigned.apk
+          OUT=FushERP-Phase14.5.26-Stable-Recovery-aligned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$IN" "$OUT"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$OUT"
+          sha256sum "$OUT" > "$OUT.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.26-Stable-Recovery-Aligned
+          path: |
+            FushERP-Phase14.5.26-Stable-Recovery-aligned.apk
+            FushERP-Phase14.5.26-Stable-Recovery-aligned.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
