@@ -1,0 +1,35 @@
+from pathlib import Path
+ROOT = Path('FushERP_Mobile_Phase5')
+
+def repl(rel: str, old: str, new: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding='utf-8')
+    if old not in text:
+        raise SystemExit(f'Pattern not found in {rel}: {old[:100]!r}')
+    p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+def insert_before(rel: str, anchor: str, addition: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding='utf-8')
+    if addition in text:
+        return
+    if anchor not in text:
+        raise SystemExit(f'Anchor not found in {rel}: {anchor[:100]!r}')
+    p.write_text(text.replace(anchor, addition + anchor, 1), encoding='utf-8')
+
+def insert_after(rel: str, anchor: str, addition: str) -> None:
+    p = ROOT / rel
+    text = p.read_text(encoding='utf-8')
+    if addition in text:
+        return
+    if anchor not in text:
+        raise SystemExit(f'Anchor not found in {rel}: {anchor[:100]!r}')
+    p.write_text(text.replace(anchor, anchor + addition, 1), encoding='utf-8')
+
+repl('app/build.gradle.kts', 'versionCode = 61', 'versionCode = 62')
+repl('app/build.gradle.kts', 'versionName = "0.15.4.22-phase14.5-production-expiry-diagnostics"', 'versionName = "0.15.4.23-phase14.5-legacy-lot-assignment"')
+
+insert_after(
+    'app/src/main/java/com/fush/erp/domain/InventoryMath.kt',
+    '    fun expiryKey(expiryDate: Long?): Long = expiryDate ?: -1L\n',
+    '''\n    fun validateLegacyTrackingAssignment(\n        quantityBase: Double,\n        availableBase: Double,\n        lotTracked: Boolean,\n        expiryTracked: Boolean,\n        sourceLotNo: String?,\n        sourceExpiryDate: Long?,\n        destinationLotNo: String?,\n        destinationExpiryD
