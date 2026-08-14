@@ -1,0 +1,81 @@
+name: Build Fush ERP Phase 14.5.23 Legacy Lot Assignment
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-phase14-5-23-legacy-lot-assignment.yml'
+      - 'phase14_5_23_legacy_lot_assignment/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Phase 14.5.22 source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.22-Production-Expiry-Diagnostics-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31755175240
+      - name: Restore Phase 14.5.22 source
+        run: |
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.22-Source.zip
+          grep -q 'versionCode = 61' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Apply Phase 14.5.23 patch
+        shell: bash
+        run: |
+          base64 -d phase14_5_23_legacy_lot_assignment/patch.b64 | gunzip > phase14523.diff
+          sed -i 's#fusherp14522_orig/FushERP_Mobile_Phase5/#a/#g; s#fusherp14522_src/FushERP_Mobile_Phase5/#b/#g' phase14523.diff
+          cd FushERP_Mobile_Phase5
+          patch -p1 < ../phase14523.diff
+          grep -q 'versionCode = 62' app/build.gradle.kts
+          grep -q 'assignLegacyLotAndExpiry' app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
+          grep -q 'ربط رصيد قديم بتشغيلة وصلاحية' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 23' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema 23 unchanged
+        run: |
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/23.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/24.json
+      - name: Package build
+        run: |
+          mkdir -p phase14-5-23-output/apksigner/lib
+          cp FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk phase14-5-23-output/FushERP-Phase14.5.23-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-23-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-23-output/apksigner/lib/apksigner.jar
+          chmod +x phase14-5-23-output/apksigner/apksigner
+          zip -qr phase14-5-23-output/FushERP-Mobile-Phase14.5.23-Source.zip FushERP_Mobile_Phase5
+          sha256sum phase14-5-23-output/FushERP-Phase14.5.23-unsigned.apk > phase14-5-23-output/FushERP-Phase14.5.23-unsigned.apk.sha256
+          printf '%s\n' 'Fush ERP Phase 14.5.23 — Legacy Inventory Lot/Expiry Assignment' 'Version: 0.15.4.23-phase14.5-legacy-lot-assignment (versionCode 62)' 'Room schema: 23 (unchanged)' '' 'Added:' '- Assign missing lot number and/or expiry date to existing legacy stock.' '- Reclassification preserves total quantity and inventory value using equal OUT/IN movements.' '- Operation is atomic and audited.' '- Supports partial quantity assignment.' > phase14-5-23-output/FushERP-Phase14.5.23-BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.23-Legacy-Lot-Assignment-Build
+          path: phase14-5-23-output/
+          if-no-files-found: error
+          retention-days: 7
