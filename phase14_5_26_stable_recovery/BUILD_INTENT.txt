@@ -1,0 +1,1 @@
+Stable recovery build package com.fush.erp.recovery; accepts verified original FUSH backups and preserves original/preview installations side-by-side.
