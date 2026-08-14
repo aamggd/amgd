@@ -1,0 +1,114 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 66
+-        versionName = "0.15.4.27-net-collections-fix"
++        versionCode = 67
++        versionName = "0.15.4.28-linked-output-packaging-correction"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
+@@ -1,6 +1,8 @@
+ package com.fush.erp.domain
+ 
+ import kotlin.math.abs
++import kotlin.math.ceil
++import kotlin.math.round
+ 
+ data class ProductionRequirement(
+     val itemId: Long,
+@@ -30,6 +32,19 @@
+         require(componentQty > 0.0 && componentQty.isFinite())
+         require(plannedOutputQty > 0.0 && plannedOutputQty.isFinite())
+         return componentQty
++    }
++
++    fun requireWholePieceQuantity(quantity: Double, label: String = "الكمية"): Double {
++        require(quantity >= 0.0 && quantity.isFinite()) { "$label غير صالحة" }
++        require(abs(quantity - round(quantity)) <= 1e-9) { "$label يجب أن تكون عددًا صحيحًا من القطع" }
++        return round(quantity)
++    }
++
++    fun packagingPackCount(bottleQty: Double, bottlesPerPack: Int = 24): Double {
++        val bottles = requireWholePieceQuantity(bottleQty, "عدد العبوات")
++        require(bottlesPerPack > 0) { "سعة الباكيت غير صالحة" }
++        if (bottles <= 0.0) return 0.0
++        return ceil(bottles / bottlesPerPack.toDouble())
+     }
+ 
+     fun validateDirectLaborCost(laborCost: Double): Double {
+--- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+@@ -28,7 +28,13 @@
+         val correctedMaterialCostBase: Double,
+         val correctedBatchUnitCostBase: Double?,
+         val finishedInventoryReductionBase: Double,
+-        val cogsReductionBase: Double
++        val cogsReductionBase: Double,
++        val addedQtyBase: Double = 0.0,
++        val addedCostBase: Double = 0.0,
++        val linkedBottleLabelsAddedBase: Double = 0.0,
++        val linkedPacksAddedBase: Double = 0.0,
++        val linkedPackLabelsAddedBase: Double = 0.0,
++        val finishedGoodsAddedBase: Double = 0.0
+     )
+ 
+ 
+@@ -379,8 +385,17 @@
+         }
+         val oldIssuedQty = material.issuedQtyBase
+         require(oldIssuedQty > 1e-9) { "لا يوجد صرف مسجل لهذه المادة" }
+-        require(correctedIssuedQtyBase < oldIssuedQty - 1e-9) {
+-            "هذه العملية لتقليل الصرف الزائد فقط. أدخل كمية صحيحة أقل من المصروف الحالي"
++        require(kotlin.math.abs(correctedIssuedQtyBase - oldIssuedQty) > 1e-9) { "الكمية الجديدة مطابقة للمصروف الحالي" }
++        val item = requireNotNull(db.itemDao().byId(material.itemId)) { "الصنف رقم ${material.itemId} غير موجود" }
++        if (correctedIssuedQtyBase > oldIssuedQty + 1e-9) {
++            return@withTransaction increaseMaterialIssueCorrection(
++                order = order,
++                material = material,
++                item = item,
++                correctedIssuedQtyBase = correctedIssuedQtyBase,
++                reason = reason.trim(),
++                createdBy = createdBy
++            )
+         }
+ 
+         val oldMaterialCost = db.productionDao().materialCostForOrder(order.id)
+@@ -465,7 +480,7 @@
+                 correctedBatchUnitCost = newUnitCost
+ 
+                 val allowedTypes = setOf(
+-                    "PRODUCTION_RECEIPT", "SALE", "SALES_RETURN",
++                    "PRODUCTION_RECEIPT", "PRODUCTION_RECEIPT_CORRECTION", "SALE", "SALES_RETURN",
+                     "PRODUCTION_COST_REVALUE_OUT", "PRODUCTION_COST_REVALUE_IN"
+                 )
+                 val movementTypes = db.stockDao().movementTypesForLot(order.finishedWarehouseId, order.productItemId, batch.batchNo)
+@@ -555,6 +570,313 @@
+             correctedBatchUnitCostBase = correctedBatchUnitCost,
+             finishedInventoryReductionBase = finishedInventoryReduction,
+             cogsReductionBase = cogsReduction
++        )
++    }
++
++    private data class AddedIssue(val quantityBase: Double, val costBase: Double)
++
++    private suspend fun issueAdditionalMaterialToTarget(
++        order: ProductionOrderEntity,
++        material: ProductionMaterialEntity,
++        targetQtyBase: Double,
++        reason: String,
++        createdBy: Long,
++        now: Long
++    ): AddedIssue {
++        require(targetQtyBase.isFinite() && targetQtyBase >= material.issuedQtyBase - 1e-9) { "الكمية المستهدفة للصرف غير صالحة" }
++        val additionalQty = (targetQtyBase - material.issuedQtyBase).coerceAtLeast(0.0)
++        if (additionalQty <= 1e-9) return AddedIssue(0.0, 0.0)
++
++        val item = requireNotNull(db.itemDao().byId(material.itemId)) { "الصنف رقم ${material.itemId} غير موجود" }
++        val lots = AdvancedInventoryService(db).usableLots(order.rawWarehouseId, material.itemId)
++            .filter { it.quantityBase > 1e-9 }
