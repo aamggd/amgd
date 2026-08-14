@@ -1,0 +1,89 @@
+f (correctedOnHandQty > 1e-9) {
++                val currentValue = requireNotNull(currentLot).inventoryValueBase
++                val currentUnit = currentValue / correctedOnHandQty
++                if (kotlin.math.abs(currentUnit - newUnitCost) > 1e-7) {
++                    db.stockDao().insertMovement(
++                        StockMovementEntity(
++                            movementDate = now,
++                            warehouseId = order.finishedWarehouseId,
++                            itemId = order.productItemId,
++                            movementType = "PRODUCTION_COST_REVALUE_OUT",
++                            quantityBase = -correctedOnHandQty,
++                            unitCostBase = currentUnit,
++                            referenceType = "PRODUCTION_OUTPUT_CORRECTION",
++                            referenceId = batch.id,
++                            lotNo = batch.batchNo,
++                            expiryDate = batch.expiryDate
++                        )
++                    )
++                    db.stockDao().insertMovement(
++                        StockMovementEntity(
++                            movementDate = now,
++                            warehouseId = order.finishedWarehouseId,
++                            itemId = order.productItemId,
++                            movementType = "PRODUCTION_COST_REVALUE_IN",
++                            quantityBase = correctedOnHandQty,
++                            unitCostBase = newUnitCost,
++                            referenceType = "PRODUCTION_OUTPUT_CORRECTION",
++                            referenceId = batch.id,
++                            lotNo = batch.batchNo,
++                            expiryDate = batch.expiryDate
++                        )
++                    )
++                }
++            }
++
++            revalueSalesLotCosts(order.productItemId, batch.batchNo, newUnitCost)
++            finishedInventoryDelta = correctedOnHandQty * newUnitCost - oldInventoryValue
++            cogsDelta = actualAddedCost - finishedInventoryDelta
++            postAcceptedIssueIncreaseJournal(
++                order = order,
++                batch = batch,
++                addedRawCost = actualAddedCost,
++                finishedInventoryDelta = finishedInventoryDelta,
++                cogsDelta = cogsDelta,
++                oldUnitCost = oldUnitCost,
++                newUnitCost = newUnitCost,
++                reason = reason,
++                createdBy = createdBy
++            )
++            if (finishedGoodsAdded > 1e-9) {
++                db.productionDao().updateBatch(
++                    batch.copy(
++                        actualOutputQtyBase = newActual,
++                        acceptedQtyBase = newAccepted
++                    )
++                )
++            }
++        } else if (batch != null && batch.status == "QC_HOLD" && isBottlePackaging) {
++            require(correctedIssuedQtyBase + 1e-9 >= batch.actualOutputQtyBase) { "عدد العبوات المصحح أقل من الناتج الفعلي الحالي" }
++            finishedGoodsAdded = (correctedIssuedQtyBase - batch.actualOutputQtyBase).coerceAtLeast(0.0)
++            val newActual = correctedIssuedQtyBase
++            ProductionMath.validateOutput(newActual, batch.acceptedQtyBase, batch.rejectedQtyBase, batch.scrapQtyBase)
++            db.productionDao().updateBatch(batch.copy(actualOutputQtyBase = newActual))
++        } else if (isBottlePackaging && batch?.status == "REJECTED") {
++            throw IllegalArgumentException("لا يمكن زيادة الناتج النهائي لدفعة مرفوضة")
++        }
++
++        val updatedSelectedQty = db.productionDao().netIssuedQtyForMaterial(material.id)
++        db.governanceDao().insertAudit(
++            AuditEventEntity(
++                userId = createdBy,
++                action = if (finishedGoodsAdded > 1e-9) "CORRECT_PRODUCTION_OUTPUT_UP" else "CORRECT_PRODUCTION_ISSUE_UP",
++                entityType = "PRODUCTION_ORDER",
++                entityId = order.id.toString(),
++                oldValue = "materialId=${material.id}; issued=${fmt(material.issuedQtyBase)}; materialCost=${fmt(oldMaterialCost)}; accepted=${fmt(batchBefore?.acceptedQtyBase ?: 0.0)}",
++                newValue = "issued=${fmt(updatedSelectedQty)}; added=${fmt(selectedIncrease.quantityBase)}; labelsAdded=${fmt(bottleLabelsAdded)}; packsAdded=${fmt(packsAdded)}; packLabelsAdded=${fmt(packLabelsAdded)}; finishedAdded=${fmt(finishedGoodsAdded)}; materialCost=${fmt(newMaterialCost)}",
++                reason = reason
++            )
++        )
++
++        return IssueCorrectionResult(
++            returnedQtyBase = 0.0,
++            returnedCostBase = 0.0,
++            correctedIssuedQtyBase = updatedSelectedQty,
++            correctedMaterialCostBase = newMaterialCost,
++            correctedBatchUnitCostBase = correctedBatchUnitCost,
++            finishedInventoryReductionBase = -finishedInventoryDelta,
++            cogsReductionBase = -cogsDelta,
++            addedQtyBase = selectedIncrease.quantityBase,
