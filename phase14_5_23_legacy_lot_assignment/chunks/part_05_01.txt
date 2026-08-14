@@ -1,0 +1,9 @@
+ remember { mutableStateOf<InventoryLotAlertRow?>(null) }\n    var lotToAssign by remember { mutableStateOf<InventoryLotAlertRow?>(null) }\n    var message by remember { mutableStateOf<String?>(null) }\n'
+)
+repl(
+    'app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt',
+    '            "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })\n',
+    '            "التشغيلات" -> InventoryLots(lots, itemsList, onControl = { lotToControl = it }, onAssignTracking = { lotToAssign = it })\n'
+)
+
+anchor = '''    lotToControl?.let { lot ->\n        LotControlDialog(lot, onDismiss = { lotToControl = null }) { status, reason ->\n            scope.launch {\n                try {\n                    container.advancedInventoryService.setLotStatus(lot.warehouseId, lot.it
