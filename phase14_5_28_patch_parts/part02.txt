@@ -1,0 +1,88 @@
+Add.costBase
++
++            val targetPacks = ProductionMath.packagingPackCount(correctedIssuedQtyBase, 24)
++            val packMaterial = materialByCode("PK-PACK")
++                ?: throw IllegalArgumentException("لا يوجد باكيت تغليف PK-PACK داخل مواد أمر الإنتاج")
++            val packAdd = issueAdditionalMaterialToTarget(order, packMaterial, targetPacks, reason, createdBy, now)
++            packsAdded = packAdd.quantityBase
++            totalAddedCost += packAdd.costBase
++
++            materialByCode("PK-PACK-LABEL")?.let { packLabelMaterial ->
++                val packLabelAdd = issueAdditionalMaterialToTarget(order, packLabelMaterial, targetPacks, reason, createdBy, now)
++                packLabelsAdded = packLabelAdd.quantityBase
++                totalAddedCost += packLabelAdd.costBase
++            }
++
++            // The bottle correction is the authoritative final piece count.
++            // The actual finished-goods delta is calculated against the batch quantity below.
++        }
++
++        require(totalAddedCost >= -1e-7) { "تكلفة زيادة الصرف غير صالحة" }
++        if (totalAddedCost > 1e-9) postMaterialIssueJournal(order, totalAddedCost, createdBy)
++
++        val newMaterialCost = db.productionDao().materialCostForOrder(order.id)
++        val actualAddedCost = newMaterialCost - oldMaterialCost
++        require(kotlin.math.abs(actualAddedCost - totalAddedCost) <= 0.01) { "قيمة زيادة الصرف لا تطابق تكلفة المواد" }
++
++        var correctedBatchUnitCost: Double? = null
++        var finishedInventoryDelta = 0.0
++        var cogsDelta = 0.0
++        val batch = batchBefore
++
++        if (batch != null && batch.status == "ACCEPTED" && order.status == "CLOSED") {
++            require(batch.acceptedQtyBase > 0.0) { "الدفعة المقبولة لا تحتوي كمية صحيحة" }
++            val oldAccepted = batch.acceptedQtyBase
++            val newAccepted = if (isBottlePackaging) {
++                require(batch.rejectedQtyBase <= 1e-9 && batch.scrapQtyBase <= 1e-9) {
++                    "لا يمكن مزامنة المنتج النهائي تلقائيًا لأن الدفعة تحتوي كمية مرفوضة أو هالك؛ صحح بيانات الجودة أولاً"
++                }
++                require(correctedIssuedQtyBase + 1e-9 >= oldAccepted) { "عدد العبوات المصحح أقل من المنتج النهائي المقبول الحالي" }
++                correctedIssuedQtyBase
++            } else oldAccepted
++            val newActual = if (isBottlePackaging) newAccepted else batch.actualOutputQtyBase
++            finishedGoodsAdded = (newAccepted - oldAccepted).coerceAtLeast(0.0)
++            ProductionMath.validateOutput(newActual, newAccepted, batch.rejectedQtyBase, batch.scrapQtyBase)
++
++            val oldTotalCost = oldMaterialCost + order.directLaborCostBase
++            val newTotalCost = newMaterialCost + order.directLaborCostBase
++            val oldUnitCost = oldTotalCost / oldAccepted
++            val newUnitCost = newTotalCost / newAccepted
++            correctedBatchUnitCost = newUnitCost
++
++            val allowedTypes = setOf(
++                "PRODUCTION_RECEIPT", "PRODUCTION_RECEIPT_CORRECTION", "SALE", "SALES_RETURN",
++                "PRODUCTION_COST_REVALUE_OUT", "PRODUCTION_COST_REVALUE_IN"
++            )
++            val movementTypes = db.stockDao().movementTypesForLot(order.finishedWarehouseId, order.productItemId, batch.batchNo)
++            val unsupported = movementTypes.filterNot { it in allowedTypes }
++            require(unsupported.isEmpty()) {
++                "تشغيلة ${batch.batchNo} تحتوي حركات مخزون أخرى (${unsupported.joinToString()})؛ يجب مراجعتها قبل زيادة الإنتاج"
++            }
++
++            val oldLot = db.stockDao().lotBalances(order.finishedWarehouseId, order.productItemId)
++                .firstOrNull { it.lotNo == batch.batchNo }
++            val oldOnHandQty = oldLot?.quantityBase ?: 0.0
++            val oldInventoryValue = oldLot?.inventoryValueBase ?: 0.0
++            require(oldOnHandQty <= oldAccepted + 1e-7) { "رصيد الدفعة الحالي يتجاوز الكمية المقبولة قبل التصحيح" }
++
++            if (finishedGoodsAdded > 1e-9) {
++                db.stockDao().insertMovement(
++                    StockMovementEntity(
++                        movementDate = now,
++                        warehouseId = order.finishedWarehouseId,
++                        itemId = order.productItemId,
++                        movementType = "PRODUCTION_RECEIPT_CORRECTION",
++                        quantityBase = finishedGoodsAdded,
++                        unitCostBase = newUnitCost,
++                        referenceType = "PRODUCTION_OUTPUT_CORRECTION",
++                        referenceId = batch.id,
++                        lotNo = batch.batchNo,
++                        expiryDate = batch.expiryDate
++                    )
++                )
++            }
++
++            val currentLot = db.stockDao().lotBalances(order.finishedWarehouseId, order.productItemId)
++                .firstOrNull { it.lotNo == batch.batchNo }
++            val correctedOnHandQty = currentLot?.quantityBase ?: 0.0
++            i
