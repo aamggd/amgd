@@ -1,0 +1,166 @@
+diff -ruN fush14531_base/FushERP_Mobile_Phase5/app/build.gradle.kts fush14531_mod/FushERP_Mobile_Phase5/app/build.gradle.kts
+--- fush14531_base/FushERP_Mobile_Phase5/app/build.gradle.kts	2026-08-14 23:22:51.000000000 +0000
++++ fush14531_mod/FushERP_Mobile_Phase5/app/build.gradle.kts	2026-08-14 23:43:25.062515920 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 69
+-        versionName = "0.15.4.30-product-volume-production-sales"
++        versionCode = 70
++        versionName = "0.15.4.31-sales-rep-history-link"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff -ruN fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/SalesRepresentativeDao.kt fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/SalesRepresentativeDao.kt
+--- fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/SalesRepresentativeDao.kt	2026-08-14 23:04:59.000000000 +0000
++++ fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/dao/SalesRepresentativeDao.kt	2026-08-14 23:43:25.062652863 +0000
+@@ -73,4 +73,28 @@
+ 
+     @Query("SELECT COALESCE(SUM(amountBase),0) FROM party_vouchers WHERE salesRepId=:repId AND voucherType='PAYMENT' AND status='POSTED'")
+     fun observeCommissionPaidBase(repId: Long): Flow<Double>
++
++    @Query("SELECT COUNT(*) FROM sales_invoices WHERE customerId=:customerId AND salesRepId IS NULL")
++    suspend fun unassignedInvoiceCountForCustomer(customerId: Long): Int
++
++    @Query("SELECT COALESCE(SUM(totalBase),0) FROM sales_invoices WHERE customerId=:customerId AND salesRepId IS NULL AND status='POSTED'")
++    suspend fun unassignedPostedSalesBaseForCustomer(customerId: Long): Double
++
++    @Query("""
++        UPDATE sales_invoices
++        SET salesRepId=:repId, salesRepNameSnapshot=:repName
++        WHERE customerId=:customerId AND salesRepId IS NULL
++    """)
++    suspend fun linkUnassignedInvoicesForCustomer(customerId: Long, repId: Long, repName: String): Int
++
++    @Query("""
++        UPDATE sales_commissions
++        SET salesRepId=:repId, beneficiary=:repName
++        WHERE salesRepId IS NULL
++          AND invoiceId IN (
++              SELECT id FROM sales_invoices
++              WHERE customerId=:customerId AND salesRepId=:repId
++          )
++    """)
++    suspend fun linkUnassignedCommissionsForCustomer(customerId: Long, repId: Long, repName: String): Int
+ }
+diff -ruN fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesRepresentativeService.kt fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesRepresentativeService.kt
+--- fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesRepresentativeService.kt	2026-08-14 23:04:59.000000000 +0000
++++ fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/domain/SalesRepresentativeService.kt	2026-08-14 23:43:25.062795314 +0000
+@@ -7,6 +7,14 @@
+ import java.util.Locale
+ 
+ class SalesRepresentativeService(private val db: FushDatabase) {
++    data class CustomerHistoryLinkResult(
++        val customerId: Long,
++        val salesRepId: Long,
++        val invoicesLinked: Int,
++        val commissionsLinked: Int,
++        val salesBaseLinked: Double
++    )
++
+     suspend fun create(
+         repType: String,
+         employeeId: Long?,
+@@ -96,4 +104,56 @@
+         )
+         row
+     }
++
++    suspend fun assignCustomerWithHistory(
++        customerId: Long,
++        salesRepId: Long,
++        updatedBy: Long
++    ): CustomerHistoryLinkResult = db.withTransaction {
++        val rep = requireNotNull(db.salesRepresentativeDao().byId(salesRepId)) { "مندوب المبيعات غير موجود" }
++        require(rep.status == "ACTIVE") { "مندوب المبيعات غير نشط" }
++        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
++
++        val invoicesBefore = db.salesRepresentativeDao().unassignedInvoiceCountForCustomer(customerId)
++        val salesBaseBefore = db.salesRepresentativeDao().unassignedPostedSalesBaseForCustomer(customerId)
++
++        db.customerDao().update(
++            customer.copy(
++                salesRepId = rep.id,
++                salesRepName = rep.fullNameAr
++            )
++        )
++
++        val invoicesLinked = db.salesRepresentativeDao().linkUnassignedInvoicesForCustomer(
++            customerId = customerId,
++            repId = rep.id,
++            repName = rep.fullNameAr
++        )
++        val commissionsLinked = db.salesRepresentativeDao().linkUnassignedCommissionsForCustomer(
++            customerId = customerId,
++            repId = rep.id,
++            repName = rep.fullNameAr
++        )
++
++        db.governanceDao().insertAudit(
++            AuditEventEntity(
++                userId = updatedBy,
++                action = "LINK_HISTORY",
++                entityType = "SALES_REP_CUSTOMER",
++                entityId = "${rep.id}:$customerId",
++                oldValue = "customerRep=${customer.salesRepId ?: 0}|unassignedInvoices=$invoicesBefore|unassignedSalesBase=$salesBaseBefore",
++                newValue = "customerRep=${rep.id}|linkedInvoices=$invoicesLinked|linkedCommissions=$commissionsLinked|linkedSalesBase=$salesBaseBefore",
++                reason = "ربط العميل بالمندوب وربط المبيعات السابقة غير المرتبطة بمندوب"
++            )
++        )
++
++        CustomerHistoryLinkResult(
++            customerId = customerId,
++            salesRepId = rep.id,
++            invoicesLinked = invoicesLinked,
++            commissionsLinked = commissionsLinked,
++            salesBaseLinked = salesBaseBefore
++        )
++    }
++
+ }
+diff -ruN fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+--- fush14531_base/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt	2026-08-14 23:04:59.000000000 +0000
++++ fush14531_mod/FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt	2026-08-14 23:43:25.063042130 +0000
+@@ -201,24 +201,16 @@
+         AssignCustomerToRepDialog(allCustomers, rep, onDismiss = { showAssignCustomer = false }) { customer ->
+             scope.launch {
+                 try {
+-                    container.salesService.updateCustomer(
++                    val result = container.salesRepresentativeService.assignCustomerWithHistory(
+                         customerId = customer.id,
+-                        nameAr = customer.nameAr,
+-                        nameEn = customer.nameEn,
+-                        phone = customer.phone,
+-                        address = customer.address,
+-                        province = customer.province,
+-                        channel = customer.channel,
+-                        classification = customer.classification,
+-                        currencyCode = customer.currencyCode,
+-                        creditLimitBase = customer.creditLimitBase,
+-                        creditDays = customer.creditDays,
+-                        allowCredit = customer.allowCredit,
+-                        salesRepName = rep.fullNameAr,
+-                        updatedBy = user.id,
+-                        salesRepId = rep.id
++                        salesRepId = rep.id,
++                        updatedBy = user.id
+                     )
+-                    message = "تم ربط العميل ${customer.nameAr} بالمندوب"
++                    message = if (result.invoicesLinked > 0 || result.commissionsLinked > 0) {
++                        "تم ربط العميل ${customer.nameAr} بالمندوب وربط ${result.invoicesLinked} فاتورة سابقة و${result.commissionsLinked} حركة عمولة"
++                    } else {
++                        "تم ربط العميل ${customer.nameAr} بالمندوب، ولا توجد مبيعات سابقة غير مرتبطة"
++                    }
+                     showAssignCustomer = false
+                 } catch (e: Exception) { message = e.message ?: "تعذر ربط العميل" }
+             }
+@@ -304,7 +296,7 @@
+ @Composable
+ private fun AssignCustomerToRepDialog(customers: List<CustomerEntity>, rep: SalesRepresentativeEntity, onDismiss: () -> Unit, onSave: (CustomerEntity) -> Unit) {
+     var customer by remember { mutableStateOf<CustomerEntity?>(null) }
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("ربط عميل بـ ${rep.fullNameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){RepSelection("العميل",customer?.let{"${it.code} — ${it.nameAr}"}?:"اختر العميل",customers,{"${it.code} — ${it.nameAr} • ${it.province}"}){customer=it}; customer?.salesRepName?.takeIf{it.isNotBlank()}?.let{Text("المندوب الحالي: $it",style=MaterialTheme.typography.bodySmall)}}},confirmButton={Button(enabled=customer!=null,onClick={onSave(customer!!)}){Text("ربط")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
++    AlertDialog(onDismissRequest=onDismiss,title={Text("ربط عميل بـ ${rep.fullNameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){RepSelection("العميل",customer?.let{"${it.code} — ${it.nameAr}"}?:"اختر العميل",customers,{"${it.code} — ${it.nameAr} • ${it.province}"}){customer=it}; customer?.salesRepName?.takeIf{it.isNotBlank()}?.let{Text("المندوب الحالي: $it",style=MaterialTheme.typography.bodySmall)}; Text("سيتم أيضًا ربط الفواتير السابقة لهذا العميل التي لا يوجد عليها مندوب، وربط عمولاتها السابقة بالمندوب. لن يتم تغيير أي فاتورة مرتبطة أصلًا بمندوب آخر.",style=MaterialTheme.typography.bodySmall)}},confirmButton={Button(enabled=customer!=null,onClick={onSave(customer!!)}){Text("ربط المبيعات السابقة")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+ @Composable
