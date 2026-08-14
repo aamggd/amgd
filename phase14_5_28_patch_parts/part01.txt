@@ -1,0 +1,108 @@
+ }
++        lots.forEach { lot ->
++            ProductionMath.validateIssueLotTracking(
++                lotTracked = item.lotTracked,
++                expiryTracked = item.expiryTracked,
++                lotNo = lot.lotNo,
++                expiryDate = lot.expiryDate,
++                itemLabel = "${item.nameAr} (${item.code})"
++            )
++        }
++        val available = lots.sumOf { it.quantityBase }
++        require(available + 1e-9 >= additionalQty) {
++            "المخزون المتاح لا يكفي لزيادة صرف ${item.nameAr}: المطلوب إضافيًا ${fmt(additionalQty)} والمتاح ${fmt(available)}"
++        }
++
++        var remaining = additionalQty
++        var addedCost = 0.0
++        for (lot in lots) {
++            if (remaining <= 1e-9) break
++            val take = min(remaining, lot.quantityBase)
++            if (take <= 1e-9) continue
++            val unitCost = if (lot.quantityBase <= 1e-9) 0.0 else lot.inventoryValueBase / lot.quantityBase
++            val cost = take * unitCost
++            val issueId = db.productionDao().insertIssue(
++                ProductionIssueEntity(
++                    orderId = order.id,
++                    materialId = material.id,
++                    itemId = material.itemId,
++                    quantityBase = take,
++                    unitCostBase = unitCost,
++                    totalCostBase = cost,
++                    lotNo = lot.lotNo,
++                    expiryDate = lot.expiryDate,
++                    issueKind = "CORRECTION_ISSUE",
++                    reason = reason,
++                    createdBy = createdBy,
++                    issueDate = now
++                )
++            )
++            db.stockDao().insertMovement(
++                StockMovementEntity(
++                    movementDate = now,
++                    warehouseId = order.rawWarehouseId,
++                    itemId = material.itemId,
++                    movementType = "PRODUCTION_ISSUE_CORRECTION",
++                    quantityBase = -take,
++                    unitCostBase = unitCost,
++                    referenceType = "PRODUCTION_ISSUE_CORRECTION",
++                    referenceId = issueId,
++                    lotNo = lot.lotNo,
++                    expiryDate = lot.expiryDate
++                )
++            )
++            remaining -= take
++            addedCost += cost
++        }
++        require(remaining <= 1e-7) { "تعذر تخصيص كامل كمية الزيادة من التشغيلات المتاحة" }
++
++        val netQty = db.productionDao().netIssuedQtyForMaterial(material.id)
++        val netCost = db.productionDao().netIssueCostForMaterial(material.id)
++        require(kotlin.math.abs(netQty - targetQtyBase) <= 1e-6) { "تعذر مطابقة صافي الصرف بعد الزيادة" }
++        db.productionDao().updateMaterial(material.copy(issuedQtyBase = netQty, issueCostBase = netCost))
++        return AddedIssue(additionalQty, addedCost)
++    }
++
++    private suspend fun increaseMaterialIssueCorrection(
++        order: ProductionOrderEntity,
++        material: ProductionMaterialEntity,
++        item: ItemEntity,
++        correctedIssuedQtyBase: Double,
++        reason: String,
++        createdBy: Long
++    ): IssueCorrectionResult {
++        require(order.status != "REJECTED") { "لا يمكن زيادة صرف مواد دفعة مرفوضة؛ راجع الدفعة أولاً" }
++        val now = System.currentTimeMillis()
++        val oldMaterialCost = db.productionDao().materialCostForOrder(order.id)
++        val batchBefore = db.productionDao().batchForOrder(order.id)
++        val isBottlePackaging = item.code.uppercase(Locale.US).startsWith("PK-BOTTLE-")
++
++        if (isBottlePackaging) {
++            ProductionMath.requireWholePieceQuantity(correctedIssuedQtyBase, "عدد العبوات النهائي")
++        }
++
++        val materials = db.productionDao().materialsForOrder(order.id)
++        suspend fun materialByCode(code: String): ProductionMaterialEntity? {
++            for (row in materials) {
++                if (db.itemDao().byId(row.itemId)?.code?.equals(code, ignoreCase = true) == true) return row
++            }
++            return null
++        }
++
++        val selectedIncrease = issueAdditionalMaterialToTarget(
++            order, material, correctedIssuedQtyBase, reason, createdBy, now
++        )
++        var totalAddedCost = selectedIncrease.costBase
++        var bottleLabelsAdded = 0.0
++        var packsAdded = 0.0
++        var packLabelsAdded = 0.0
++        var finishedGoodsAdded = 0.0
++
++        if (isBottlePackaging) {
++            val suffix = item.code.substringAfter("PK-BOTTLE-", "").trim()
++            val labelCode = if (suffix.isBlank()) "PK-LABEL-60" else "PK-LABEL-$suffix"
++            val labelMaterial = materialByCode(labelCode)
++                ?: throw IllegalArgumentException("لا يوجد ملصق عبوة مرتبط ($labelCode) داخل مواد أمر الإنتاج")
++            val labelAdd = issueAdditionalMaterialToTarget(order, labelMaterial, correctedIssuedQtyBase, reason, createdBy, now)
++            bottleLabelsAdded = labelAdd.quantityBase
++            totalAddedCost += label
