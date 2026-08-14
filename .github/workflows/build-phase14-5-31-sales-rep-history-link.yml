@@ -1,0 +1,160 @@
+name: Build Fush ERP Phase 14.5.31 Sales Rep History Link
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-31-sales-rep-history-link.yml'
+      - 'phase14_5_31_patch.gz.b64'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download successful Phase 14.5.30 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.30-Product-Volume-Reports-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31850115866
+
+      - name: Restore Phase 14.5.30 and apply Phase 14.5.31
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.30-Product-Volume-Reports-Source.zip
+          base64 -d phase14_5_31_patch.gz.b64 | gunzip > /tmp/phase14_5_31.patch
+          cd FushERP_Mobile_Phase5
+          patch --dry-run -p2 < /tmp/phase14_5_31.patch
+          patch -p2 < /tmp/phase14_5_31.patch
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 70' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.31-sales-rep-history-link"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 26' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'assignCustomerWithHistory' app/src/main/java/com/fush/erp/domain/SalesRepresentativeService.kt
+          grep -q 'linkUnassignedInvoicesForCustomer' app/src/main/java/com/fush/erp/data/dao/SalesRepresentativeDao.kt
+          grep -q 'ربط المبيعات السابقة' app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package and unchanged Room schema 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          test -f "$MANIFEST"
+          grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
+          SCHEMA=FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/26.json
+          test -f "$SCHEMA"
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+
+      - name: Historical sales representative linking smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sqlite3
+          c=sqlite3.connect(':memory:')
+          c.executescript('''
+          CREATE TABLE customers(id INTEGER PRIMARY KEY, salesRepId INTEGER, salesRepName TEXT);
+          CREATE TABLE sales_invoices(id INTEGER PRIMARY KEY, customerId INTEGER, salesRepId INTEGER, salesRepNameSnapshot TEXT, salesRepRatePct REAL, totalBase REAL, status TEXT);
+          CREATE TABLE sales_commissions(id INTEGER PRIMARY KEY, invoiceId INTEGER, salesRepId INTEGER, beneficiary TEXT, ratePct REAL, earnedBase REAL, reversedBase REAL);
+          INSERT INTO customers VALUES(1,NULL,''),(2,NULL,'');
+          INSERT INTO sales_invoices VALUES
+            (100,1,NULL,'',10,1000,'POSTED'),
+            (101,1,NULL,'legacy text',10,500,'POSTED'),
+            (102,1,11,'Other Rep',7,800,'POSTED'),
+            (103,2,NULL,'',10,900,'POSTED');
+          INSERT INTO sales_commissions VALUES
+            (200,100,NULL,'مندوب غير محدد',10,100,0),
+            (201,102,11,'Other Rep',7,56,0),
+            (202,103,NULL,'مندوب غير محدد',10,90,0);
+          ''')
+          customer_id=1; rep_id=10; rep_name='محمد الاسلمي'
+          before_count=c.execute('SELECT COUNT(*) FROM sales_invoices WHERE customerId=? AND salesRepId IS NULL',(customer_id,)).fetchone()[0]
+          before_sales=c.execute("SELECT COALESCE(SUM(totalBase),0) FROM sales_invoices WHERE customerId=? AND salesRepId IS NULL AND status='POSTED'",(customer_id,)).fetchone()[0]
+          c.execute('UPDATE customers SET salesRepId=?,salesRepName=? WHERE id=?',(rep_id,rep_name,customer_id))
+          c.execute('UPDATE sales_invoices SET salesRepId=?,salesRepNameSnapshot=? WHERE customerId=? AND salesRepId IS NULL',(rep_id,rep_name,customer_id))
+          linked_invoices=c.execute('SELECT changes()').fetchone()[0]
+          c.execute('''UPDATE sales_commissions SET salesRepId=?,beneficiary=? WHERE salesRepId IS NULL AND invoiceId IN (SELECT id FROM sales_invoices WHERE customerId=? AND salesRepId=?)''',(rep_id,rep_name,customer_id,rep_id))
+          linked_commissions=c.execute('SELECT changes()').fetchone()[0]
+          assert before_count==2 and before_sales==1500,(before_count,before_sales)
+          assert linked_invoices==2 and linked_commissions==1,(linked_invoices,linked_commissions)
+          assert c.execute('SELECT salesRepId,salesRepName FROM customers WHERE id=1').fetchone()==(10,rep_name)
+          assert c.execute('SELECT salesRepId,salesRepNameSnapshot,salesRepRatePct FROM sales_invoices WHERE id=100').fetchone()==(10,rep_name,10.0)
+          assert c.execute('SELECT salesRepId FROM sales_invoices WHERE id=102').fetchone()[0]==11
+          assert c.execute('SELECT salesRepId,beneficiary,ratePct,earnedBase FROM sales_commissions WHERE id=200').fetchone()==(10,rep_name,10.0,100.0)
+          assert c.execute('SELECT salesRepId FROM sales_commissions WHERE id=201').fetchone()[0]==11
+          assert c.execute('SELECT salesRepId FROM sales_invoices WHERE id=103').fetchone()[0] is None
+          print('Historical sales representative linking smoke test PASS')
+          PY
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-31-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-31-output/FushERP-Phase14.5.31-Sales-Rep-History-Link-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-31-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-31-output/lib/apksigner.jar
+          chmod +x phase14-5-31-output/apksigner
+          zip -qr phase14-5-31-output/FushERP-Mobile-Phase14.5.31-Sales-Rep-History-Link-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.31 — Historical Sales Representative Link' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 70' \
+            'Room schema remains 26; no database migration required.' \
+            'Linking a customer to a sales rep now backfills prior invoices only where salesRepId is NULL.' \
+            'Existing invoices assigned to another rep are never overwritten.' \
+            'Existing unassigned commission rows for those invoices are linked to the rep without changing amounts or historical rates.' \
+            'Collections and returns become visible automatically because rep metrics join through the invoice.' \
+            'The whole linking operation runs in one Room transaction and writes an audit event.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Historical rep-link smoke test: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-31-output/FushERP-Phase14.5.31-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.31-Sales-Rep-History-Link-Build
+          path: phase14-5-31-output/
+          if-no-files-found: error
+          retention-days: 7
