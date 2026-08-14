@@ -1,0 +1,160 @@
+name: Build Fush ERP Phase 14.5.30 Product Volume Reports
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-30-product-volume-reports.yml'
+      - 'phase14_5_30_patch.gz.b64'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download successful Phase 14.5.29 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.29-Employees-Sales-Reps-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31849040877
+
+      - name: Restore Phase 14.5.29 and apply Phase 14.5.30
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.29-Employees-Sales-Reps-Source.zip
+          base64 -d phase14_5_30_patch.gz.b64 | gunzip > /tmp/phase14_5_30.patch
+          cd FushERP_Mobile_Phase5
+          patch --dry-run -p4 < /tmp/phase14_5_30.patch
+          patch -p4 < /tmp/phase14_5_30.patch
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 69' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.30-product-volume-production-sales"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 26' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'accepted60QtyBase' app/src/main/java/com/fush/erp/data/entity/ReportEntities.kt
+          grep -q 'accepted200QtyBase' app/src/main/java/com/fush/erp/data/entity/ReportEntities.kt
+          grep -q 'salesProductQuantities' app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
+          grep -q 'صافي علب 60 مل' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'صافي علب 200 مل' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'مقبول 60 مل' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'مقبول 200 مل' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package and unchanged Room schema 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          test -f "$MANIFEST"
+          grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
+          SCHEMA=FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/26.json
+          test -f "$SCHEMA"
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+
+      - name: Product volume reporting SQL smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sqlite3
+          c=sqlite3.connect(':memory:')
+          c.executescript('''
+          CREATE TABLE items(id INTEGER PRIMARY KEY, code TEXT, nameAr TEXT, nameEn TEXT, category TEXT);
+          CREATE TABLE production_orders(id INTEGER PRIMARY KEY, productItemId INTEGER);
+          CREATE TABLE production_batches(id INTEGER PRIMARY KEY, orderId INTEGER, manufactureDate INTEGER, acceptedQtyBase REAL, scrapQtyBase REAL);
+          CREATE TABLE sales_invoices(id INTEGER PRIMARY KEY, invoiceDate INTEGER, status TEXT);
+          CREATE TABLE sales_lines(id INTEGER PRIMARY KEY, invoiceId INTEGER, itemId INTEGER, baseQuantity REAL);
+          CREATE TABLE sales_returns(id INTEGER PRIMARY KEY, returnDate INTEGER, status TEXT);
+          CREATE TABLE sales_return_lines(id INTEGER PRIMARY KEY, returnId INTEGER, itemId INTEGER, baseQuantity REAL);
+          INSERT INTO items VALUES(1,'FG-FUSH-60','Fush 60 مل','Fush 60ml','FINISHED_GOOD');
+          INSERT INTO items VALUES(2,'FG-000001','fush 200ml','Fush 200ml','FINISHED_GOOD');
+          INSERT INTO production_orders VALUES(10,1),(11,2);
+          INSERT INTO production_batches VALUES(20,10,100,410,0),(21,11,100,6,0);
+          INSERT INTO sales_invoices VALUES(30,100,'POSTED');
+          INSERT INTO sales_lines VALUES(40,30,1,100),(41,30,2,8);
+          INSERT INTO sales_returns VALUES(50,100,'POSTED');
+          INSERT INTO sales_return_lines VALUES(60,50,1,5),(61,50,2,2);
+          ''')
+          from_,to=0,200
+          a60=c.execute('''SELECT COALESCE(SUM(pb.acceptedQtyBase),0) FROM production_batches pb JOIN production_orders po ON po.id=pb.orderId JOIN items i ON i.id=po.productItemId WHERE pb.manufactureDate BETWEEN ? AND ? AND (LOWER(i.code)='fg-fush-60' OR LOWER(i.nameAr) LIKE '%60%' OR LOWER(i.nameEn) LIKE '%60%')''',(from_,to)).fetchone()[0]
+          a200=c.execute('''SELECT COALESCE(SUM(pb.acceptedQtyBase),0) FROM production_batches pb JOIN production_orders po ON po.id=pb.orderId JOIN items i ON i.id=po.productItemId WHERE pb.manufactureDate BETWEEN ? AND ? AND (LOWER(i.nameAr) LIKE '%200%' OR LOWER(i.nameEn) LIKE '%200%')''',(from_,to)).fetchone()[0]
+          assert a60==410 and a200==6,(a60,a200)
+          rows=c.execute('''WITH product_movements AS (
+            SELECT sl.itemId AS itemId,SUM(sl.baseQuantity) AS grossQtyBase,0.0 AS returnedQtyBase FROM sales_lines sl JOIN sales_invoices si ON si.id=sl.invoiceId WHERE si.status='POSTED' AND si.invoiceDate BETWEEN ? AND ? GROUP BY sl.itemId
+            UNION ALL
+            SELECT srl.itemId AS itemId,0.0 AS grossQtyBase,SUM(srl.baseQuantity) AS returnedQtyBase FROM sales_return_lines srl JOIN sales_returns sr ON sr.id=srl.returnId WHERE sr.status='POSTED' AND sr.returnDate BETWEEN ? AND ? GROUP BY srl.itemId)
+            SELECT i.code,SUM(pm.grossQtyBase),SUM(pm.returnedQtyBase),SUM(pm.grossQtyBase)-SUM(pm.returnedQtyBase) FROM product_movements pm JOIN items i ON i.id=pm.itemId WHERE i.category='FINISHED_GOOD' GROUP BY i.id,i.code,i.nameAr ORDER BY i.id''',(from_,to,from_,to)).fetchall()
+          assert rows==[('FG-FUSH-60',100.0,5.0,95.0),('FG-000001',8.0,2.0,6.0)],rows
+          print('Product volume production/sales SQL smoke test PASS')
+          PY
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-30-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-30-output/FushERP-Phase14.5.30-Product-Volume-Reports-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-30-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-30-output/lib/apksigner.jar
+          chmod +x phase14-5-30-output/apksigner
+          zip -qr phase14-5-30-output/FushERP-Mobile-Phase14.5.30-Product-Volume-Reports-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.30 — Product Volume Production & Sales Reports' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 69' \
+            'Room schema remains 26; no database migration required.' \
+            'Executive dashboard: accepted production split into 60 ml and 200 ml.' \
+            'Production report: accepted total, accepted 60 ml, accepted 200 ml.' \
+            'Sales report: gross sold, returned, and net quantities by finished product.' \
+            'Sales report summary: net 60 ml bottles and net 200 ml bottles.' \
+            'PDF/Excel/print export includes product quantity table.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Product-volume SQL smoke test: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-30-output/FushERP-Phase14.5.30-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.30-Product-Volume-Reports-Build
+          path: phase14-5-30-output/
+          if-no-files-found: error
+          retention-days: 7
