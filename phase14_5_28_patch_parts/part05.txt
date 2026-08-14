@@ -1,0 +1,73 @@
+قيمة ${formatMoney(result.returnedCostBase)} ريال$costText"
++                        }
++                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                         correctionMaterial = null
+                         error = null
+                         refreshToken++
+@@ -711,7 +719,16 @@
+     var reason by remember(material.row.id) { mutableStateOf("") }
+     val corrected = correctedQtyText.toDoubleOrNull()
+     val returnedQty = if (corrected != null) (material.row.issuedQtyBase - corrected).coerceAtLeast(0.0) else 0.0
+-    val valid = corrected != null && corrected >= 0.0 && corrected < material.row.issuedQtyBase - 1e-9 && reason.trim().length >= 3
++    val addedQty = if (corrected != null) (corrected - material.row.issuedQtyBase).coerceAtLeast(0.0) else 0.0
++    val isBottlePackaging = material.itemCode.uppercase().startsWith("PK-BOTTLE-")
++    val targetPacks = if (corrected != null && corrected >= 0.0 && isBottlePackaging) {
++        runCatching { com.fush.erp.domain.ProductionMath.packagingPackCount(corrected, 24) }.getOrNull()
++    } else null
++    val wholeBottleQtyValid = !isBottlePackaging || corrected == null || runCatching {
++        com.fush.erp.domain.ProductionMath.requireWholePieceQuantity(corrected, "عدد العبوات النهائي")
++    }.isSuccess
++    val valid = corrected != null && corrected >= 0.0 && wholeBottleQtyValid &&
++        kotlin.math.abs(corrected - material.row.issuedQtyBase) > 1e-9 && reason.trim().length >= 3
+ 
+     AlertDialog(
+         onDismissRequest = onDismiss,
+@@ -731,6 +748,17 @@
+                         "سيُعاد للمخزون: ${formatProductionQty(returnedQty)} ${material.row.unitName}",
+                         color = MaterialTheme.colorScheme.primary
+                     )
++                } else if (corrected != null && corrected > material.row.issuedQtyBase) {
++                    Text(
++                        "سيُصرف إضافيًا: ${formatProductionQty(addedQty)} ${material.row.unitName}",
++                        color = MaterialTheme.colorScheme.primary
++                    )
++                    if (isBottlePackaging && targetPacks != null) {
++                        Text(
++                            "تصحيح مترابط: يزيد المنتج النهائي بنفس فرق العبوات، وملصق العبوة 1:1، ويصبح احتياج الباكتات ${formatProductionQty(targetPacks)} باكيت (24 عبوة/باكيت)، وملصق الباكيت بنفس العدد إن كان موجودًا.",
++                            style = MaterialTheme.typography.bodySmall
++                        )
++                    }
+                 }
+                 OutlinedTextField(
+                     value = reason,
+@@ -739,7 +767,7 @@
+                     minLines = 2
+                 )
+                 Text(
+-                    "لن يُحذف الصرف القديم. سيُنشئ النظام حركة تصحيح مستقلة تعيد الكمية إلى نفس التشغيلة وتصحح تكلفة الإنتاج والمحاسبة.",
++                    "لن يُحذف الصرف القديم. سيُنشئ النظام حركة تصحيح مستقلة. عند النقص يعيد الفرق للمخزون، وعند الزيادة يصرف الفرق من المخزون ويصحح تكلفة الإنتاج والمحاسبة. زيادة عبوات التغليف تربط تلقائيًا بالمنتج النهائي والملصقات والباكتات.",
+                     style = MaterialTheme.typography.bodySmall
+                 )
+             }
+--- a/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
+@@ -173,4 +173,19 @@
+         assertEquals("FAIL", ProductionMath.qualitySampleDecision(values, 59.0, 61.0))
+     }
+ 
++    @Test
++    fun `packaging pack count rounds up by 24 bottles`() {
++        assertEquals(16.0, ProductionMath.packagingPackCount(384.0, 24), 1e-9)
++        assertEquals(18.0, ProductionMath.packagingPackCount(410.0, 24), 1e-9)
++        assertEquals(1.0, ProductionMath.packagingPackCount(1.0, 24), 1e-9)
++        assertEquals(0.0, ProductionMath.packagingPackCount(0.0, 24), 1e-9)
++    }
++
++    @Test
++    fun `piece packaging correction rejects fractional bottle quantity`() {
++        assertThrows(IllegalArgumentException::class.java) {
++            ProductionMath.requireWholePieceQuantity(410.5, "عدد العبوات النهائي")
++        }
++    }
++
+ }
