@@ -5,7 +5,7 @@ on:
     branches: [fush/accounting]
     paths:
       - '.github/workflows/build-accounting-phase14.5.39.yml'
-      - 'fush_accounting/rebase/phase14.5.39_chunks/**'
+      - 'fush_accounting/rebase/phase14.5.39_chunks_v2/**'
   workflow_dispatch:
 
 permissions:
@@ -51,17 +51,20 @@ jobs:
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE"
-          CH="$ROOT/fush_accounting/rebase/phase14.5.39_chunks"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.39_chunks_v2"
 
-          test "$(wc -c < "$CH/part00.b64")" -eq 12000
-          test "$(wc -c < "$CH/part01.b64")" -eq 12000
-          test "$(wc -c < "$CH/part02.b64")" -eq 1276
+          for n in 00 01 02 03 04 05; do test "$(wc -c < "$CH/part${n}.b64")" -eq 4000; done
+          test "$(wc -c < "$CH/part06.b64")" -eq 1480
 
-          echo '263ac97e66e2ba2d6b89de99f46d6c0cd7883c2248c8b5d9c720203462f2e1ba  part00.b64' | (cd "$CH" && sha256sum -c -)
-          echo '05f8376a1d838e7b1f3c745448c563cccfed37340d90da399f493582b442bc00  part01.b64' | (cd "$CH" && sha256sum -c -)
-          echo 'a69953a02793856dc5da34c4c68f8dbeb662feef47a8436061fb2481a429f2c6  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '26dd0a8a7cfd9e9fc8a3f30ecdc2bafcf72e3cbecd57379baed521875d329a29  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '6d07a98b20c4649d27538c2eecb5d591ea53cc3514c099ba04cebf5ab94df13a  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '4adbd70860dee4686af12ea0994e77392f2f07625b27204171333882bcdaba6d  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '6f44dfa74f5a3383f2e8d4622aff593194f902af9b4803dc562d42bd01fa07f5  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'c2c5d84b6f56dccfc8f4f9bd355e039a0707fa693f728e88ed1c8c4674d62fce  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'd176e13bfd189eb2755232a959ce20742d64affe4aee6c7d08bdacd14cdc738e  part05.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'db50b37b1d6bd7898047fe0cb235de489725263dcabc08a5ef2edda112676ac7  part06.b64' | (cd "$CH" && sha256sum -c -)
 
-          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 > /tmp/phase39.patch.gz.b64
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 "$CH"/part06.b64 > /tmp/phase39.patch.gz.b64
           test "$(wc -c < /tmp/phase39.patch.gz.b64)" -eq 25480
           echo 'e3a2039723bcae31c4ea9235408fb7120ac60669fd555fa4febe0dabae20f755  /tmp/phase39.patch.gz.b64' | sha256sum -c -
 
