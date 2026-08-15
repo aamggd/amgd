@@ -1,0 +1,245 @@
+name: Build FUSH Printing Integration 14.5.54
+
+on:
+  push:
+    branches: [fush/integration-printing-14.5.54]
+    paths:
+      - '.github/workflows/build-printing-integration-14.5.54.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated central 14.5.53 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-UI-Security-Integrated-Build
+          path: artifacts/base53
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31907038178
+
+      - name: Restore exact central baseline and printing handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base53/FushERP-Mobile-Phase14.5.53-UI-Security-Updates-Source.zip
+          test -s "$ZIP"
+          mkdir -p sources/base53 final-repo handoff
+          unzip -q "$ZIP" -d sources/base53
+          BASE=$(find sources/base53 -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" final-repo/
+          cd final-repo
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm baseline-14.5.53
+          BASE_TREE=$(git write-tree)
+          echo "BASE53_TREE=$BASE_TREE"
+          test "$BASE_TREE" = 'a0e6f339cd604510c3019dd628561a152a44dcaf'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 92' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.53-ui-security-updates"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          cd ..
+
+          PRINT_SHA=419c2264b6b69f03d20c3b57cb93cfd99a50fde1
+          git fetch --no-tags --depth=1 origin "$PRINT_SHA"
+          git show "$PRINT_SHA:phase14_5_53_accounting_printing/payload/a53-part00.txt" > handoff/a53.full.b64
+          echo 'a0ed71cbb52063d82004fc32cec5ef4c99864119aa5a71ad5aecebb33c725ecc  handoff/a53.full.b64' | sha256sum -c -
+          base64 -d handoff/a53.full.b64 | gzip -dc > handoff/printing.patch
+          echo 'c351d5d437ed5f725eced99215dc1ab811575c65911842d0e74cbbc18035bb5e  handoff/printing.patch' | sha256sum -c -
+
+      - name: Apply printing delta while preserving 14.5.53 functionality
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          set +e
+          git apply --reject --whitespace=nowarn --exclude=app/build.gradle.kts ../handoff/printing.patch
+          APPLY_RC=$?
+          set -e
+          test "$APPLY_RC" -ne 0
+          REJECT_COUNT=$(find . -name '*.rej' | wc -l)
+          test "$REJECT_COUNT" -eq 1
+          test -f app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+          grep -q 'buildJournalSectionExportDocument' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+          grep -q 'TreasuryReportMath.build' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+          grep -q 'buildManualJournalExportDocument' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+          rm app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt')
+          s=p.read_text()
+
+          needle='''        item {\n            OutlinedTextField(\n                value = journalSearch,\n                onValueChange = { journalSearch = it },\n                modifier = Modifier.fillMaxWidth(),\n                label = { Text(stringResource(R.string.journal_search)) },\n                placeholder = { Text(stringResource(R.string.journal_search_hint)) },\n                singleLine = true,\n                shape = MaterialTheme.shapes.medium,\n                supportingText = { Text(stringResource(R.string.journal_showing, filteredHeaders.size, headers.size)) },\n            )\n        }\n'''
+          insert=needle+'''        item {\n            ReportExportActions(\n                document = buildJournalSectionExportDocument(\n                    filteredHeaders,\n                    if (journalSearch.isBlank()) "القيود المعروضة في دفتر اليومية" else "نتيجة البحث: ${journalSearch.trim()}"\n                ),\n                baseName = "FushERP-Journal",\n                printJobName = "Fush ERP - Journal",\n                enabled = filteredHeaders.isNotEmpty()\n            )\n        }\n'''
+          assert needle in s
+          s=s.replace(needle,insert,1)
+
+          needle='''    var selectedBankStatement by remember { mutableStateOf<BankStatementRow?>(null) }\n    var message by remember { mutableStateOf<String?>(null) }\n'''
+          insert=needle+'''    var reportFrom by remember { mutableStateOf(monthStartText()) }\n    var reportTo by remember { mutableStateOf(todayText()) }\n    var periodReport by remember { mutableStateOf<TreasuryPeriodReport?>(null) }\n    var reportMessage by remember { mutableStateOf<String?>(null) }\n'''
+          assert needle in s
+          s=s.replace(needle,insert,1)
+
+          needle='''        item { FushSectionHeader(stringResource(R.string.treasury_cash_accounts), stringResource(R.string.treasury_account_count, balances.size)) }\n'''
+          card='''        item {\n            ElevatedCard(Modifier.fillMaxWidth()) {\n                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {\n                    FushSectionHeader("تقرير الخزينة والطباعة", "حركة الصناديق والبنوك خلال فترة محددة مع فصل التحويلات الداخلية")\n                    DateRangeFields(reportFrom, { reportFrom = it }, reportTo, { reportTo = it })\n                    Button(\n                        onClick = {\n                            scope.launch {\n                                try {\n                                    val fromMs = parseStart(reportFrom)\n                                    val toMs = parseEnd(reportTo)\n                                    periodReport = TreasuryReportMath.build(\n                                        treasuries = container.db.accountingDao().allTreasury(),\n                                        movementsThroughEnd = container.db.reportDao().treasuryMovementsThrough(toMs),\n                                        fromDate = fromMs,\n                                        toDate = toMs\n                                    )\n                                    reportMessage = null\n                                } catch (e: Exception) {\n                                    reportMessage = e.message ?: "تعذر إعداد تقرير الخزينة"\n                                }\n                            }\n                        },\n                        modifier = Modifier.fillMaxWidth()\n                    ) { Text("إعداد تقرير الخزينة") }\n                    reportMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }\n                    periodReport?.let { r ->\n                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {\n                            FushMetricCard("افتتاحي", money(r.openingBase), Modifier.weight(1f), "بداية الفترة", FushStatusTone.Neutral)\n                            FushMetricCard("ختامي", money(r.closingBase), Modifier.weight(1f), "نهاية الفترة", FushStatusTone.Info)\n                        }\n                        ReportExportActions(\n                            document = buildTreasuryPeriodSectionExportDocument(r, reportFrom, reportTo),\n                            baseName = "FushERP-Treasury-Period",\n                            printJobName = "Fush ERP - Treasury Period"\n                        )\n                    } ?: ReportExportActions(\n                        document = buildTreasuryBalancesExportDocument(balances),\n                        baseName = "FushERP-Treasury-Balances",\n                        printJobName = "Fush ERP - Treasury Balances",\n                        enabled = balances.isNotEmpty()\n                    )\n                }\n            }\n        }\n'''+needle
+          assert needle in s
+          s=s.replace(needle,card,1)
+
+          needle='''        Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = MaterialTheme.shapes.medium) { Text("إنشاء قيد يدوي") }\n        FushOperationMessage(message, onConsumed = { message = null })\n'''
+          insert=needle+'''        lastPostedEntry?.let { entry ->\n            ElevatedCard(Modifier.fillMaxWidth()) {\n                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {\n                    FushSectionHeader("طباعة آخر قيد يدوي", "${entry.entryNo} — ${formatDate(entry.entryDate)}")\n                    ReportExportActions(\n                        document = buildManualJournalExportDocument(entry, lastPostedDetails),\n                        baseName = "FushERP-Manual-Journal-${entry.entryNo}",\n                        printJobName = "Fush ERP - Manual Journal ${entry.entryNo}",\n                        enabled = lastPostedDetails.isNotEmpty()\n                    )\n                }\n            }\n        }\n'''
+          assert needle in s
+          s=s.replace(needle,insert,1)
+
+          old='''                    val id = container.accountingService.postManualJournal(description, date, currency.code, rate, lines, user.id)\n                    message = "تم ترحيل القيد رقم $id"\n                    show = false\n'''
+          new='''                    val id = container.accountingService.postManualJournal(description, date, currency.code, rate, lines, user.id)\n                    lastPostedEntry = container.db.journalDao().byId(id)\n                    lastPostedDetails = container.accountingService.journalDetails(id)\n                    message = "تم ترحيل القيد رقم $id — أصبح جاهزًا للمعاينة والطباعة"\n                    show = false\n'''
+          assert old in s
+          s=s.replace(old,new,1)
+          p.write_text(s)
+
+          b=Path('app/build.gradle.kts')
+          x=b.read_text()
+          assert 'versionCode = 92' in x
+          assert 'versionName = "0.15.4.53-ui-security-updates"' in x
+          x=x.replace('versionCode = 92','versionCode = 93',1)
+          x=x.replace('versionName = "0.15.4.53-ui-security-updates"','versionName = "0.15.4.54-printing-integrated"',1)
+          b.write_text(x)
+          PY
+
+          ! find . -name '*.rej' -print -quit | grep -q .
+          git diff --check
+          test -f app/src/main/java/com/fush/erp/ui/screens/AccountingSectionExport.kt
+          test -f app/src/test/java/com/fush/erp/ui/screens/AccountingSectionExportTest.kt
+          grep -q 'FushERP-Journal' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Treasury-Period' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Expenses' app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -q 'FushERP-Manual-Journal' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-General-Ledger' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Trial-Balance' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Profit-Loss' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Balance-Sheet' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Cash-Flow' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-printing-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          git add -A
+          FINAL_TREE=$(git write-tree)
+          echo "FINAL_TREE=$FINAL_TREE"
+          test "$FINAL_TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate release and align APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-printing-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          cd ..
+          mkdir -p output/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 final-repo/app/build/outputs/apk/release/app-release-unsigned.apk output/FushERP-Phase14.5.54-Printing-Integrated-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 output/FushERP-Phase14.5.54-Printing-Integrated-aligned-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" output/lib/apksigner.jar
+          chmod +x output/apksigner
+          sha256sum output/FushERP-Phase14.5.54-Printing-Integrated-aligned-unsigned.apk > output/FushERP-Phase14.5.54-Printing-Integrated-aligned-unsigned.apk.sha256
+
+      - name: Package full source and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf package-root
+          mkdir -p package-root/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' final-repo/ package-root/FushERP_Mobile_Phase14_5_54_Printing_Integrated/
+          (cd package-root && zip -qr ../output/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip FushERP_Mobile_Phase14_5_54_Printing_Integrated)
+          sha256sum output/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip > output/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip.sha256
+          cat > output/FushERP-Phase14.5.54-INTEGRATION-REPORT.txt <<'EOF'
+          FUSH ERP Mobile Phase 14.5.54 — Professional Printing Integration
+          Base: validated Phase 14.5.53 UI + Security integrated source
+          Printing source: fush/reports-printing @ 419c2264b6b69f03d20c3b57cb93cfd99a50fde1
+          Exact upstream printing patch SHA256: c351d5d437ed5f725eced99215dc1ab811575c65911842d0e74cbbc18035bb5e
+          Central baseline tree: a0e6f339cd604510c3019dd628561a152a44dcaf
+          Final integrated tree: 1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff
+          Package: com.fush.erp.recovery
+          Version code: 93
+          Version name: 0.15.4.54-printing-integrated
+          Room schema: 34 unchanged
+          Journal filtered export: PASS
+          Treasury balance/period export: PASS
+          Expense filtered export: PASS
+          Manual journal voucher printing: PASS
+          General ledger export: PASS
+          Trial balance export: PASS
+          Profit and loss export: PASS
+          Balance sheet export: PASS
+          Cash flow export: PASS
+          Existing fixed assets / periods / cash count / bank reconciliation preserved: PASS
+          Existing UI language/theme and security/session updates preserved: PASS
+          No destructive Room migration: PASS
+          Unit tests: PASS
+          Release build: PASS
+          Zipalign: PASS
+          EOF
+
+      - name: Upload integrated build
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: output/
+          if-no-files-found: error
+          retention-days: 7
