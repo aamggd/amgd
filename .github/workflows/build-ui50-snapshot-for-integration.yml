@@ -49,17 +49,39 @@ jobs:
           git config user.name FUSH
           git add -A
           git commit -qm ui47
+
+          apply_ui49_shared_components_semantic() {
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt')
+          s = p.read_text()
+          def once(old, new):
+              global s
+              if old not in s:
+                  raise SystemExit(f'expected UI49 semantic anchor missing: {old[:100]!r}')
+              s = s.replace(old, new, 1)
+          once('import androidx.compose.foundation.layout.Column\n', 'import androidx.compose.foundation.layout.Column\nimport androidx.compose.foundation.layout.ColumnScope\n')
+          once('import androidx.compose.foundation.layout.sizeIn\n', 'import androidx.compose.foundation.layout.sizeIn\nimport androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.verticalScroll\n')
+          once('import androidx.compose.runtime.Composable\n', 'import androidx.compose.runtime.Composable\nimport androidx.compose.runtime.LaunchedEffect\nimport androidx.compose.runtime.staticCompositionLocalOf\n')
+          once('enum class FushStatusTone { Neutral, Info, Success, Warning, Danger }\n', '''enum class FushStatusTone { Neutral, Info, Success, Warning, Danger }\n\nval LocalFushSnackbar = staticCompositionLocalOf<((String) -> Unit)?> { null }\n\nprivate fun fushMessageIsSuccess(message: String): Boolean {\n    val normalized = message.trim()\n    return normalized.startsWith("تم ") ||\n        normalized.startsWith("تمت ") ||\n        normalized.startsWith("بدأ") ||\n        normalized.startsWith("سيتم ")\n}\n''')
+          once('    badge: String,\n', '    badge: String? = null,\n')
+          once('''                Spacer(Modifier.size(10.dp))\n                FushStatusPill(badge, FushStatusTone.Info)\n''', '''                if (!badge.isNullOrBlank()) {\n                    Spacer(Modifier.size(10.dp))\n                    FushStatusPill(badge, FushStatusTone.Info)\n                }\n''')
+          once(''') = FushInlineState(message, modifier, tone)\n\n@Composable\nfun FushConfirmDialog(''', ''') = FushInlineState(message, modifier, tone)\n\n@Composable\nfun FushDialogForm(\n    modifier: Modifier = Modifier,\n    content: @Composable ColumnScope.() -> Unit,\n) {\n    Column(\n        modifier = modifier\n            .fillMaxWidth()\n            .heightIn(max = 520.dp)\n            .verticalScroll(rememberScrollState()),\n        verticalArrangement = Arrangement.spacedBy(8.dp),\n        content = content,\n    )\n}\n\n@Composable\nfun FushOperationMessage(\n    message: String?,\n    modifier: Modifier = Modifier,\n    onConsumed: () -> Unit = {},\n) {\n    if (message.isNullOrBlank()) return\n    if (!fushMessageIsSuccess(message)) {\n        FushNotice(message, modifier = modifier, tone = FushStatusTone.Danger)\n        return\n    }\n\n    val snackbar = LocalFushSnackbar.current\n    if (snackbar == null) {\n        FushNotice(message, modifier = modifier, tone = FushStatusTone.Success)\n    } else {\n        LaunchedEffect(message) {\n            snackbar(message)\n            onConsumed()\n        }\n    }\n}\n\n@Composable\nfun FushConfirmDialog(''')
+          p.write_text(s)
+          PY
+          }
+
           apply_remote_phase() {
             local phase="$1"
             echo "Applying $phase"
             while IFS= read -r p; do
               echo "  $p"
-              git --git-dir="$GITHUB_WORKSPACE/.git" show "refs/remotes/origin/ui-redesign:$p" > /tmp/ui.patch
-              if git apply --check /tmp/ui.patch; then
-                git apply /tmp/ui.patch
+              if [ "$p" = 'phase14_5_49_navigation_feedback_polish/patches/03_shared_feedback_dialog_components.patch' ]; then
+                apply_ui49_shared_components_semantic
               else
-                echo "Direct apply failed; trying 3-way for $p"
-                git apply --3way /tmp/ui.patch
+                git --git-dir="$GITHUB_WORKSPACE/.git" show "refs/remotes/origin/ui-redesign:$p" > /tmp/ui.patch
+                git apply --check /tmp/ui.patch
+                git apply /tmp/ui.patch
               fi
               git diff --check
               git add -A
@@ -72,6 +94,8 @@ jobs:
 
           grep -q 'versionCode = 89' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.50-ui-localization-foundation"' app/build.gradle.kts
+          grep -q 'val LocalFushSnackbar' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          grep -q 'fun FushDialogForm' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
           git diff --check
           echo "UI50_TREE=$(git write-tree)" | tee "$GITHUB_WORKSPACE/ui50-tree.txt"
 
