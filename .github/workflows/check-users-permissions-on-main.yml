@@ -16,15 +16,19 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: android-actions/setup-android@v3
+
       - name: Android SDK
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
       - name: Download verified Phase 14.5.35 main build
         uses: actions/download-artifact@v4
         with:
@@ -33,13 +37,28 @@ jobs:
           github-token: ${{ github.token }}
           repository: aamggd/amgd
           run-id: 31857080183
-      - name: Restore current main source
+
+      - name: Restore and isolate current main source
+        shell: bash
         run: |
+          set -euo pipefail
           unzip -q previous-build/FushERP-Mobile-Phase14.5.35-UI-Sales-Customers-Source.zip
           grep -q 'versionCode = 74' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.35-ui-sales-customers' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-      - name: Reconstruct and apply permissions patch
+          cd FushERP_Mobile_Phase5
+          rm -rf .git
+          git init -q
+          git config user.name 'FUSH CI'
+          git config user.email 'fush-ci@example.invalid'
+          git add -A
+          git commit -qm 'Phase 14.5.35 verified baseline'
+          test -z "$(git status --porcelain)"
+
+      - name: Reconstruct permissions patch
+        shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           import base64,gzip,hashlib,pathlib
           p=pathlib.Path('phase14_5_34_users_permissions')
@@ -47,36 +66,66 @@ jobs:
           raw=gzip.decompress(base64.b64decode(encoded))
           actual=hashlib.sha256(raw).hexdigest()
           expected='94bc1ae1ef5fe91d0537b94bcaa8cca5b38b94e69a1cd719419e608469f5ce93'
+          print('patch sha256:', actual)
           assert actual == expected, actual
           pathlib.Path('users-permissions.patch').write_bytes(raw)
           PY
-          cd FushERP_Mobile_Phase5
-          git apply --check ../users-permissions.patch
-          git apply ../users-permissions.patch
-      - name: Diagnose database and security changes
+
+      - name: Check original permissions patch against current main
         shell: bash
         run: |
           set -euo pipefail
           cd FushERP_Mobile_Phase5
-          echo '=== CHANGED FILES ==='
+          git apply --check --verbose ../users-permissions.patch
+
+      - name: Apply original permissions patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd FushERP_Mobile_Phase5
+          git apply ../users-permissions.patch
+          echo '=== ACTUAL CHANGED FILES ==='
           git diff --name-status
-          echo '=== NEW/CHANGED ROOM ENTITIES AND DAOS ==='
-          grep -RniE '@Entity|@Dao|data class .*User|data class .*Role|Permission|RolePermission|UserRole' app/src/main/java/com/fush/erp/data app/src/main/java/com/fush/erp/security 2>/dev/null | head -260 || true
-          echo '=== DATABASE FILE ==='
-          sed -n '1,240p' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          echo '=== MIGRATION REFERENCES ==='
-          grep -RniE 'Migration\(|MIGRATION_|addMigrations|CREATE TABLE.*(user|role|permission)|ALTER TABLE' app/src/main/java/com/fush/erp 2>/dev/null | head -300 || true
-          echo '=== BUILD VERSION ==='
-          grep -nE 'versionCode|versionName' app/build.gradle.kts
+          test -n "$(git diff --name-only)"
+
+      - name: Assert RBAC and migration are really applied
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=FushERP_Mobile_Phase5
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' "$root/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'RoleEntity::class' "$root/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'PermissionEntity::class' "$root/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'RolePermissionEntity::class' "$root/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_27_28' "$root/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'MIGRATION_27_28' "$root/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          test -f "$root/app/src/main/java/com/fush/erp/data/entity/SecurityEntities.kt"
+          test -f "$root/app/src/main/java/com/fush/erp/data/dao/SecurityDao.kt"
+          grep -q 'USERS_MANAGE' "$root/app/src/main/java/com/fush/erp/domain/PermissionCatalog.kt"
+          echo 'RBAC schema 28 and migration 27->28 are present in the actual source tree.'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
+
       - name: Unit tests
         working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:testDebugUnitTest
+        run: gradle --no-daemon --rerun-tasks :app:testDebugUnitTest
+
       - name: Debug build
         working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon --rerun-tasks :app:assembleDebug
+
       - name: Release build
         working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:assembleRelease
+        run: gradle --no-daemon --rerun-tasks :app:assembleRelease
+
+      - name: Verify final outputs and schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          root=FushERP_Mobile_Phase5
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' "$root/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$root/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$root/app/build/outputs/apk/release/app-release-unsigned.apk"
+          echo 'Full RBAC validation completed.'
