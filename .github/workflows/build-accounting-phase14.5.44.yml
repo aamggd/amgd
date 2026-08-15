@@ -1,0 +1,174 @@
+name: Validate FUSH Accounting Phase 14.5.44 Financial Statements
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.44.yml'
+      - 'fush_accounting/rebase/phase14.5.44_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase44-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.43 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.43-Idempotency-Validated-Build
+          path: phase43-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31912860098
+
+      - name: Reconstruct and verify Phase 14.5.44 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.44_chunks"
+          for n in 00 01 02 03 04 05; do test "$(wc -c < "$CH/part${n}.b64")" -eq 3000; done
+          test "$(wc -c < "$CH/part06.b64")" -eq 748
+          echo '5e64f2787292907ee4fa3dd07c9b1269fc407eb0bbf7313b3c8720542f8a584d  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'e3d6d4953652b94b4bea9233c583d3ab60a994b10b214fbbc7e37ef443b6480c  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '05addb3984b99ac4dba2befad782e9a2d047d1a9f397e395828aa8c738ba6b87  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '8b06d41eea6550e8d35a7a3e3bceee6dd883b306f912eafb0844966e7728abf0  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'de80aac9d69f95de384c0a0d74f2db9c29a64f487cd756b95c205d2f5caf658a  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo '9b7fe491448c2048fe65fbe93fe23bdcbd4dd79fcc53a167d3dadc0698257282  part05.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'b754b70dbffda89c57c66ce87767051f2504c5c632dc7c522e5d703e590b52fc  part06.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 "$CH"/part06.b64 > /tmp/phase44.patch.gz.b64
+          test "$(wc -c < /tmp/phase44.patch.gz.b64)" -eq 18748
+          echo '9a478ac470749c5d888875f594c63b11a4d150a07dbafba55e94e0447ea8423e  /tmp/phase44.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase44.patch.gz.b64 > /tmp/phase44.patch.gz
+          test "$(wc -c < /tmp/phase44.patch.gz)" -eq 14059
+          echo '6e4953af8d174fe808481f80a2c67cfb7c40d1a0408e7a9a8f9221cca0ac4fbb  /tmp/phase44.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase44.patch.gz
+          gzip -dc /tmp/phase44.patch.gz > /tmp/phase44.patch
+          test "$(wc -c < /tmp/phase44.patch)" -eq 75217
+          echo '74deb3e42b51f73bdec431645c9271e85e3d5717643e35dfd94b605124b6e238  /tmp/phase44.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.44 to validated Phase 14.5.43
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/phase43-artifact/FushERP-Mobile-Phase14.5.43-Accounting-Idempotency-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase44 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated Phase14.5.43 baseline'
+          patch -p2 --dry-run < /tmp/phase44.patch
+          patch -p2 < /tmp/phase44.patch
+          git diff --check
+
+      - name: Verify identity, schema and professional-report wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R --line-number 'MIGRATION_35_36' app/src/main/java
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          test -f app/src/main/java/com/fush/erp/domain/ProfessionalFinancialStatements.kt
+          test -f app/src/test/java/com/fush/erp/domain/ProfessionalFinancialStatementMathTest.kt
+          grep -q 'professionalFinancialStatements' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'allTreasury()' app/src/main/java/com/fush/erp/data/dao/AccountingDao.kt
+          grep -q 'CashFlowCategory.OPERATING' app/src/main/java/com/fush/erp/domain/ProfessionalFinancialStatements.kt
+          grep -q 'FX_REVALUATION' app/src/main/java/com/fush/erp/domain/ProfessionalFinancialStatements.kt
+          grep -q 'unclassifiedAssetLines' app/src/main/java/com/fush/erp/domain/ProfessionalFinancialStatements.kt
+          grep -q 'قائمة التدفقات النقدية المصنفة' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'القوائم المالية الاحترافية' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase44-unit-test.log"
+
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Unit-Test-Diagnostics
+          path: phase44-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
+          mkdir -p "$ROOT/phase44-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk "$ROOT/phase44-output/FushERP-Accounting-Phase14.5.44-Professional-Financial-Statements-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/phase44-output/FushERP-Accounting-Phase14.5.44-Professional-Financial-Statements-aligned-unsigned.apk"
+          cp /tmp/phase44.patch "$ROOT/phase44-output/FushERP-Phase14.5.44-Professional-Financial-Statements.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase44-output/FushERP-Mobile-Phase14.5.44-Professional-Financial-Statements-Source.zip" repo
+          sha256sum "$ROOT/phase44-output/"* > "$ROOT/phase44-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase44-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.44 validation
+          Base: validated Accounting Phase 14.5.43 Idempotency
+          Base validation run: 31912860098
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 35 (unchanged / PROVISIONAL / BRANCH ONLY)
+          Phase 14.5.44 patch SHA-256: 74deb3e42b51f73bdec431645c9271e85e3d5717643e35dfd94b605124b6e238
+          Professional financial-statement math smoke: PASS locally before CI
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 35 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_44_PROFESSIONAL_FINANCIAL_STATEMENTS_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.44-Professional-Financial-Statements-Validated-Build
+          path: phase44-output/
+          if-no-files-found: error
+          retention-days: 7
