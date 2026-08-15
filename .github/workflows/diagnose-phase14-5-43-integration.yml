@@ -1,0 +1,122 @@
+name: Diagnose Fush ERP Phase 14.5.43 Integration
+
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths:
+      - '.github/workflows/diagnose-phase14-5-43-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch contribution packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/ui-professional-redesign fush/accounting fush/users-permissions --depth=1
+          git archive --format=tar origin/fush/ui-professional-redesign \
+            phase14_5_39_production_quality_ui \
+            phase14_5_40_employees_sales_reps_ui \
+            phase14_5_41_assets_maintenance_expenses_ui | tar -xf -
+          git archive --format=tar origin/fush/accounting fush_accounting | tar -xf -
+          git archive --format=tar origin/fush/users-permissions \
+            phase14_5_34_users_permissions \
+            phase14_5_36_users_security_hardening | tar -xf -
+
+      - name: Download verified Phase 14.5.38 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+
+      - name: Restore baseline and apply completed UI phases 39-41 sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build
+          git init -q
+          git config user.name 'FUSH Integration CI'
+          git config user.email 'fush-integration@example.invalid'
+          git add -A && git commit -qm 'Phase 14.5.38 baseline'
+          for phase in \
+            phase14_5_39_production_quality_ui \
+            phase14_5_40_employees_sales_reps_ui \
+            phase14_5_41_assets_maintenance_expenses_ui
+          do
+            echo "=== $phase ==="
+            for p in ../$phase/patches/*.patch; do
+              echo "Applying $(basename "$p")"
+              git apply --check "$p"
+              git apply "$p"
+            done
+          done
+          grep -q 'versionCode = 80' app/build.gradle.kts
+          grep -q '0.15.4.41-ui-assets-maintenance-expenses' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          git add -A && git commit -qm 'Apply UI 39-41'
+
+      - name: Reconstruct accounting patches and check/apply sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd FushERP_Mobile_Phase5
+          for spec in \
+            'phase14.5.34-accounting-integrity.patch.gz.b64:/tmp/accounting34.patch' \
+            'phase14.5.35-accounting-periods-reconciliation.patch.gz.b64:/tmp/accounting35.patch' \
+            'phase14.5.36-operational-reversals.patch.gz.b64:/tmp/accounting36.patch'
+          do
+            src="${spec%%:*}"; out="${spec##*:}"
+            base64 -d "../fush_accounting/patches/$src" | gzip -d > "$out"
+            echo "=== checking $out ==="
+            if git apply --check --verbose "$out"; then
+              git apply "$out"
+              git add -A && git commit -qm "Apply $src"
+            else
+              echo "ACCOUNTING_PATCH_FAILED=$src"
+              exit 21
+            fi
+          done
+          echo 'ACCOUNTING_APPLY_OK'
+          grep -n 'FUSH_DB_SCHEMA_VERSION' app/src/main/java/com/fush/erp/data/FushDatabase.kt || true
+          grep -n 'MIGRATION_27_28\|MIGRATION_28_29' app/src/main/java/com/fush/erp/data/Migrations.kt || true
+
+      - name: Reconstruct users permissions base patch and check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,pathlib
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          raw=gzip.decompress(base64.b64decode(''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64')))))
+          pathlib.Path('/tmp/users34.patch').write_bytes(raw)
+          PY
+          cd FushERP_Mobile_Phase5
+          if git apply --check --verbose /tmp/users34.patch; then
+            echo USERS34_APPLIES_CLEANLY
+          else
+            echo USERS34_NEEDS_REBASE
+            git apply --check --verbose /tmp/users34.patch || true
+          fi
+
+      - name: Check users security hardening relationship
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd FushERP_Mobile_Phase5
+          echo 'Hardening patch is intentionally based on the users-permissions phase and will be tested after rebasing users34.'
+          grep -n '^diff --git' ../phase14_5_36_users_security_hardening/phase14_5_36.patch
