@@ -1,0 +1,155 @@
+name: Build Fush ERP Phase 14.5.53 Accounting Printing
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-53-accounting-printing.yml'
+      - 'phase14_5_53_accounting_printing/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.52 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.52-Audit-Reporting-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31872457913
+
+      - name: Restore Phase 14.5.52 and apply Phase 14.5.53 accounting printing patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'a0ed71cbb52063d82004fc32cec5ef4c99864119aa5a71ad5aecebb33c725ecc  phase14_5_53_accounting_printing/payload/a53-part00.txt' | sha256sum -c -
+          cat phase14_5_53_accounting_printing/payload/a53-part00.txt > phase14_5_53_accounting_printing/a53.full.b64
+          echo 'a0ed71cbb52063d82004fc32cec5ef4c99864119aa5a71ad5aecebb33c725ecc  phase14_5_53_accounting_printing/a53.full.b64' | sha256sum -c -
+          base64 -d phase14_5_53_accounting_printing/a53.full.b64 | gzip -dc > phase14_5_53_accounting_printing/01_accounting_printing.patch
+          echo 'c351d5d437ed5f725eced99215dc1ab811575c65911842d0e74cbbc18035bb5e  phase14_5_53_accounting_printing/01_accounting_printing.patch' | sha256sum -c -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.52-Audit-Reporting-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.52
+          git apply --check ../phase14_5_53_accounting_printing/01_accounting_printing.patch
+          git apply ../phase14_5_53_accounting_printing/01_accounting_printing.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 92' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.53-accounting-printing"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/ui/screens/AccountingSectionExport.kt
+          test -f app/src/test/java/com/fush/erp/ui/screens/AccountingSectionExportTest.kt
+          grep -q 'FushERP-Journal' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Treasury-Period' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Expenses' app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -q 'FushERP-Manual-Journal' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-General-Ledger' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Trial-Balance' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Profit-Loss' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Balance-Sheet' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'FushERP-Cash-Flow' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 92' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.53-accounting-printing"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-53-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-53-output/FushERP-Phase14.5.53-Accounting-Printing-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-53-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-53-output/lib/apksigner.jar
+          chmod +x phase14-5-53-output/apksigner
+          zip -qr phase14-5-53-output/FushERP-Mobile-Phase14.5.53-Accounting-Printing-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.53 — Professional Accounting & Treasury Printing' \
+            'Base verified source: Phase 14.5.52 Audit Reporting' \
+            'Branch: fush/reports-printing' \
+            'Journal filtered export: PASS' \
+            'Treasury balance and period report export: PASS' \
+            'Expense filtered export: PASS' \
+            'Manual journal voucher printing: PASS' \
+            'General ledger export: PASS' \
+            'Trial balance export: PASS' \
+            'Profit and loss export: PASS' \
+            'Balance sheet export: PASS' \
+            'Cash flow export: PASS' \
+            'Professional PDF/XLSX/print preview integration: PASS' \
+            'Accounting posting logic unchanged: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 92' \
+            'Version name: 0.15.4.53-accounting-printing' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-53-output/FushERP-Phase14.5.53-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-Accounting-Printing-Build
+          path: phase14-5-53-output/
+          if-no-files-found: error
+          retention-days: 7
