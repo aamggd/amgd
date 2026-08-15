@@ -1,0 +1,65 @@
+name: Check Users Permissions Merge Only
+on:
+  push:
+    branches: ['fush/integration-users-permissions-check']
+    paths: ['.github/workflows/check-users-permissions-merge-only.yml']
+  workflow_dispatch:
+jobs:
+  merge-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download verified Phase 14.5.35 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.35-UI-Integration-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31857080183
+      - name: Isolate baseline and reconstruct patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.35-UI-Sales-Customers-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git
+          git init -q
+          git config user.name 'FUSH CI'
+          git config user.email 'fush-ci@example.invalid'
+          git add -A
+          git commit -qm baseline
+          cd ..
+          python - <<'PY'
+          import base64,gzip,hashlib,pathlib
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          raw=gzip.decompress(base64.b64decode(''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64')))))
+          assert hashlib.sha256(raw).hexdigest() == '94bc1ae1ef5fe91d0537b94bcaa8cca5b38b94e69a1cd719419e608469f5ce93'
+          pathlib.Path('users-permissions.patch').write_bytes(raw)
+          PY
+      - name: Apply check and report conflicts
+        shell: bash
+        run: |
+          set +e
+          cd FushERP_Mobile_Phase5
+          git apply --check --verbose ../users-permissions.patch 2>&1 | tee ../apply-check.log
+          rc=${PIPESTATUS[0]}
+          echo "APPLY_CHECK_RC=$rc"
+          exit $rc
+      - name: Apply and assert database/security changes
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd FushERP_Mobile_Phase5
+          git apply ../users-permissions.patch
+          git diff --name-status
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f app/src/main/java/com/fush/erp/data/entity/SecurityEntities.kt
+          test -f app/src/main/java/com/fush/erp/data/dao/SecurityDao.kt
+          echo 'RBAC patch genuinely applied to current main.'
