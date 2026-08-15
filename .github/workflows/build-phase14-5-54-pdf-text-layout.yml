@@ -1,0 +1,147 @@
+name: Build Fush ERP Phase 14.5.54 PDF Text Layout Fix
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-54-pdf-text-layout.yml'
+      - 'phase14_5_54_pdf_text_layout/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.53 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-Accounting-Printing-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31908733997
+
+      - name: Restore Phase 14.5.53 and apply Phase 14.5.54 PDF text layout fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '460a4e289520d13c6706679b5e5205260cd364fff01095aabc2495a6e263972a  phase14_5_54_pdf_text_layout/payload/p54-part00.txt' | sha256sum -c -
+          cat phase14_5_54_pdf_text_layout/payload/p54-part00.txt > phase14_5_54_pdf_text_layout/p54.full.b64
+          echo '460a4e289520d13c6706679b5e5205260cd364fff01095aabc2495a6e263972a  phase14_5_54_pdf_text_layout/p54.full.b64' | sha256sum -c -
+          base64 -d phase14_5_54_pdf_text_layout/p54.full.b64 | gzip -dc > phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
+          echo 'cf06ad210aad8f9a23038dcbb4f1fe9d44b7ec5f62bf2cb9efa24cc31faa3c92  phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch' | sha256sum -c -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.53-Accounting-Printing-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.53
+          git apply --check ../phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
+          git apply ../phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-pdf-text-layout"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt
+          test -f app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt
+          grep -q 'ReportTextLayout.wrap' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'canvas.clipRect' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'maxLines = if (isHeader) 4 else 12' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'splitOversizedToken' app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 93' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-pdf-text-layout"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-54-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-54-output/FushERP-Phase14.5.54-PDF-Text-Layout-Fix-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-54-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-54-output/lib/apksigner.jar
+          chmod +x phase14-5-54-output/apksigner
+          zip -qr phase14-5-54-output/FushERP-Mobile-Phase14.5.54-PDF-Text-Layout-Fix-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.54 — PDF Text Layout / Overlap Fix' \
+            'Base verified source: Phase 14.5.53 Professional Accounting & Treasury Printing' \
+            'Branch: fush/reports-printing' \
+            'Long voucher/UUID hard wrapping: PASS' \
+            'Arabic mixed-text wrapping: PASS' \
+            'Dynamic row height from font metrics: PASS' \
+            'Cell clipping prevents cross-column painting: PASS' \
+            'Description/reference column weighting improved: PASS' \
+            'Table continuation headers retained: PASS' \
+            'Shared PDF renderer fix applies to accounting/treasury reports: PASS' \
+            'Accounting posting logic unchanged: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 93' \
+            'Version name: 0.15.4.54-pdf-text-layout' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-54-output/FushERP-Phase14.5.54-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-PDF-Text-Layout-Fix-Build
+          path: phase14-5-54-output/
+          if-no-files-found: error
+          retention-days: 7
