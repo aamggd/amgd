@@ -1,0 +1,531 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index 6e8bf86..ca9722b 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -385,6 +385,7 @@ private fun SalesInvoiceDetailDialog(
+     warehouses: List<WarehouseEntity>,
+     onDismiss: () -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val invoice by produceState<SalesInvoiceEntity?>(initialValue = null, key1 = invoiceSummary.id) {
+         value = container.db.salesDao().invoiceById(invoiceSummary.id)
+     }
+@@ -417,16 +418,16 @@ private fun SalesInvoiceDetailDialog(
+                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+                 verticalArrangement = Arrangement.spacedBy(10.dp)
+             ) {
+-                Text("بيان فاتورة المبيعات", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_sales_invoice_statement_72436), style = MaterialTheme.typography.headlineSmall)
+                 Text(invoiceSummary.invoiceNo, style = MaterialTheme.typography.titleLarge)
+                 HorizontalDivider()
+ 
+                 invoice?.let { row ->
+                     val warehouse = warehouses.firstOrNull { it.id == row.warehouseId }
+-                    Text("بيانات الفاتورة", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_invoice_details_556b6), style = MaterialTheme.typography.titleMedium)
+                     Text("العميل: ${invoiceSummary.customerName}")
+                     Text("التاريخ: ${salesDate(row.invoiceDate)}${row.dueDate?.let { " • الاستحقاق: ${salesDate(it)}" } ?: ""}")
+-                    Text("نوع البيع: ${if (row.paymentType == "CASH") "نقدي" else "آجل"} • الحالة: ${if (row.status == "POSTED") "مرحلة" else row.status}")
++                    Text("نوع البيع: ${if (row.paymentType == "CASH") uiContext.getString(R.string.common_cash) else uiContext.getString(R.string.common_credit)} • الحالة: ${if (row.status == "POSTED") "مرحلة" else row.status}")
+                     Text("المحافظة: ${row.province} • القناة: ${salesChannelLabel(row.channel)}")
+                     if (row.salesRepNameSnapshot.isNotBlank()) Text("مندوب المبيعات: ${row.salesRepNameSnapshot} • العمولة ${salesMoneyRaw(row.salesRepRatePct)}%")
+                     Text("المخزن: ${warehouse?.nameAr ?: "#${row.warehouseId}"}${warehouse?.code?.let { " • $it" } ?: ""}")
+@@ -436,7 +437,7 @@ private fun SalesInvoiceDetailDialog(
+                     HorizontalDivider()
+                     Text("تفاصيل الأصناف (${saleLines.size})", style = MaterialTheme.typography.titleMedium)
+                     if (saleLines.isEmpty()) {
+-                        FushInlineState("لا توجد أسطر محفوظة لهذه الفاتورة.")
++                        FushInlineState(uiContext.getString(R.string.deep_no_saved_lines_for_this_invoice_086ac))
+                     }
+                     saleLines.forEachIndexed { index, line ->
+                         val item = itemsList.firstOrNull { it.id == line.itemId }
+@@ -447,20 +448,20 @@ private fun SalesInvoiceDetailDialog(
+                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                 Text("${index + 1}. ${item?.nameAr ?: "صنف #${line.itemId}"}", style = MaterialTheme.typography.titleSmall)
+                                 item?.let { Text("الكود: ${it.code}", style = MaterialTheme.typography.bodySmall) }
+-                                Text("الكمية: ${salesMoney(line.quantity)} ${unit?.nameAr ?: "وحدة"} • الأساسية: ${salesMoney(line.baseQuantity)}")
++                                Text("الكمية: ${salesMoney(line.quantity)} ${unit?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)} • الأساسية: ${salesMoney(line.baseQuantity)}")
+                                 if (kotlin.math.abs(line.factorToBase - 1.0) > 0.000001) {
+                                     Text("معامل التحويل للوحدة الأساسية: ${salesMoneyRaw(line.factorToBase)}", style = MaterialTheme.typography.bodySmall)
+                                 }
+                                 Text("سعر الوحدة: ${salesMoney(line.unitPriceOriginal)} ${row.currencyCode}")
+                                 Text("قبل الخصم: ${salesMoney(line.grossOriginal)} • الخصم: ${salesMoney(line.discountOriginal)} • الصافي: ${salesMoney(line.netOriginal)} ${row.currencyCode}")
+                                 if (returnedQty > 0.000001) {
+-                                    Text("المرتجع: ${salesMoney(returnedQty)} ${unit?.nameAr ?: "وحدة"} • المتبقي المباع: ${salesMoney(remainingQty)}", color = MaterialTheme.colorScheme.error)
++                                    Text("المرتجع: ${salesMoney(returnedQty)} ${unit?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)} • المتبقي المباع: ${salesMoney(remainingQty)}", color = MaterialTheme.colorScheme.error)
+                                 }
+                                 val allocations = allocationsByLine[line.id].orEmpty()
+                                 if (allocations.isNotEmpty()) {
+-                                    Text("التشغيلات المصروفة:", style = MaterialTheme.typography.bodySmall)
++                                    Text(uiContext.getString(R.string.deep_issued_lots_22942), style = MaterialTheme.typography.bodySmall)
+                                     allocations.forEach { allocation ->
+-                                        val lot = allocation.lotNo ?: "بدون تشغيلة"
++                                        val lot = allocation.lotNo ?: uiContext.getString(R.string.deep_no_lot_8ac23)
+                                         val expiry = allocation.expiryDate?.let { " • صلاحية ${salesDate(it)}" } ?: ""
+                                         Text("• $lot • كمية أساسية ${salesMoney(allocation.quantityBase)}$expiry", style = MaterialTheme.typography.bodySmall)
+                                     }
+@@ -470,7 +471,7 @@ private fun SalesInvoiceDetailDialog(
+                     }
+ 
+                     HorizontalDivider()
+-                    Text("الملخص المالي", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_financial_summary_9ab87), style = MaterialTheme.typography.titleMedium)
+                     Text("إجمالي الأصناف قبل الخصم: ${salesMoney(row.grossOriginal)} ${row.currencyCode}")
+                     Text("الخصم: ${salesMoney(row.discountOriginal)} ${row.currencyCode} (${salesMoney(row.discountPct)}%)")
+                     if (row.transportOriginal != 0.0) Text("النقل: ${salesMoney(row.transportOriginal)} ${row.currencyCode}")
+@@ -493,7 +494,7 @@ private fun SalesInvoiceDetailDialog(
+ 
+                     if (receipts.isNotEmpty()) {
+                         HorizontalDivider()
+-                        Text("التحصيلات", style = MaterialTheme.typography.titleMedium)
++                        Text(uiContext.getString(R.string.deep_collections_8172b), style = MaterialTheme.typography.titleMedium)
+                         receipts.forEach { receipt ->
+                             Text("${receipt.receiptNo} • ${salesDate(receipt.receiptDate)} • ${salesMoney(receipt.amountOriginal)} ${receipt.currencyCode} (${salesMoney(receipt.amountBase)} أساسي)")
+                         }
+@@ -501,7 +502,7 @@ private fun SalesInvoiceDetailDialog(
+ 
+                     if (returns.isNotEmpty()) {
+                         HorizontalDivider()
+-                        Text("المرتجعات", style = MaterialTheme.typography.titleMedium)
++                        Text(uiContext.getString(R.string.deep_returns_14cf6), style = MaterialTheme.typography.titleMedium)
+                         returns.forEach { salesReturn ->
+                             Text("${salesReturn.returnNo} • ${salesDate(salesReturn.returnDate)} • ${salesMoney(salesReturn.totalOriginal)} ${salesReturn.currencyCode} • ${salesReturn.reason}")
+                         }
+@@ -509,7 +510,7 @@ private fun SalesInvoiceDetailDialog(
+                 } ?: Text("جارٍ تحميل تفاصيل الفاتورة...")
+ 
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    Button(onClick = onDismiss) { Text("إغلاق") }
++                    Button(onClick = onDismiss) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                 }
+             }
+         }
+@@ -524,6 +525,7 @@ private fun EditCustomerDialog(
+     onDismiss: () -> Unit,
+     onSave: (String, String, String, String, String, String, String, CurrencyEntity, Double, Int, Boolean, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var nameAr by remember(customer.id) { mutableStateOf(customer.nameAr) }
+     var nameEn by remember(customer.id) { mutableStateOf(customer.nameEn) }
+     var phone by remember(customer.id) { mutableStateOf(customer.phone) }
+@@ -543,33 +545,33 @@ private fun EditCustomerDialog(
+                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+                 verticalArrangement = Arrangement.spacedBy(8.dp)
+             ) {
+-                Text("تعديل بيانات العميل", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_edit_customer_7aabb), style = MaterialTheme.typography.headlineSmall)
+                 Text("الكود: ${customer.code} — يبقى ثابتاً", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                 if (outstandingBase > 0.0) {
+                     Text("الرصيد الحالي على العميل: ${salesMoney(outstandingBase)} ريال أساسي. يمكن خفض السقف، لكن النظام سيمنع أي بيع آجل جديد يتجاوز السقف.", style = MaterialTheme.typography.bodySmall)
+                 }
+-                OutlinedTextField(nameAr, { nameAr = it }, label = { Text("اسم العميل بالعربي") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(nameEn, { nameEn = it }, label = { Text("اسم العميل بالإنجليزي - اختياري") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(nameAr, { nameAr = it }, label = { Text(uiContext.getString(R.string.deep_customer_arabic_name_d74c3)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(nameEn, { nameEn = it }, label = { Text(uiContext.getString(R.string.deep_customer_english_name_optional_d04fd)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                 FushPhoneField(phone, { phone = it }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(address, { address = it }, label = { Text("العنوان") }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(province, { province = it }, label = { Text("المحافظة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+-                SalesStringSelectionField("قناة البيع", channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
+-                SalesStringSelectionField("تصنيف العميل", classification, listOf("A", "B", "C"), { it }) { classification = it }
+-                SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
++                OutlinedTextField(address, { address = it }, label = { Text(uiContext.getString(R.string.deep_address_baffa)) }, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(province, { province = it }, label = { Text(uiContext.getString(R.string.deep_governorate_5d195)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                SalesStringSelectionField(uiContext.getString(R.string.deep_sales_channel_4aa57), channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
++                SalesStringSelectionField(uiContext.getString(R.string.deep_customer_classification_1ef4e), classification, listOf("A", "B", "C"), { it }) { classification = it }
++                SalesSelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it }
+                 Row(verticalAlignment = Alignment.CenterVertically) {
+                     Checkbox(checked = allowCredit, onCheckedChange = { allowCredit = it })
+-                    Text("السماح بالبيع الآجل")
++                    Text(uiContext.getString(R.string.deep_allow_credit_sales_ebd8a))
+                 }
+                 if (allowCredit) {
+-                    FushDecimalField(limitText, { limitText = it }, "سقف الآجل بالريال الأساسي", modifier = Modifier.fillMaxWidth())
+-                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - من 1 إلى 30 يوماً", modifier = Modifier.fillMaxWidth())
++                    FushDecimalField(limitText, { limitText = it }, uiContext.getString(R.string.deep_credit_limit_in_base_currency_1836b), modifier = Modifier.fillMaxWidth())
++                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, uiContext.getString(R.string.deep_credit_period_1_to_30_days_78e45), modifier = Modifier.fillMaxWidth())
+                 } else {
+-                    Text("سيتم إيقاف إنشاء فواتير آجلة جديدة لهذا العميل، ولن تتأثر الديون السابقة.", style = MaterialTheme.typography.bodySmall)
++                    Text(uiContext.getString(R.string.deep_new_credit_invoices_will_be_blocked_for_th_993ad), style = MaterialTheme.typography.bodySmall)
+                 }
+-                OutlinedTextField(rep, { rep = it }, label = { Text("اسم المندوب/الموزع للعمولة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(rep, { rep = it }, label = { Text(uiContext.getString(R.string.deep_representative_distributor_for_commission_54a73)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+ 
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+-                    TextButton(onClick = onDismiss) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Button(
+                         enabled = nameAr.isNotBlank() && province.isNotBlank() && currency != null && limitText.toDoubleOrNull() != null && daysText.toIntOrNull() != null,
+                         onClick = {
+@@ -578,7 +580,7 @@ private fun EditCustomerDialog(
+                                 limitText.toDouble(), daysText.toInt(), allowCredit, rep
+                             )
+                         }
+-                    ) { Text("حفظ التعديل") }
++                    ) { Text(uiContext.getString(R.string.deep_save_changes_861cd)) }
+                 }
+             }
+         }
+@@ -591,6 +593,7 @@ private fun CustomerAccountStatementDialog(
+     customer: CustomerEntity,
+     onDismiss: () -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val events by produceState(initialValue = emptyList<CustomerLedgerEventRow>(), key1 = customer.id) {
+         value = container.db.salesDao().customerLedgerEvents(customer.id)
+     }
+@@ -608,7 +611,7 @@ private fun CustomerAccountStatementDialog(
+     Dialog(onDismissRequest = onDismiss) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.95f)) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("كشف حساب العميل", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_customer_statement_ccf0f), style = MaterialTheme.typography.headlineSmall)
+                 Text("${customer.nameAr} • ${customer.code}")
+                 Text("${customer.province} • ${salesChannelLabel(customer.channel)} • ${customer.currencyCode}", style = MaterialTheme.typography.bodySmall)
+                 HorizontalDivider()
+@@ -616,14 +619,14 @@ private fun CustomerAccountStatementDialog(
+                 Text("إجمالي الدائن: ${salesMoney(totalCredit)} ريال", style = MaterialTheme.typography.titleSmall)
+                 Text(if (closing >= 0.0) "الرصيد المستحق على العميل: ${salesMoney(closing)} ريال" else "رصيد لصالح العميل: ${salesMoney(-closing)} ريال", style = MaterialTheme.typography.titleMedium, color = if (closing > 0.000001) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                 HorizontalDivider()
+-                Text("الحركة التفصيلية", style = MaterialTheme.typography.titleMedium)
+-                if (running.isEmpty()) FushInlineState("لا توجد حركات على حساب هذا العميل.")
++                Text(uiContext.getString(R.string.deep_detailed_activity_80f2e), style = MaterialTheme.typography.titleMedium)
++                if (running.isEmpty()) FushInlineState(uiContext.getString(R.string.deep_there_is_no_activity_on_this_customer_acco_8d2e7))
+                 running.forEach { (event, balance) ->
+                     val type = when (event.eventType) {
+-                        "INVOICE" -> "فاتورة بيع"
+-                        "RECEIPT" -> "تحصيل"
+-                        "SALES_RETURN" -> "مرتجع مبيعات"
+-                        "CASH_REFUND" -> "رد نقدي للعميل"
++                        "INVOICE" -> uiContext.getString(R.string.deep_sales_invoice_d14f2)
++                        "RECEIPT" -> uiContext.getString(R.string.deep_collection_4d112)
++                        "SALES_RETURN" -> uiContext.getString(R.string.deep_sales_return_9c5b3)
++                        "CASH_REFUND" -> uiContext.getString(R.string.deep_customer_cash_refund_3067e)
+                         else -> event.eventType
+                     }
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -637,7 +640,7 @@ private fun CustomerAccountStatementDialog(
+                         }
+                     }
+                 }
+-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Button(onClick = onDismiss) { Text("إغلاق") } }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Button(onClick = onDismiss) { Text(uiContext.getString(R.string.deep_close_5bf82)) } }
+             }
+         }
+     }
+@@ -649,6 +652,7 @@ private fun AddCustomerDialog(
+     onDismiss: () -> Unit,
+     onSave: (String, String, String, String, CurrencyEntity, Double, Int, Boolean, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var name by remember { mutableStateOf("") }
+     var phone by remember { mutableStateOf("") }
+     var province by remember { mutableStateOf("تعز") }
+@@ -661,33 +665,33 @@ private fun AddCustomerDialog(
+     LaunchedEffect(currencies) { if (currency == null) currency = currencies.firstOrNull { it.code == "YER_NEW" } ?: currencies.firstOrNull() }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("إضافة عميل") },
++        title = { Text(uiContext.getString(R.string.deep_add_customer_52a61)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("كود العميل: ينشئه النظام تلقائياً عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+-                OutlinedTextField(name, { name = it }, label = { Text("اسم العميل") }, singleLine = true)
+-                OutlinedTextField(phone, { phone = it }, label = { Text("الهاتف") }, singleLine = true)
+-                OutlinedTextField(province, { province = it }, label = { Text("المحافظة") }, singleLine = true)
+-                SalesStringSelectionField("قناة البيع", channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
+-                SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
++                Text(uiContext.getString(R.string.deep_customer_code_is_generated_automatically_w_327a5), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++                OutlinedTextField(name, { name = it }, label = { Text(uiContext.getString(R.string.deep_customer_name_9de8c)) }, singleLine = true)
++                OutlinedTextField(phone, { phone = it }, label = { Text(uiContext.getString(R.string.common_phone)) }, singleLine = true)
++                OutlinedTextField(province, { province = it }, label = { Text(uiContext.getString(R.string.deep_governorate_5d195)) }, singleLine = true)
++                SalesStringSelectionField(uiContext.getString(R.string.deep_sales_channel_4aa57), channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
++                SalesSelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it }
+                 Row(verticalAlignment = Alignment.CenterVertically) {
+                     Checkbox(checked = allowCredit, onCheckedChange = { allowCredit = it })
+-                    Text("السماح بالبيع الآجل")
++                    Text(uiContext.getString(R.string.deep_allow_credit_sales_ebd8a))
+                 }
+                 if (allowCredit) {
+-                    FushDecimalField(limitText, { limitText = it }, "السقف الائتماني بالريال الأساسي", modifier = Modifier.fillMaxWidth())
+-                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - بحد أقصى 30", modifier = Modifier.fillMaxWidth())
++                    FushDecimalField(limitText, { limitText = it }, uiContext.getString(R.string.deep_credit_limit_in_base_currency_85fab), modifier = Modifier.fillMaxWidth())
++                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, uiContext.getString(R.string.deep_credit_period_maximum_30_days_5f3c3), modifier = Modifier.fillMaxWidth())
+                 }
+-                OutlinedTextField(rep, { rep = it }, label = { Text("اسم المندوب/الموزع للعمولة") }, singleLine = true)
++                OutlinedTextField(rep, { rep = it }, label = { Text(uiContext.getString(R.string.deep_representative_distributor_for_commission_54a73)) }, singleLine = true)
+             }
+         },
+         confirmButton = {
+             Button(
+                 enabled = name.isNotBlank() && province.isNotBlank() && currency != null && limitText.toDoubleOrNull() != null && daysText.toIntOrNull() != null,
+                 onClick = { onSave(name, phone, province, channel, currency!!, limitText.toDouble(), daysText.toInt(), allowCredit, rep) }
+-            ) { Text("حفظ") }
++            ) { Text(uiContext.getString(R.string.deep_save_56ee6)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -705,6 +709,7 @@ private fun SalesInvoiceDialog(
+     onPosted: (SalesService.SalePostResult) -> Unit,
+     onError: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     var customer by remember { mutableStateOf<CustomerEntity?>(null) }
+     var salesRep by remember { mutableStateOf<SalesRepresentativeEntity?>(null) }
+@@ -766,32 +771,32 @@ private fun SalesInvoiceDialog(
+     Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("فاتورة بيع", style = MaterialTheme.typography.headlineSmall)
+-                Text("رقم فاتورة النظام ينشأ تلقائياً عند الترحيل (SINV-YYYYMMDD-####).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+-                SalesSelectionField("العميل", customer?.nameAr ?: "اختر", customers, { "${it.nameAr} — ${it.province}" }) { customer = it }
++                Text(uiContext.getString(R.string.deep_sales_invoice_d14f2), style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_the_system_invoice_number_is_generated_aut_ef0ab), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++                SalesSelectionField(uiContext.getString(R.string.deep_customer_8adba), customer?.nameAr ?: uiContext.getString(R.string.common_select), customers, { "${it.nameAr} — ${it.province}" }) { customer = it }
+                 if (salesReps.isNotEmpty()) {
+-                    SalesSelectionField("مندوب المبيعات", salesRep?.let { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" } ?: "بدون مندوب", salesReps, { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" }) { salesRep = it }
++                    SalesSelectionField(uiContext.getString(R.string.deep_sales_representative_9e0fb), salesRep?.let { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" } ?: uiContext.getString(R.string.deep_no_representative_adec6), salesReps, { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" }) { salesRep = it }
+                 } else {
+-                    FushInlineState("لا يوجد مندوب مبيعات نشط. يمكن ترحيل الفاتورة بدون مندوب أو إضافته من قسم مناديب المبيعات.", tone = FushStatusTone.Info)
++                    FushInlineState(uiContext.getString(R.string.deep_there_is_no_active_sales_representative_yo_2a7cb), tone = FushStatusTone.Info)
+                 }
+-                SalesSelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+-                SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
++                SalesSelectionField(uiContext.getString(R.string.deep_warehouse_01d55), warehouse?.nameAr ?: uiContext.getString(R.string.common_select), warehouses, { it.nameAr }) { warehouse = it }
++                SalesSelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it }
+                 if (currency?.isBase != true) FushDecimalField(exchangeText, { exchangeText = it }, "سعر الصرف إلى الريال الجديد", modifier = Modifier.fillMaxWidth())
+-                SalesStringSelectionField("نوع البيع", paymentType, if (customer?.allowCredit == true) listOf("CASH", "CREDIT") else listOf("CASH"), { if (it == "CASH") "نقدي" else "آجل" }) { paymentType = it }
+-                if (paymentType == "CREDIT") FushIntegerField(creditDaysText, { creditDaysText = it.filter(Char::isDigit) }, "أيام الائتمان", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(discountText, { discountText = it }, "الخصم %", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(transportText, { transportText = it }, "النقل", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(feesText, { feesText = it }, "الرسوم/الجمارك", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(riskText, { riskText = it }, "هامش المخاطر", modifier = Modifier.fillMaxWidth())
++                SalesStringSelectionField(uiContext.getString(R.string.deep_sale_type_48036), paymentType, if (customer?.allowCredit == true) listOf("CASH", "CREDIT") else listOf("CASH"), { if (it == "CASH") uiContext.getString(R.string.common_cash) else uiContext.getString(R.string.common_credit) }) { paymentType = it }
++                if (paymentType == "CREDIT") FushIntegerField(creditDaysText, { creditDaysText = it.filter(Char::isDigit) }, uiContext.getString(R.string.deep_credit_days_072e8), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(discountText, { discountText = it }, uiContext.getString(R.string.deep_discount_59356), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(transportText, { transportText = it }, uiContext.getString(R.string.deep_transport_1a336), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(feesText, { feesText = it }, uiContext.getString(R.string.deep_fees_customs_ffb21), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(riskText, { riskText = it }, uiContext.getString(R.string.deep_risk_margin_0ad85), modifier = Modifier.fillMaxWidth())
+                 HorizontalDivider()
+-                Text("إضافة صنف", style = MaterialTheme.typography.titleMedium)
+-                SalesSelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { it.nameAr }) { item = it }
+-                SalesSelectionField("الوحدة", conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: "اختر", conversions, { c -> units.firstOrNull { it.id == c.unitId }?.let { "${it.nameAr} × ${salesMoneyRaw(c.factorToBase)}" } ?: "وحدة" }) { conversion = it }
+-                FushDecimalField(quantityText, { quantityText = it }, "الكمية", modifier = Modifier.fillMaxWidth())
++                Text(uiContext.getString(R.string.deep_add_item_6aedb), style = MaterialTheme.typography.titleMedium)
++                SalesSelectionField(uiContext.getString(R.string.deep_item_2a4bf), item?.nameAr ?: uiContext.getString(R.string.common_select), itemsList, { it.nameAr }) { item = it }
++                SalesSelectionField(uiContext.getString(R.string.deep_unit_44501), conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: uiContext.getString(R.string.common_select), conversions, { c -> units.firstOrNull { it.id == c.unitId }?.let { "${it.nameAr} × ${salesMoneyRaw(c.factorToBase)}" } ?: uiContext.getString(R.string.deep_unit_95eea) }) { conversion = it }
++                FushDecimalField(quantityText, { quantityText = it }, uiContext.getString(R.string.deep_quantity_a9513), modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(
+                     value = priceText,
+                     onValueChange = { priceText = it },
+-                    label = { Text("سعر الوحدة — إدخال يدوي أو سعر مقترح") },
++                    label = { Text(uiContext.getString(R.string.deep_unit_price_manual_or_suggested_151e2)) },
+                     singleLine = true
+                 )
+                 resolvedPrice?.let { price ->
+@@ -801,18 +806,18 @@ private fun SalesInvoiceDialog(
+                         color = MaterialTheme.colorScheme.primary
+                     )
+                 } ?: Text(
+-                    "لا توجد قائمة أسعار سارية لهذه المحافظة/القناة/العملة؛ يمكنك إدخال سعر البيع يدويًا.",
++                    uiContext.getString(R.string.deep_no_active_price_list_for_this_governorate__55c0a),
+                     style = MaterialTheme.typography.bodySmall,
+                     color = MaterialTheme.colorScheme.secondary
+                 )
+                 OutlinedButton(onClick = {
+                     try {
+-                        val q = requireNotNull(quantityText.toDoubleOrNull()) { "أدخل كمية صحيحة" }
+-                        val p = requireNotNull(priceText.toDoubleOrNull()) { "أدخل سعر بيع صحيح" }
+-                        require(q > 0 && p > 0) { "الكمية والسعر يجب أن يكونا أكبر من صفر" }
+-                        val i = requireNotNull(item) { "اختر الصنف" }
+-                        val c = requireNotNull(conversion) { "اختر الوحدة" }
+-                        val u = requireNotNull(units.firstOrNull { it.id == c.unitId }) { "الوحدة غير موجودة" }
++                        val q = requireNotNull(quantityText.toDoubleOrNull()) { uiContext.getString(R.string.deep_enter_a_valid_quantity_51929) }
++                        val p = requireNotNull(priceText.toDoubleOrNull()) { uiContext.getString(R.string.deep_enter_a_valid_sale_price_1e457) }
++                        require(q > 0 && p > 0) { uiContext.getString(R.string.deep_quantity_and_price_must_be_greater_than_ze_50380) }
++                        val i = requireNotNull(item) { uiContext.getString(R.string.deep_select_an_item_38e39) }
++                        val c = requireNotNull(conversion) { uiContext.getString(R.string.deep_select_a_unit_4be64) }
++                        val u = requireNotNull(units.firstOrNull { it.id == c.unitId }) { uiContext.getString(R.string.deep_unit_not_found_8e799) }
+                         lines += SalesLineUi(i, u, c.factorToBase, q, p)
+                         if (customer?.province == "عدن") {
+                             val cartonEquivalent = lines.sumOf { it.quantity * it.factor } / 480.0
+@@ -820,7 +825,7 @@ private fun SalesInvoiceDialog(
+                         }
+                         quantityText = ""; error = null
+                     } catch (e: Exception) { error = e.message }
+-                }, modifier = Modifier.fillMaxWidth()) { Text("إضافة السطر") }
++                }, modifier = Modifier.fillMaxWidth()) { Text(uiContext.getString(R.string.deep_add_line_c3f6a)) }
+ 
+                 lines.forEachIndexed { index, line ->
+                     Card(Modifier.fillMaxWidth()) {
+@@ -829,7 +834,7 @@ private fun SalesInvoiceDialog(
+                                 Text(line.item.nameAr)
+                                 Text("${salesMoney(line.quantity)} ${line.unit.nameAr} × ${salesMoney(line.unitPrice)} = ${salesMoney(line.gross)}")
+                             }
+-                            TextButton(onClick = { lines.removeAt(index) }) { Text("حذف") }
++                            TextButton(onClick = { lines.removeAt(index) }) { Text(uiContext.getString(R.string.deep_delete_2d2bb)) }
+                         }
+                     }
+                 }
+@@ -837,20 +842,20 @@ private fun SalesInvoiceDialog(
+ 
+                 Row(verticalAlignment = Alignment.CenterVertically) {
+                     Checkbox(checked = approveFloor, onCheckedChange = { approveFloor = it })
+-                    Text("اعتماد استثنائي للبيع تحت حد الحماية")
++                    Text(uiContext.getString(R.string.deep_exception_approval_for_sale_below_protecti_e4d89))
+                 }
+-                if (approveFloor) OutlinedTextField(floorReason, { floorReason = it }, label = { Text("سبب الاعتماد الاستثنائي") })
+-                OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات") })
++                if (approveFloor) OutlinedTextField(floorReason, { floorReason = it }, label = { Text(uiContext.getString(R.string.deep_exception_approval_reason_dc7f2)) })
++                OutlinedTextField(notes, { notes = it }, label = { Text(uiContext.getString(R.string.deep_notes_48065)) })
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+ 
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Spacer(Modifier.width(8.dp))
+                     Button(enabled = !saving && customer != null && warehouse != null && currency != null && lines.isNotEmpty(), onClick = {
+                         scope.launch {
+                             saving = true
+                             try {
+-                                val rate = if (currency?.isBase == true) 1.0 else requireNotNull(exchangeText.toDoubleOrNull()) { "سعر الصرف غير صالح" }
++                                val rate = if (currency?.isBase == true) 1.0 else requireNotNull(exchangeText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_exchange_rate_d8efc) }
+                                 val result = container.salesService.postSale(
+                                     SalesService.PostSaleRequest(
+                                         customerId = customer!!.id,
+@@ -858,12 +863,12 @@ private fun SalesInvoiceDialog(
+                                         currencyCode = currency!!.code,
+                                         exchangeRate = rate,
+                                         paymentType = paymentType,
+-                                        creditDays = if (paymentType == "CREDIT") requireNotNull(creditDaysText.toIntOrNull()) { "أيام الائتمان غير صالحة" } else 0,
++                                        creditDays = if (paymentType == "CREDIT") requireNotNull(creditDaysText.toIntOrNull()) { uiContext.getString(R.string.deep_invalid_credit_days_04a58) } else 0,
+                                         invoiceDate = saleDate,
+-                                        discountPct = requireNotNull(discountText.toDoubleOrNull()) { "الخصم غير صالح" },
+-                                        transportOriginal = requireNotNull(transportText.toDoubleOrNull()) { "النقل غير صالح" },
+-                                        feesOriginal = requireNotNull(feesText.toDoubleOrNull()) { "الرسوم غير صالحة" },
+-                                        riskMarginOriginal = requireNotNull(riskText.toDoubleOrNull()) { "هامش المخاطر غير صالح" },
++                                        discountPct = requireNotNull(discountText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_discount_e93b2) },
++                                        transportOriginal = requireNotNull(transportText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_transport_amount_40133) },
++                                        feesOriginal = requireNotNull(feesText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_fees_25347) },
++                                        riskMarginOriginal = requireNotNull(riskText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_risk_margin_33771) },
+                                         notes = notes,
+                                         belowFloorApprovedBy = if (approveFloor) user.id else null,
+                                         belowFloorReason = if (approveFloor) floorReason else "",
+@@ -874,11 +879,11 @@ private fun SalesInvoiceDialog(
+                                 )
+                                 onPosted(result)
+                             } catch (e: Exception) {
+-                                val text = e.message ?: "تعذر ترحيل فاتورة البيع"
++                                val text = e.message ?: uiContext.getString(R.string.deep_could_not_post_sales_invoice_e38bc)
+                                 error = text; onError(text)
+                             } finally { saving = false }
+                         }
+-                    }) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل الفاتورة") }
++                    }) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_post_invoice_60222)) }
+                 }
+             }
+         }
+@@ -894,6 +899,7 @@ private fun ReceiptDialog(
+     onDismiss: () -> Unit,
+     onPosted: (SalesService.ReceiptResult) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
+     var rateText by remember { mutableStateOf("1") }
+@@ -913,10 +919,10 @@ private fun ReceiptDialog(
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("${invoice.customerName} • المتبقي ${salesMoney(invoice.outstandingBase)} ريال أساسي")
+-                SalesSelectionField("عملة التحصيل", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
+-                if (currency?.isBase != true) FushDecimalField(rateText, { rateText = it }, "سعر الصرف", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(amountText, { amountText = it }, "المبلغ المحصل", modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات") })
++                SalesSelectionField(uiContext.getString(R.string.deep_collection_currency_29875), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it }
++                if (currency?.isBase != true) FushDecimalField(rateText, { rateText = it }, uiContext.getString(R.string.deep_exchange_rate_fd829), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(amountText, { amountText = it }, uiContext.getString(R.string.deep_collected_amount_24b27), modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(notes, { notes = it }, label = { Text(uiContext.getString(R.string.deep_notes_48065)) })
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             }
+         },
+@@ -930,17 +936,17 @@ private fun ReceiptDialog(
+                             invoiceId = invoice.id,
+                             amountOriginal = amountText.toDouble(),
+                             currencyCode = currency!!.code,
+-                            exchangeRate = if (currency?.isBase == true) 1.0 else requireNotNull(rateText.toDoubleOrNull()) { "سعر الصرف غير صالح" },
++                            exchangeRate = if (currency?.isBase == true) 1.0 else requireNotNull(rateText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_exchange_rate_d8efc) },
+                             notes = notes,
+                             createdBy = user.id
+                         )
+                         onPosted(result)
+-                    } catch (e: Exception) { error = e.message ?: "تعذر التحصيل" }
++                    } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_post_collection_320c4) }
+                     finally { saving = false }
+                 }
+-            }) { Text(if (saving) "جارٍ..." else "ترحيل التحصيل") }
++            }) { Text(if (saving) uiContext.getString(R.string.deep_working_98ed8) else uiContext.getString(R.string.deep_post_collection_04be5)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -954,6 +960,7 @@ private fun SalesReturnDialog(
+     onDismiss: () -> Unit,
+     onPosted: (SalesService.ReturnResult) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val saleLines by produceState(initialValue = emptyList<SalesLineEntity>(), key1 = invoice.id) {
+         value = container.db.salesDao().linesForInvoice(invoice.id)
+@@ -969,35 +976,35 @@ private fun SalesReturnDialog(
+     Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("مرتجع مبيعات", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_sales_return_9c5b3), style = MaterialTheme.typography.headlineSmall)
+                 Text("من ${invoice.invoiceNo} — ${invoice.customerName}")
+                 SalesSelectionField(
+-                    "السطر",
+-                    line?.let { selected -> itemsList.firstOrNull { it.id == selected.itemId }?.nameAr } ?: "اختر",
++                    uiContext.getString(R.string.deep_line_f940b),
++                    line?.let { selected -> itemsList.firstOrNull { it.id == selected.itemId }?.nameAr } ?: uiContext.getString(R.string.common_select),
+                     saleLines,
+                     { row ->
+-                        val itemName = itemsList.firstOrNull { it.id == row.itemId }?.nameAr ?: "صنف"
+-                        val unitName = units.firstOrNull { it.id == row.unitId }?.nameAr ?: "وحدة"
++                        val itemName = itemsList.firstOrNull { it.id == row.itemId }?.nameAr ?: uiContext.getString(R.string.deep_item_70448)
++                        val unitName = units.firstOrNull { it.id == row.unitId }?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)
+                         "$itemName — ${salesMoney(row.quantity)} $unitName"
+                     }
+                 ) { line = it; quantityText = "" }
+-                FushDecimalField(quantityText, { quantityText = it }, "كمية المرتجع بالوحدة الأصلية", modifier = Modifier.fillMaxWidth())
+-                SalesStringSelectionField("التسوية", settlement, listOf("CUSTOMER_CREDIT", "CASH_REFUND"), { if (it == "CASH_REFUND") "رد نقدي" else "إشعار دائن للعميل" }) { settlement = it }
+-                OutlinedTextField(reason, { reason = it }, label = { Text("سبب المرتجع") })
+-                Text("سيعاد المخزون إلى نفس تشغيلات البيع الأصلية، وتنعكس تكلفة المبيعات والعمولة المستحقة تلقائياً.", style = MaterialTheme.typography.bodySmall)
++                FushDecimalField(quantityText, { quantityText = it }, uiContext.getString(R.string.deep_return_quantity_in_original_unit_93594), modifier = Modifier.fillMaxWidth())
++                SalesStringSelectionField(uiContext.getString(R.string.deep_settlement_c8429), settlement, listOf("CUSTOMER_CREDIT", "CASH_REFUND"), { if (it == "CASH_REFUND") uiContext.getString(R.string.deep_cash_refund_a24af) else uiContext.getString(R.string.deep_customer_credit_note_acef7) }) { settlement = it }
++                OutlinedTextField(reason, { reason = it }, label = { Text(uiContext.getString(R.string.deep_return_reason_ed03e)) })
++                Text(uiContext.getString(R.string.deep_stock_will_return_to_the_original_sale_lot_a2787), style = MaterialTheme.typography.bodySmall)
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Spacer(Modifier.width(8.dp))
+                     Button(enabled = !saving && line != null && quantityText.toDoubleOrNull()?.let { it > 0 } == true && reason.isNotBlank(), onClick = {
+                         scope.launch {
+                             saving = true
+                             try {
+                                 onPosted(container.salesService.postReturn(line!!.id, quantityText.toDouble(), settlement, reason, user.id))
+-                            } catch (e: Exception) { error = e.message ?: "تعذر ترحيل المرتجع" }
++                            } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_post_return_d5775) }
+                             finally { saving = false }
+                         }
+-                    }) { Text(if (saving) "جارٍ..." else "ترحيل المرتجع") }
++                    }) { Text(if (saving) uiContext.getString(R.string.deep_working_98ed8) else uiContext.getString(R.string.deep_post_return_35de8)) }
+                 }
+             }
+         }

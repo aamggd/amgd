@@ -1,0 +1,658 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 3714399..e597622 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -9,6 +9,7 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
+@@ -439,6 +440,7 @@ private fun WarehouseReorderPolicyDialog(
+     onSave: (WarehouseEntity, ItemEntity, Double) -> Unit,
+     onDelete: (WarehouseReorderPolicyView) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var selectedWarehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var selectedItem by remember { mutableStateOf<ItemEntity?>(null) }
+     var levelText by remember { mutableStateOf("") }
+@@ -456,13 +458,13 @@ private fun WarehouseReorderPolicyDialog(
+     Dialog(onDismissRequest = onDismiss) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 6.dp) {
+             Column(Modifier.fillMaxWidth().padding(16.dp)) {
+-                Text("حدود إعادة الطلب حسب المخزن", style = MaterialTheme.typography.titleLarge)
+-                Text("اختر المخزن التشغيلي الفعلي للصنف. مخازن الحجر والمرتجعات لا تُنشأ لها سياسة تلقائياً.", style = MaterialTheme.typography.bodySmall)
++                Text(uiContext.getString(R.string.deep_reorder_levels_by_warehouse_d57fb), style = MaterialTheme.typography.titleLarge)
++                Text(uiContext.getString(R.string.deep_select_the_actual_operating_warehouse_for__acf62), style = MaterialTheme.typography.bodySmall)
+                 Spacer(Modifier.height(8.dp))
+ 
+                 Box {
+                     OutlinedButton(onClick = { warehouseExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+-                        Text(selectedWarehouse?.let { "${it.nameAr} (${it.code})" } ?: "اختر المخزن")
++                        Text(selectedWarehouse?.let { "${it.nameAr} (${it.code})" } ?: uiContext.getString(R.string.deep_select_warehouse_4ecc6))
+                     }
+                     DropdownMenu(expanded = warehouseExpanded, onDismissRequest = { warehouseExpanded = false }) {
+                         warehouses.filter { it.isActive }.forEach { warehouse ->
+@@ -476,7 +478,7 @@ private fun WarehouseReorderPolicyDialog(
+                 Spacer(Modifier.height(6.dp))
+                 Box {
+                     OutlinedButton(onClick = { itemExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+-                        Text(selectedItem?.let { "${it.nameAr} (${it.code})" } ?: "اختر الصنف")
++                        Text(selectedItem?.let { "${it.nameAr} (${it.code})" } ?: uiContext.getString(R.string.deep_select_an_item_38e39))
+                     }
+                     DropdownMenu(expanded = itemExpanded, onDismissRequest = { itemExpanded = false }) {
+                         itemsList.filter { it.isActive }.forEach { item ->
+@@ -497,36 +499,36 @@ private fun WarehouseReorderPolicyDialog(
+                 OutlinedTextField(
+                     value = levelText,
+                     onValueChange = { levelText = it; localError = null },
+-                    label = { Text("حد إعادة الطلب بالوحدة الأساسية") },
++                    label = { Text(uiContext.getString(R.string.deep_reorder_level_in_base_unit_b4dc5)) },
+                     singleLine = true,
+                     modifier = Modifier.fillMaxWidth()
+                 )
+                 localError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                 Spacer(Modifier.height(8.dp))
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("إغلاق") }
++                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                     Button(
+                         onClick = {
+                             val warehouse = selectedWarehouse
+                             val item = selectedItem
+                             val level = levelText.trim().toDoubleOrNull()
+                             when {
+-                                warehouse == null -> localError = "اختر المخزن"
+-                                item == null -> localError = "اختر الصنف"
+-                                level == null || !level.isFinite() || level < 0 -> localError = "أدخل حداً صحيحاً يساوي صفراً أو أكبر"
++                                warehouse == null -> localError = uiContext.getString(R.string.deep_select_warehouse_4ecc6)
++                                item == null -> localError = uiContext.getString(R.string.deep_select_an_item_38e39)
++                                level == null || !level.isFinite() || level < 0 -> localError = uiContext.getString(R.string.deep_enter_a_valid_limit_of_zero_or_greater_74d42)
+                                 else -> onSave(warehouse, item, level)
+                             }
+                         },
+                         modifier = Modifier.weight(1f)
+-                    ) { Text("حفظ") }
++                    ) { Text(uiContext.getString(R.string.deep_save_56ee6)) }
+                 }
+ 
+                 Spacer(Modifier.height(10.dp))
+                 HorizontalDivider()
+                 Spacer(Modifier.height(6.dp))
+-                Text("السياسات الحالية", style = MaterialTheme.typography.titleMedium)
++                Text(uiContext.getString(R.string.deep_current_policies_85114), style = MaterialTheme.typography.titleMedium)
+                 if (policies.isEmpty()) {
+-                    FushInlineState("لا توجد سياسات بعد. الحدود القديمة تُرحّل تلقائياً للمخزن التشغيلي عند الترقية إذا كانت أكبر من صفر.")
++                    FushInlineState(uiContext.getString(R.string.deep_there_are_no_policies_yet_legacy_limits_ar_be075))
+                 } else {
+                     LazyColumn(Modifier.heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                         items(policies, key = { it.id }) { policy ->
+@@ -535,8 +537,8 @@ private fun WarehouseReorderPolicyDialog(
+                                     Text(policy.itemName, style = MaterialTheme.typography.titleSmall)
+                                     Text("${policy.warehouseName} (${policy.warehouseCode}) • ${fmtQty(policy.reorderLevel)} ${policy.baseUnitName}", style = MaterialTheme.typography.bodySmall)
+                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-                                        TextButton(onClick = { loadPolicy(policy) }) { Text("تعديل") }
+-                                        TextButton(onClick = { onDelete(policy) }) { Text("حذف") }
++                                        TextButton(onClick = { loadPolicy(policy) }) { Text(uiContext.getString(R.string.deep_edit_b4f76)) }
++                                        TextButton(onClick = { onDelete(policy) }) { Text(uiContext.getString(R.string.deep_delete_2d2bb)) }
+                                     }
+                                 }
+                             }
+@@ -647,6 +649,7 @@ private fun StartWarehouseTransferDialog(
+     onDismiss: () -> Unit,
+     onStart: (WarehouseEntity, WarehouseEntity, Long, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var from by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var to by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var dateText by remember { mutableStateOf(fmtDate(System.currentTimeMillis())) }
+@@ -658,28 +661,28 @@ private fun StartWarehouseTransferDialog(
+     }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("تحويل مخزني جديد") },
++        title = { Text(uiContext.getString(R.string.deep_new_stock_transfer_0ce7a)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("أنشئ التحويل كمسودة، ثم أضف الأصناف والتشغيلات قبل الترحيل النهائي.")
+-                SelectionField("من مخزن", from?.nameAr ?: "اختر", warehouses, { it.nameAr }) {
++                Text(uiContext.getString(R.string.deep_create_the_transfer_as_a_draft_then_add_it_23c3d))
++                SelectionField(uiContext.getString(R.string.deep_from_warehouse_d0dba), from?.nameAr ?: uiContext.getString(R.string.common_select), warehouses, { it.nameAr }) {
+                     from = it
+                     if (to?.id == it.id) to = warehouses.firstOrNull { w -> w.id != it.id }
+                 }
+-                SelectionField("إلى مخزن", to?.nameAr ?: "اختر", warehouses.filter { it.id != from?.id }, { it.nameAr }) { to = it }
+-                FushDateField(dateText, { dateText = it }, "تاريخ التحويل", modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة") })
++                SelectionField(uiContext.getString(R.string.deep_to_warehouse_47e07), to?.nameAr ?: uiContext.getString(R.string.common_select), warehouses.filter { it.id != from?.id }, { it.nameAr }) { to = it }
++                FushDateField(dateText, { dateText = it }, uiContext.getString(R.string.deep_transfer_date_6dfef), modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(note, { note = it }, label = { Text(uiContext.getString(R.string.deep_note_8fca5)) })
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             }
+         },
+         confirmButton = {
+             Button(enabled = from != null && to != null && from?.id != to?.id, onClick = {
+                 val date = parseInventoryDate(dateText)
+-                if (date == null) error = "أدخل التاريخ بصيغة yyyy-MM-dd"
++                if (date == null) error = uiContext.getString(R.string.deep_enter_the_date_as_yyyy_mm_dd_ef7e5)
+                 else onStart(from!!, to!!, date, note)
+-            }) { Text("إنشاء مسودة") }
++            }) { Text(uiContext.getString(R.string.deep_create_draft_d0f09)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -693,6 +696,7 @@ private fun WarehouseTransferDialog(
+     onDismiss: () -> Unit,
+     onDone: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     var transfer by remember { mutableStateOf<WarehouseTransferEntity?>(null) }
+     var lines by remember { mutableStateOf(emptyList<WarehouseTransferLineView>()) }
+@@ -720,7 +724,7 @@ private fun WarehouseTransferDialog(
+                 if (row != null) {
+                     Text("${fromWarehouse?.nameAr ?: row.fromWarehouseId} ← ${toWarehouse?.nameAr ?: row.toWarehouseId} • ${fmtDate(row.transferDate)} • ${statusAr(row.status)}")
+                     if (row.notes.isNotBlank()) Text("ملاحظة: ${row.notes}", style = MaterialTheme.typography.bodySmall)
+-                    if (row.status == "POSTED") Text("تم الترحيل النهائي؛ لا يمكن تعديل الأصناف بعد الترحيل. يمكن تنفيذ عكس كامل إذا كانت الكمية الأصلية ما زالت متاحة في مخزن الوجهة.", color = MaterialTheme.colorScheme.primary)
++                    if (row.status == "POSTED") Text(uiContext.getString(R.string.deep_final_posting_is_complete_items_cannot_be__1cb11), color = MaterialTheme.colorScheme.primary)
+                     if (row.status == "CANCELLED") Text("ملغي: ${row.cancelReason}", color = MaterialTheme.colorScheme.error)
+                     if (row.status == "REVERSED") {
+                         Text("تم عكس التحويل بتاريخ ${row.reversedAt?.let(::fmtDate) ?: "—"}", color = MaterialTheme.colorScheme.tertiary)
+@@ -729,10 +733,10 @@ private fun WarehouseTransferDialog(
+                 }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                 if (row?.status == "DRAFT") {
+-                    Button(onClick = { showAddLine = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة صنف / تشغيلة") }
++                    Button(onClick = { showAddLine = true }, modifier = Modifier.fillMaxWidth()) { Text(uiContext.getString(R.string.deep_add_item_lot_4ccf8)) }
+                 }
+                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    if (lines.isEmpty()) item { FushInlineState("لا توجد أصناف في التحويل.") }
++                    if (lines.isEmpty()) item { FushInlineState(uiContext.getString(R.string.deep_there_are_no_items_in_this_transfer_084c6)) }
+                     items(lines, key = { it.id }) { line ->
+                         Card(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+@@ -746,22 +750,22 @@ private fun WarehouseTransferDialog(
+                                                 container.advancedInventoryService.removeWarehouseTransferLine(line.id)
+                                                 refresh++
+                                                 error = null
+-                                            } catch (e: Exception) { error = e.message ?: "تعذر حذف السطر" }
++                                            } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_delete_line_8b178) }
+                                         }
+-                                    }) { Text("حذف السطر") }
++                                    }) { Text(uiContext.getString(R.string.deep_delete_line_f4574)) }
+                                 }
+                             }
+                         }
+                     }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إغلاق") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                     if (row?.status == "POSTED") {
+-                        TextButton(onClick = { showReverse = true }, enabled = !saving) { Text("عكس التحويل") }
++                        TextButton(onClick = { showReverse = true }, enabled = !saving) { Text(uiContext.getString(R.string.deep_reverse_transfer_24298)) }
+                         Spacer(Modifier.width(6.dp))
+                     }
+                     if (row?.status == "DRAFT") {
+-                        TextButton(onClick = { showCancel = true }, enabled = !saving) { Text("إلغاء التحويل") }
++                        TextButton(onClick = { showCancel = true }, enabled = !saving) { Text(uiContext.getString(R.string.deep_cancel_transfer_8bee9)) }
+                         Spacer(Modifier.width(6.dp))
+                         Button(enabled = !saving && lines.isNotEmpty(), onClick = {
+                             scope.launch {
+@@ -769,10 +773,10 @@ private fun WarehouseTransferDialog(
+                                 try {
+                                     container.advancedInventoryService.postWarehouseTransfer(transferId, user.id)
+                                     onDone("تم ترحيل التحويل ${row.transferNo}: خرجت الكميات من ${fromWarehouse?.nameAr ?: "المصدر"} ودخلت إلى ${toWarehouse?.nameAr ?: "الوجهة"} بنفس التكلفة والتشغيلة.")
+-                                } catch (e: Exception) { error = e.message ?: "تعذر ترحيل التحويل" }
++                                } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_post_transfer_db8a5) }
+                                 finally { saving = false }
+                             }
+-                        }) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل نهائي") }
++                        }) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_final_posting_21d30)) }
+                     }
+                 }
+             }
+@@ -787,7 +791,7 @@ private fun WarehouseTransferDialog(
+                     showAddLine = false
+                     refresh++
+                     error = null
+-                } catch (e: Exception) { error = e.message ?: "تعذر إضافة الصنف" }
++                } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_add_item_212f1) }
+             }
+         }
+     }
+@@ -795,11 +799,11 @@ private fun WarehouseTransferDialog(
+     if (showCancel && row != null) {
+         AlertDialog(
+             onDismissRequest = { showCancel = false },
+-            title = { Text("إلغاء التحويل") },
++            title = { Text(uiContext.getString(R.string.deep_cancel_transfer_8bee9)) },
+             text = {
+                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Text("الإلغاء متاح للمسودة فقط ولا ينشئ أي حركة مخزون.")
+-                    OutlinedTextField(cancelReason, { cancelReason = it }, label = { Text("سبب الإلغاء - مطلوب") })
++                    Text(uiContext.getString(R.string.deep_cancellation_is_available_only_for_drafts__b5c1e))
++                    OutlinedTextField(cancelReason, { cancelReason = it }, label = { Text(uiContext.getString(R.string.deep_cancellation_reason_required_d6135)) })
+                 }
+             },
+             confirmButton = {
+@@ -809,23 +813,23 @@ private fun WarehouseTransferDialog(
+                             container.advancedInventoryService.cancelWarehouseTransfer(transferId, cancelReason, user.id)
+                             showCancel = false
+                             onDone("تم إلغاء التحويل ${row.transferNo} بدون تغيير المخزون.")
+-                        } catch (e: Exception) { error = e.message ?: "تعذر إلغاء التحويل" }
++                        } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_cancel_transfer_de742) }
+                     }
+-                }) { Text("تأكيد الإلغاء") }
++                }) { Text(uiContext.getString(R.string.deep_confirm_cancellation_fc16a)) }
+             },
+-            dismissButton = { TextButton(onClick = { showCancel = false }) { Text("رجوع") } }
++            dismissButton = { TextButton(onClick = { showCancel = false }) { Text(uiContext.getString(R.string.deep_back_328dd)) } }
+         )
+     }
+ 
+     if (showReverse && row != null) {
+         AlertDialog(
+             onDismissRequest = { if (!saving) showReverse = false },
+-            title = { Text("عكس التحويل المرحّل") },
++            title = { Text(uiContext.getString(R.string.deep_reverse_posted_transfer_349d7)) },
+             text = {
+                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Text("سيُنشئ النظام حركتين عكسيتين لكل سطر: إخراجاً من مخزن الوجهة وإدخالاً إلى مخزن المصدر بنفس التشغيلة والتكلفة الأصلية. لا تُحذف الحركة الأصلية.")
+-                    Text("العكس كامل، ويُرفض إذا لم تعد الكمية الأصلية متاحة في مخزن الوجهة أو إذا تسبب العكس في رصيد تاريخي سالب.", style = MaterialTheme.typography.bodySmall)
+-                    OutlinedTextField(reversalReason, { reversalReason = it }, label = { Text("سبب العكس - مطلوب") })
++                    Text(uiContext.getString(R.string.deep_the_system_will_create_two_reversing_movem_d9085))
++                    Text(uiContext.getString(R.string.deep_reversal_is_complete_only_and_is_rejected__291e8), style = MaterialTheme.typography.bodySmall)
++                    OutlinedTextField(reversalReason, { reversalReason = it }, label = { Text(uiContext.getString(R.string.deep_reversal_reason_required_1f13b)) })
+                 }
+             },
+             confirmButton = {
+@@ -836,12 +840,12 @@ private fun WarehouseTransferDialog(
+                             container.advancedInventoryService.reverseWarehouseTransfer(transferId, reversalReason, user.id)
+                             showReverse = false
+                             onDone("تم عكس التحويل ${row.transferNo}: عادت الكميات من ${toWarehouse?.nameAr ?: "الوجهة"} إلى ${fromWarehouse?.nameAr ?: "المصدر"} بحركات عكسية موثقة.")
+-                        } catch (e: Exception) { error = e.message ?: "تعذر عكس التحويل" }
++                        } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_reverse_transfer_29f3b) }
+                         finally { saving = false }
+                     }
+-                }) { Text(if (saving) "جارٍ العكس..." else "تأكيد العكس") }
++                }) { Text(if (saving) uiContext.getString(R.string.deep_reversing_d5343) else uiContext.getString(R.string.deep_confirm_reversal_cf96e)) }
+             },
+-            dismissButton = { TextButton(onClick = { showReverse = false }, enabled = !saving) { Text("رجوع") } }
++            dismissButton = { TextButton(onClick = { showReverse = false }, enabled = !saving) { Text(uiContext.getString(R.string.deep_back_328dd)) } }
+         )
+     }
+ }
+@@ -855,6 +859,7 @@ private fun WarehouseTransferLineDialog(
+     onDismiss: () -> Unit,
+     onAdd: (ItemEntity, LotBalanceRow, Double) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var item by remember { mutableStateOf<ItemEntity?>(null) }
+     var lots by remember { mutableStateOf(emptyList<LotBalanceRow>()) }
+     var lot by remember { mutableStateOf<LotBalanceRow?>(null) }
+@@ -870,20 +875,20 @@ private fun WarehouseTransferLineDialog(
+ 
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("إضافة صنف للتحويل") },
++        title = { Text(uiContext.getString(R.string.deep_add_transfer_item_d6e6f)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                SelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { "${it.code} — ${it.nameAr}" }) {
++                SelectionField(uiContext.getString(R.string.deep_item_2a4bf), item?.nameAr ?: uiContext.getString(R.string.common_select), itemsList, { "${it.code} — ${it.nameAr}" }) {
+                     item = it
+                     lot = null
+                     error = null
+                 }
+                 if (lots.isEmpty()) {
+-                    FushInlineState("لا يوجد رصيد لهذا الصنف في مخزن المصدر.", tone = FushStatusTone.Danger)
++                    FushInlineState(uiContext.getString(R.string.deep_there_is_no_balance_for_this_item_in_the_s_38adf), tone = FushStatusTone.Danger)
+                 } else {
+                     SelectionField(
+-                        "التشغيلة / الرصيد",
+-                        lot?.let { transferLotLabel(it) } ?: "اختر",
++                        uiContext.getString(R.string.deep_lot_balance_087cd),
++                        lot?.let { transferLotLabel(it) } ?: uiContext.getString(R.string.common_select),
+                         lots,
+                         { transferLotLabel(it) }
+                     ) { lot = it }
+@@ -900,13 +905,13 @@ private fun WarehouseTransferLineDialog(
+                 val qty = qtyText.toDoubleOrNull()
+                 val available = lot?.quantityBase ?: 0.0
+                 when {
+-                    qty == null || qty <= 0.0 -> error = "أدخل كمية أكبر من صفر"
+-                    qty > available + 0.000000001 -> error = "الكمية أكبر من الرصيد المتاح"
++                    qty == null || qty <= 0.0 -> error = uiContext.getString(R.string.deep_enter_a_quantity_greater_than_zero_7990d)
++                    qty > available + 0.000000001 -> error = uiContext.getString(R.string.deep_quantity_exceeds_available_balance_119f1)
+                     else -> onAdd(item!!, lot!!, qty)
+                 }
+-            }) { Text("إضافة") }
++            }) { Text(uiContext.getString(R.string.deep_add_5e3a3)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -922,21 +927,22 @@ private fun parseInventoryDate(text: String): Long? = try {
+ 
+ @Composable
+ private fun StartInventoryCountDialog(warehouses: List<WarehouseEntity>, onDismiss: () -> Unit, onStart: (WarehouseEntity, String) -> Unit) {
++    val uiContext = LocalContext.current
+     var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var note by remember { mutableStateOf("") }
+     LaunchedEffect(warehouses) { if (warehouse == null) warehouse = warehouses.firstOrNull { it.code == "RM" } ?: warehouses.firstOrNull() }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("بدء جرد فعلي") },
++        title = { Text(uiContext.getString(R.string.deep_start_physical_count_068fe)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("سيحفظ النظام لقطة من الرصيد الحالي حسب الصنف والتشغيلة، ثم تدخل الكمية الفعلية.")
+-                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+-                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة الجرد") })
++                Text(uiContext.getString(R.string.deep_the_system_will_save_a_snapshot_of_current_37676))
++                SelectionField(uiContext.getString(R.string.deep_warehouse_01d55), warehouse?.nameAr ?: uiContext.getString(R.string.common_select), warehouses, { it.nameAr }) { warehouse = it }
++                OutlinedTextField(note, { note = it }, label = { Text(uiContext.getString(R.string.deep_count_note_6c7e3)) })
+             }
+         },
+-        confirmButton = { Button(enabled = warehouse != null, onClick = { onStart(warehouse!!, note) }) { Text("إنشاء الجرد") } },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        confirmButton = { Button(enabled = warehouse != null, onClick = { onStart(warehouse!!, note) }) { Text(uiContext.getString(R.string.deep_create_count_6b881)) } },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -949,6 +955,7 @@ private fun InventoryCountDialog(
+     onDismiss: () -> Unit,
+     onDone: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     var count by remember { mutableStateOf<InventoryCountEntity?>(null) }
+     var lines by remember { mutableStateOf(emptyList<InventoryCountLineEntity>()) }
+@@ -964,12 +971,12 @@ private fun InventoryCountDialog(
+         Surface(shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+             Column(Modifier.padding(12.dp)) {
+                 Text("الجرد ${count?.countNo ?: countId}", style = MaterialTheme.typography.headlineSmall)
+-                Text("أدخل الكمية الفعلية لكل سطر. الفرق = الفعلي - رصيد النظام.")
++                Text(uiContext.getString(R.string.deep_enter_physical_quantity_for_each_line_vari_3d87d))
+                 OutlinedButton(
+                     enabled = count?.status == "DRAFT" && !saving,
+                     onClick = { showAddMissingLine = true },
+                     modifier = Modifier.fillMaxWidth()
+-                ) { Text("إضافة صنف/تشغيلة غير موجودة في لقطة الجرد") }
++                ) { Text(uiContext.getString(R.string.deep_add_item_lot_not_in_count_snapshot_5cb35)) }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                     items(lines, key = { it.id }) { line ->
+@@ -980,38 +987,38 @@ private fun InventoryCountDialog(
+                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                 Text(itemName, style = MaterialTheme.typography.titleMedium)
+                                 Text("النظام: ${fmtQty(line.systemQtyBase)} • تشغيلة: ${line.lotNo ?: "—"}")
+-                                FushDecimalField(qtyText, { qtyText = it }, "الكمية الفعلية", modifier = Modifier.fillMaxWidth())
+-                                OutlinedTextField(reason, { reason = it }, label = { Text("سبب الفرق - اختياري") }, singleLine = true)
++                                FushDecimalField(qtyText, { qtyText = it }, uiContext.getString(R.string.deep_physical_quantity_08d33), modifier = Modifier.fillMaxWidth())
++                                OutlinedTextField(reason, { reason = it }, label = { Text(uiContext.getString(R.string.deep_variance_reason_optional_a206f)) }, singleLine = true)
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                     Text("الفرق: ${line.countedQtyBase?.let { fmtQty(it - line.systemQtyBase) } ?: "—"}")
+                                     TextButton(onClick = {
+                                         scope.launch {
+                                             try {
+-                                                val q = requireNotNull(qtyText.toDoubleOrNull()) { "أدخل كمية صحيحة" }
++                                                val q = requireNotNull(qtyText.toDoubleOrNull()) { uiContext.getString(R.string.deep_enter_a_valid_quantity_51929) }
+                                                 container.advancedInventoryService.setCountedQuantity(line.id, q, reason)
+                                                 refresh++
+                                                 error = null
+                                             } catch (e: Exception) { error = e.message }
+                                         }
+-                                    }) { Text("حفظ السطر") }
++                                    }) { Text(uiContext.getString(R.string.deep_save_line_9dee4)) }
+                                 }
+                             }
+                         }
+                     }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إغلاق") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                     Spacer(Modifier.width(6.dp))
+                     Button(enabled = !saving && lines.isNotEmpty(), onClick = {
+                         scope.launch {
+                             saving = true
+                             try {
+                                 val entry = container.advancedInventoryService.postCount(countId, user.id)
+-                                onDone(if (entry == null) "تم ترحيل الجرد بدون فروق" else "تم ترحيل الجرد وقيد الفروق رقم $entry")
+-                            } catch (e: Exception) { error = e.message ?: "تعذر ترحيل الجرد" }
++                                onDone(if (entry == null) uiContext.getString(R.string.deep_inventory_count_posted_with_no_variances_bc72d) else "تم ترحيل الجرد وقيد الفروق رقم $entry")
++                            } catch (e: Exception) { error = e.message ?: uiContext.getString(R.string.deep_could_not_post_inventory_count_c6799) }
+                             finally { saving = false }
+                         }
+-                    }) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل الجرد") }
++                    }) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_post_count_0de5c)) }
+                 }
+             }
+         }
+@@ -1038,7 +1045,7 @@ private fun InventoryCountDialog(
+                         showAddMissingLine = false
+                         refresh++
+                     } catch (e: Exception) {
+-                        error = e.message ?: "تعذر إضافة الصنف إلى الجرد"
++                        error = e.message ?: uiContext.getString(R.string.deep_could_not_add_item_to_count_5bb9e)
+                     }
+                 }
+             }
+@@ -1052,6 +1059,7 @@ private fun AddMissingInventoryCountLineDialog(
+     onDismiss: () -> Unit,
+     onSave: (ItemEntity, Double, Double, String?, Long?, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var item by remember { mutableStateOf<ItemEntity?>(null) }
+     var qtyText by remember { mutableStateOf("") }
+     var costText by remember { mutableStateOf("") }
+@@ -1063,25 +1071,25 @@ private fun AddMissingInventoryCountLineDialog(
+ 
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("إضافة رصيد فعلي غير موجود بالنظام") },
++        title = { Text(uiContext.getString(R.string.deep_add_physical_stock_missing_from_system_9a75c)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("استخدم هذا الخيار فقط عندما تجد أثناء الجرد صنفاً أو تشغيلة موجودة فعلياً ولم تكن موجودة في لقطة بداية الجرد. سيعتبر رصيد النظام لهذا السطر = صفر.")
+-                SelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { "${it.code} • ${it.nameAr}" }) { selected ->
++                Text(uiContext.getString(R.string.deep_use_this_only_when_physical_counting_finds_78580))
++                SelectionField(uiContext.getString(R.string.deep_item_2a4bf), item?.nameAr ?: uiContext.getString(R.string.common_select), itemsList, { "${it.code} • ${it.nameAr}" }) { selected ->
+                     item = selected
+                     lotText = ""
+                     expiryText = ""
+                     localError = null
+                 }
+-                FushDecimalField(qtyText, { qtyText = it }, "الكمية الفعلية", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(costText, { costText = it }, "تكلفة الوحدة بالريال الجديد", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(qtyText, { qtyText = it }, uiContext.getString(R.string.deep_physical_quantity_08d33), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(costText, { costText = it }, uiContext.getString(R.string.deep_unit_cost_in_base_currency_adbda), modifier = Modifier.fillMaxWidth())
+                 if (item?.lotTracked == true) {
+-                    OutlinedTextField(lotText, { lotText = it }, label = { Text("رقم التشغيلة") }, singleLine = true)
++                    OutlinedTextField(lotText, { lotText = it }, label = { Text(uiContext.getString(R.string.deep_lot_number_56a67)) }, singleLine = true)
+                 }
+                 if (item?.expiryTracked == true) {
+-                    FushDateField(expiryText, { expiryText = it }, "تاريخ الصلاحية", modifier = Modifier.fillMaxWidth(), optional = true)
++                    FushDateField(expiryText, { expiryText = it }, uiContext.getString(R.string.deep_expiry_date_d46aa), modifier = Modifier.fillMaxWidth(), optional = true)
+                 }
+-                OutlinedTextField(reason, { reason = it }, label = { Text("سبب/ملاحظة") }, singleLine = true)
++                OutlinedTextField(reason, { reason = it }, label = { Text(uiContext.getString(R.string.deep_reason_note_58b3f)) }, singleLine = true)
+                 localError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             }
+         },
+@@ -1092,10 +1100,10 @@ private fun AddMissingInventoryCountLineDialog(
+                 val cost = costText.toDoubleOrNull()
+                 val expiry = if (selected.expiryTracked) parseInventoryDate(expiryText) else null
+                 when {
+-                    qty == null || qty <= 0.0 -> localError = "أدخل كمية فعلية أكبر من صفر"
+-                    cost == null || cost <= 0.0 -> localError = "أدخل تكلفة وحدة أكبر من صفر"
+-                    selected.lotTracked && lotText.isBlank() -> localError = "رقم التشغيلة مطلوب لهذا الصنف"
+-                    selected.expiryTracked && expiry == null -> localError = "تاريخ الصلاحية غير صحيح"
++                    qty == null || qty <= 0.0 -> localError = uiContext.getString(R.string.deep_enter_a_physical_quantity_greater_than_zer_5f7fe)
++                    cost == null || cost <= 0.0 -> localError = uiContext.getString(R.string.deep_enter_a_unit_cost_greater_than_zero_fd363)
++                    selected.lotTracked && lotText.isBlank() -> localError = uiContext.getString(R.string.deep_lot_number_is_required_for_this_item_7981e)
++                    selected.expiryTracked && expiry == null -> localError = uiContext.getString(R.string.deep_invalid_expiry_date_d5286)
+                     else -> onSave(
+                         selected,
+                         qty,
+@@ -1105,29 +1113,30 @@ private fun AddMissingInventoryCountLineDialog(
+                         reason
+                     )
+                 }
+-            }) { Text("إضافة إلى الجرد") }
++            }) { Text(uiContext.getString(R.string.deep_add_to_count_39f5e)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+ @Composable
+ private fun LotControlDialog(lot: InventoryLotAlertRow, onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
++    val uiContext = LocalContext.current
+     var status by remember { mutableStateOf(lot.controlStatus) }
+     var reason by remember { mutableStateOf("") }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("حالة التشغيلة") },
++        title = { Text(uiContext.getString(R.string.deep_lot_status_b0f87)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("${lot.nameAr} • ${lot.lotNo ?: "بدون رقم"}")
+-                StringSelectionField("الحالة", statusAr(status), listOf("ACCEPTED", "QUARANTINE", "BLOCKED", "RETURNED")) { status = it }
+-                OutlinedTextField(reason, { reason = it }, label = { Text("السبب / الملاحظة") })
+-                if (status != "ACCEPTED") Text("تنبيه: هذه التشغيلة ستُستبعد من البيع وصرف الإنتاج.", color = MaterialTheme.colorScheme.error)
++                StringSelectionField(uiContext.getString(R.string.deep_status_d6370), statusAr(status), listOf("ACCEPTED", "QUARANTINE", "BLOCKED", "RETURNED")) { status = it }
++                OutlinedTextField(reason, { reason = it }, label = { Text(uiContext.getString(R.string.deep_reason_note_d6373)) })
++                if (status != "ACCEPTED") Text(uiContext.getString(R.string.deep_warning_this_lot_will_be_excluded_from_sal_3e183), color = MaterialTheme.colorScheme.error)
+             }
+         },
+-        confirmButton = { Button(onClick = { onSave(status, reason) }) { Text("حفظ") } },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        confirmButton = { Button(onClick = { onSave(status, reason) }) { Text(uiContext.getString(R.string.deep_save_56ee6)) } },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -1138,6 +1147,7 @@ private fun LegacyLotAssignmentDialog(
+     onDismiss: () -> Unit,
+     onSave: (InventoryLotAlertRow, ItemEntity, Double, String?, Long?, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val candidates = remember(lots, items) {
+         lots.filter { row ->
+             val item = items.firstOrNull { it.id == row.itemId }
+@@ -1150,36 +1160,36 @@ private fun LegacyLotAssignmentDialog(
+     var qtyText by remember(source) { mutableStateOf(source?.let { fmtQty(it.quantityBase) } ?: "") }
+     var lotText by remember(source) { mutableStateOf(source?.lotNo.orEmpty()) }
+     var expiryText by remember(source) { mutableStateOf(source?.expiryDate?.let(::fmtDate).orEmpty()) }
+-    var note by remember { mutableStateOf("ربط رصيد مخزون قديم بتشغيلة وصلاحية") }
++    var note by remember { mutableStateOf(uiContext.getString(R.string.deep_link_legacy_stock_balance_to_lot_and_expir_0d2ff)) }
+     var error by remember { mutableStateOf<String?>(null) }
+ 
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("ربط رصيد قديم بتشغيلة وصلاحية") },
++        title = { Text(uiContext.getString(R.string.deep_link_legacy_balance_to_lot_and_expiry_8933d)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("هذه العملية لا تضيف ولا تحذف مخزوناً. تنقل نفس الكمية ونفس القيمة من الرصيد القديم غير المكتمل إلى تشغيلة/صلاحية صحيحة، مع تسجيلها في سجل التدقيق.", style = MaterialTheme.typography.bodySmall)
++                Text(uiContext.getString(R.string.deep_this_operation_does_not_add_or_remove_stoc_3f972), style = MaterialTheme.typography.bodySmall)
+                 if (candidates.isEmpty()) {
+-                    FushInlineState("لا يوجد حاليًا رصيد قديم يحتاج استكمال رقم تشغيلة أو تاريخ صلاحية.", tone = FushStatusTone.Success)
++                    FushInlineState(uiContext.getString(R.string.deep_there_is_currently_no_legacy_balance_requi_96628), tone = FushStatusTone.Success)
+                 } else {
+                     SelectionField(
+-                        "الرصيد القديم",
+-                        source?.let { "${it.nameAr} — ${it.warehouseName} — ${fmtQty(it.quantityBase)}" } ?: "اختر",
++                        uiContext.getString(R.string.deep_legacy_balance_b5619),
++                        source?.let { "${it.nameAr} — ${it.warehouseName} — ${fmtQty(it.quantityBase)}" } ?: uiContext.getString(R.string.common_select),
+                         candidates,
+                         { "${it.nameAr} — ${it.warehouseName} — ${fmtQty(it.quantityBase)}" }
+                     ) { source = it }
+                     source?.let { s ->
+                         Text("الكود: ${s.code} • التشغيلة الحالية: ${s.lotNo ?: "بدون رقم"} • الصلاحية الحالية: ${s.expiryDate?.let(::fmtDate) ?: "بدون تاريخ"}", style = MaterialTheme.typography.bodySmall)
+                     }
+-                    FushDecimalField(qtyText, { qtyText = it }, "الكمية المراد ربطها", modifier = Modifier.fillMaxWidth())
++                    FushDecimalField(qtyText, { qtyText = it }, uiContext.getString(R.string.deep_quantity_to_link_a4bcf), modifier = Modifier.fillMaxWidth())
+                     if (item?.lotTracked == true) {
+-                        OutlinedTextField(lotText, { lotText = it }, label = { Text("رقم التشغيلة الجديد - مطلوب") }, singleLine = true)
++                        OutlinedTextField(lotText, { lotText = it }, label = { Text(uiContext.getString(R.string.deep_new_lot_number_required_298b1)) }, singleLine = true)
+                     }
+                     if (item?.expiryTracked == true) {
+-                        FushDateField(expiryText, { expiryText = it }, "تاريخ الصلاحية", modifier = Modifier.fillMaxWidth())
++                        FushDateField(expiryText, { expiryText = it }, uiContext.getString(R.string.deep_expiry_date_d46aa), modifier = Modifier.fillMaxWidth())
+                         item.shelfLifeDays?.let { days -> Text("مدة الصلاحية المعرفة للصنف: $days يوم", style = MaterialTheme.typography.bodySmall) }
+                     }
+-                    OutlinedTextField(note, { note = it }, label = { Text("ملاحظة / سبب") })
++                    OutlinedTextField(note, { note = it }, label = { Text(uiContext.getString(R.string.deep_note_reason_69928)) })
+                 }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             }
+@@ -1192,16 +1202,16 @@ private fun LegacyLotAssignmentDialog(
+                     val qty = qtyText.toDoubleOrNull()
+                     val expiry = if (i.expiryTracked) parseInventoryDate(expiryText) else null
+                     when {
+-                        qty == null || qty <= 0.0 -> error = "أدخل كمية صحيحة أكبر من صفر"
+-                        qty > s.quantityBase + 0.000000001 -> error = "الكمية أكبر من الرصيد القديم المتاح"
+-                        i.lotTracked && lotText.isBlank() -> error = "أدخل رقم التشغيلة"
+-                        i.expiryTracked && expiry == null -> error = "أدخل تاريخ الصلاحية بصيغة yyyy-MM-dd"
++                        qty == null || qty <= 0.0 -> error = uiContext.getString(R.string.deep_enter_a_valid_quantity_greater_than_zero_c9706)
++                        qty > s.quantityBase + 0.000000001 -> error = uiContext.getString(R.string.deep_quantity_exceeds_available_legacy_balance_450d2)
++                        i.lotTracked && lotText.isBlank() -> error = uiContext.getString(R.string.deep_enter_lot_number_220b7)
++                        i.expiryTracked && expiry == null -> error = uiContext.getString(R.string.deep_enter_expiry_date_as_yyyy_mm_dd_d8097)
+                         else -> { error = null; onSave(s, i, qty, if (i.lotTracked) lotText.trim() else null, expiry, note) }
+                     }
+-                }) { Text("ربط الرصيد") }
++                }) { Text(uiContext.getString(R.string.deep_link_balance_f6b51)) }
+             }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -1212,6 +1222,7 @@ private fun AdvancedOpeningStockDialog(
+     onDismiss: () -> Unit,
+     onSave: (ItemEntity, WarehouseEntity, Double, Double, String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var item by remember { mutableStateOf<ItemEntity?>(null) }
+     var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var qtyText by remember { mutableStateOf("") }
+@@ -1221,18 +1232,18 @@ private fun AdvancedOpeningStockDialog(
+     LaunchedEffect(warehouses) { if (warehouse == null) warehouse = warehouses.firstOrNull() }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("رصيد مخزون افتتاحي") },
++        title = { Text(uiContext.getString(R.string.deep_opening_inventory_balance_0c39a)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                SelectionField("الصنف", item?.nameAr ?: "اختر", items, { it.nameAr }) { item = it }
+-                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
++                SelectionField(uiContext.getString(R.string.deep_item_2a4bf), item?.nameAr ?: uiContext.getString(R.string.common_select), items, { it.nameAr }) { item = it }
++                SelectionField(uiContext.getString(R.string.deep_warehouse_01d55), warehouse?.nameAr ?: uiContext.getString(R.string.common_select), warehouses, { it.nameAr }) { warehouse = it }
+                 FushDecimalField(qtyText, { qtyText = it }, "الكمية بالوحدة الأساسية", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(costText, { costText = it }, "تكلفة الوحدة بالريال الجديد", modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(note, { note = it }, label = { Text("ملاحظة") })
++                FushDecimalField(costText, { costText = it }, uiContext.getString(R.string.deep_unit_cost_in_base_currency_adbda), modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(note, { note = it }, label = { Text(uiContext.getString(R.string.deep_note_8fca5)) })
+             }
+         },
+-        confirmButton = { Button(enabled = item != null && warehouse != null && qtyText.toDoubleOrNull() != null && costText.toDoubleOrNull() != null, onClick = { onSave(item!!, warehouse!!, qtyText.toDouble(), costText.toDouble(), note) }) { Text("ترحيل") } },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        confirmButton = { Button(enabled = item != null && warehouse != null && qtyText.toDoubleOrNull() != null && costText.toDoubleOrNull() != null, onClick = { onSave(item!!, warehouse!!, qtyText.toDouble(), costText.toDouble(), note) }) { Text(uiContext.getString(R.string.deep_post_b4c4c)) } },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 

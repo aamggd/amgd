@@ -1,0 +1,341 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 3574521..e58dfa7 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -31,6 +31,7 @@ import java.util.Locale
+ 
+ @Composable
+ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
++    val uiContext = LocalContext.current
+     val customers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
+     val receivables by container.db.salesDao().observeReceivables(System.currentTimeMillis()).collectAsState(initial = emptyList())
+     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
+@@ -222,7 +223,7 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                     val row = container.salesService.createCustomer(name, phone, province, channel, currency.code, limit, days, credit, rep?.fullNameAr.orEmpty(), user.id, rep?.id)
+                     message = "تم إنشاء العميل ${row.code}"
+                     showAdd = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر إنشاء العميل" }
++                } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_create_customer_1008e) }
+             }
+         }
+     }
+@@ -230,6 +231,7 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+ 
+ @Composable
+ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
++    val uiContext = LocalContext.current
+     val suppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
+     val balances by container.db.purchaseDao().observeSupplierBalances(System.currentTimeMillis()).collectAsState(initial = emptyList())
+     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
+@@ -425,7 +427,7 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                     val row = container.purchaseService.createSupplier(name, phone, currency.code, days, address = address, createdBy = user.id)
+                     message = "تم إنشاء المورد ${row.code}"
+                     showAdd = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر إنشاء المورد" }
++                } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_create_supplier_ec45e) }
+             }
+         }
+     }
+@@ -433,7 +435,8 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+ 
+ @Composable
+ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, customer: CustomerEntity, onBack: () -> Unit, modifier: Modifier) {
+-    val tabs = listOf("المعلومات", "كشف الحساب", "الفواتير", "التحصيلات", "السندات", "المرتجعات", "العمولات", "المرفقات", "التدقيق")
++    val uiContext = LocalContext.current
++    val tabs = listOf(uiContext.getString(R.string.deep_information_47f3c), uiContext.getString(R.string.deep_statement_ba945), uiContext.getString(R.string.deep_invoices_38bd1), uiContext.getString(R.string.deep_collections_8172b), uiContext.getString(R.string.deep_vouchers_7f997), uiContext.getString(R.string.deep_returns_14cf6), uiContext.getString(R.string.deep_commissions_b7dea), uiContext.getString(R.string.deep_attachments_6fce6), uiContext.getString(R.string.deep_audit_d0e59))
+     var tab by remember { mutableIntStateOf(0) }
+     var voucherType by remember { mutableStateOf<String?>(null) }
+     var reverseVoucher by remember { mutableStateOf<PartyVoucherEntity?>(null) }
+@@ -462,7 +465,7 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+                     horizontalArrangement = Arrangement.spacedBy(10.dp),
+                     verticalAlignment = Alignment.CenterVertically,
+                 ) {
+-                    OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text("رجوع") }
++                    OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_back_328dd)) }
+                     FushUserAvatar(customer.nameAr)
+                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                         Text(customer.nameAr, style = MaterialTheme.typography.titleLarge)
+@@ -474,20 +477,20 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+                     }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    FushStatusPill(if (customer.isActive) "نشط" else "غير نشط", if (customer.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+-                    FushStatusPill(if (customer.allowCredit) "الآجل مسموح" else "نقدي", if (customer.allowCredit) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushStatusPill(if (customer.isActive) uiContext.getString(R.string.deep_active_41b05) else uiContext.getString(R.string.deep_inactive_cbc18), if (customer.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
++                    FushStatusPill(if (customer.allowCredit) uiContext.getString(R.string.deep_credit_allowed_777b8) else uiContext.getString(R.string.common_cash), if (customer.allowCredit) FushStatusTone.Warning else FushStatusTone.Success)
+                     FushStatusPill("تصنيف ${customer.classification}", FushStatusTone.Info)
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                     FushMetricCard(
+-                        label = "الرصيد الحالي",
++                        label = uiContext.getString(R.string.deep_current_balance_c52d4),
+                         value = partyMoney(currentBalance),
+                         helper = stringResource(R.string.common_base_currency),
+                         modifier = Modifier.weight(1f),
+                         tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                     )
+                     FushMetricCard(
+-                        label = "فواتير المبيعات",
++                        label = uiContext.getString(R.string.deep_sales_invoices_8f656),
+                         value = invoices.size.toString(),
+                         helper = "${receipts.size} تحصيل • ${returns.size} مرتجع",
+                         modifier = Modifier.weight(1f),
+@@ -495,8 +498,8 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+                     )
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }
+-                    OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }
++                    Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_receipt_voucher_2e60d)) }
++                    OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_payment_voucher_0fccf)) }
+                 }
+                 FushOperationMessage(message, onConsumed = { message = null })
+             }
+@@ -513,11 +516,11 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+         when (tab) {
+             0 -> item { PartyInfoCustomer(customer) }
+             1 -> customerLedgerItems(running)
+-            2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مبيعات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") "نقدي" else "آجل"}" }
+-            3 -> profileSimpleEntityItems(if (receipts.isEmpty()) "لا توجد تحصيلات." else null, receipts) { r -> "${partyDate(r.receiptDate)} • ${r.receiptNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
++            2 -> profileSimpleEntityItems(if (invoices.isEmpty()) uiContext.getString(R.string.deep_no_sales_invoices_e4438) else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") uiContext.getString(R.string.common_cash) else uiContext.getString(R.string.common_credit)}" }
++            3 -> profileSimpleEntityItems(if (receipts.isEmpty()) uiContext.getString(R.string.deep_no_collections_3a08c) else null, receipts) { r -> "${partyDate(r.receiptDate)} • ${r.receiptNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
+             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
+-            5 -> profileSimpleEntityItems(if (returns.isEmpty()) "لا توجد مرتجعات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
+-            6 -> profileSimpleEntityItems(if (commissions.isEmpty()) "لا توجد عمولات مرتبطة بمبيعات العميل." else null, commissions) { r -> "فاتورة #${r.invoiceId} • مستحق ${partyMoney(r.earnedBase)} • معكوس ${partyMoney(r.reversedBase)} • ${r.beneficiary}" }
++            5 -> profileSimpleEntityItems(if (returns.isEmpty()) uiContext.getString(R.string.deep_no_returns_8039f) else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
++            6 -> profileSimpleEntityItems(if (commissions.isEmpty()) uiContext.getString(R.string.deep_no_commissions_linked_to_this_customer_sal_1f437) else null, commissions) { r -> "فاتورة #${r.invoiceId} • مستحق ${partyMoney(r.earnedBase)} • معكوس ${partyMoney(r.reversedBase)} • ${r.beneficiary}" }
+             7 -> item { AttachmentTab(container, user, customerId = customer.id, supplierId = null, attachments = attachments, onMessage = { message=it }) }
+             else -> auditItems(audits)
+         }
+@@ -538,7 +541,8 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+ 
+ @Composable
+ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, supplier: SupplierEntity, onBack: () -> Unit, modifier: Modifier) {
+-    val tabs = listOf("المعلومات", "كشف الحساب", "فواتير المشتريات", "دفعات المورد", "السندات", "المرتجعات", "المرفقات", "التدقيق")
++    val uiContext = LocalContext.current
++    val tabs = listOf(uiContext.getString(R.string.deep_information_47f3c), uiContext.getString(R.string.deep_statement_ba945), uiContext.getString(R.string.deep_purchase_invoices_85f6c), uiContext.getString(R.string.deep_supplier_payments_461eb), uiContext.getString(R.string.deep_vouchers_7f997), uiContext.getString(R.string.deep_returns_14cf6), uiContext.getString(R.string.deep_attachments_6fce6), uiContext.getString(R.string.deep_audit_d0e59))
+     var tab by remember { mutableIntStateOf(0) }
+     var voucherType by remember { mutableStateOf<String?>(null) }
+     var reverseVoucher by remember { mutableStateOf<PartyVoucherEntity?>(null) }
+@@ -566,7 +570,7 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+                     horizontalArrangement = Arrangement.spacedBy(10.dp),
+                     verticalAlignment = Alignment.CenterVertically,
+                 ) {
+-                    OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text("رجوع") }
++                    OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_back_328dd)) }
+                     FushUserAvatar(supplier.nameAr)
+                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                         Text(supplier.nameAr, style = MaterialTheme.typography.titleLarge)
+@@ -578,19 +582,19 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+                     }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    FushStatusPill(if (supplier.isActive) "نشط" else "غير نشط", if (supplier.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+-                    FushStatusPill(if (supplier.paymentTermsDays > 0) "أجل ${supplier.paymentTermsDays} يوم" else "نقدي", if (supplier.paymentTermsDays > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushStatusPill(if (supplier.isActive) uiContext.getString(R.string.deep_active_41b05) else uiContext.getString(R.string.deep_inactive_cbc18), if (supplier.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
++                    FushStatusPill(if (supplier.paymentTermsDays > 0) "أجل ${supplier.paymentTermsDays} يوم" else uiContext.getString(R.string.common_cash), if (supplier.paymentTermsDays > 0) FushStatusTone.Warning else FushStatusTone.Success)
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                     FushMetricCard(
+-                        label = "الرصيد المستحق",
++                        label = uiContext.getString(R.string.deep_outstanding_balance_b63d2),
+                         value = partyMoney(currentBalance),
+-                        helper = "المبلغ المستحق للمورد",
++                        helper = uiContext.getString(R.string.deep_amount_due_to_supplier_e5447),
+                         modifier = Modifier.weight(1f),
+                         tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                     )
+                     FushMetricCard(
+-                        label = "فواتير المشتريات",
++                        label = uiContext.getString(R.string.deep_purchase_invoices_85f6c),
+                         value = invoices.size.toString(),
+                         helper = "${payments.size} دفعة • ${returns.size} مرتجع",
+                         modifier = Modifier.weight(1f),
+@@ -598,8 +602,8 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+                     )
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }
+-                    OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }
++                    Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_payment_voucher_0fccf)) }
++                    OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_receipt_voucher_2e60d)) }
+                 }
+                 FushOperationMessage(message, onConsumed = { message = null })
+             }
+@@ -616,10 +620,10 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+         when (tab) {
+             0 -> item { PartyInfoSupplier(supplier) }
+             1 -> supplierLedgerItems(running)
+-            2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مشتريات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)}" }
+-            3 -> profileSimpleEntityItems(if (payments.isEmpty()) "لا توجد دفعات للمورد." else null, payments) { r -> "${partyDate(r.paymentDate)} • ${r.paymentNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
++            2 -> profileSimpleEntityItems(if (invoices.isEmpty()) uiContext.getString(R.string.deep_no_purchase_invoices_ccf32) else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)}" }
++            3 -> profileSimpleEntityItems(if (payments.isEmpty()) uiContext.getString(R.string.deep_no_supplier_payments_084af) else null, payments) { r -> "${partyDate(r.paymentDate)} • ${r.paymentNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
+             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
+-            5 -> profileSimpleEntityItems(if (returns.isEmpty()) "لا توجد مرتجعات مشتريات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
++            5 -> profileSimpleEntityItems(if (returns.isEmpty()) uiContext.getString(R.string.deep_no_purchase_returns_ecba7) else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
+             6 -> item { AttachmentTab(container, user, customerId = null, supplierId = supplier.id, attachments = attachments, onMessage = { message=it }) }
+             else -> auditItems(audits)
+         }
+@@ -640,27 +644,28 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+ 
+ @Composable
+ private fun PartyInfoCustomer(c: CustomerEntity) {
++    val uiContext = LocalContext.current
+     Column(
+         Modifier.fillMaxWidth(),
+         verticalArrangement = Arrangement.spacedBy(12.dp),
+     ) {
+-        FushSectionHeader("المعلومات الأساسية", "بيانات التعريف والسياسة التجارية للعميل")
++        FushSectionHeader(uiContext.getString(R.string.deep_basic_information_ebdd8), uiContext.getString(R.string.deep_customer_identity_and_commercial_policy_777f4))
+         ElevatedCard(
+             Modifier.fillMaxWidth(),
+             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+         ) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                CustomerInfoRow("الكود", c.code)
+-                CustomerInfoRow("الاسم", c.nameAr)
++                CustomerInfoRow(uiContext.getString(R.string.deep_code_9fcc5), c.code)
++                CustomerInfoRow(uiContext.getString(R.string.deep_name_0a924), c.nameAr)
+                 if (c.nameEn.isNotBlank()) CustomerInfoRow("English", c.nameEn)
+-                CustomerInfoRow("الهاتف", c.phone.ifBlank { "—" })
+-                CustomerInfoRow("العنوان", c.address.ifBlank { "—" })
+-                CustomerInfoRow("المحافظة", c.province)
+-                CustomerInfoRow("قناة البيع", c.channel)
+-                CustomerInfoRow("التصنيف", c.classification)
+-                CustomerInfoRow("العملة", c.currencyCode)
+-                CustomerInfoRow("المندوب", c.salesRepName.ifBlank { "—" })
+-                CustomerInfoRow("تاريخ الإنشاء", partyDate(c.createdAt), divider = false)
++                CustomerInfoRow(uiContext.getString(R.string.common_phone), c.phone.ifBlank { "—" })
++                CustomerInfoRow(uiContext.getString(R.string.deep_address_baffa), c.address.ifBlank { "—" })
++                CustomerInfoRow(uiContext.getString(R.string.deep_governorate_5d195), c.province)
++                CustomerInfoRow(uiContext.getString(R.string.deep_sales_channel_4aa57), c.channel)
++                CustomerInfoRow(uiContext.getString(R.string.deep_classification_7c75f), c.classification)
++                CustomerInfoRow(uiContext.getString(R.string.deep_currency_b9357), c.currencyCode)
++                CustomerInfoRow(uiContext.getString(R.string.deep_representative_929db), c.salesRepName.ifBlank { "—" })
++                CustomerInfoRow(uiContext.getString(R.string.deep_created_on_070d2), partyDate(c.createdAt), divider = false)
+             }
+         }
+         Surface(
+@@ -669,10 +674,10 @@ private fun PartyInfoCustomer(c: CustomerEntity) {
+             shape = MaterialTheme.shapes.medium,
+         ) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+-                Text("السياسة الائتمانية", style = MaterialTheme.typography.titleSmall)
++                Text(uiContext.getString(R.string.deep_credit_policy_63c5b), style = MaterialTheme.typography.titleSmall)
+                 Text(
+                     if (c.allowCredit) "البيع الآجل مسموح حتى ${c.creditDays} يوم وبسقف ${partyMoney(c.creditLimitBase)} بالعملة الأساسية."
+-                    else "البيع الآجل غير مفعّل لهذا العميل.",
++                    else uiContext.getString(R.string.deep_credit_sales_are_not_enabled_for_this_cust_f2628),
+                     style = MaterialTheme.typography.bodyMedium,
+                 )
+             }
+@@ -695,23 +700,24 @@ private fun CustomerInfoRow(label: String, value: String, divider: Boolean = tru
+ }
+ @Composable
+ private fun PartyInfoSupplier(s: SupplierEntity) {
++    val uiContext = LocalContext.current
+     Column(
+         Modifier.fillMaxWidth(),
+         verticalArrangement = Arrangement.spacedBy(12.dp),
+     ) {
+-        FushSectionHeader("المعلومات الأساسية", "بيانات المورد وشروط الدفع")
++        FushSectionHeader(uiContext.getString(R.string.deep_basic_information_ebdd8), uiContext.getString(R.string.deep_supplier_details_and_payment_terms_b021f))
+         ElevatedCard(
+             Modifier.fillMaxWidth(),
+             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+         ) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                SupplierInfoRow("الكود", s.code)
+-                SupplierInfoRow("الاسم", s.nameAr)
++                SupplierInfoRow(uiContext.getString(R.string.deep_code_9fcc5), s.code)
++                SupplierInfoRow(uiContext.getString(R.string.deep_name_0a924), s.nameAr)
+                 if (s.nameEn.isNotBlank()) SupplierInfoRow("English", s.nameEn)
+-                SupplierInfoRow("الهاتف", s.phone.ifBlank { "—" })
+-                SupplierInfoRow("العنوان", s.address.ifBlank { "—" })
+-                SupplierInfoRow("العملة", s.currencyCode)
+-                SupplierInfoRow("تاريخ الإنشاء", partyDate(s.createdAt), divider = false)
++                SupplierInfoRow(uiContext.getString(R.string.common_phone), s.phone.ifBlank { "—" })
++                SupplierInfoRow(uiContext.getString(R.string.deep_address_baffa), s.address.ifBlank { "—" })
++                SupplierInfoRow(uiContext.getString(R.string.deep_currency_b9357), s.currencyCode)
++                SupplierInfoRow(uiContext.getString(R.string.deep_created_on_070d2), partyDate(s.createdAt), divider = false)
+             }
+         }
+         Surface(
+@@ -720,9 +726,9 @@ private fun PartyInfoSupplier(s: SupplierEntity) {
+             shape = MaterialTheme.shapes.medium,
+         ) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+-                Text("شروط الدفع", style = MaterialTheme.typography.titleSmall)
++                Text(uiContext.getString(R.string.deep_payment_terms_7c7f4), style = MaterialTheme.typography.titleSmall)
+                 Text(
+-                    if (s.paymentTermsDays > 0) "مدة السداد المتفق عليها ${s.paymentTermsDays} يوم." else "المورد مضبوط على السداد النقدي دون فترة أجل.",
++                    if (s.paymentTermsDays > 0) "مدة السداد المتفق عليها ${s.paymentTermsDays} يوم." else uiContext.getString(R.string.deep_supplier_is_configured_for_cash_payment_wi_39057),
+                     style = MaterialTheme.typography.bodyMedium,
+                 )
+             }
+@@ -854,30 +860,32 @@ private fun <T> LazyListScope.profileSimpleEntityItems(empty: String?, rows: Lis
+ 
+ @Composable
+ private fun AttachmentTab(container: AppContainer, user: UserEntity, customerId: Long?, supplierId: Long?, attachments: List<PartyAttachmentEntity>, onMessage:(String)->Unit) {
++    val uiContext = LocalContext.current
+     val context=LocalContext.current; val scope=rememberCoroutineScope()
+     val launcher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+         if(uri!=null) scope.launch {
+             try {
+                 runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+-                val name = runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if(c.moveToFirst()) c.getString(0) else null } }.getOrNull() ?: "مرفق"
++                val name = runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if(c.moveToFirst()) c.getString(0) else null } }.getOrNull() ?: uiContext.getString(R.string.deep_attachment_052ea)
+                 val mime=context.contentResolver.getType(uri) ?: ""
+                 container.db.withTransaction {
+                     container.db.partyDao().insertAttachment(PartyAttachmentEntity(customerId=customerId,supplierId=supplierId,fileName=name,mimeType=mime,uri=uri.toString(),createdBy=user.id))
+-                    container.db.governanceDao().insertAudit(AuditEventEntity(userId=user.id,action="ATTACH",entityType=if(customerId!=null)"CUSTOMER" else "SUPPLIER",entityId=(customerId?:supplierId!!).toString(),newValue=name,reason="إضافة مرفق"))
++                    container.db.governanceDao().insertAudit(AuditEventEntity(userId=user.id,action="ATTACH",entityType=if(customerId!=null)"CUSTOMER" else "SUPPLIER",entityId=(customerId?:supplierId!!).toString(),newValue=name,reason=uiContext.getString(R.string.deep_add_attachment_7c5f3)))
+                 }
+                 onMessage("تمت إضافة المرفق $name")
+-            } catch(e:Exception){onMessage(e.message?:"تعذر إضافة المرفق")}
++            } catch(e:Exception){onMessage(e.message?:uiContext.getString(R.string.deep_could_not_add_attachment_dde22))}
+         }
+     }
+     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+-        Text("المرفقات", style=MaterialTheme.typography.titleLarge); Button(onClick={launcher.launch(arrayOf("*/*"))}){Text("إضافة مرفق")}
+-        if(attachments.isEmpty()) FushInlineState("لا توجد مرفقات.")
+-        attachments.forEach { a -> ElevatedCard(Modifier.fillMaxWidth()) { Row(Modifier.padding(10.dp), horizontalArrangement=Arrangement.SpaceBetween) { Column(Modifier.weight(1f)){Text(a.fileName); Text("${a.mimeType.ifBlank{"ملف"}} • ${partyDateTime(a.createdAt)}",style=MaterialTheme.typography.bodySmall)}; TextButton(onClick={ runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure{onMessage("تعذر فتح المرفق")}}){Text("فتح")} } } }
++        Text(uiContext.getString(R.string.deep_attachments_6fce6), style=MaterialTheme.typography.titleLarge); Button(onClick={launcher.launch(arrayOf("*/*"))}){Text(uiContext.getString(R.string.deep_add_attachment_7c5f3))}
++        if(attachments.isEmpty()) FushInlineState(uiContext.getString(R.string.deep_no_attachments_f2ba7))
++        attachments.forEach { a -> ElevatedCard(Modifier.fillMaxWidth()) { Row(Modifier.padding(10.dp), horizontalArrangement=Arrangement.SpaceBetween) { Column(Modifier.weight(1f)){Text(a.fileName); Text("${a.mimeType.ifBlank{"ملف"}} • ${partyDateTime(a.createdAt)}",style=MaterialTheme.typography.bodySmall)}; TextButton(onClick={ runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure{onMessage(uiContext.getString(R.string.deep_could_not_open_attachment_46091))}}){Text(uiContext.getString(R.string.deep_open_f8a9e))} } } }
+     }
+ }
+ 
+ @Composable
+ private fun QuickPartyVoucherDialog(container: AppContainer, type:String, customer:CustomerEntity?, supplier:SupplierEntity?, onDismiss:()->Unit, onPost:(AccountingService.VoucherRequest)->Unit) {
++    val uiContext = LocalContext.current
+     val treasury by container.db.accountingDao().observeTreasuryBalances().collectAsState(initial=emptyList())
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial=emptyList())
+     var source by remember { mutableStateOf<TreasuryBalanceRow?>(null) }; var amount by remember{mutableStateOf("")}; var rate by remember{mutableStateOf("1")}; var description by remember{mutableStateOf("")}; var reference by remember{mutableStateOf("")}; var date by remember{mutableStateOf(partyDate(System.currentTimeMillis()))}
+@@ -885,18 +893,21 @@ private fun QuickPartyVoucherDialog(container: AppContainer, type:String, custom
+     LaunchedEffect(source?.currencyCode) { if(source?.currencyCode=="YER_NEW") rate="1" }
+     val offset=accounts.firstOrNull { it.code == if(customer!=null) "1300" else "2100" }
+     AlertDialog(onDismissRequest=onDismiss,title={Text(if(type=="RECEIPT") "سند قبض — ${customer?.nameAr?:supplier?.nameAr}" else "سند صرف — ${customer?.nameAr?:supplier?.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+-        PartySelectionField("الخزينة / البنك",source?.nameAr?:"اختر",treasury,{"${it.nameAr} • ${it.currencyCode}"}){source=it}; FushDecimalField(amount,{amount=it},"المبلغ",modifier=Modifier.fillMaxWidth()); FushDecimalField(rate,{rate=it},"سعر الصرف",modifier=Modifier.fillMaxWidth()); OutlinedTextField(description,{description=it},label={Text("البيان")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(reference,{reference=it},label={Text("المرجع - اختياري")},modifier=Modifier.fillMaxWidth()); FushDateField(date,{date=it},"التاريخ",modifier=Modifier.fillMaxWidth()); if(offset==null) Text("حساب الطرف الرقابي غير موجود.",color=MaterialTheme.colorScheme.error)
+-    }},confirmButton={Button(enabled=source!=null&&offset!=null&&amount.toDoubleOrNull()?.let{it>0}==true&&rate.toDoubleOrNull()?.let{it>0}==true&&description.isNotBlank(),onClick={onPost(AccountingService.VoucherRequest(type=type,treasuryAccountId=source!!.id,offsetAccountId=offset!!.id,amountOriginal=amount.toDouble(),currencyCode=source!!.currencyCode,exchangeRate=rate.toDouble(),description=description,referenceNo=reference,voucherDate=partyParseDate(date),createdBy=0L,customerId=customer?.id,supplierId=supplier?.id))}){Text("ترحيل")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
++        PartySelectionField(uiContext.getString(R.string.deep_treasury_bank_5da3e),source?.nameAr?:uiContext.getString(R.string.common_select),treasury,{"${it.nameAr} • ${it.currencyCode}"}){source=it}; FushDecimalField(amount,{amount=it},uiContext.getString(R.string.deep_amount_07052),modifier=Modifier.fillMaxWidth()); FushDecimalField(rate,{rate=it},uiContext.getString(R.string.deep_exchange_rate_fd829),modifier=Modifier.fillMaxWidth()); OutlinedTextField(description,{description=it},label={Text(uiContext.getString(R.string.deep_description_9d5be))},modifier=Modifier.fillMaxWidth()); OutlinedTextField(reference,{reference=it},label={Text(uiContext.getString(R.string.deep_reference_optional_92244))},modifier=Modifier.fillMaxWidth()); FushDateField(date,{date=it},uiContext.getString(R.string.deep_date_d94d7),modifier=Modifier.fillMaxWidth()); if(offset==null) Text(uiContext.getString(R.string.deep_party_control_account_is_missing_d70be),color=MaterialTheme.colorScheme.error)
++    }},confirmButton={Button(enabled=source!=null&&offset!=null&&amount.toDoubleOrNull()?.let{it>0}==true&&rate.toDoubleOrNull()?.let{it>0}==true&&description.isNotBlank(),onClick={onPost(AccountingService.VoucherRequest(type=type,treasuryAccountId=source!!.id,offsetAccountId=offset!!.id,amountOriginal=amount.toDouble(),currencyCode=source!!.currencyCode,exchangeRate=rate.toDouble(),description=description,referenceNo=reference,voucherDate=partyParseDate(date),createdBy=0L,customerId=customer?.id,supplierId=supplier?.id))}){Text(uiContext.getString(R.string.deep_post_b4c4c))}},dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}})
+ }
+ 
+-@Composable private fun ReverseVoucherDialog(container:AppContainer,user:UserEntity,voucher:PartyVoucherEntity,onDismiss:()->Unit,onDone:(String)->Unit){ val scope=rememberCoroutineScope(); var reason by remember{mutableStateOf("")}; var error by remember{mutableStateOf<String?>(null)}; AlertDialog(onDismissRequest=onDismiss,title={Text("عكس ${voucher.voucherNo}")},text={Column{Text("سيتم إنشاء قيد عكسي ولن يحذف المستند الأصلي."); OutlinedTextField(reason,{reason=it},label={Text("سبب العكس — إلزامي")},modifier=Modifier.fillMaxWidth()); error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={Button(enabled=reason.isNotBlank(),onClick={scope.launch{try{val id=container.accountingService.reverseEntry(voucher.journalEntryId,reason,user.id);onDone("تم عكس السند وإنشاء القيد $id")}catch(e:Exception){error=e.message?:"تعذر العكس"}}}){Text("تأكيد العكس")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
++@Composable private fun ReverseVoucherDialog(container:AppContainer,user:UserEntity,voucher:PartyVoucherEntity,onDismiss:()->Unit,onDone:(String)->Unit){
++    val uiContext = LocalContext.current; val scope=rememberCoroutineScope(); var reason by remember{mutableStateOf("")}; var error by remember{mutableStateOf<String?>(null)}; AlertDialog(onDismissRequest=onDismiss,title={Text("عكس ${voucher.voucherNo}")},text={Column{Text(uiContext.getString(R.string.deep_a_reversing_entry_will_be_created_and_the__070cc)); OutlinedTextField(reason,{reason=it},label={Text(uiContext.getString(R.string.deep_reversal_reason_required_70522))},modifier=Modifier.fillMaxWidth()); error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={Button(enabled=reason.isNotBlank(),onClick={scope.launch{try{val id=container.accountingService.reverseEntry(voucher.journalEntryId,reason,user.id);onDone("تم عكس السند وإنشاء القيد $id")}catch(e:Exception){error=e.message?:uiContext.getString(R.string.deep_could_not_reverse_0cac7)}}}){Text(uiContext.getString(R.string.deep_confirm_reversal_cf96e))}},dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}}) }
+ 
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable private fun <T> PartySelectionField(label:String,current:String,options:List<T>,optionLabel:(T)->String,onSelected:(T)->Unit){ var expanded by remember{mutableStateOf(false)}; ExposedDropdownMenuBox(expanded,onExpandedChange={expanded=!expanded}){OutlinedTextField(current,{},readOnly=true,label={Text(label)},trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(expanded)},modifier=Modifier.menuAnchor().fillMaxWidth());ExposedDropdownMenu(expanded,onDismissRequest={expanded=false}){options.forEach{o->DropdownMenuItem(text={Text(optionLabel(o))},onClick={onSelected(o);expanded=false})}}} }
+ 
+-@Composable private fun AddCustomerPartyDialog(currencies:List<CurrencyEntity>,salesReps:List<SalesRepresentativeEntity>,onDismiss:()->Unit,onSave:(String,String,String,String,CurrencyEntity,Double,Int,Boolean,SalesRepresentativeEntity?)->Unit){ var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var province by remember{mutableStateOf("تعز")};var channel by remember{mutableStateOf("RETAIL")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var limit by remember{mutableStateOf("408000")};var days by remember{mutableStateOf("30")};var credit by remember{mutableStateOf(false)};var rep by remember{mutableStateOf<SalesRepresentativeEntity?>(null)};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text("عميل جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text("الاسم")});OutlinedTextField(phone,{phone=it},label={Text("الهاتف")});OutlinedTextField(province,{province=it},label={Text("المحافظة")});PartySelectionField("قناة البيع",channel,listOf("DIRECT","RETAIL","DISTRIBUTOR_CASH","DISTRIBUTOR_CREDIT"),{it}){channel=it};PartySelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it};Row{Checkbox(credit,{credit=it});Text("السماح بالآجل")};if(credit){OutlinedTextField(limit,{limit=it},label={Text("السقف الائتماني")});OutlinedTextField(days,{days=it},label={Text("أيام الائتمان")})};if(salesReps.isNotEmpty())PartySelectionField("مندوب المبيعات",rep?.let{"${it.code} — ${it.fullNameAr}"}?:"بدون مندوب",salesReps,{"${it.code} — ${it.fullNameAr}"}){rep=it}else FushInlineState("لا يوجد مناديب مبيعات نشطون. يمكنك إضافتهم من قسم مناديب المبيعات.")}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&limit.toDoubleOrNull()!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,province,channel,currency!!,limit.toDouble(),days.toInt(),credit,rep)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
+-@Composable private fun AddSupplierPartyDialog(currencies:List<CurrencyEntity>,onDismiss:()->Unit,onSave:(String,String,CurrencyEntity,Int,String)->Unit){var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var days by remember{mutableStateOf("0")};var address by remember{mutableStateOf("")};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text("مورد جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text("الاسم")});OutlinedTextField(phone,{phone=it},label={Text("الهاتف")});OutlinedTextField(address,{address=it},label={Text("العنوان")});PartySelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it};OutlinedTextField(days,{days=it},label={Text("أيام السداد")})}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,currency!!,days.toInt(),address)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
++@Composable private fun AddCustomerPartyDialog(currencies:List<CurrencyEntity>,salesReps:List<SalesRepresentativeEntity>,onDismiss:()->Unit,onSave:(String,String,String,String,CurrencyEntity,Double,Int,Boolean,SalesRepresentativeEntity?)->Unit){
++    val uiContext = LocalContext.current; var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var province by remember{mutableStateOf("تعز")};var channel by remember{mutableStateOf("RETAIL")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var limit by remember{mutableStateOf("408000")};var days by remember{mutableStateOf("30")};var credit by remember{mutableStateOf(false)};var rep by remember{mutableStateOf<SalesRepresentativeEntity?>(null)};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text(uiContext.getString(R.string.deep_new_customer_c20df))},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text(uiContext.getString(R.string.deep_name_0a924))});OutlinedTextField(phone,{phone=it},label={Text(uiContext.getString(R.string.common_phone))});OutlinedTextField(province,{province=it},label={Text(uiContext.getString(R.string.deep_governorate_5d195))});PartySelectionField(uiContext.getString(R.string.deep_sales_channel_4aa57),channel,listOf("DIRECT","RETAIL","DISTRIBUTOR_CASH","DISTRIBUTOR_CREDIT"),{it}){channel=it};PartySelectionField(uiContext.getString(R.string.deep_currency_b9357),currency?.nameAr?:uiContext.getString(R.string.common_select),currencies,{it.nameAr}){currency=it};Row{Checkbox(credit,{credit=it});Text(uiContext.getString(R.string.deep_allow_credit_981e7))};if(credit){OutlinedTextField(limit,{limit=it},label={Text(uiContext.getString(R.string.deep_credit_limit_b2707))});OutlinedTextField(days,{days=it},label={Text(uiContext.getString(R.string.deep_credit_days_072e8))})};if(salesReps.isNotEmpty())PartySelectionField(uiContext.getString(R.string.deep_sales_representative_9e0fb),rep?.let{"${it.code} — ${it.fullNameAr}"}?:uiContext.getString(R.string.deep_no_representative_adec6),salesReps,{"${it.code} — ${it.fullNameAr}"}){rep=it}else FushInlineState(uiContext.getString(R.string.deep_there_are_no_active_sales_representatives__1f0fd))}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&limit.toDoubleOrNull()!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,province,channel,currency!!,limit.toDouble(),days.toInt(),credit,rep)}){Text(uiContext.getString(R.string.deep_save_56ee6))}},dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}}) }
++@Composable private fun AddSupplierPartyDialog(currencies:List<CurrencyEntity>,onDismiss:()->Unit,onSave:(String,String,CurrencyEntity,Int,String)->Unit){
++    val uiContext = LocalContext.current; var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var days by remember{mutableStateOf("0")};var address by remember{mutableStateOf("")};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text(uiContext.getString(R.string.deep_new_supplier_0aec7))},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text(uiContext.getString(R.string.deep_name_0a924))});OutlinedTextField(phone,{phone=it},label={Text(uiContext.getString(R.string.common_phone))});OutlinedTextField(address,{address=it},label={Text(uiContext.getString(R.string.deep_address_baffa))});PartySelectionField(uiContext.getString(R.string.deep_currency_b9357),currency?.nameAr?:uiContext.getString(R.string.common_select),currencies,{it.nameAr}){currency=it};OutlinedTextField(days,{days=it},label={Text(uiContext.getString(R.string.deep_payment_days_e32d8))})}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,currency!!,days.toInt(),address)}){Text(uiContext.getString(R.string.deep_save_56ee6))}},dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}}) }
+ 
+ private fun partyEventLabel(t:String)=when(t){"INVOICE"->"فاتورة";"RECEIPT"->"تحصيل";"PAYMENT"->"دفعة";"RETURN","SALES_RETURN"->"مرتجع";"CASH_REFUND"->"رد نقدي";"VOUCHER_RECEIPT"->"سند قبض";"VOUCHER_PAYMENT"->"سند صرف";"VOUCHER_REVERSAL"->"عكس سند";else->t}
+ private fun partyMoney(v:Double)=if(kotlin.math.abs(v-v.toLong())<0.000001)v.toLong().toString() else "%.2f".format(Locale.US,v)
