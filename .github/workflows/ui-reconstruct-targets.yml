@@ -1,0 +1,92 @@
+name: UI Reconstruct Targets
+
+on:
+  push:
+    branches:
+      - fush/ui-professional-redesign
+    paths:
+      - '.github/workflows/ui-reconstruct-targets.yml'
+      - 'tmp_ui_reconstruction/**'
+
+permissions:
+  contents: read
+
+jobs:
+  reconstruct:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/ui-professional-redesign
+
+      - name: Rebuild target source from Phase 14.5.34 seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/uiwork
+          mkdir -p /tmp/uiwork
+          base64 -d tmp_ui_reconstruction/reconseed_xz.b64 > /tmp/reconseed.tar.xz
+          tar -xJf /tmp/reconseed.tar.xz -C /tmp/uiwork
+          cd /tmp/uiwork
+          git init -q
+          git config user.email "ui-reconstruct@local"
+          git config user.name "UI Reconstruct"
+          git add .
+          git commit -qm seed
+
+          packages=(
+            phase14_5_35_sales_customers_ui
+            phase14_5_36_purchases_suppliers_ui
+            phase14_5_37_accounting_treasury_ui
+            phase14_5_38_inventory_master_data_ui
+            phase14_5_39_production_quality_ui
+            phase14_5_40_employees_sales_reps_ui
+            phase14_5_41_assets_maintenance_expenses_ui
+            phase14_5_42_reports_adaptive_ui
+            phase14_5_43_accessibility_polish_ui
+            phase14_5_44_final_ui_handoff
+            phase14_5_45_inventory_scroll_hotfix
+            phase14_5_46_scroll_profile_polish
+            phase14_5_47_inventory_final_layout
+            phase14_5_47_professional_forms_ui
+            phase14_5_48_lazy_key_hotfix
+            phase14_5_49_navigation_feedback_polish
+            phase14_5_50_localization_foundation
+            phase14_5_50_1_theme_toggle
+            phase14_5_51_core_operations_localization
+            phase14_5_51_1_preferences_controls
+          )
+
+          includes=(
+            "--include=app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt"
+            "--include=app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt"
+            "--include=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt"
+            "--include=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt"
+            "--include=app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt"
+            "--include=app/src/main/res/values/strings.xml"
+            "--include=app/src/main/res/values-ar/strings.xml"
+          )
+
+          for pkg in "${packages[@]}"; do
+            [ -d "$GITHUB_WORKSPACE/$pkg/patches" ] || continue
+            while IFS= read -r patch; do
+              if grep -Eq 'app/src/main/java/com/fush/erp/ui/screens/(SalesScreens|PurchaseScreens|PartyScreens|AccountingScreens|AdvancedInventoryScreens)\.kt|app/src/main/res/values(-ar)?/strings\.xml' "$patch"; then
+                echo "Applying $patch"
+                git apply --check "${includes[@]}" "$patch"
+                git apply "${includes[@]}" "$patch"
+              fi
+            done < <(find "$GITHUB_WORKSPACE/$pkg/patches" -maxdepth 1 -type f -name '*.patch' | sort)
+          done
+
+          git diff --check
+          mkdir -p /tmp/ui-reconstructed
+          cp -a app /tmp/ui-reconstructed/
+          tar -C /tmp/ui-reconstructed -czf /tmp/ui-reconstructed.tar.gz .
+
+      - name: Upload reconstructed target source
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-reconstructed-targets
+          path: /tmp/ui-reconstructed.tar.gz
+          if-no-files-found: error
+          retention-days: 1
