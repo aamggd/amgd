@@ -1,0 +1,85 @@
+name: Build Fush ERP Phase 14.5.35 UI Integration
+
+on:
+  push:
+    branches: ['fush/integration-ui-build-14.5.35']
+    paths:
+      - '.github/workflows/build-phase14-5-35-ui-integration.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download verified Phase 14.5.33 build
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.33-Expense-Dimensions-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31854443269
+      - name: Restore Phase 14.5.33 source
+        run: |
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.33-Expense-Dimensions-Source.zip
+          grep -q 'versionCode = 72' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.33-expense-dimensions-reporting' FushERP_Mobile_Phase5/app/build.gradle.kts
+      - name: Apply Phase 14.5.34 UI package
+        run: |
+          cat phase14_5_34_ui_professionalization/patches/0*.patch > phase14534.diff
+          cd FushERP_Mobile_Phase5
+          git apply --check ../phase14534.diff
+          git apply ../phase14534.diff
+          grep -q 'versionCode = 73' app/build.gradle.kts
+      - name: Apply Phase 14.5.35 Sales Customers UI package
+        run: |
+          cat phase14_5_35_sales_customers_ui/patches/0*.patch > phase14535.diff
+          cd FushERP_Mobile_Phase5
+          git apply --check ../phase14535.diff
+          git apply ../phase14535.diff
+          grep -q 'versionCode = 74' app/build.gradle.kts
+          grep -q '0.15.4.35-ui-sales-customers' app/build.gradle.kts
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema unchanged
+        run: |
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+      - name: Package build
+        run: |
+          mkdir -p output/apksigner/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk output/FushERP-Phase14.5.35-UI-Sales-Customers-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 output/FushERP-Phase14.5.35-UI-Sales-Customers-aligned-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" output/apksigner/lib/apksigner.jar
+          chmod +x output/apksigner/apksigner
+          zip -qr output/FushERP-Mobile-Phase14.5.35-UI-Sales-Customers-Source.zip FushERP_Mobile_Phase5
+          sha256sum output/FushERP-Phase14.5.35-UI-Sales-Customers-aligned-unsigned.apk > output/FushERP-Phase14.5.35-UI-Sales-Customers-aligned-unsigned.apk.sha256
+          printf '%s\n' 'FUSH ERP Phase 14.5.35 UI Integration' 'Base: verified Phase 14.5.33 Expense Dimensions' 'Includes: Phase 14.5.34 UI Professionalization + Phase 14.5.35 Sales & Customers UI' 'VersionCode: 74' 'Room schema: 27 unchanged' > output/BUILD-REPORT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.35-UI-Integration-Build
+          path: output/
+          retention-days: 7
