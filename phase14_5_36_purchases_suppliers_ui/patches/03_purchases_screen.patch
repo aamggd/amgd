@@ -1,0 +1,224 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -13,6 +13,7 @@
+ import androidx.compose.ui.window.Dialog
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.*
+ import com.fush.erp.domain.PurchaseDraftLine
+ import com.fush.erp.domain.PurchaseMath
+ import com.fush.erp.domain.PurchaseReturnDraftLine
+@@ -52,34 +53,189 @@
+     var accountSupplier by remember { mutableStateOf<SupplierEntity?>(null) }
+     var paymentSupplier by remember { mutableStateOf<SupplierEntity?>(null) }
+     var showAging by remember { mutableStateOf(false) }
++    var purchaseSearch by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    val filteredPurchases = remember(purchases, purchaseSearch) {
++        val q = purchaseSearch.trim().lowercase(Locale.ROOT)
++        if (q.isBlank()) purchases else purchases.filter { purchase ->
++            listOf(
++                purchase.invoiceNo,
++                purchase.supplierName,
++                purchase.currencyCode,
++                if (purchase.paymentType == "CASH") "نقدي" else "آجل",
++            ).any { it.lowercase(Locale.ROOT).contains(q) }
++        }
++    }
++    val totalPurchaseBase = remember(purchases) { purchases.sumOf { it.totalBase } }
++    val totalPayablesBase = remember(supplierBalances) { supplierBalances.sumOf { it.outstandingBase } }
++    val overduePayablesBase = remember(supplierBalances) { supplierBalances.sumOf { it.overdueBase } }
++    val creditPurchaseCount = remember(purchases) { purchases.count { it.paymentType != "CASH" } }
++
++    LazyColumn(
++        modifier.fillMaxSize().padding(16.dp),
++        verticalArrangement = Arrangement.spacedBy(14.dp),
++    ) {
+         item {
+-            Text("المشتريات", style = MaterialTheme.typography.headlineSmall)
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                FushSectionHeader(
++                    title = "المشتريات",
++                    subtitle = "فواتير الشراء ومرتجعاتها مع متابعة التزامات الموردين",
++                    modifier = Modifier.weight(1f),
++                )
++                Spacer(Modifier.width(12.dp))
++                Button(
++                    onClick = { showPurchase = true },
++                    enabled = suppliers.isNotEmpty(),
++                    shape = MaterialTheme.shapes.medium,
++                ) { Text("فاتورة جديدة") }
++            }
++        }
++
++        if (suppliers.isEmpty()) {
++            item {
++                FushSystemState(
++                    title = "لا يوجد موردون بعد",
++                    detail = "أنشئ مورداً من صفحة الموردين قبل تسجيل أول فاتورة شراء.",
++                )
++            }
++        }
++
++        message?.let { text ->
++            item {
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) {
++                    Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
++                }
++            }
++        }
++
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "إجمالي المشتريات",
++                    value = formatMoney(totalPurchaseBase),
++                    helper = "بالعملة الأساسية",
++                    modifier = Modifier.weight(1f),
++                    tone = FushStatusTone.Info,
++                )
++                FushMetricCard(
++                    label = "مستحق للموردين",
++                    value = formatMoney(totalPayablesBase),
++                    helper = "رصيد دائنين مفتوح",
++                    modifier = Modifier.weight(1f),
++                    tone = if (totalPayablesBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "متأخر للموردين",
++                    value = formatMoney(overduePayablesBase),
++                    helper = "يحتاج تسوية",
++                    modifier = Modifier.weight(1f),
++                    tone = if (overduePayablesBase > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
++                )
++                FushMetricCard(
++                    label = "فواتير شراء آجلة",
++                    value = creditPurchaseCount.toString(),
++                    helper = "من إجمالي ${purchases.size}",
++                    modifier = Modifier.weight(1f),
++                    tone = if (creditPurchaseCount > 0) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++            }
++        }
++
++        item {
++            OutlinedButton(
++                onClick = { showAging = true },
++                enabled = suppliers.isNotEmpty(),
++                modifier = Modifier.fillMaxWidth(),
++                shape = MaterialTheme.shapes.medium,
++            ) { Text("عرض أعمار ديون الموردين") }
++        }
++
++        item {
++            FushSectionHeader("فواتير المشتريات", "${filteredPurchases.size} من ${purchases.size} فاتورة")
+             Spacer(Modifier.height(8.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { showPurchase = true }, enabled = suppliers.isNotEmpty()) { Text("فاتورة شراء") }
+-            }
+-            Spacer(Modifier.height(6.dp))
+-            OutlinedButton(onClick = { showAging = true }, enabled = suppliers.isNotEmpty()) { Text("أعمار ديون الموردين") }
+-            if (suppliers.isEmpty()) {
+-                Text("أضف مورداً أولاً ثم أنشئ فاتورة شراء.", color = MaterialTheme.colorScheme.error)
+-            }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-        }
+-
+-        item { Text("فواتير المشتريات", style = MaterialTheme.typography.titleMedium) }
+-        items(purchases) { purchase ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Text(purchase.invoiceNo, style = MaterialTheme.typography.titleMedium)
+-                    Text("${purchase.supplierName} • ${purchase.currencyCode} • ${formatDate(purchase.invoiceDate)}")
+-                    Text("الإجمالي: ${formatMoney(purchase.totalOriginal)} (${formatMoney(purchase.totalBase)} بالعملة الأساسية)")
+-                    Text(if (purchase.paymentType == "CASH") "نقدي" else "آجل")
+-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        OutlinedButton(onClick = { detailInvoice = purchase }) { Text("بيان تفصيلي") }
+-                        OutlinedButton(onClick = { returnInvoice = purchase }) { Text("مرتجع من الفاتورة") }
++            OutlinedTextField(
++                value = purchaseSearch,
++                onValueChange = { purchaseSearch = it },
++                modifier = Modifier.fillMaxWidth(),
++                label = { Text("بحث في فواتير المشتريات") },
++                placeholder = { Text("رقم الفاتورة، المورد، العملة أو نوع الدفع") },
++                singleLine = true,
++                shape = MaterialTheme.shapes.medium,
++            )
++        }
++
++        if (filteredPurchases.isEmpty()) {
++            item {
++                ElevatedCard(
++                    Modifier.fillMaxWidth(),
++                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                ) {
++                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                        Text(if (purchases.isEmpty()) "لا توجد فواتير مشتريات" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
++                        Text(
++                            if (purchases.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية شراء." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                            style = MaterialTheme.typography.bodyMedium,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        )
++                    }
++                }
++            }
++        }
++
++        items(filteredPurchases, key = { it.id }) { purchase ->
++            val isCash = purchase.paymentType == "CASH"
++            ElevatedCard(
++                Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++            ) {
++                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically,
++                    ) {
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text(purchase.invoiceNo, style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                "${purchase.supplierName} • ${formatDate(purchase.invoiceDate)}",
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            )
++                        }
++                        Spacer(Modifier.width(8.dp))
++                        FushStatusPill(if (isCash) "نقدي" else "آجل", if (isCash) FushStatusTone.Success else FushStatusTone.Warning)
++                    }
++
++                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column {
++                            Text("الإجمالي", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text("${formatMoney(purchase.totalOriginal)} ${purchase.currencyCode}", style = MaterialTheme.typography.titleMedium)
++                        }
++                        Column(horizontalAlignment = Alignment.End) {
++                            Text("بالعملة الأساسية", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(formatMoney(purchase.totalBase), style = MaterialTheme.typography.titleMedium)
++                        }
++                    }
++
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedButton(onClick = { detailInvoice = purchase }, modifier = Modifier.weight(1f)) { Text("التفاصيل") }
++                        OutlinedButton(onClick = { returnInvoice = purchase }, modifier = Modifier.weight(1f)) { Text("مرتجع") }
+                     }
+                 }
+             }
