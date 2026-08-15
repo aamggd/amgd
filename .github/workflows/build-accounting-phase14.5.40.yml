@@ -1,0 +1,155 @@
+name: Validate FUSH Accounting Phase 14.5.40 Fixed Assets
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.40.yml'
+      - 'fush_accounting/rebase/phase14.5.40_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase40-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.39 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: phase39-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865418288
+
+      - name: Reconstruct and verify Phase 14.5.40 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.40_chunks"
+          test "$(wc -c < "$CH/part00.b64")" -eq 4000
+          test "$(wc -c < "$CH/part01.b64")" -eq 4000
+          test "$(wc -c < "$CH/part02.b64")" -eq 1820
+          echo '014e37e9b32142973a69cc9679e95e097f7fb0c50ec461777ebb0f88f4d2a13c  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '16f66fbbfb1e53f910171d66a2710050017423f2b6d7938175ff66bab8bdbebc  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '3af4b8fb04dc1b9511ae1ed99235cacb4556c0f1e4a897dda3e0307a078b24a3  part02.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 > /tmp/phase40.patch.gz.b64
+          test "$(wc -c < /tmp/phase40.patch.gz.b64)" -eq 9820
+          echo 'c23abbe49ef929df08ed7468c827bb622b51ec91df5555878c0b22ee44e1ba97  /tmp/phase40.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase40.patch.gz.b64 > /tmp/phase40.patch.gz
+          echo '37c8144b58fe806584a4ef461a3da62c69ba0e071f1e310a256f1f45e65e3dbd  /tmp/phase40.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase40.patch.gz
+          gzip -dc /tmp/phase40.patch.gz > /tmp/phase40.patch
+          test "$(wc -c < /tmp/phase40.patch)" -eq 35180
+          echo '0000ac829f1f217129ef26f94c2a464f8d03d9218f07307335c38d8a9e1d7e5c  /tmp/phase40.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.40 to validated Phase 14.5.39
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/phase39-artifact/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase40 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated Phase14.5.39 baseline'
+          git apply --check /tmp/phase40.patch
+          git apply /tmp/phase40.patch
+          git diff --check
+
+      - name: Verify identity, schema and fixed-asset safety wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 33' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_32_33' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_32_33' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'FixedAssetEntity::class' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'abstract fun fixedAssetDao(): FixedAssetDao' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'val fixedAssetService = FixedAssetService(db)' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'لا يمكن إقفال الفترة قبل ترحيل إهلاك الأصول الثابتة' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'AccountingReconciliationMath.row("1500", "الأصول الثابتة"' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'AccountingReconciliationMath.row("1590", "مجمع الإهلاك"' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          test -f app/src/test/java/com/fush/erp/domain/FixedAssetMathTest.kt
+
+      - name: Unit tests
+        working-directory: work/repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/33.json
+          grep -q '"version": 33' app/schemas/com.fush.erp.data.FushDatabase/33.json
+          mkdir -p "$ROOT/phase40-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            "$ROOT/phase40-output/FushERP-Accounting-Phase14.5.40-Fixed-Assets-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 \
+            "$ROOT/phase40-output/FushERP-Accounting-Phase14.5.40-Fixed-Assets-aligned-unsigned.apk"
+          cp /tmp/phase40.patch "$ROOT/phase40-output/FushERP-Phase14.5.40-Fixed-Asset-Accounting.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase40-output/FushERP-Mobile-Phase14.5.40-Fixed-Asset-Accounting-Source.zip" repo
+          sha256sum "$ROOT/phase40-output/"* > "$ROOT/phase40-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase40-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.40 validation
+          Base: validated Accounting Phase 14.5.39 FX Treasury
+          Base validation run: 31865418288
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 33 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
+          Phase 14.5.40 patch SHA-256: 0000ac829f1f217129ef26f94c2a464f8d03d9218f07307335c38d8a9e1d7e5c
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 33 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_40_FIXED_ASSET_ACCOUNTING_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.40-Fixed-Assets-Validated-Build
+          path: phase40-output/
+          if-no-files-found: error
+          retention-days: 7
