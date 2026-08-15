@@ -48,11 +48,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '460a4e289520d13c6706679b5e5205260cd364fff01095aabc2495a6e263972a  phase14_5_54_pdf_text_layout/payload/p54-part00.txt' | sha256sum -c -
-          cat phase14_5_54_pdf_text_layout/payload/p54-part00.txt > phase14_5_54_pdf_text_layout/p54.full.b64
-          echo '460a4e289520d13c6706679b5e5205260cd364fff01095aabc2495a6e263972a  phase14_5_54_pdf_text_layout/p54.full.b64' | sha256sum -c -
-          base64 -d phase14_5_54_pdf_text_layout/p54.full.b64 | gzip -dc > phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
-          echo 'cf06ad210aad8f9a23038dcbb4f1fe9d44b7ec5f62bf2cb9efa24cc31faa3c92  phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch' | sha256sum -c -
+          echo '5e29d74072f64ff137b867dad12b94230612c6392c40f121a449fadeb667a06e  phase14_5_54_pdf_text_layout/payload_v2/p54-v2-part00.txt' | sha256sum -c -
+          cat phase14_5_54_pdf_text_layout/payload_v2/p54-v2-part00.txt > phase14_5_54_pdf_text_layout/p54-v2.full.b64
+          echo '5e29d74072f64ff137b867dad12b94230612c6392c40f121a449fadeb667a06e  phase14_5_54_pdf_text_layout/p54-v2.full.b64' | sha256sum -c -
+          base64 -d phase14_5_54_pdf_text_layout/p54-v2.full.b64 | gzip -dc > phase14_5_54_pdf_text_layout/01_pdf_text_layout_v2.patch
+          echo '047bdeedfcc8856960f7b3a623a3e706905cf286e18c98a2f273594c3eac16c1  phase14_5_54_pdf_text_layout/01_pdf_text_layout_v2.patch' | sha256sum -c -
           unzip -q previous-build/FushERP-Mobile-Phase14.5.53-Accounting-Printing-Source.zip
           cd FushERP_Mobile_Phase5
           rm -rf .git app/build .gradle build .kotlin
@@ -61,8 +61,8 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm baseline-14.5.53
-          git apply --check ../phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
-          git apply ../phase14_5_54_pdf_text_layout/01_pdf_text_layout.patch
+          git apply --check ../phase14_5_54_pdf_text_layout/01_pdf_text_layout_v2.patch
+          git apply ../phase14_5_54_pdf_text_layout/01_pdf_text_layout_v2.patch
           git diff --check HEAD
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 93' app/build.gradle.kts
