@@ -1,0 +1,50 @@
+name: UI52 Finalize Upload
+
+on:
+  push:
+    branches:
+      - fush/ui-professional-redesign
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/ui-professional-redesign
+          fetch-depth: 1
+
+      - name: Reconstruct and verify Phase 14.5.52 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat tmp_ui52_upload/chunk_* > /tmp/ui52.b64
+          base64 -d /tmp/ui52.b64 > /tmp/ui52.tar.xz
+          echo "9c1c1074a8c15715e5f096afa11cce5deb79c3bcb0bc57c8befadc9a68a12ff7  /tmp/ui52.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/ui52.tar.xz -C phase14_5_52_deep_operations_localization
+          cat > /tmp/ui52.sha256 <<'EOF'
+          8015d8c2bfdd03cd3a5e79158a3e5d9a283f79480b60360187f065bee3342621  phase14_5_52_deep_operations_localization/patches/02_deep_resources_en.patch
+          3ca9b8cdf58695cb2ed421d545c4b7bc9e251d201ffd13a43c5666bccbb1ac7e  phase14_5_52_deep_operations_localization/patches/03_deep_resources_ar.patch
+          729cec5af4abad7225e3d1561af5a8944e54213714887efca0fb9ec33655e986  phase14_5_52_deep_operations_localization/patches/04_sales_deep_localization.patch
+          75f89a17a9d2e97842cd1e3e773276ef1bcd7d644d5983d120958dbb75aa6ceb  phase14_5_52_deep_operations_localization/patches/05_purchases_deep_localization.patch
+          6a2f9371d190ffd167a1e9457fecc9319e57864f9cb95c35e57a537437e6f973  phase14_5_52_deep_operations_localization/patches/06_parties_deep_localization.patch
+          d0e02c0d624df8fba4c46d53a6f3328110c25b51d4d853a7bba478c1631a757e  phase14_5_52_deep_operations_localization/patches/07_accounting_deep_localization.patch
+          f4fe037c68fec26956e7f9f7d7bc64bd849c7e894f32cda5b88e08cc2b1ca0c5  phase14_5_52_deep_operations_localization/patches/08_inventory_deep_localization.patch
+          EOF
+          sed -i 's/^          //' /tmp/ui52.sha256
+          sha256sum -c /tmp/ui52.sha256
+
+      - name: Commit package and remove upload helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "FUSH UI Automation"
+          git config user.email "63270828+aamggd@users.noreply.github.com"
+          git add phase14_5_52_deep_operations_localization/patches
+          git rm -r tmp_ui52_upload
+          git rm .github/workflows/ui52-upload-finalize.yml
+          git commit -m "Complete Phase 14.5.52 deep localization package"
+          git push origin HEAD:fush/ui-professional-redesign
