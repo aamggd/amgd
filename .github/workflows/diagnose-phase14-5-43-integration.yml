@@ -72,7 +72,6 @@ jobs:
               raw += b'\n'
           pathlib.Path(sys.argv[2]).write_bytes(raw)
           PY
-                echo "Retrying repaired EOF/recount patch: $(basename "$p")"
                 git apply --recount --check "$repaired"
                 git apply --recount "$repaired"
               fi
@@ -83,26 +82,47 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           git add -A && git commit -qm 'Apply UI 39-41'
 
-      - name: Reconstruct accounting patches and check/apply sequentially
+      - name: Rebase accounting patches sequentially
         shell: bash
         run: |
           set -euo pipefail
           cd FushERP_Mobile_Phase5
-          for spec in \
-            'phase14.5.34-accounting-integrity.patch.gz.b64:/tmp/accounting34.patch' \
-            'phase14.5.35-accounting-periods-reconciliation.patch.gz.b64:/tmp/accounting35.patch' \
-            'phase14.5.36-operational-reversals.patch.gz.b64:/tmp/accounting36.patch'
-          do
-            src="${spec%%:*}"; out="${spec##*:}"
-            base64 -d "../fush_accounting/patches/$src" | gzip -d > "$out"
-            echo "=== checking $out ==="
-            if git apply --check --verbose "$out"; then
-              git apply "$out"
-              git add -A && git commit -qm "Apply $src"
+          base64 -d ../fush_accounting/patches/phase14.5.34-accounting-integrity.patch.gz.b64 | gzip -d > /tmp/accounting34.patch
+          base64 -d ../fush_accounting/patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 | gzip -d > /tmp/accounting35.patch
+          base64 -d ../fush_accounting/patches/phase14.5.36-operational-reversals.patch.gz.b64 | gzip -d > /tmp/accounting36.patch
+
+          echo '=== accounting 14.5.34 functional core ==='
+          git apply --check \
+            --exclude=app/build.gradle.kts \
+            --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt \
+            /tmp/accounting34.patch
+          git apply \
+            --exclude=app/build.gradle.kts \
+            --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt \
+            /tmp/accounting34.patch
+
+          python - <<'PY'
+          import pathlib,re
+          raw=pathlib.Path('/tmp/accounting34.patch').read_text()
+          parts=re.split(r'(?=^diff --git )', raw, flags=re.M)
+          target='app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt'
+          part=next(p for p in parts if p.startswith('diff --git ') and f' b/{target}' in p.splitlines()[0])
+          pathlib.Path('/tmp/party34.patch').write_text(part)
+          PY
+          echo '=== accounting 14.5.34 PartyScreens fuzzy merge ==='
+          patch -p1 --forward --fuzz=3 < /tmp/party34.patch
+          git add -A && git commit -qm 'Rebase accounting integrity'
+
+          for spec in '35:/tmp/accounting35.patch' '36:/tmp/accounting36.patch'; do
+            phase="${spec%%:*}"; p="${spec##*:}"
+            echo "=== accounting 14.5.$phase ==="
+            if git apply --check --verbose --exclude=app/build.gradle.kts "$p"; then
+              git apply --exclude=app/build.gradle.kts "$p"
+              git add -A && git commit -qm "Apply accounting phase 14.5.$phase"
             else
-              echo "ACCOUNTING_PATCH_FAILED=$src"
-              git apply --check --verbose "$out" || true
-              exit 21
+              echo "ACCOUNTING_REBASE_REQUIRED_PHASE=$phase"
+              git apply --check --verbose --exclude=app/build.gradle.kts "$p" || true
+              exit 22
             fi
           done
           echo 'ACCOUNTING_APPLY_OK'
@@ -132,5 +152,4 @@ jobs:
         run: |
           set -euo pipefail
           cd FushERP_Mobile_Phase5
-          echo 'Hardening patch is intentionally based on the users-permissions phase and will be tested after rebasing users34.'
           grep -n '^diff --git' ../phase14_5_36_users_security_hardening/phase14_5_36.patch
