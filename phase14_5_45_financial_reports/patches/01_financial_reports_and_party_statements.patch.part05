@@ -1,0 +1,90 @@
++                    }
++                )
++            )
++        } ?: emptyList(),
++        notes = if (statement == null) listOf("اختر العميل أو المورد لإعداد كشف الحساب.") else emptyList()
+     )
+ }
+ 
+@@ -814,6 +1049,8 @@ private fun reportTitle(tab: String): String = when (tab) {
+     "الإنتاج" -> "تقرير الإنتاج"
+     "الجودة" -> "تقرير الجودة"
+     "المالية" -> "التقرير المالي"
++    "الأستاذ العام" -> "دفتر الأستاذ العام"
++    "كشف الأطراف" -> "كشف حساب الأطراف"
+     else -> "تقرير"
+ }
+ 
+@@ -825,6 +1062,8 @@ private fun reportBaseName(tab: String): String = when (tab) {
+     "الإنتاج" -> "FushERP-Production-Report"
+     "الجودة" -> "FushERP-Quality-Report"
+     "المالية" -> "FushERP-Finance-Report"
++    "الأستاذ العام" -> "FushERP-General-Ledger"
++    "كشف الأطراف" -> "FushERP-Party-Statement"
+     else -> "FushERP-Report"
+ }
+ 
+@@ -981,12 +1220,18 @@ private fun buildProductionReportExportDocument(
+ }
+ 
+ 
+-@Composable private fun FinanceTab(pnl: ProfitLossReport?, trial: TrialBalanceReport?, cash: CashFlowReport?) {
++@Composable private fun FinanceTab(
++    pnl: ProfitLossReport?,
++    trial: TrialBalanceReport?,
++    cash: CashFlowReport?,
++    balanceSheet: BalanceSheetReport?
++) {
+     val trialDifference = trial?.let { abs(it.totalDebitBalance - it.totalCreditBalance) } ?: 0.0
+-    val balanced = trial == null || trialDifference < 0.01
++    val trialBalanced = trial == null || trialDifference < 0.01
++    val sheetBalanced = balanceSheet == null || abs(balanceSheet.difference) < 0.01
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+         item {
+-            FushSectionHeader("التحليل المالي", "الربحية والسيولة واتزان ميزان المراجعة للفترة المحددة.")
++            FushSectionHeader("التحليل المالي", "الربحية والسيولة وميزان المراجعة والمركز المالي ضمن تقرير موحد.")
+         }
+         item {
+             pnl?.let { report ->
+@@ -1025,7 +1270,7 @@ private fun buildProductionReportExportDocument(
+                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                             Text("ميزان المراجعة", style = MaterialTheme.typography.titleMedium)
+-                            FushStatusPill(if (balanced) "متزن" else "يوجد فرق", if (balanced) FushStatusTone.Success else FushStatusTone.Danger)
++                            FushStatusPill(if (trialBalanced) "متزن" else "يوجد فرق", if (trialBalanced) FushStatusTone.Success else FushStatusTone.Danger)
+                         }
+                         MetricGrid(listOf(
+                             "إجمالي المدين" to money(it.totalDebitBalance),
+@@ -1040,9 +1285,214 @@ private fun buildProductionReportExportDocument(
+         items(trial?.lines ?: emptyList()) { r ->
+             ReportCard("${r.code} — ${r.nameAr}", r.type, listOf("مدين" to money(r.debitBalance), "دائن" to money(r.creditBalance)))
+         }
++        item {
++            balanceSheet?.let { sheet ->
++                FushSectionHeader("قائمة المركز المالي", "الأصول والالتزامات وحقوق الملكية حتى نهاية الفترة المختارة.")
++                Spacer(Modifier.height(6.dp))
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
++                            Text("حالة التوازن", style = MaterialTheme.typography.titleMedium)
++                            FushStatusPill(if (sheetBalanced) "متزن" else "يوجد فرق", if (sheetBalanced) FushStatusTone.Success else FushStatusTone.Danger)
++                        }
++                        MetricGrid(listOf(
++                            "الأصول" to money(sheet.assets),
++                            "الالتزامات" to money(sheet.liabilities),
++                            "حقوق الملكية قبل الربح" to money(sheet.equityBeforeCurrentProfit),
++                            "ربح/خسارة حتى التاريخ" to money(sheet.currentProfit),
++                            "الالتزامات + حقوق الملكية" to money(sheet.totalLiabilitiesAndEquity),
++                            "فرق التوازن" to money(sheet.difference)
++                        ))
++                    }
++                }
++            }
++        }
++        if (!balanceSheet?.assetsByAccount.isNullOrEmpty()) {
++            item { SectionTitle("تفصيل الأصول") }
++            items(balanceSheet?.assetsByAccount ?: emptyList()) { row -> ReportCard(row.first, "أصل", listOf("الرصيد" to money(row.second))) }
++        }
++        if (!balanceSheet?.liabilitiesByAccount.isNullOrEmpty()) {
++            item { SectionTitle("تفصيل الالتزامات") }
++            items(balanceSheet?.liabilitiesByAccount ?: emptyList()) { row -> ReportCard(row.first, "التزام", listOf("الرصيد" to money(row.second))) }
