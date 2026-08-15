@@ -1,0 +1,39 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
+index c99b6c0..e058827 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt
+@@ -241,7 +241,7 @@ fun PlanningScreen(
+                             }
+                         }
+                     }
+-                    message?.let { FushNotice(it, tone = FushStatusTone.Success) }
++                    FushOperationMessage(message, onConsumed = { message = null })
+                     forecastError?.let { FushNotice(it, tone = FushStatusTone.Danger) }
+                     seasonalError?.let { FushNotice(it, tone = FushStatusTone.Danger) }
+                     productionPlanningError?.let { FushNotice(it, tone = FushStatusTone.Danger) }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index 89c6f33..bbf8561 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -106,11 +106,7 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                             color = MaterialTheme.colorScheme.tertiary
+                         )
+                     }
+-                    message?.let {
+-                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
+-                            Text(it, modifier = Modifier.padding(10.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
+-                        }
+-                    }
++                    FushOperationMessage(message, onConsumed = { message = null })
+                 }
+             }
+         }
+@@ -1447,7 +1443,7 @@ private fun BatchQualityDialog(
+                         }, enabled = legacyCheckName.isNotBlank()) { Text("تسجيل الوصفي") }
+                     }
+                     OutlinedButton(onClick = { showNc = true }) { Text("فتح عدم مطابقة / CAPA") }
+-                    message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
++                    FushOperationMessage(message, onConsumed = { message = null })
+                     HorizontalDivider()
+                     Text("مواصفات المنتج (${specifications.size})", style = MaterialTheme.typography.titleSmall)
+                 }
