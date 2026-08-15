@@ -1,0 +1,89 @@
+name: Check Users Permissions Against Current Main
+
+on:
+  push:
+    branches: ['fush/integration-users-permissions-check']
+    paths:
+      - '.github/workflows/check-users-permissions-on-main.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.35 main build
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.35-UI-Integration-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31857080183
+
+      - name: Restore current main source
+        run: |
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.35-UI-Sales-Customers-Source.zip
+          grep -q 'versionCode = 74' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q '0.15.4.35-ui-sales-customers' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Validate permissions patch integrity
+        run: |
+          python - <<'PY'
+          import base64,gzip,hashlib,pathlib
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          encoded=''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64')))
+          raw=gzip.decompress(base64.b64decode(encoded))
+          actual=hashlib.sha256(raw).hexdigest()
+          expected='94bc1ae1ef5fe91d0537b94bcaa8cca5b38b94e69a1cd719419e608469f5ce93'
+          print('patch sha256:', actual)
+          assert actual == expected
+          pathlib.Path('users-permissions.patch').write_bytes(raw)
+          PY
+
+      - name: Check patch against current main
+        working-directory: FushERP_Mobile_Phase5
+        run: git apply --check ../users-permissions.patch
+
+      - name: Apply permissions patch
+        working-directory: FushERP_Mobile_Phase5
+        run: git apply ../users-permissions.patch
+
+      - name: Verify security/database targets
+        run: |
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Debug build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
