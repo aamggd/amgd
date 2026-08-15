@@ -4,7 +4,7 @@
 - Baseline source SHA-256: `d4ff24af274e3aedc14cdf39762e9a0b3bd6ff4f3b563062063e5b79342ec38f`
 - Unified patch SHA-256: `629117dc269ee836c741df1c43fa61275b980eb99ac8caf8f0d426ab3feef0b1`
 - Compressed patch SHA-256: `26aa15a46705f0dcd702ec7d854d8ad3ab778ccb89fe184d39bf977186cd2717`
-- Payload parts: 12
+- Payload parts: 13
 - Application ID remains `com.fush.erp.recovery`
 - Specialized-branch Room schema: 28, using `MIGRATION_27_28_SECURITY_BRANCH_ONLY`
 
