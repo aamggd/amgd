@@ -97,14 +97,6 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
-      - name: Unit tests
-        working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:testDebugUnitTest
-
-      - name: Release build
-        working-directory: FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:assembleRelease
-
       - name: Prepare visual evidence output
         shell: bash
         run: mkdir -p phase14-5-46-output
@@ -119,11 +111,18 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
-            cd FushERP_Mobile_Phase5
-            gradle --no-daemon :app:connectedDebugAndroidTest
+            gradle --no-daemon -p FushERP_Mobile_Phase5 :app:connectedDebugAndroidTest
             adb shell run-as com.fush.erp.recovery ls -l files/
-            adb exec-out run-as com.fush.erp.recovery cat files/inventory-14.5.46-narrow-360dp.png > ../phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
-            test -s ../phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+            adb exec-out run-as com.fush.erp.recovery cat files/inventory-14.5.46-narrow-360dp.png > phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+            test -s phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
 
       - name: Verify release identity and schema safety
         shell: bash
