@@ -1,0 +1,339 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
+index 9227a03..abb5c88 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
+@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.unit.dp
+-import com.fush.erp.BuildConfig
+ import com.fush.erp.backup.BackupRestoreManager
+ import com.fush.erp.backup.BackupResult
+ import com.fush.erp.backup.RestoreInspection
+@@ -58,7 +57,7 @@ fun BackupRestoreScreen(container: AppContainer, user: UserEntity, modifier: Mod
+     ) {
+         FushSectionHeader(
+             title = "النسخ الاحتياطي والاستعادة",
+-            subtitle = "Phase 15.1 • ${BuildConfig.VERSION_NAME}",
++            subtitle = "إنشاء نسخة كاملة، فحص سلامتها، وتجهيز الاستعادة بأمان قبل إعادة التشغيل.",
+         )
+         Text("قاعدة البيانات: schema ${BackupRestoreManager.CURRENT_SCHEMA_VERSION}. يتم فحص سلامة النسخة وبصمة SHA-256، وتطبق الاستعادة باستبدال ذري مع نسخة رجوع داخلية.")
+ 
+@@ -123,13 +122,7 @@ fun BackupRestoreScreen(container: AppContainer, user: UserEntity, modifier: Mod
+                 detail = "لا تغلق التطبيق أثناء فحص الملف أو إنشاء النسخة.",
+             )
+         }
+-        message?.let {
+-            Surface(
+-                color = MaterialTheme.colorScheme.primaryContainer,
+-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+-                shape = MaterialTheme.shapes.medium,
+-            ) { Text(it, Modifier.fillMaxWidth().padding(14.dp)) }
+-        }
++        FushOperationMessage(message, onConsumed = { message = null })
+     }
+ 
+     inspection?.let { info ->
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 4bb0553..8147da0 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -6,22 +6,24 @@ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.*
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.ui.Alignment
++import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.semantics.clearAndSetSemantics
+ import androidx.compose.ui.semantics.contentDescription
+ import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.unit.dp
+-import com.fush.erp.BuildConfig
+ import com.fush.erp.ui.*
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import kotlinx.coroutines.launch
+ 
+-private data class ModuleCard(val title: String, val subtitle: String, val phase: String)
++private data class ModuleCard(val title: String, val subtitle: String, val target: String, val badge: String? = null)
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+@@ -29,28 +31,39 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+     var page by rememberSaveable { mutableStateOf("الرئيسية") }
+     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+     val scope = rememberCoroutineScope()
++    val snackbarHostState = remember { SnackbarHostState() }
++    val showSnackbar = remember(scope, snackbarHostState) {
++        { text: String ->
++            scope.launch {
++                snackbarHostState.currentSnackbarData?.dismiss()
++                snackbarHostState.showSnackbar(text)
++            }
++            Unit
++        }
++    }
+ 
+     val modules = remember {
+         listOf(
+-            ModuleCard("المحاسبة والخزينة", "اليومية، الأستاذ، الخزينة والبنوك، ميزان المراجعة والقوائم المالية", "المرحلة 8 جاهزة"),
+-            ModuleCard("الأصناف والوحدات", "مواد خام، تغليف، منتج نهائي وتحويل الوحدات", "موسع في المرحلة 2"),
+-            ModuleCard("المخزون والمستودعات", "جرد، تحويلات بين المستودعات، تشغيلات، صلاحية، حجر، إعادة طلب وحركة مخزون", "المرحلة 14.5.5 جاهزة"),
+-            ModuleCard("المشتريات والموردون", "وحدة مشتريات مستقلة وملفات موردين تفصيلية", "المرحلة 14.5.24"),
+-            ModuleCard("الإنتاج والجودة", "BOM، أوامر الإنتاج، الدفعات، الفحص وCAPA", "المرحلة 3 جاهزة"),
+-            ModuleCard("المبيعات والعملاء", "مبيعات مستقلة وملفات عملاء مع كشف حساب وسندات أطراف", "المرحلة 14.5.24"),
+-            ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "المرحلة 9 جاهزة"),
+-            ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "المرحلة 5 جاهزة"),
+-            ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "المرحلة 6 جاهزة"),
+-            ModuleCard("الموظفون", "ملفات الموظفين، الأقسام، الحالة، التدريب، تصاريح المعدات والحركات المرتبطة", "المرحلة 14.5.29"),
+-            ModuleCard("مناديب المبيعات", "ملفات المناديب، العملاء، المبيعات، التحصيل، المرتجعات والعمولات", "المرحلة 14.5.29"),
+-            ModuleCard("التقارير الشاملة", "مبيعات، مشتريات، مخزون، إنتاج، جودة ومالية مع PDF وExcel والمشاركة والطباعة", "المرحلة 15.2 جاهزة"),
+-            ModuleCard("المخاطر والرقابة الداخلية", "سجل مخاطر، ضوابط، اختبارات، استثناءات وفصل المهام", "المرحلة 12 جاهزة"),
+-            ModuleCard("لوحة الإدارة", "KPI، التنبيهات الحمراء والقرارات المعلقة", "المرحلة 13 جاهزة"),
+-            ModuleCard("التخطيط والموسمية", "الموازنة، الموسمية، خطة الإنتاج واحتياجات المواد ومخزون الأمان", "المرحلة 14.5 جاهزة"),
+-            ModuleCard("النسخ الاحتياطي والاستعادة", "نسخة كاملة، تحقق سلامة، استعادة آمنة ومشاركة", "المرحلة 15.1 جاهزة")
++            ModuleCard("المحاسبة والخزينة", "اليومية، الأستاذ، الخزينة والبنوك، ميزان المراجعة والقوائم المالية", "الحسابات", "مالي"),
++            ModuleCard("الأصناف والوحدات", "مواد خام، تغليف، منتج نهائي وتحويل الوحدات", "المواد والأصناف", "بيانات"),
++            ModuleCard("المخزون والمستودعات", "جرد، تحويلات بين المستودعات، تشغيلات، صلاحية، حجر، إعادة طلب وحركة مخزون", "المخزون", "تشغيل"),
++            ModuleCard("المشتريات والموردون", "وحدة مشتريات مستقلة وملفات موردين تفصيلية", "المشتريات", "توريد"),
++            ModuleCard("الإنتاج والجودة", "BOM، أوامر الإنتاج، الدفعات، الفحص وCAPA", "الإنتاج", "إنتاج"),
++            ModuleCard("المبيعات والعملاء", "مبيعات مستقلة وملفات عملاء مع كشف حساب وسندات أطراف", "المبيعات", "مبيعات"),
++            ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "العملات", "تسعير"),
++            ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "الصيانة", "أصول"),
++            ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "الحوكمة", "حوكمة"),
++            ModuleCard("الموظفون", "ملفات الموظفين، الأقسام، الحالة، التدريب، تصاريح المعدات والحركات المرتبطة", "الموظفون", "موارد"),
++            ModuleCard("مناديب المبيعات", "ملفات المناديب، العملاء، المبيعات، التحصيل، المرتجعات والعمولات", "مناديب المبيعات", "مبيعات"),
++            ModuleCard("التقارير الشاملة", "مبيعات، مشتريات، مخزون، إنتاج، جودة ومالية مع PDF وExcel والمشاركة والطباعة", "التقارير", "تحليل"),
++            ModuleCard("المخاطر والرقابة الداخلية", "سجل مخاطر، ضوابط، اختبارات، استثناءات وفصل المهام", "المخاطر", "رقابة"),
++            ModuleCard("لوحة الإدارة", "KPI، التنبيهات الحمراء والقرارات المعلقة", "الرئيسية", "إدارة"),
++            ModuleCard("التخطيط والموسمية", "الموازنة، الموسمية، خطة الإنتاج واحتياجات المواد ومخزون الأمان", "التخطيط", "تخطيط"),
++            ModuleCard("النسخ الاحتياطي والاستعادة", "نسخة كاملة، تحقق سلامة، استعادة آمنة ومشاركة", "النسخ الاحتياطي", "نظام")
+         )
+     }
+ 
++
+     val drawerItems = remember {
+         listOf(
+             "الرئيسية" to "الرئيسية",
+@@ -116,7 +129,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     drawerItems.forEach { (label, target) ->
+                         NavigationDrawerItem(
+                             label = { Text(label, maxLines = 1) },
+-                            icon = { NavGlyph(label.take(1)) },
++                            icon = { NavIcon(destinationIcon(target), selected = page == target) },
+                             selected = page == target,
+                             onClick = {
+                                 page = target
+@@ -135,7 +148,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     )
+                     NavigationDrawerItem(
+                         label = { Text("المواد والأصناف") },
+-                        icon = { NavGlyph("ص") },
++                        icon = { NavIcon(Icons.Filled.List, selected = page == "المواد والأصناف") },
+                         selected = page == "المواد والأصناف",
+                         onClick = {
+                             page = "المواد والأصناف"
+@@ -146,7 +159,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     )
+                     NavigationDrawerItem(
+                         label = { Text("الوحدات") },
+-                        icon = { NavGlyph("و") },
++                        icon = { NavIcon(Icons.Filled.Settings, selected = page == "الوحدات") },
+                         selected = page == "الوحدات",
+                         onClick = {
+                             page = "الوحدات"
+@@ -161,6 +174,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+         }
+     ) {
+         Scaffold(
++            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+             topBar = {
+                 TopAppBar(
+                     title = {
+@@ -178,7 +192,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                             onClick = { scope.launch { drawerState.open() } },
+                             modifier = Modifier.semantics { contentDescription = "فتح القائمة الرئيسية" },
+                         ) {
+-                            NavGlyph("≡", selected = true)
++                            NavIcon(Icons.Filled.Menu, selected = true)
+                         }
+                     },
+                     actions = {
+@@ -199,22 +213,22 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                             tonalElevation = 2.dp,
+                         ) {
+                             listOf(
+-                                "الرئيسية" to "ر",
+-                                "المبيعات" to "م",
+-                                "الإنتاج" to "إ",
+-                                "المخزون" to "خ",
+-                            ).forEach { (label, glyph) ->
++                                "الرئيسية" to Icons.Filled.Home,
++                                "المبيعات" to Icons.Filled.ShoppingCart,
++                                "الإنتاج" to Icons.Filled.Build,
++                                "المخزون" to Icons.Filled.List,
++                            ).forEach { (label, icon) ->
+                                 NavigationBarItem(
+                                     selected = page == label,
+                                     onClick = { page = label },
+-                                    icon = { NavGlyph(glyph, selected = page == label) },
++                                    icon = { NavIcon(icon, selected = page == label) },
+                                     label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                                 )
+                             }
+                             NavigationBarItem(
+                                 selected = false,
+                                 onClick = { scope.launch { drawerState.open() } },
+-                                icon = { NavGlyph("≡") },
++                                icon = { NavIcon(Icons.Filled.Menu) },
+                                 label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                             )
+                         }
+@@ -222,7 +236,8 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                 }
+             }
+         ) { pad ->
+-            BoxWithConstraints(Modifier.fillMaxSize().padding(pad)) {
++            CompositionLocalProvider(LocalFushSnackbar provides showSnackbar) {
++                BoxWithConstraints(Modifier.fillMaxSize().padding(pad)) {
+                 if (maxWidth >= 840.dp) {
+                     Row(Modifier.fillMaxSize()) {
+                         FushPrimaryNavigationRail(
+@@ -251,6 +266,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     )
+                 }
+             }
++            }
+         }
+     }
+ }
+@@ -268,16 +284,16 @@ private fun FushPrimaryNavigationRail(
+     ) {
+         Spacer(Modifier.height(8.dp))
+         listOf(
+-            Triple("الرئيسية", "ر", "الرئيسية"),
+-            Triple("المبيعات", "م", "المبيعات"),
+-            Triple("الإنتاج", "إ", "الإنتاج"),
+-            Triple("المخزون", "خ", "المخزون"),
+-            Triple("التقارير", "ت", "التقارير")
+-        ).forEach { (label, glyph, target) ->
++            Triple("الرئيسية", Icons.Filled.Home, "الرئيسية"),
++            Triple("المبيعات", Icons.Filled.ShoppingCart, "المبيعات"),
++            Triple("الإنتاج", Icons.Filled.Build, "الإنتاج"),
++            Triple("المخزون", Icons.Filled.List, "المخزون"),
++            Triple("التقارير", Icons.Filled.List, "التقارير")
++        ).forEach { (label, icon, target) ->
+             NavigationRailItem(
+                 selected = page == target,
+                 onClick = { onNavigate(target) },
+-                icon = { NavGlyph(glyph, selected = page == target) },
++                icon = { NavIcon(icon, selected = page == target) },
+                 label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                 alwaysShowLabel = true
+             )
+@@ -286,7 +302,7 @@ private fun FushPrimaryNavigationRail(
+         NavigationRailItem(
+             selected = false,
+             onClick = onOpenMenu,
+-            icon = { NavGlyph("≡") },
++            icon = { NavIcon(Icons.Filled.Menu) },
+             label = { Text("القائمة", style = MaterialTheme.typography.labelSmall) },
+             alwaysShowLabel = true
+         )
+@@ -508,7 +524,7 @@ private fun DashboardScreen(
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Metric("تدريب منتهي", expiredTrainingCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
+                 Metric("تصاريح منتهية", expiredAuthorizationCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
+-                Metric("الإصدار", BuildConfig.VERSION_NAME, Modifier.weight(1f))
++                Metric("استثناءات متأخرة", overdueExceptionCount.toString(), Modifier.weight(1f)) { onNavigate("المخاطر") }
+             }
+         }
+ 
+@@ -517,8 +533,9 @@ private fun DashboardScreen(
+             FushModuleCard(
+                 title = module.title,
+                 subtitle = module.subtitle,
+-                badge = module.phase,
++                badge = module.badge,
+                 modifier = Modifier.fillMaxWidth(),
++                onClick = { onNavigate(module.target) },
+             )
+         }
+     }
+@@ -558,24 +575,42 @@ private fun Metric(
+ }
+ 
+ @Composable
+-private fun NavGlyph(
+-    text: String,
++private fun NavIcon(
++    icon: ImageVector,
+     selected: Boolean = false,
+ ) {
+     Surface(
+         modifier = Modifier
+-            .size(30.dp)
++            .size(34.dp)
+             .clearAndSetSemantics {},
+-        shape = MaterialTheme.shapes.small,
++        shape = MaterialTheme.shapes.medium,
+         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+     ) {
+         Box(contentAlignment = Alignment.Center) {
+-            Text(text, style = MaterialTheme.typography.labelLarge)
++            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+         }
+     }
+ }
+ 
++private fun destinationIcon(target: String): ImageVector = when (target) {
++    "الرئيسية" -> Icons.Filled.Home
++    "المبيعات", "المشتريات" -> Icons.Filled.ShoppingCart
++    "العملاء", "الموردون", "الموظفون" -> Icons.Filled.Person
++    "مناديب المبيعات" -> Icons.Filled.AccountCircle
++    "الإنتاج", "الصيانة" -> Icons.Filled.Build
++    "التخطيط" -> Icons.Filled.DateRange
++    "النسخ الاحتياطي" -> Icons.Filled.Share
++    "المخزون", "التقارير", "المواد والأصناف" -> Icons.Filled.List
++    "الحسابات" -> Icons.Filled.AccountBox
++    "العملات" -> Icons.Filled.LocationOn
++    "الحوكمة" -> Icons.Filled.CheckCircle
++    "المخاطر" -> Icons.Filled.Warning
++    "الوحدات" -> Icons.Filled.Settings
++    else -> Icons.Filled.List
++}
++
++
+ @Composable
+ private fun AccountsScreen(container: AppContainer, modifier: Modifier = Modifier) {
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+@@ -607,7 +642,7 @@ private fun InventoryScreen(container: AppContainer, user: UserEntity, modifier:
+             Button(onClick = { showOpening = true }) { Text("إدخال رصيد افتتاحي") }
+             Spacer(Modifier.height(6.dp))
+             Text("الرصيد محسوب من حركات المخزون الفعلية؛ الشراء يزيد والمرتجع ينقص.")
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         items(balances) { row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -780,12 +815,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+             singleLine = true,
+             shape = MaterialTheme.shapes.medium,
+         )
+-        message?.let { text ->
+-            Spacer(Modifier.height(7.dp))
+-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = MaterialTheme.shapes.medium) {
+-                Text(text, Modifier.fillMaxWidth().padding(11.dp))
+-            }
+-        }
++        FushOperationMessage(message, onConsumed = { message = null })
+         Spacer(Modifier.height(7.dp))
+ 
+ 
