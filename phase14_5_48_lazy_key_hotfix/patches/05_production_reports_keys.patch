@@ -1,0 +1,70 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index 0d3a1cb..89c6f33 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyRow
+ import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.itemsIndexed
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+@@ -411,7 +412,7 @@ private fun MaterialAvailabilityDialog(
+                         color = if (state.reserved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                     )
+                 }
+-                items(state.rows, key = { it.itemId }) { row ->
++                itemsIndexed(state.rows, key = { index, row -> "material-availability-${row.itemId}-$index" }) { _, row ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                             Text("${row.itemName} (${row.itemCode})", style = MaterialTheme.typography.titleSmall)
+@@ -665,7 +666,7 @@ private fun ProductionOrderDetailDialog(
+                             )
+                         }
+ 
+-                        items(d.materials, key = { it.row.id }) { m ->
++                        items(d.materials, key = { "production-material-${it.row.id}" }) { m ->
+                             ElevatedCard(Modifier.fillMaxWidth()) {
+                                 Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                     Text("${m.row.itemName} (${m.itemCode})", style = MaterialTheme.typography.titleSmall)
+@@ -729,7 +730,7 @@ private fun ProductionOrderDetailDialog(
+                             if (d.checks.isEmpty()) FushInlineState("لا توجد فحوص جودة مسجلة.")
+                         }
+ 
+-                        items(d.checks, key = { it.id }) { check ->
++                        items(d.checks, key = { "production-quality-check-${it.id}" }) { check ->
+                             ElevatedCard(Modifier.fillMaxWidth()) {
+                                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                     Text(check.checkName, style = MaterialTheme.typography.titleSmall)
+@@ -753,7 +754,7 @@ private fun ProductionOrderDetailDialog(
+                             if (d.nonConformances.isEmpty()) FushInlineState("لا توجد حالات عدم مطابقة مسجلة.", tone = FushStatusTone.Success)
+                         }
+ 
+-                        items(d.nonConformances, key = { it.id }) { nc ->
++                        items(d.nonConformances, key = { "production-nc-${it.id}" }) { nc ->
+                             ElevatedCard(Modifier.fillMaxWidth()) {
+                                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                     Text("${nc.code} • ${nc.status}", style = MaterialTheme.typography.titleSmall)
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index b17a517..cb49097 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -467,7 +467,7 @@ private fun ReportTabContent(
+         if (materialUsage.isEmpty()) {
+             item { FushInlineState("لا توجد مواد مصروفة للإنتاج في هذه الفترة.") }
+         }
+-        items(materialUsage, key = { it.itemId }) { m ->
++        items(materialUsage, key = { "report-material-${it.itemId}" }) { m ->
+             ReportCard("${m.itemName} — ${m.code}", "استخدمت في ${m.orderCount} أمر إنتاج", listOf(
+                 "الكمية المصروفة" to "${qty(m.issuedQtyBase)} ${m.unitName}",
+                 "متوسط تكلفة الوحدة" to money(m.averageUnitCostBase),
+@@ -478,7 +478,7 @@ private fun ReportTabContent(
+         if (rows.isEmpty()) {
+             item { FushInlineState("لا توجد أوامر إنتاج في الفترة المحددة.") }
+         }
+-        items(rows, key = { it.orderId }) { r ->
++        items(rows, key = { "report-production-order-${it.orderId}" }) { r ->
+             val yield = ReportMath.percent(r.acceptedQtyBase, r.plannedQtyBase)
+             val activityDate = r.manufactureDate ?: r.plannedDate
+             ElevatedCard(Modifier.fillMaxWidth()) {
