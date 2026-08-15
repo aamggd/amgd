@@ -1,0 +1,37 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 5d6de81..b34b11a 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -56,6 +56,7 @@ dependencies {
+     implementation(libs.androidx.compose.ui)
+     implementation(libs.androidx.compose.ui.tooling.preview)
+     implementation(libs.androidx.compose.material3)
++    implementation(libs.androidx.compose.material.icons.core)
+     debugImplementation(libs.androidx.compose.ui.tooling)
+ 
+     testImplementation(libs.junit)
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 905c0dd..78e4e13 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -24,6 +24,7 @@ import com.fush.erp.ui.FushInlineState
+ import com.fush.erp.ui.FushEmptyState
+ import com.fush.erp.ui.FushDateField
+ import com.fush.erp.ui.FushDecimalField
++import com.fush.erp.ui.FushOperationMessage
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.*
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index dc8365f..1ba5e1d 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -19,6 +19,8 @@ import com.fush.erp.ui.FushStatusPill
+ import com.fush.erp.ui.FushStatusTone
+ import com.fush.erp.ui.FushInlineState
+ import com.fush.erp.ui.FushEmptyState
++import com.fush.erp.ui.FushDialogForm
++import com.fush.erp.ui.FushOperationMessage
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
