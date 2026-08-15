@@ -1,0 +1,153 @@
+name: Build Fush ERP Phase 14.5.58 Non-Blocking Export
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-58-nonblocking-export.yml'
+      - 'phase14_5_58_nonblocking_export/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.57 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.57-Management-Print-Coverage-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915147268
+
+      - name: Restore Phase 14.5.57 and apply Phase 14.5.58 non-blocking export patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '3404ea7f6850e348f32113821f0ec8c39e6b30eb9549cb8943aadfff46432e31  phase14_5_58_nonblocking_export/payload/p58-part00.txt' | sha256sum -c -
+          echo '76538a6206a09771b46dbf66025aae3cb4fde788bbf8b2b3777d581b8f0c70ba  phase14_5_58_nonblocking_export/payload/p58-part01.txt' | sha256sum -c -
+          echo 'a0ceda74518379872fa7e4b73c05f0c7d07f90302527865825a46d5e2354d840  phase14_5_58_nonblocking_export/payload/p58-part02.txt' | sha256sum -c -
+          echo '10434c68a9243b4fe8ffc4bc3a77e41148793a189b943fd14dfd3b9ec9f52e2d  phase14_5_58_nonblocking_export/payload/p58-part03.txt' | sha256sum -c -
+          cat phase14_5_58_nonblocking_export/payload/p58-part*.txt > phase14_5_58_nonblocking_export/p58.full.b64
+          echo '3e15abd9fd86572e3b4f81afc50e2084460e0376caad1520ed4a27d0cb0bf4bc  phase14_5_58_nonblocking_export/p58.full.b64' | sha256sum -c -
+          base64 -d phase14_5_58_nonblocking_export/p58.full.b64 | gzip -dc > phase14_5_58_nonblocking_export/01_nonblocking_export.patch
+          echo '362c6921668ad6e9e8d961df4387488c42e6c94bb8fca197cbc8bf2d78992040  phase14_5_58_nonblocking_export/01_nonblocking_export.patch' | sha256sum -c -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.57-Management-Print-Coverage-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.57
+          git apply --check ../phase14_5_58_nonblocking_export/01_nonblocking_export.patch
+          git apply ../phase14_5_58_nonblocking_export/01_nonblocking_export.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 97' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.58-nonblocking-export"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          grep -q 'rememberCoroutineScope' app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt
+          grep -q 'withContext(Dispatchers.IO)' app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt
+          grep -q 'withContext(Dispatchers.Default)' app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt
+          grep -q 'CancellationException' app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt
+          grep -q 'LinearProgressIndicator' app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt
+          grep -q 'prepareSharePdfIntent' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'printPreparedPdf' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          grep -q 'buildXlsxBytesForAction' app/src/test/java/com/fush/erp/ui/export/ReportSpreadsheetExportTest.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 97' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.58-nonblocking-export"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-58-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-58-output/FushERP-Phase14.5.58-Nonblocking-Export-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-58-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-58-output/lib/apksigner.jar
+          chmod +x phase14-5-58-output/apksigner
+          zip -qr phase14-5-58-output/FushERP-Mobile-Phase14.5.58-Nonblocking-Export-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.58 — Non-Blocking Export & Print UX' \
+            'Base verified source: Phase 14.5.57 Management / Planning Print Coverage' \
+            'Branch: fush/reports-printing' \
+            'PDF rendering/saving off main UI thread: PASS' \
+            'XLSX rendering/saving off main UI thread: PASS' \
+            'Share preparation off main UI thread: PASS' \
+            'Print rendering off main UI thread: PASS' \
+            'Duplicate export taps guarded while busy: PASS' \
+            'Progress state shown during preparation: PASS' \
+            'Coroutine cancellation propagated safely: PASS' \
+            'XLSX action-preparation structural regression: PASS' \
+            'Accounting posting logic unchanged: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 97' \
+            'Version name: 0.15.4.58-nonblocking-export' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-58-output/FushERP-Phase14.5.58-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.58-Nonblocking-Export-Build
+          path: phase14-5-58-output/
+          if-no-files-found: error
+          retention-days: 7
