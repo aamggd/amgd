@@ -1,0 +1,23 @@
+diff --git a/UI_PROFESSIONALIZATION_18_LANGUAGE_THEME_CONTROLS_SCOPE.md b/UI_PROFESSIONALIZATION_18_LANGUAGE_THEME_CONTROLS_SCOPE.md
+new file mode 100644
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_18_LANGUAGE_THEME_CONTROLS_SCOPE.md
+@@ -0,0 +1,18 @@
++# Phase 14.5.51.1 — In-App Language & Theme Controls
++
++## Objective
++Expose the already-supported Arabic/English resources and Dark/Light theme as clear in-app choices.
++
++## Changes
++- Add Arabic and English selection controls to the main navigation drawer.
++- Add Light and Dark selection controls to the same visible preferences area.
++- Persist both choices locally.
++- Apply language immediately to Compose resources and layout direction.
++- Preserve the existing top-app-bar theme shortcut.
++
++## Safety boundary
++- No business logic changes.
++- No database/schema/DAO changes.
++- No accounting, inventory, production, compensation, commission, authentication, permission, or backup behavior changes.
++
++Central integration still owns the final release version, migration ordering and signing.
