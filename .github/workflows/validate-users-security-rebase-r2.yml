@@ -38,12 +38,16 @@ jobs:
           python ../../security_rebase_official_14_5_38_final/apply_patch.py
           git apply --check ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
           git apply ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
+          git apply --check ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
+          git apply ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_27_28_SECURITY_BRANCH_ONLY' app/src/main/java/com/fush/erp/data/SecurityMigrations.kt
+          grep -q '"المستخدمون والصلاحيات" -> "المستخدمون"' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          test -f app/src/test/java/com/fush/erp/ui/screens/HomeShellNavigationTest.kt
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
           test -z "$(find . -name '*.p12' -print -quit)"
 
