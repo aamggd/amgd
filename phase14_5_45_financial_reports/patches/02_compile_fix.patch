@@ -1,0 +1,14 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -49,8 +49,8 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+     var balanceSheet by remember { mutableStateOf<BalanceSheetReport?>(null) }
+ 
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+-    val statementCustomers by container.db.salesDao().observeAll().collectAsState(initial = emptyList())
+-    val statementSuppliers by container.db.purchaseDao().observeAll().collectAsState(initial = emptyList())
++    val statementCustomers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
++    val statementSuppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
+     var ledgerAccountId by remember { mutableStateOf<Long?>(null) }
+     var ledger by remember { mutableStateOf<LedgerReport?>(null) }
+     var statementPartyType by remember { mutableStateOf("CUSTOMER") }
