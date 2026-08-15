@@ -16,6 +16,12 @@ Apply after **Phase 14.5.52** in this order:
 ## Coverage
 Because operational date inputs were previously migrated to `FushDateField`, this applies to accounting/treasury, expenses, purchases, inventory, party vouchers, geography/currency pricing, and report date ranges that use the shared date component.
 
+## Validation
+- The three ordered patches pass `git apply --check` against the expected post-14.5.52 shared date/build context.
+- `git diff --check` passes.
+- Date-entry audit confirmed the manual date fields previously identified in Accounting, Expenses, Purchases, Inventory, Geography/Currency, and Party vouchers were already migrated to `FushDateField` in Phase 14.5.47.
+- Full Android/device regression remains a central integration gate.
+
 ## Safety boundary
 UI input behavior only. No Room schema/migration, DAO, accounting posting/reversal, stock quantity/costing, production, employee compensation, sales-rep commissions, permissions/authentication, or backup changes.
 
