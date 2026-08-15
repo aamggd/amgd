@@ -1,0 +1,202 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index f5c6401..6e8bf86 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -9,8 +9,11 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
++import com.fush.erp.R
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.ui.*
+@@ -35,6 +38,7 @@ private data class SalesLineUi(
+ @Composable
+ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
+     val scope = rememberCoroutineScope()
++    val context = LocalContext.current
+     val customers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
+     val salesReps by container.db.salesRepresentativeDao().observeActive().collectAsState(initial = emptyList())
+     val invoices by container.db.salesDao().observeSummaries().collectAsState(initial = emptyList())
+@@ -53,6 +57,8 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+     var customerSearch by remember { mutableStateOf("") }
+     var invoiceSearch by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
++    val cashLabel = stringResource(R.string.common_cash)
++    val creditLabel = stringResource(R.string.common_credit)
+     val filteredCustomers = remember(customers, customerSearch) {
+         val q = customerSearch.trim().lowercase(Locale.ROOT)
+         if (q.isBlank()) customers else customers.filter { customer ->
+@@ -61,14 +67,14 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+         }
+     }
+ 
+-    val filteredInvoices = remember(invoices, invoiceSearch) {
++    val filteredInvoices = remember(invoices, invoiceSearch, cashLabel, creditLabel) {
+         val q = invoiceSearch.trim().lowercase(Locale.ROOT)
+         if (q.isBlank()) invoices else invoices.filter { invoice ->
+             listOf(
+                 invoice.invoiceNo,
+                 invoice.customerName,
+                 invoice.currencyCode,
+-                if (invoice.paymentType == "CASH") "نقدي" else "آجل",
++                if (invoice.paymentType == "CASH") cashLabel else creditLabel,
+             ).any { it.lowercase(Locale.ROOT).contains(q) }
+         }
+     }
+@@ -88,8 +94,8 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                 verticalAlignment = Alignment.CenterVertically,
+             ) {
+                 FushSectionHeader(
+-                    title = "المبيعات",
+-                    subtitle = "الفواتير والتحصيلات والمرتجعات مع متابعة الذمم الآجلة",
++                    title = stringResource(R.string.sales_title),
++                    subtitle = stringResource(R.string.sales_subtitle),
+                     modifier = Modifier.weight(1f),
+                 )
+                 Spacer(Modifier.width(12.dp))
+@@ -97,15 +103,15 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                     onClick = { showSale = true },
+                     enabled = customers.isNotEmpty(),
+                     shape = MaterialTheme.shapes.medium,
+-                ) { Text("فاتورة جديدة") }
++                ) { Text(stringResource(R.string.sales_new_invoice)) }
+             }
+         }
+ 
+         if (customers.isEmpty()) {
+             item {
+                 FushSystemState(
+-                    title = "لا يوجد عملاء بعد",
+-                    detail = "أنشئ عميلاً من صفحة العملاء قبل تسجيل أول فاتورة بيع.",
++                    title = stringResource(R.string.sales_no_customers),
++                    detail = stringResource(R.string.sales_create_customer_first),
+                 )
+             }
+         }
+@@ -117,16 +123,16 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "إجمالي الفواتير",
++                    label = stringResource(R.string.sales_total_invoices),
+                     value = salesMoney(totalInvoiceBase),
+-                    helper = "بالعملة الأساسية",
++                    helper = stringResource(R.string.common_base_currency),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+                 FushMetricCard(
+-                    label = "ذمم مفتوحة",
++                    label = stringResource(R.string.sales_open_receivables),
+                     value = salesMoney(totalOutstandingBase),
+-                    helper = "رصيد العملاء",
++                    helper = stringResource(R.string.sales_customer_balances),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalOutstandingBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -135,16 +141,16 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "متأخر السداد",
++                    label = stringResource(R.string.sales_overdue_receivables),
+                     value = salesMoney(overdueBase),
+-                    helper = "يحتاج متابعة",
++                    helper = stringResource(R.string.common_needs_follow_up),
+                     modifier = Modifier.weight(1f),
+                     tone = if (overdueBase > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
+                 )
+                 FushMetricCard(
+-                    label = "فواتير آجلة مفتوحة",
++                    label = stringResource(R.string.sales_open_credit_invoices),
+                     value = openCreditInvoices.toString(),
+-                    helper = "غير مسددة بالكامل",
++                    helper = stringResource(R.string.sales_not_fully_paid),
+                     modifier = Modifier.weight(1f),
+                     tone = if (openCreditInvoices > 0) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -159,11 +165,11 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+             ) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Text("سياسة البيع الآجل", style = MaterialTheme.typography.titleSmall)
+-                        FushStatusPill("رقابة ائتمانية", FushStatusTone.Info)
++                        Text(stringResource(R.string.sales_credit_policy), style = MaterialTheme.typography.titleSmall)
++                        FushStatusPill(stringResource(R.string.sales_credit_control), FushStatusTone.Info)
+                     }
+                     Text(
+-                        "المدة القصوى 30 يومًا، مع إيقاف تلقائي عند التأخر أو تجاوز السقف الائتماني.",
++                        stringResource(R.string.sales_credit_policy_detail),
+                         style = MaterialTheme.typography.bodySmall,
+                     )
+                 }
+@@ -171,14 +177,14 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+         }
+ 
+         item {
+-            FushSectionHeader("فواتير المبيعات", "${filteredInvoices.size} من ${invoices.size} فاتورة")
++            FushSectionHeader(stringResource(R.string.sales_invoices_header), stringResource(R.string.sales_invoice_count, filteredInvoices.size, invoices.size))
+             Spacer(Modifier.height(8.dp))
+             OutlinedTextField(
+                 value = invoiceSearch,
+                 onValueChange = { invoiceSearch = it },
+                 modifier = Modifier.fillMaxWidth(),
+-                label = { Text("بحث في الفواتير") },
+-                placeholder = { Text("رقم الفاتورة، العميل، العملة أو نوع الدفع") },
++                label = { Text(stringResource(R.string.sales_search_invoices)) },
++                placeholder = { Text(stringResource(R.string.sales_search_hint)) },
+                 singleLine = true,
+                 shape = MaterialTheme.shapes.medium,
+             )
+@@ -187,8 +193,8 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+         if (filteredInvoices.isEmpty()) {
+             item {
+                 FushEmptyState(
+-                    title = if (invoices.isEmpty()) "لا توجد فواتير مبيعات" else "لا توجد نتائج مطابقة",
+-                    detail = if (invoices.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية بيع." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                    title = if (invoices.isEmpty()) stringResource(R.string.sales_no_invoices) else stringResource(R.string.common_no_matching_results),
++                    detail = if (invoices.isEmpty()) stringResource(R.string.sales_no_invoices_detail) else stringResource(R.string.common_change_search),
+                 )
+             }
+         }
+@@ -203,9 +209,9 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                 else -> FushStatusTone.Warning
+             }
+             val collectionLabel = when {
+-                isPaid -> "مسددة"
+-                isOverdue -> "متأخرة"
+-                else -> "مفتوحة"
++                isPaid -> stringResource(R.string.common_paid)
++                isOverdue -> stringResource(R.string.common_overdue)
++                else -> stringResource(R.string.common_open)
+             }
+ 
+             ElevatedCard(
+@@ -229,7 +235,7 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                         }
+                         Spacer(Modifier.width(8.dp))
+                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+-                            FushStatusPill(if (isCredit) "آجل" else "نقدي", if (isCredit) FushStatusTone.Warning else FushStatusTone.Success)
++                            FushStatusPill(if (isCredit) creditLabel else cashLabel, if (isCredit) FushStatusTone.Warning else FushStatusTone.Success)
+                             if (isCredit) FushStatusPill(collectionLabel, collectionTone)
+                         }
+                     }
+@@ -238,11 +244,11 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+ 
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                         Column {
+-                            Text("الإجمالي", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.common_total), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text("${salesMoney(invoice.totalOriginal)} ${invoice.currencyCode}", style = MaterialTheme.typography.titleMedium)
+                         }
+                         Column(horizontalAlignment = Alignment.End) {
+-                            Text("بالعملة الأساسية", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.common_base_currency), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text(salesMoney(invoice.totalBase), style = MaterialTheme.typography.titleMedium)
+                         }
+                     }
