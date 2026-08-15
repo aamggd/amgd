@@ -64,9 +64,17 @@ jobs:
               if git apply --check "$p"; then
                 git apply "$p"
               else
-                echo "Retrying with git --recount: $(basename "$p")"
-                git apply --recount --check "$p"
-                git apply --recount "$p"
+                repaired="/tmp/${phase}-$(basename "$p")"
+                python - "$p" "$repaired" <<'PY'
+          import pathlib,sys
+          raw=pathlib.Path(sys.argv[1]).read_bytes()
+          if not raw.endswith(b'\n'):
+              raw += b'\n'
+          pathlib.Path(sys.argv[2]).write_bytes(raw)
+          PY
+                echo "Retrying repaired EOF/recount patch: $(basename "$p")"
+                git apply --recount --check "$repaired"
+                git apply --recount "$repaired"
               fi
             done
           done
