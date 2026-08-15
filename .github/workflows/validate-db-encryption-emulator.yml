@@ -42,7 +42,11 @@ jobs:
           echo '821bd4419050f0631415e2b872bed46b597b0a1d862860d4e4692e1885e30537  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
           git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git apply ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          echo 'fa54f84809e5e6dca8a1fc033939045d0bae346b80ed3eb0a552c8aaa203f4a6  ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch' | sha256sum -c -
+          git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch
+          git apply ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch
           git diff --check
+          grep -q 'cleanupStalePlaintextSafety(context)' app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
           test -f app/src/androidTest/java/com/fush/erp/backup/DatabaseEncryptionInstrumentedTest.kt
 
       - name: Set up JDK 17
