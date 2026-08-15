@@ -1,0 +1,179 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index c8416ca..f0f24bf 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -544,106 +544,94 @@ private fun WarehouseReorderPolicyDialog(
+     }
+ }
+ 
+-@Composable
+-private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-        item { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
+-        if (rows.isEmpty()) item { FushEmptyState("لا توجد محاضر جرد", "ابدأ أول جرد مخزني لتظهر المحاضر والفروقات هنا.") }
+-        items(rows) { row ->
+-            val draft = row.status == "DRAFT"
+-            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(row.countNo, style = MaterialTheme.typography.titleMedium)
+-                            Text("${row.warehouseName} • ${fmtDate(row.countDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
+-                    }
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
+-                        FushStatusPill("${row.varianceLines} بفروق", if (row.varianceLines > 0) FushStatusTone.Warning else FushStatusTone.Success)
++private fun LazyListScope.inventoryCountItems(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
++    item(key = "inventory-counts-header") { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
++    if (rows.isEmpty()) item(key = "inventory-counts-empty") { FushEmptyState("لا توجد محاضر جرد", "ابدأ أول جرد مخزني لتظهر المحاضر والفروقات هنا.") }
++    items(rows, key = { "count-${it.id}" }) { row ->
++        val draft = row.status == "DRAFT"
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(row.countNo, style = MaterialTheme.typography.titleMedium)
++                        Text("${row.warehouseName} • ${fmtDate(row.countDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     }
+-                    Text("قيمة الفرق: ${fmtMoney(row.varianceValueBase)}", style = MaterialTheme.typography.bodyMedium)
+-                    if (draft) Button(onClick = { onEdit(row.id) }, modifier = Modifier.fillMaxWidth()) { Text("إدخال الكميات / الترحيل") }
++                    FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
+                 }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
++                    FushStatusPill("${row.varianceLines} بفروق", if (row.varianceLines > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                }
++                Text("قيمة الفرق: ${fmtMoney(row.varianceValueBase)}", style = MaterialTheme.typography.bodyMedium)
++                if (draft) Button(onClick = { onEdit(row.id) }, modifier = Modifier.fillMaxWidth()) { Text("إدخال الكميات / الترحيل") }
+             }
+         }
+     }
+ }
+ 
+-@Composable
+-private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-        item { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
+-        if (rows.isEmpty()) item { FushEmptyState("لا توجد أرصدة تشغيلات", "أرصدة التشغيلات المتاحة والمحجوزة ستظهر هنا عند توفرها.") }
+-        items(rows) { row ->
+-            val tone = when (row.controlStatus) {
+-                "ACCEPTED" -> FushStatusTone.Success
+-                "QUARANTINED", "HOLD" -> FushStatusTone.Warning
+-                else -> FushStatusTone.Danger
+-            }
+-            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+-                            Text("${row.warehouseName} • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill(statusAr(row.controlStatus), tone)
++private fun LazyListScope.inventoryLotItems(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
++    item(key = "inventory-lots-header") { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
++    if (rows.isEmpty()) item(key = "inventory-lots-empty") { FushEmptyState("لا توجد أرصدة تشغيلات", "أرصدة التشغيلات المتاحة والمحجوزة ستظهر هنا عند توفرها.") }
++    items(rows, key = { "lot-${it.warehouseId}-${it.itemId}-${it.lotNo}-${it.expiryDate}" }) { row ->
++        val tone = when (row.controlStatus) {
++            "ACCEPTED" -> FushStatusTone.Success
++            "QUARANTINED", "HOLD" -> FushStatusTone.Warning
++            else -> FushStatusTone.Danger
++        }
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                        Text("${row.warehouseName} • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     }
+-                    Text("التشغيلة: ${row.lotNo ?: "بدون رقم"} • الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "—"}", style = MaterialTheme.typography.bodyMedium)
+-                    Text("الرصيد ${fmtQty(row.quantityBase)} • القيمة ${fmtMoney(row.inventoryValueBase)}", style = MaterialTheme.typography.bodySmall)
+-                    OutlinedButton(onClick = { onControl(row) }, modifier = Modifier.fillMaxWidth()) { Text("تغيير حالة التشغيلة") }
++                    FushStatusPill(statusAr(row.controlStatus), tone)
+                 }
++                Text("التشغيلة: ${row.lotNo ?: "بدون رقم"} • الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "—"}", style = MaterialTheme.typography.bodyMedium)
++                Text("الرصيد ${fmtQty(row.quantityBase)} • القيمة ${fmtMoney(row.inventoryValueBase)}", style = MaterialTheme.typography.bodySmall)
++                OutlinedButton(onClick = { onControl(row) }, modifier = Modifier.fillMaxWidth()) { Text("تغيير حالة التشغيلة") }
+             }
+         }
+     }
+ }
+ 
+-@Composable
+-private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-        item { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
+-        if (rows.isEmpty()) item { FushEmptyState("لا توجد حركات مخزون", "ستظهر هنا حركات الإدخال والإخراج والتحويل بعد تنفيذها.") }
+-        items(rows) { row ->
+-            val inbound = row.quantityBase > 0
+-            Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small) {
+-                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                    Column(Modifier.weight(1f)) {
+-                        Text(row.itemName, style = MaterialTheme.typography.titleSmall)
+-                        Text("${fmtDate(row.movementDate)} • ${row.warehouseName} • ${movementAr(row.movementType)} • ${row.lotNo ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                    }
+-                    FushStatusPill((if (inbound) "+" else "") + fmtQty(row.quantityBase), if (inbound) FushStatusTone.Success else FushStatusTone.Warning)
++private fun LazyListScope.inventoryMovementItems(rows: List<InventoryMovementRow>) {
++    item(key = "inventory-movements-header") { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
++    if (rows.isEmpty()) item(key = "inventory-movements-empty") { FushEmptyState("لا توجد حركات مخزون", "ستظهر هنا حركات الإدخال والإخراج والتحويل بعد تنفيذها.") }
++    items(rows, key = { "movement-${it.id}" }) { row ->
++        val inbound = row.quantityBase > 0
++        Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small) {
++            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                Column(Modifier.weight(1f)) {
++                    Text(row.itemName, style = MaterialTheme.typography.titleSmall)
++                    Text("${fmtDate(row.movementDate)} • ${row.warehouseName} • ${movementAr(row.movementType)} • ${row.lotNo ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                 }
++                FushStatusPill((if (inbound) "+" else "") + fmtQty(row.quantityBase), if (inbound) FushStatusTone.Success else FushStatusTone.Warning)
+             }
+         }
+     }
+ }
+ 
+-@Composable
+-private fun InventoryTransfers(rows: List<WarehouseTransferSummaryRow>, onOpen: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-        item {
+-            FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
+-        }
+-        if (rows.isEmpty()) item { FushEmptyState("لا توجد تحويلات مخزنية", "أنشئ تحويلًا بين المخازن لتظهر مستندات التحويل هنا.") }
+-        items(rows) { row ->
+-            val draft = row.status == "DRAFT"
+-            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Text(row.transferNo, style = MaterialTheme.typography.titleMedium)
+-                        FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
+-                    }
+-                    Text("${row.fromWarehouseName} ← ${row.toWarehouseName} • ${fmtDate(row.transferDate)}", style = MaterialTheme.typography.bodyMedium)
+-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                        FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
+-                        FushStatusPill("كمية ${fmtQty(row.totalQtyBase)}", FushStatusTone.Neutral)
+-                    }
+-                    Text("القيمة المنقولة: ${fmtMoney(row.totalValueBase)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                    OutlinedButton(onClick = { onOpen(row.id) }, modifier = Modifier.fillMaxWidth()) { Text(if (draft) "فتح وإكمال التحويل" else "عرض التفاصيل") }
++private fun LazyListScope.inventoryTransferItems(rows: List<WarehouseTransferSummaryRow>, onOpen: (Long) -> Unit) {
++    item(key = "inventory-transfers-header") {
++        FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
++    }
++    if (rows.isEmpty()) item(key = "inventory-transfers-empty") { FushEmptyState("لا توجد تحويلات مخزنية", "أنشئ تحويلًا بين المخازن لتظهر مستندات التحويل هنا.") }
++    items(rows, key = { "transfer-${it.id}" }) { row ->
++        val draft = row.status == "DRAFT"
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Text(row.transferNo, style = MaterialTheme.typography.titleMedium)
++                    FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
++                }
++                Text("${row.fromWarehouseName} ← ${row.toWarehouseName} • ${fmtDate(row.transferDate)}", style = MaterialTheme.typography.bodyMedium)
++                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                    FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
++                    FushStatusPill("كمية ${fmtQty(row.totalQtyBase)}", FushStatusTone.Neutral)
+                 }
++                Text("القيمة المنقولة: ${fmtMoney(row.totalValueBase)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                OutlinedButton(onClick = { onOpen(row.id) }, modifier = Modifier.fillMaxWidth()) { Text(if (draft) "فتح وإكمال التحويل" else "عرض التفاصيل") }
+             }
+         }
+     }
+ }
