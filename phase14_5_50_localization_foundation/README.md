@@ -8,8 +8,13 @@ Apply after **14.5.49** in this exact order:
 4. `04_strings_ar.patch`
 5. `05_shared_components.patch`
 6. `06_startup_login.patch`
-7. `07_shell_navigation.patch`
-8. `08_dashboard_localization.patch`
+7. `07_shell_navigation_1.patch`
+8. `07_shell_navigation_2.patch`
+9. `07_shell_navigation_3.patch`
+10. `07_shell_navigation_4.patch`
+11. `07_shell_navigation_5.patch`
+12. `08_dashboard_localization_1.patch`
+13. `08_dashboard_localization_2.patch`
 
 ## What this phase does
 
@@ -27,8 +32,8 @@ This is the **localization foundation and core-shell slice**, not a claim that e
 
 ## Validation performed
 
-- All eight patches pass `git apply --check` sequentially over the verified 14.5.49 source.
-- Applying all eight patches reproduces the working 14.5.50 changed files byte-for-byte.
+- All thirteen ordered patches pass `git apply --check` sequentially over the verified 14.5.49 source.
+- Applying all thirteen patches reproduces the working 14.5.50 changed files byte-for-byte.
 - `git diff --check` is clean.
 - English and Arabic resource files contain the exact same 192 resource keys.
 - Format placeholders were compared between English and Arabic resources.
