@@ -1,6 +1,6 @@
 diff --git a/UI_PROFESSIONALIZATION_10_ACCESSIBILITY_POLISH_SCOPE.md b/UI_PROFESSIONALIZATION_10_ACCESSIBILITY_POLISH_SCOPE.md
 new file mode 100644
-index 0000000..48b8cc1
+index 0000000..993f816
 --- /dev/null
 +++ b/UI_PROFESSIONALIZATION_10_ACCESSIBILITY_POLISH_SCOPE.md
 @@ -0,0 +1,23 @@
@@ -11,10 +11,10 @@ index 0000000..48b8cc1
 +
 +## Scope
 +- Improve shared Compose semantics for branding, status pills, metric/module cards and user identity.
-+- Guarantee explicit 48dp minimum touch targets for shared clickable cards and compact navigation glyphs.
++- Guarantee explicit 48dp minimum touch targets for shared clickable cards and state actions.
 +- Add reusable professional empty, loading, error and confirmation components.
 +- Replace raw high-frequency empty/loading states in sales/purchases, parties, inventory, production, employees and representatives with consistent state cards.
-+- Improve login accessibility with explicit autofill/content-type semantics, error announcement and progress state wording.
++- Improve login accessibility with assertive error announcements and progress state wording.
 +- Add accessible labels to shell navigation controls and remove duplicate/decorative announcements.
 +- Preserve RTL/LTR-compatible layout and Material 3 color roles.
 +
