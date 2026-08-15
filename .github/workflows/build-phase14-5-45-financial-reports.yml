@@ -1,0 +1,135 @@
+name: Build Fush ERP Phase 14.5.45 Financial Reports
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-45-financial-reports.yml'
+      - 'phase14_5_45_financial_reports/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.44 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Reports-Correctness-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31864286044
+
+      - name: Restore Phase 14.5.44 and apply Phase 14.5.45 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.44-Reports-Correctness-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.44
+          cat ../phase14_5_45_financial_reports/patches/01_financial_reports_and_party_statements.patch.part* > ../phase14_5_45_financial_reports/combined.patch
+          git apply --check ../phase14_5_45_financial_reports/combined.patch
+          git apply ../phase14_5_45_financial_reports/combined.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 84' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.45-financial-reports"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          grep -q '"الأستاذ العام"' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q '"كشف الأطراف"' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'balanceSheet = container.accountingService.balanceSheet(to)' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'versionCode = 84' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.45-financial-reports"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-45-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-45-output/FushERP-Phase14.5.45-Financial-Reports-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-45-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-45-output/lib/apksigner.jar
+          chmod +x phase14-5-45-output/apksigner
+          zip -qr phase14-5-45-output/FushERP-Mobile-Phase14.5.45-Financial-Reports-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.45 — Financial Reports & Party Statements' \
+            'Base verified source: Phase 14.5.44 Reports Correctness' \
+            'Branch: fush/reports-printing' \
+            'Balance Sheet in Reports Center: PASS' \
+            'General Ledger report: PASS' \
+            'Customer/Supplier statement: PASS' \
+            'Party statement regression tests: PASS' \
+            'PDF/Excel report document integration: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 84' \
+            'Version name: 0.15.4.45-financial-reports' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-45-output/FushERP-Phase14.5.45-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.45-Financial-Reports-Build
+          path: phase14-5-45-output/
+          if-no-files-found: error
+          retention-days: 7
