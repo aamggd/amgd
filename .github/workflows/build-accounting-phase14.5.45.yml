@@ -1,0 +1,188 @@
+name: Validate FUSH Accounting Phase 14.5.45 General Ledger Dimensions
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.45.yml'
+      - 'fush_accounting/rebase/phase14.5.45_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase45-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Download validated Phase 14.5.44 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.44-Professional-Financial-Statements-Validated-Build
+          path: phase44-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31914408158
+      - name: Reconstruct and verify Phase 14.5.45 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          CH="$GITHUB_WORKSPACE/fush_accounting/rebase/phase14.5.45_chunks"
+          for n in 00 01 02 03 04; do test "$(wc -c < "$CH/part${n}.b64")" -eq 3000; done
+          test "$(wc -c < "$CH/part05.b64")" -eq 1072
+          echo 'd1279abc5d6f175563b4af4ecf10bb5c643d4b3b5058f965b7604fb2f762bf2d  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '93c8e0b6765c9246d4cad4a1c296c8815c6e0db2d6e77eb0d9a9a41a6175196a  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'd997bdd055c89c61f33563313ba6d7c81665fc536c5e429a76c9eca3162491fd  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '46ccad782f13da83f9bed481287316d5f93825776a0af60bf8db08f9a7c1c8e4  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo '44a7a4a1b3afea9c64efd9cc06eb62c50a5f502c548943bcf8c30fabf57a7b58  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo '44e00a10a66194ffbc0f4f91a1c39f0f3565ed006b0b37b57f1e9f17df5295a4  part05.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part*.b64 > /tmp/phase45.patch.gz.b64
+          test "$(wc -c < /tmp/phase45.patch.gz.b64)" -eq 16072
+          echo '7e09c3d985bcafb3507c1d765757af92ba22bc547638f9f5c153f29833985f6d  /tmp/phase45.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase45.patch.gz.b64 > /tmp/phase45.patch.gz
+          test "$(wc -c < /tmp/phase45.patch.gz)" -eq 12054
+          echo '3f6391084373f16dd3f3f9e07e2be8fdd4147c63431e7405f21556c27839eb46  /tmp/phase45.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase45.patch.gz
+          gzip -dc /tmp/phase45.patch.gz > /tmp/phase45.patch
+          test "$(wc -c < /tmp/phase45.patch)" -eq 59319
+          echo 'ad48cca35d3a27675b0d0a8877d13469d6d451e338f597c3889c2e19e9021365  /tmp/phase45.patch' | sha256sum -c -
+      - name: Apply Phase 14.5.45 to validated Phase 14.5.44
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work" && cd "$ROOT/work"
+          unzip -q "$ROOT/phase44-artifact/FushERP-Mobile-Phase14.5.44-Professional-Financial-Statements-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase45 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A && git commit -qm 'validated Phase14.5.44 baseline'
+          git apply --check /tmp/phase45.patch
+          git apply /tmp/phase45.patch
+          git diff --check
+      - name: Verify identity, schema and dimension wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 36' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_35_36' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_35_36' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f app/src/main/java/com/fush/erp/data/entity/DimensionEntities.kt
+          test -f app/src/main/java/com/fush/erp/data/dao/DimensionDao.kt
+          test -f app/src/main/java/com/fush/erp/domain/AccountingDimensionService.kt
+          grep -q 'JournalLineDimensionEntity' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'observeActiveValues("COST_CENTER")' app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -q '"الأبعاد"' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          ! grep -R --line-number 'EXPENSE_COST_CENTERS' app/src/main/java
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+      - name: SQLite accounting-dimension guards smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          db=sqlite3.connect(':memory:'); db.execute('PRAGMA foreign_keys=ON')
+          db.executescript('''
+          CREATE TABLE accounting_dimensions(code TEXT PRIMARY KEY NOT NULL,nameAr TEXT NOT NULL,nameEn TEXT,isActive INTEGER NOT NULL,createdBy TEXT NOT NULL,createdAt INTEGER NOT NULL);
+          CREATE TABLE accounting_dimension_values(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,dimensionCode TEXT NOT NULL,code TEXT NOT NULL,nameAr TEXT NOT NULL,nameEn TEXT,isActive INTEGER NOT NULL,createdBy TEXT NOT NULL,createdAt INTEGER NOT NULL);
+          CREATE TABLE journal_entries(id INTEGER PRIMARY KEY,entryDate INTEGER NOT NULL,status TEXT NOT NULL);
+          CREATE TABLE journal_lines(id INTEGER PRIMARY KEY,journalEntryId INTEGER NOT NULL,accountId INTEGER NOT NULL,debit REAL NOT NULL,credit REAL NOT NULL);
+          CREATE TABLE accounting_periods(id INTEGER PRIMARY KEY,startDate INTEGER NOT NULL,endDate INTEGER NOT NULL,status TEXT NOT NULL);
+          CREATE TABLE journal_line_dimensions(lineId INTEGER NOT NULL,dimensionCode TEXT NOT NULL,valueId INTEGER NOT NULL,valueCodeSnapshot TEXT NOT NULL,valueNameSnapshot TEXT NOT NULL,createdBy TEXT NOT NULL,createdAt INTEGER NOT NULL,PRIMARY KEY(lineId,dimensionCode));
+          CREATE TRIGGER mismatch BEFORE INSERT ON journal_line_dimensions WHEN NOT EXISTS(SELECT 1 FROM accounting_dimension_values v WHERE v.id=NEW.valueId AND v.dimensionCode=NEW.dimensionCode) BEGIN SELECT RAISE(ABORT,'DIMENSION_VALUE_MISMATCH'); END;
+          CREATE TRIGGER closed_insert BEFORE INSERT ON journal_line_dimensions WHEN EXISTS(SELECT 1 FROM journal_lines jl JOIN journal_entries je ON je.id=jl.journalEntryId JOIN accounting_periods p ON je.entryDate BETWEEN p.startDate AND p.endDate WHERE jl.id=NEW.lineId AND p.status='CLOSED') BEGIN SELECT RAISE(ABORT,'ACCOUNTING_PERIOD_CLOSED'); END;
+          ''')
+          db.execute("INSERT INTO accounting_dimensions VALUES('COST_CENTER','مركز التكلفة','Cost Center',1,'SYSTEM',1)")
+          db.execute("INSERT INTO accounting_dimensions VALUES('PROJECT','المشروع','Project',1,'SYSTEM',1)")
+          db.execute("INSERT INTO accounting_dimension_values(dimensionCode,code,nameAr,isActive,createdBy,createdAt) VALUES('COST_CENTER','ADMIN','إدارة',1,'SYSTEM',1)")
+          db.execute("INSERT INTO accounting_dimension_values(dimensionCode,code,nameAr,isActive,createdBy,createdAt) VALUES('PROJECT','P1','مشروع 1',1,'SYSTEM',1)")
+          cc=db.execute("SELECT id FROM accounting_dimension_values WHERE dimensionCode='COST_CENTER'").fetchone()[0]
+          pr=db.execute("SELECT id FROM accounting_dimension_values WHERE dimensionCode='PROJECT'").fetchone()[0]
+          db.execute("INSERT INTO journal_entries VALUES(1,100,'POSTED')"); db.execute("INSERT INTO journal_lines VALUES(10,1,6000,100,0)")
+          db.execute("INSERT INTO journal_line_dimensions VALUES(10,'COST_CENTER',?,'ADMIN','إدارة','u',1)",(cc,))
+          try:
+              db.execute("INSERT INTO journal_line_dimensions VALUES(10,'PROJECT',?,'ADMIN','إدارة','u',1)",(cc,)); raise AssertionError('mismatch accepted')
+          except sqlite3.IntegrityError as e: assert 'DIMENSION_VALUE_MISMATCH' in str(e)
+          db.execute("INSERT INTO accounting_periods VALUES(1,50,150,'CLOSED')"); db.execute("INSERT INTO journal_lines VALUES(11,1,6000,50,0)")
+          try:
+              db.execute("INSERT INTO journal_line_dimensions VALUES(11,'PROJECT',?,'P1','مشروع 1','u',1)",(pr,)); raise AssertionError('closed accepted')
+          except sqlite3.IntegrityError as e: assert 'ACCOUNTING_PERIOD_CLOSED' in str(e)
+          print('PHASE14_5_45_SQLITE_DIMENSION_GUARDS_OK')
+          PY
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase45-unit-test.log"
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.45-Unit-Test-Diagnostics
+          path: phase45-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"; cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/36.json
+          grep -q '"version": 36' app/schemas/com.fush.erp.data.FushDatabase/36.json
+          mkdir -p "$ROOT/phase45-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk "$ROOT/phase45-output/FushERP-Accounting-Phase14.5.45-General-Ledger-Dimensions-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/phase45-output/FushERP-Accounting-Phase14.5.45-General-Ledger-Dimensions-aligned-unsigned.apk"
+          cp /tmp/phase45.patch "$ROOT/phase45-output/FushERP-Phase14.5.45-General-Ledger-Dimensions.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work" && zip -qr "$ROOT/phase45-output/FushERP-Mobile-Phase14.5.45-General-Ledger-Dimensions-Source.zip" repo
+          sha256sum "$ROOT/phase45-output/"* > "$ROOT/phase45-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase45-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.45 validation
+          Base: validated Accounting Phase 14.5.44 Professional Financial Statements & Cash Flow
+          Base validation run: 31914408158
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 36 (PROVISIONAL / BRANCH ONLY)
+          Phase 14.5.45 patch SHA-256: ad48cca35d3a27675b0d0a8877d13469d6d451e338f597c3889c2e19e9021365
+          SQLite dimension guard smoke: PASS
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 36 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_45_GENERAL_LEDGER_DIMENSIONS_VALIDATED_OK
+          REPORT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.45-General-Ledger-Dimensions-Validated-Build
+          path: phase45-output/
+          if-no-files-found: error
+          retention-days: 7
