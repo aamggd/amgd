@@ -1,0 +1,159 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -691,86 +691,101 @@
+         }
+         Spacer(Modifier.height(7.dp))
+ 
+-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+             when (section) {
+                 "الوحدات" -> {
+-                    item { Text("الوحدات (${units.size})", style = MaterialTheme.typography.titleLarge) }
+-                    items(units) { unit ->
+-                        ElevatedCard(Modifier.fillMaxWidth()) {
+-                            ListItem(
+-                                headlineContent = { Text(unit.nameAr) },
+-                                supportingContent = { Text("${unit.code}${if (unit.nameEn.isNotBlank()) " • ${unit.nameEn}" else ""} • ${if (unit.isActive) "نشطة" else "موقوفة"}") },
+-                                trailingContent = {
+-                                    Row {
+-                                        TextButton(onClick = { editUnit = unit }) { Text("تعديل") }
+-                                        TextButton(onClick = { runAction { container.masterDataService.setUnitActive(unit.id, !unit.isActive, user.id); if (unit.isActive) "تم إيقاف الوحدة" else "تم تفعيل الوحدة" } }) { Text(if (unit.isActive) "إيقاف" else "تفعيل") }
++                    item { FushSectionHeader("الوحدات", "${filteredUnits.size} من ${units.size} وحدة") }
++                    if (filteredUnits.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد وحدات مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    items(filteredUnits) { unit ->
++                        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Column(Modifier.weight(1f)) {
++                                        Text(unit.nameAr, style = MaterialTheme.typography.titleMedium)
++                                        Text("${unit.code}${if (unit.nameEn.isNotBlank()) " • ${unit.nameEn}" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                     }
++                                    FushStatusPill(if (unit.isActive) "نشطة" else "موقوفة", if (unit.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+                                 }
+-                            )
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
++                                    TextButton(onClick = { editUnit = unit }) { Text("تعديل") }
++                                    TextButton(onClick = { runAction { container.masterDataService.setUnitActive(unit.id, !unit.isActive, user.id); if (unit.isActive) "تم إيقاف الوحدة" else "تم تفعيل الوحدة" } }) { Text(if (unit.isActive) "إيقاف" else "تفعيل") }
++                                }
++                            }
+                         }
+                     }
+                 }
+                 "المخازن" -> {
+-                    item { Text("المخازن (${warehouses.size})", style = MaterialTheme.typography.titleLarge) }
+-                    items(warehouses) { warehouse ->
+-                        ElevatedCard(Modifier.fillMaxWidth()) {
+-                            ListItem(
+-                                headlineContent = { Text(warehouse.nameAr) },
+-                                supportingContent = { Text("${warehouse.code}${if (warehouse.location.isNotBlank()) " • ${warehouse.location}" else ""} • ${if (warehouse.isActive) "نشط" else "موقوف"}") },
+-                                trailingContent = {
+-                                    Row {
+-                                        TextButton(onClick = { editWarehouse = warehouse }) { Text("تعديل") }
+-                                        TextButton(onClick = { runAction { container.masterDataService.setWarehouseActive(warehouse.id, !warehouse.isActive, user.id); if (warehouse.isActive) "تم إيقاف المخزن" else "تم تفعيل المخزن" } }) { Text(if (warehouse.isActive) "إيقاف" else "تفعيل") }
++                    item { FushSectionHeader("المخازن", "${filteredWarehouses.size} من ${warehouses.size} مخزن") }
++                    if (filteredWarehouses.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد مخازن مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    items(filteredWarehouses) { warehouse ->
++                        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Column(Modifier.weight(1f)) {
++                                        Text(warehouse.nameAr, style = MaterialTheme.typography.titleMedium)
++                                        Text("${warehouse.code}${if (warehouse.location.isNotBlank()) " • ${warehouse.location}" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                     }
++                                    FushStatusPill(if (warehouse.isActive) "نشط" else "موقوف", if (warehouse.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+                                 }
+-                            )
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
++                                    TextButton(onClick = { editWarehouse = warehouse }) { Text("تعديل") }
++                                    TextButton(onClick = { runAction { container.masterDataService.setWarehouseActive(warehouse.id, !warehouse.isActive, user.id); if (warehouse.isActive) "تم إيقاف المخزن" else "تم تفعيل المخزن" } }) { Text(if (warehouse.isActive) "إيقاف" else "تفعيل") }
++                                }
++                            }
+                         }
+                     }
+                 }
+                 "التحويلات" -> {
+-                    item { Text("تحويلات الوحدات (${conversions.size})", style = MaterialTheme.typography.titleLarge) }
+-                    items(conversions) { conversion ->
++                    item { FushSectionHeader("تحويلات الوحدات", "${filteredConversions.size} من ${conversions.size} تحويل") }
++                    if (filteredConversions.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تحويلات وحدات مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    items(filteredConversions) { conversion ->
+                         val item = itemsList.firstOrNull { it.id == conversion.itemId }
+                         val unit = units.firstOrNull { it.id == conversion.unitId }
+-                        ElevatedCard(Modifier.fillMaxWidth()) {
+-                            ListItem(
+-                                headlineContent = { Text("${item?.nameAr ?: "صنف #${conversion.itemId}"} — ${unit?.nameAr ?: "وحدة #${conversion.unitId}"}") },
+-                                supportingContent = {
+-                                    Column {
+-                                        Text("× ${formatQty(conversion.factorToBase)} • ${if (conversion.allowPurchase) "شراء" else ""}${if (conversion.allowPurchase && conversion.allowSale) " + " else ""}${if (conversion.allowSale) "بيع" else ""} • ${if (conversion.isActive) "نشط" else "موقوف"}")
+-                                        conversion.barcode?.takeIf { it.isNotBlank() }?.let { Text("باركود: $it", style = MaterialTheme.typography.bodySmall) }
++                        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Column(Modifier.weight(1f)) {
++                                        Text("${item?.nameAr ?: "صنف #${conversion.itemId}"} — ${unit?.nameAr ?: "وحدة #${conversion.unitId}"}", style = MaterialTheme.typography.titleMedium)
++                                        Text("× ${formatQty(conversion.factorToBase)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                     }
+-                                },
+-                                trailingContent = {
+-                                    Row {
+-                                        TextButton(onClick = { editConversion = conversion }) { Text("تعديل") }
+-                                        TextButton(onClick = { runAction { container.masterDataService.setConversionActive(conversion.id, !conversion.isActive, user.id); if (conversion.isActive) "تم إيقاف التحويل" else "تم تفعيل التحويل" } }) { Text(if (conversion.isActive) "إيقاف" else "تفعيل") }
+-                                    }
++                                    FushStatusPill(if (conversion.isActive) "نشط" else "موقوف", if (conversion.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+                                 }
+-                            )
++                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                    if (conversion.allowPurchase) FushStatusPill("شراء", FushStatusTone.Info)
++                                    if (conversion.allowSale) FushStatusPill("بيع", FushStatusTone.Info)
++                                    conversion.barcode?.takeIf { it.isNotBlank() }?.let { FushStatusPill("باركود $it", FushStatusTone.Neutral) }
++                                }
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
++                                    TextButton(onClick = { editConversion = conversion }) { Text("تعديل") }
++                                    TextButton(onClick = { runAction { container.masterDataService.setConversionActive(conversion.id, !conversion.isActive, user.id); if (conversion.isActive) "تم إيقاف التحويل" else "تم تفعيل التحويل" } }) { Text(if (conversion.isActive) "إيقاف" else "تفعيل") }
++                                }
++                            }
+                         }
+                     }
+                 }
+                 else -> {
+-                    item { Text("المواد والأصناف (${itemsList.size})", style = MaterialTheme.typography.titleLarge) }
+-                    items(itemsList) { item ->
++                    item { FushSectionHeader("المواد والأصناف", "${filteredItems.size} من ${itemsList.size} صنف") }
++                    if (filteredItems.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أصناف مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    items(filteredItems) { item ->
+                         val baseUnit = units.firstOrNull { it.id == item.baseUnitId }
+-                        ElevatedCard(Modifier.fillMaxWidth()) {
+-                            ListItem(
+-                                headlineContent = { Text(item.nameAr) },
+-                                supportingContent = {
+-                                    Column {
+-                                        Text("${item.code} • ${itemCategoryAr(item.category)} • ${baseUnit?.nameAr ?: "وحدة"} • ${if (item.isActive) "نشط" else "موقوف"}")
+-                                        Text("إعادة الطلب: ${formatQty(item.reorderLevel)}${item.shelfLifeDays?.let { " • الصلاحية: $it يوم" } ?: ""}", style = MaterialTheme.typography.bodySmall)
++                        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Column(Modifier.weight(1f)) {
++                                        Text(item.nameAr, style = MaterialTheme.typography.titleMedium)
++                                        Text("${item.code} • ${itemCategoryAr(item.category)} • ${baseUnit?.nameAr ?: "وحدة"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                     }
+-                                },
+-                                trailingContent = {
+-                                    Row {
+-                                        TextButton(onClick = { editItem = item }) { Text("تعديل") }
+-                                        TextButton(onClick = { runAction { container.masterDataService.setItemActive(item.id, !item.isActive, user.id); if (item.isActive) "تم إيقاف الصنف" else "تم تفعيل الصنف" } }) { Text(if (item.isActive) "إيقاف" else "تفعيل") }
+-                                    }
++                                    FushStatusPill(if (item.isActive) "نشط" else "موقوف", if (item.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+                                 }
+-                            )
++                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                    FushStatusPill("إعادة طلب ${formatQty(item.reorderLevel)}", if (item.reorderLevel > 0) FushStatusTone.Info else FushStatusTone.Neutral)
++                                    item.shelfLifeDays?.let { FushStatusPill("صلاحية $it يوم", FushStatusTone.Warning) }
++                                }
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
++                                    TextButton(onClick = { editItem = item }) { Text("تعديل") }
++                                    TextButton(onClick = { runAction { container.masterDataService.setItemActive(item.id, !item.isActive, user.id); if (item.isActive) "تم إيقاف الصنف" else "تم تفعيل الصنف" } }) { Text(if (item.isActive) "إيقاف" else "تفعيل") }
++                                }
++                            }
+                         }
+                     }
+                 }
