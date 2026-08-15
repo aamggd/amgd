@@ -57,7 +57,7 @@ jobs:
           git add -A
           git commit -qm baseline-14.5.48
           base64 -d ../phase14_5_49_treasury_reports/patches/01_treasury_reports.patch.gz.b64 | gzip -dc > ../phase14_5_49_treasury_reports/01_treasury_reports.patch
-          echo 'eb2ed8e2120ab5650e83e32a450cf256e3959bc097cddcace488434efbd43127  ../phase14_5_49_treasury_reports/01_treasury_reports.patch' | sha256sum -c -
+          echo '678411474f27eb21f87b5d086f86b8b7fe3bf0d2aec33c5ec9097c990c2899fa  ../phase14_5_49_treasury_reports/01_treasury_reports.patch' | sha256sum -c -
           git apply --check ../phase14_5_49_treasury_reports/01_treasury_reports.patch
           git apply ../phase14_5_49_treasury_reports/01_treasury_reports.patch
           git diff --check HEAD
@@ -67,6 +67,8 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
           test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/domain/TreasuryReportMath.kt
+          test -f app/src/test/java/com/fush/erp/domain/TreasuryReportMathTest.kt
           grep -q '"الخزائن والبنوك"' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
           grep -q 'treasuryMovementsThrough' app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
           grep -q "original.sourceType = 'TREASURY_TRANSFER'" app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
