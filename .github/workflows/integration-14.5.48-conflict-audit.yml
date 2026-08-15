@@ -1,0 +1,156 @@
+name: Audit FUSH Final Integration 14.5.48
+
+on:
+  push:
+    branches: [fush/integration-final-14.5.48]
+    paths:
+      - '.github/workflows/integration-14.5.48-conflict-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  conflict-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official baseline 14.5.38
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: artifacts/baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+      - name: Download central UI 14.5.44 anchor
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Central-Integrated-UI-Build
+          path: artifacts/ui44
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31863406088
+      - name: Download validated Accounting 14.5.39
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: artifacts/accounting
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865418288
+      - name: Download validated Security final
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Security-Rebase-Final-Validation
+          path: artifacts/security
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865181875
+      - name: Download validated Reports and Printing 14.5.46
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Professional-Printing-Build
+          path: artifacts/reports
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865897444
+      - name: Reconstruct sources and latest UI snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/{baseline,ui,accounting,security,reports}
+          unzip -q artifacts/baseline/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d work/baseline
+          unzip -q artifacts/ui44/FushERP-Mobile-Phase14.5.44-Integrated-UI-Source.zip -d work/ui
+          unzip -q artifacts/accounting/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip -d work/accounting
+          unzip -q artifacts/security/FushERP-Security-Rebase-Final-Source.zip -d work/security
+          unzip -q artifacts/reports/FushERP-Mobile-Phase14.5.46-Professional-Printing-Source.zip -d work/reports
+          UI=$(find work/ui -mindepth 1 -maxdepth 1 -type d | head -1)
+          git -C "$UI" init -q
+          git -C "$UI" config user.email integration@fush.local
+          git -C "$UI" config user.name 'FUSH Integration'
+          git -C "$UI" add -A
+          git -C "$UI" commit -qm ui44
+          for p in \
+            phase14_5_45_inventory_scroll_hotfix/patches/01_scope.patch \
+            phase14_5_45_inventory_scroll_hotfix/patches/02_build_gradle.patch \
+            phase14_5_45_inventory_scroll_hotfix/patches/03_inventory_scroll_shell.patch \
+            phase14_5_45_inventory_scroll_hotfix/patches/04_inventory_balance_items.patch \
+            phase14_5_45_inventory_scroll_hotfix/patches/05_inventory_alert_items.patch \
+            phase14_5_45_inventory_scroll_hotfix/patches/06_inventory_section_items.patch \
+            phase14_5_46_scroll_profile_polish/patches/01_scope.patch \
+            phase14_5_46_scroll_profile_polish/patches/02_build_gradle.patch \
+            phase14_5_46_scroll_profile_polish/patches/03_customer_profile_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/04_supplier_profile_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/05_customer_ledger_lazy.patch \
+            phase14_5_46_scroll_profile_polish/patches/06_supplier_ledger_lazy.patch \
+            phase14_5_46_scroll_profile_polish/patches/07_party_aux_lazy.patch \
+            phase14_5_46_scroll_profile_polish/patches/08_employee_profile_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/09_sales_rep_profile_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/10_governance_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/11_risk_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/12_master_data_scroll.patch \
+            phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch \
+            phase14_5_47_professional_forms_ui/patches/01_scope.patch \
+            phase14_5_47_professional_forms_ui/patches/02_build_gradle.patch \
+            phase14_5_47_professional_forms_ui/patches/03_shared_form_components.patch \
+            phase14_5_47_professional_forms_ui/patches/04_accounting_expense_forms.patch \
+            phase14_5_47_professional_forms_ui/patches/05_sales_purchase_forms.patch \
+            phase14_5_47_professional_forms_ui/patches/06_inventory_geography_forms.patch \
+            phase14_5_47_professional_forms_ui/patches/07_party_people_forms.patch \
+            phase14_5_47_professional_forms_ui/patches/08_risk_control_forms.patch \
+            phase14_5_47_professional_forms_ui/patches/09_maintenance_forms.patch
+          do
+            git -C "$UI" apply --check "$GITHUB_WORKSPACE/$p"
+            git -C "$UI" apply "$GITHUB_WORKSPACE/$p"
+          done
+          git -C "$UI" diff --check
+          rm -rf "$UI/.git"
+      - name: Audit three-way conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, pathlib, subprocess, hashlib
+          root=pathlib.Path('work')
+          def one(path):
+              ds=[p for p in path.iterdir() if p.is_dir()]
+              assert len(ds)==1,(path,ds)
+              return ds[0]
+          base=one(root/'baseline'); ui=one(root/'ui')
+          specs={'ACCOUNTING':one(root/'accounting'),'SECURITY':one(root/'security'),'REPORTS_PRINTING':one(root/'reports')}
+          def files(d):
+              return {str(p.relative_to(d)) for p in d.rglob('*') if p.is_file() and '/build/' not in str(p) and '/.gradle/' not in str(p) and '/.kotlin/' not in str(p) and not str(p).endswith('.apk')}
+          def same(a,b):
+              if not a.exists() or not b.exists(): return False
+              return hashlib.sha256(a.read_bytes()).digest()==hashlib.sha256(b.read_bytes()).digest()
+          report=[]
+          for label,spec in specs.items():
+              changed=[]; conflicts=[]; new=[]; deleted=[]
+              for rel in sorted(files(base)|files(spec)):
+                  b=base/rel; t=spec/rel
+                  if b.exists() and t.exists() and same(b,t): continue
+                  changed.append(rel)
+                  if not b.exists() and t.exists(): new.append(rel); continue
+                  if b.exists() and not t.exists(): deleted.append(rel); continue
+                  o=ui/rel
+                  if not o.exists(): continue
+                  try:
+                      ob=o.read_bytes(); bb=b.read_bytes(); tb=t.read_bytes()
+                      if b'\0' in ob+bb+tb: continue
+                      cp=subprocess.run(['git','merge-file','-p',str(o),str(b),str(t)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                      if cp.returncode==1: conflicts.append(rel)
+                      elif cp.returncode>1: conflicts.append(rel+' [merge-error]')
+                  except Exception as e: conflicts.append(rel+' [exception]')
+              report += [f'## {label}',f'changed={len(changed)} new={len(new)} deleted={len(deleted)} conflicts={len(conflicts)}']
+              report += [f'CONFLICT {x}' for x in conflicts]
+              report.append('')
+          pathlib.Path('integration-conflict-audit.txt').write_text('\n'.join(report),encoding='utf-8')
+          print('\n'.join(report))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-14.5.48-Conflict-Audit
+          path: integration-conflict-audit.txt
+          retention-days: 7
