@@ -24,14 +24,6 @@ jobs:
           github-token: ${{ github.token }}
           repository: aamggd/amgd
           run-id: 31858347166
-      - name: Download central UI 14.5.44 anchor
-        uses: actions/download-artifact@v4
-        with:
-          name: FushERP-Phase14.5.44-Central-Integrated-UI-Build
-          path: artifacts/ui44
-          github-token: ${{ github.token }}
-          repository: aamggd/amgd
-          run-id: 31863406088
       - name: Download validated Accounting 14.5.39
         uses: actions/download-artifact@v4
         with:
@@ -62,57 +54,47 @@ jobs:
           set -euo pipefail
           mkdir -p work/{baseline,ui,accounting,security,reports}
           unzip -q artifacts/baseline/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d work/baseline
-          unzip -q artifacts/ui44/FushERP-Mobile-Phase14.5.44-Integrated-UI-Source.zip -d work/ui
           unzip -q artifacts/accounting/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip -d work/accounting
           unzip -q artifacts/security/FushERP-Security-Rebase-Final-Source.zip -d work/security
           unzip -q artifacts/reports/FushERP-Mobile-Phase14.5.46-Professional-Printing-Source.zip -d work/reports
-          UI=$(find work/ui -mindepth 1 -maxdepth 1 -type d | head -1)
+          BASE=$(find work/baseline -mindepth 1 -maxdepth 1 -type d | head -1)
+          cp -a "$BASE" work/ui/FushERP_Mobile_Phase5
+          UI=work/ui/FushERP_Mobile_Phase5
+          rm -rf "$UI/.git" "$UI/app/build" "$UI/.gradle" "$UI/.kotlin" "$UI/build"
           git -C "$UI" init -q
           git -C "$UI" config user.email integration@fush.local
           git -C "$UI" config user.name 'FUSH Integration'
           git -C "$UI" add -A
-          git -C "$UI" commit -qm ui44
-          for p in \
-            phase14_5_45_inventory_scroll_hotfix/patches/01_scope.patch \
-            phase14_5_45_inventory_scroll_hotfix/patches/02_build_gradle.patch \
-            phase14_5_45_inventory_scroll_hotfix/patches/03_inventory_scroll_shell.patch \
-            phase14_5_45_inventory_scroll_hotfix/patches/04_inventory_balance_items.patch \
-            phase14_5_45_inventory_scroll_hotfix/patches/05_inventory_alert_items.patch \
-            phase14_5_45_inventory_scroll_hotfix/patches/06_inventory_section_items.patch \
-            phase14_5_46_scroll_profile_polish/patches/01_scope.patch \
-            phase14_5_46_scroll_profile_polish/patches/02_build_gradle.patch \
-            phase14_5_46_scroll_profile_polish/patches/03_customer_profile_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/04_supplier_profile_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/05_customer_ledger_lazy.patch \
-            phase14_5_46_scroll_profile_polish/patches/06_supplier_ledger_lazy.patch \
-            phase14_5_46_scroll_profile_polish/patches/07_party_aux_lazy.patch \
-            phase14_5_46_scroll_profile_polish/patches/08_employee_profile_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/09_sales_rep_profile_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/10_governance_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/11_risk_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/12_master_data_scroll.patch \
-            phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch \
-            phase14_5_47_professional_forms_ui/patches/01_scope.patch \
-            phase14_5_47_professional_forms_ui/patches/02_build_gradle.patch \
-            phase14_5_47_professional_forms_ui/patches/03_shared_form_components.patch \
-            phase14_5_47_professional_forms_ui/patches/04_accounting_expense_forms.patch \
-            phase14_5_47_professional_forms_ui/patches/05_sales_purchase_forms.patch \
-            phase14_5_47_professional_forms_ui/patches/06_inventory_geography_forms.patch \
-            phase14_5_47_professional_forms_ui/patches/07_party_people_forms.patch \
-            phase14_5_47_professional_forms_ui/patches/08_risk_control_forms.patch \
-            phase14_5_47_professional_forms_ui/patches/09_maintenance_forms.patch
+          git -C "$UI" commit -qm baseline38
+          for d in \
+            phase14_5_39_production_quality_ui \
+            phase14_5_40_employees_sales_reps_ui \
+            phase14_5_41_assets_maintenance_expenses_ui \
+            phase14_5_42_reports_adaptive_ui \
+            phase14_5_43_accessibility_polish_ui \
+            phase14_5_44_final_ui_handoff \
+            phase14_5_45_inventory_scroll_hotfix \
+            phase14_5_46_scroll_profile_polish \
+            phase14_5_47_professional_forms_ui
           do
-            git -C "$UI" apply --check "$GITHUB_WORKSPACE/$p"
-            git -C "$UI" apply "$GITHUB_WORKSPACE/$p"
+            echo "Applying UI handoff: $d"
+            while IFS= read -r p; do
+              echo "  -> $p"
+              git -C "$UI" apply --check "$p"
+              git -C "$UI" apply "$p"
+            done < <(find "$GITHUB_WORKSPACE/$d/patches" -maxdepth 1 -type f -name '*.patch' | sort -V)
           done
           git -C "$UI" diff --check
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$UI/app/build.gradle.kts"
+          grep -q 'versionCode = 86' "$UI/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' "$UI/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
           rm -rf "$UI/.git"
       - name: Audit three-way conflicts
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import os, pathlib, subprocess, hashlib
+          import pathlib, subprocess, hashlib
           root=pathlib.Path('work')
           def one(path):
               ds=[p for p in path.iterdir() if p.is_dir()]
@@ -121,10 +103,15 @@ jobs:
           base=one(root/'baseline'); ui=one(root/'ui')
           specs={'ACCOUNTING':one(root/'accounting'),'SECURITY':one(root/'security'),'REPORTS_PRINTING':one(root/'reports')}
           def files(d):
-              return {str(p.relative_to(d)) for p in d.rglob('*') if p.is_file() and '/build/' not in str(p) and '/.gradle/' not in str(p) and '/.kotlin/' not in str(p) and not str(p).endswith('.apk')}
+              result=set()
+              for p in d.rglob('*'):
+                  if not p.is_file(): continue
+                  s=str(p)
+                  if '/build/' in s or '/.gradle/' in s or '/.kotlin/' in s or s.endswith('.apk'): continue
+                  result.add(str(p.relative_to(d)))
+              return result
           def same(a,b):
-              if not a.exists() or not b.exists(): return False
-              return hashlib.sha256(a.read_bytes()).digest()==hashlib.sha256(b.read_bytes()).digest()
+              return a.exists() and b.exists() and hashlib.sha256(a.read_bytes()).digest()==hashlib.sha256(b.read_bytes()).digest()
           report=[]
           for label,spec in specs.items():
               changed=[]; conflicts=[]; new=[]; deleted=[]
@@ -142,7 +129,7 @@ jobs:
                       cp=subprocess.run(['git','merge-file','-p',str(o),str(b),str(t)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
                       if cp.returncode==1: conflicts.append(rel)
                       elif cp.returncode>1: conflicts.append(rel+' [merge-error]')
-                  except Exception as e: conflicts.append(rel+' [exception]')
+                  except Exception: conflicts.append(rel+' [exception]')
               report += [f'## {label}',f'changed={len(changed)} new={len(new)} deleted={len(deleted)} conflicts={len(conflicts)}']
               report += [f'CONFLICT {x}' for x in conflicts]
               report.append('')
