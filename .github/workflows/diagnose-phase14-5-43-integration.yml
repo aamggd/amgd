@@ -53,30 +53,6 @@ jobs:
           git config user.name 'FUSH Integration CI'
           git config user.email 'fush-integration@example.invalid'
           git add -A && git commit -qm 'Phase 14.5.38 baseline'
-          cat > /tmp/fix_patch.py <<'PY'
-          import pathlib,re,sys
-          src=pathlib.Path(sys.argv[1])
-          dst=pathlib.Path(sys.argv[2])
-          lines=src.read_text().splitlines(True)
-          out=[]; i=0
-          rx=re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*?)(\r?\n)?$')
-          while i < len(lines):
-              m=rx.match(lines[i])
-              if not m:
-                  out.append(lines[i]); i+=1; continue
-              j=i+1; old=new=0
-              while j < len(lines) and not lines[j].startswith('@@ ') and not lines[j].startswith('diff --git '):
-                  s=lines[j]
-                  if s.startswith(' '): old+=1; new+=1
-                  elif s.startswith('-'): old+=1
-                  elif s.startswith('+'): new+=1
-                  elif s.startswith('\\ No newline'): pass
-                  j+=1
-              nl='\n' if lines[i].endswith('\n') else ''
-              out.append(f'@@ -{m.group(1)},{old} +{m.group(2)},{new} @@{m.group(3)}{nl}')
-              out.extend(lines[i+1:j]); i=j
-          dst.write_text(''.join(out))
-          PY
           for phase in \
             phase14_5_39_production_quality_ui \
             phase14_5_40_employees_sales_reps_ui \
@@ -88,11 +64,9 @@ jobs:
               if git apply --check "$p"; then
                 git apply "$p"
               else
-                fixed="/tmp/${phase}-$(basename "$p")"
-                echo "Original patch rejected; normalizing hunk counts only: $(basename "$p")"
-                python /tmp/fix_patch.py "$p" "$fixed"
-                git apply --check "$fixed"
-                git apply "$fixed"
+                echo "Retrying with git --recount: $(basename "$p")"
+                git apply --recount --check "$p"
+                git apply --recount "$p"
               fi
             done
           done
@@ -119,6 +93,7 @@ jobs:
               git add -A && git commit -qm "Apply $src"
             else
               echo "ACCOUNTING_PATCH_FAILED=$src"
+              git apply --check --verbose "$out" || true
               exit 21
             fi
           done
