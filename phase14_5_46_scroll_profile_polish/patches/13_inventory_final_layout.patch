@@ -1,0 +1,212 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 9b886e5..871c13c 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -50,7 +50,14 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     val stockedLocations = remember(balances) { balances.count { abs(it.quantityBase) > 0.000000001 } }
+     val activeWarehouses = remember(warehouses) { warehouses.count { it.isActive } }
+ 
+-    Column(modifier.fillMaxSize().padding(12.dp)) {
++    BoxWithConstraints(modifier.fillMaxSize()) {
++        val inventoryViewportHeight = maxHeight
++        LazyColumn(
++            modifier = Modifier.fillMaxSize(),
++            contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 36.dp),
++            verticalArrangement = Arrangement.spacedBy(0.dp),
++        ) {
++            item {
+         FushSectionHeader(
+             title = "المخزون والمستودعات",
+             subtitle = "الأرصدة والجرد والتحويلات والتشغيلات والصلاحية والتنبيهات من مساحة واحدة",
+@@ -80,47 +87,45 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+         Spacer(Modifier.height(7.dp))
+         OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
+         Spacer(Modifier.height(10.dp))
+-        val inventorySections = remember { listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة") }
+-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+-            Column(
+-                modifier = Modifier.fillMaxWidth(),
+-                verticalArrangement = Arrangement.spacedBy(6.dp),
+-            ) {
+-                inventorySections.chunked(2).forEach { rowSections ->
+-                    Row(
+-                        modifier = Modifier.fillMaxWidth(),
+-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+-                    ) {
+-                        rowSections.forEach { label ->
+-                            FilterChip(
+-                                selected = section == label,
+-                                onClick = { section = label },
+-                                label = { Text(label, maxLines = 1) },
+-                                modifier = Modifier.weight(1f),
+-                            )
+-                        }
+-                        if (rowSections.size == 1) Spacer(Modifier.weight(1f))
+-                    }
+-                }
+-            }
+-        }
+-        message?.let { text ->
+-            Spacer(Modifier.height(8.dp))
+-            Surface(
+-                color = MaterialTheme.colorScheme.secondaryContainer,
+-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                shape = MaterialTheme.shapes.medium,
+-            ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
+-        }
+-        Spacer(Modifier.height(8.dp))
++            }
++
++            item {
++                InventorySectionTabs(
++                    selectedSection = section,
++                    onSectionSelected = { section = it },
++                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
++                )
++                Spacer(Modifier.height(18.dp))
++            }
++
++            message?.let { text ->
++                item {
++                    Surface(
++                        color = MaterialTheme.colorScheme.secondaryContainer,
++                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                        shape = MaterialTheme.shapes.medium,
++                    ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
++                    Spacer(Modifier.height(10.dp))
++                }
++            }
+ 
+-        when (section) {
+-            "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })
+-            "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
+-            "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
+-            "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
+-            "الحركة" -> InventoryMovements(movements)
+-            else -> InventoryBalances(balances, lots, warehouses)
++            item {
++                Box(
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .height(inventoryViewportHeight)
++                        .padding(bottom = 8.dp),
++                ) {
++                    when (section) {
++                        "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })
++                        "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
++                        "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
++                        "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
++                        "الحركة" -> InventoryMovements(movements)
++                        else -> InventoryBalances(balances, lots, warehouses)
++                    }
++                }
++            }
+         }
+     }
+ 
+@@ -247,6 +252,51 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     }
+ }
+ 
++@Composable
++internal fun InventorySectionTabs(
++    selectedSection: String,
++    onSectionSelected: (String) -> Unit,
++    modifier: Modifier = Modifier,
++) {
++    val inventorySections = remember { listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة") }
++    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
++        Column(
++            modifier = modifier.fillMaxWidth().wrapContentHeight(),
++            verticalArrangement = Arrangement.spacedBy(8.dp),
++        ) {
++            inventorySections.chunked(2).forEach { rowSections ->
++                Row(
++                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
++                    horizontalArrangement = Arrangement.spacedBy(10.dp),
++                    verticalAlignment = Alignment.CenterVertically,
++                ) {
++                    rowSections.forEach { label ->
++                        FilterChip(
++                            selected = selectedSection == label,
++                            onClick = { onSectionSelected(label) },
++                            label = {
++                                Text(
++                                    text = label,
++                                    modifier = Modifier.fillMaxWidth(),
++                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
++                                    softWrap = true,
++                                )
++                            },
++                            modifier = Modifier
++                                .weight(1f)
++                                .heightIn(min = 48.dp)
++                                .wrapContentHeight(),
++                        )
++                    }
++                    if (rowSections.size == 1) {
++                        Spacer(Modifier.weight(1f))
++                    }
++                }
++            }
++        }
++    }
++}
++
+ @Composable
+ private fun InventoryBalances(
+     rows: List<WarehouseStockBalanceRow>,
+@@ -268,7 +318,7 @@ private fun InventoryBalances(
+     }
+     val grouped = remember(filtered) { filtered.groupBy { it.warehouseId } }
+ 
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("الأرصدة الحالية", "الرصيد مفصول حسب المخزن الفعلي ونوع الصنف")
+             Spacer(Modifier.height(8.dp))
+@@ -376,7 +426,7 @@ private fun InventoryAlerts(
+     onConfigure: () -> Unit
+ ) {
+     val now = System.currentTimeMillis()
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("تنبيهات المخزون", "إعادة الطلب والصلاحية التي تحتاج إجراءً")
+             Spacer(Modifier.height(8.dp))
+@@ -548,7 +598,7 @@ private fun WarehouseReorderPolicyDialog(
+ 
+ @Composable
+ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد محاضر جرد بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -576,7 +626,7 @@ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long)
+ 
+ @Composable
+ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أرصدة تشغيلات حالياً.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -605,7 +655,7 @@ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (Inventor
+ 
+ @Composable
+ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+         item { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد حركات مخزون حتى الآن.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -625,7 +675,7 @@ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+ 
+ @Composable
+ private fun InventoryTransfers(rows: List<WarehouseTransferSummaryRow>, onOpen: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 44.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
+         }
