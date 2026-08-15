@@ -69,7 +69,13 @@ jobs:
         run: |
           set -euo pipefail
           sudo chmod 666 /dev/kvm || true
-          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6" --path "$ANDROID_AVD_HOME/fush-security-ci.avd"
+          echo 'Configured AVDs:'
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee security-ci-out/avd-list.log
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx 'fush-security-ci'
           nohup "$ANDROID_HOME/emulator/emulator" -avd fush-security-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > security-ci-out/emulator.log 2>&1 &
           EMU_PID=$!
           device_seen=""
