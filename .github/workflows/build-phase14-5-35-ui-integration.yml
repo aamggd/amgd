@@ -53,6 +53,12 @@ jobs:
           git apply ../phase14535.diff
           grep -q 'versionCode = 74' app/build.gradle.kts
           grep -q '0.15.4.35-ui-sales-customers' app/build.gradle.kts
+      - name: Compose compatibility correction
+        run: |
+          file=FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          sed -i '/import androidx.compose.foundation.layout.weight/d' "$file"
+          sed -i 's/, modifier = Modifier.weight(1f))/, modifier = Modifier)/' "$file"
+          ! grep -q 'foundation.layout.weight' "$file"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
@@ -66,6 +72,7 @@ jobs:
         run: |
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data/FushDatabase/28.json || true
           test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
       - name: Package build
         run: |
