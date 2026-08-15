@@ -1,0 +1,97 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index eb1442e..15e934f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -510,6 +618,27 @@ private fun ProductionOrderDetailDialog(
+                             )
+                             HorizontalDivider()
+                         }
++                        item {
++                            ElevatedCard(Modifier.fillMaxWidth()) {
++                                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                        Column(Modifier.weight(1f)) {
++                                            Text(d.order.orderNo, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
++                                            Text(d.product?.nameAr ?: "المنتج غير متاح", color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                        }
++                                        FushStatusPill(statusAr(d.order.status), productionStatusTone(d.order.status))
++                                    }
++                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                        FushMetricCard("المخطط", formatProductionQty(d.order.plannedOutputQtyBase), Modifier.weight(1f), "عبوة")
++                                        FushMetricCard("الفعلي", formatProductionQty(actualQty), Modifier.weight(1f), "عبوة", FushStatusTone.Info)
++                                    }
++                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                        FushMetricCard("المقبول", formatProductionQty(acceptedQty), Modifier.weight(1f), "عبوة", FushStatusTone.Success)
++                                        FushMetricCard("التكلفة", formatMoney(d.cost.totalCostBase), Modifier.weight(1f), "ريال", FushStatusTone.Neutral)
++                                    }
++                                }
++                            }
++                        }
+                         item {
+                             DetailSectionTitle("بيانات أمر الإنتاج")
+                             DetailLine("رقم الأمر", d.order.orderNo)
+@@ -1234,8 +1363,32 @@ private fun BatchQualityDialog(
+         text = {
+             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 580.dp)) {
+                 item {
+-                    Text("الناتج: ${formatProductionQty(batch.actualOutputQtyBase)} • التالف: ${formatProductionQty(batch.scrapQtyBase)}")
+-                    Text("الفحص الكمي", style = MaterialTheme.typography.titleSmall)
++                    val passCount = checks.count { it.decision == "PASS" }
++                    val failCount = checks.count { it.decision == "FAIL" }
++                    val openNcCount = nonConformances.count { it.status != "CLOSED" }
++                    FushSectionHeader(
++                        title = "قرار جودة الدفعة",
++                        subtitle = "راجع نتائج العينات وعدم المطابقة قبل الإفراج عن المنتج النهائي."
++                    )
++                    Spacer(Modifier.height(8.dp))
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                        FushMetricCard("PASS", passCount.toString(), Modifier.weight(1f), tone = FushStatusTone.Success)
++                        FushMetricCard("FAIL", failCount.toString(), Modifier.weight(1f), tone = if (failCount > 0) FushStatusTone.Danger else FushStatusTone.Neutral)
++                        FushMetricCard("NC مفتوحة", openNcCount.toString(), Modifier.weight(1f), tone = if (openNcCount > 0) FushStatusTone.Warning else FushStatusTone.Neutral)
++                    }
++                    Spacer(Modifier.height(8.dp))
++                    ElevatedCard(Modifier.fillMaxWidth()) {
++                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                Text("الدفعة ${batch.batchNo}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
++                                FushStatusPill(statusAr(batch.status), productionStatusTone(batch.status))
++                            }
++                            DetailLine("الناتج الفعلي", "${formatProductionQty(batch.actualOutputQtyBase)} عبوة")
++                            DetailLine("التالف", "${formatProductionQty(batch.scrapQtyBase)} عبوة")
++                        }
++                    }
++                    Spacer(Modifier.height(8.dp))
++                    Text("الفحص الكمي", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                     if (activeSpecs.isEmpty()) {
+                         Text("لا توجد مواصفات كمية فعالة لهذا المنتج. عرّف حدود القبول وحجم العينة قبل الاعتماد.", color = MaterialTheme.colorScheme.error)
+                     } else {
+@@ -1606,6 +1759,29 @@ private fun RejectBatchDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
+     )
+ }
+ 
++private fun productionStatusTone(status: String): FushStatusTone = when (status) {
++    "CLOSED", "ACCEPTED" -> FushStatusTone.Success
++    "QC_HOLD", "UNDER_QC" -> FushStatusTone.Warning
++    "REJECTED" -> FushStatusTone.Danger
++    "CANCELLED" -> FushStatusTone.Neutral
++    "PLANNED" -> FushStatusTone.Neutral
++    else -> FushStatusTone.Info
++}
++
++private fun productionStageLabel(status: String): String = when (status) {
++    "PLANNED" -> "1/7 التخطيط وفحص توفر المواد"
++    "MATERIALS_RESERVED" -> "2/7 المواد محجوزة وجاهزة للصرف"
++    "MATERIALS_ISSUED" -> "3/7 تم صرف المواد للتشغيل"
++    "PREPARATION" -> "4/7 التحضير"
++    "MIXING" -> "5/7 الخلط"
++    "FILLING" -> "6/7 التعبئة وتسجيل الناتج"
++    "QC_HOLD", "UNDER_QC" -> "7/7 فحص الجودة والإفراج"
++    "ACCEPTED", "CLOSED" -> "اكتملت الدورة وتم اعتماد الدفعة"
++    "REJECTED" -> "تم رفض الدفعة"
++    "CANCELLED" -> "تم إلغاء الأمر"
++    else -> statusAr(status)
++}
++
+ private fun statusAr(status: String): String = when (status) {
+     "PLANNED" -> "مخطط"
+     "MATERIALS_RESERVED" -> "مواد محجوزة"
