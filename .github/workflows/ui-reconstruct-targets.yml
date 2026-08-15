@@ -70,6 +70,12 @@ jobs:
           for pkg in "${packages[@]}"; do
             [ -d "$GITHUB_WORKSPACE/$pkg/patches" ] || continue
             while IFS= read -r patch; do
+              # 14.5.46/13 is an obsolete parallel inventory layout. The later
+              # phase14_5_47_inventory_final_layout package is the canonical final layout.
+              if [[ "$patch" == *"phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch" ]]; then
+                echo "Skipping obsolete parallel layout $patch"
+                continue
+              fi
               if grep -Eq 'app/src/main/java/com/fush/erp/ui/screens/(SalesScreens|PurchaseScreens|PartyScreens|AccountingScreens|AdvancedInventoryScreens)\.kt|app/src/main/res/values(-ar)?/strings\.xml' "$patch"; then
                 echo "Applying $patch"
                 git apply --check "${includes[@]}" "$patch"
