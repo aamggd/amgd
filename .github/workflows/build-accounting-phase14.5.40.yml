@@ -5,7 +5,7 @@ on:
     branches: [fush/accounting]
     paths:
       - '.github/workflows/build-accounting-phase14.5.40.yml'
-      - 'fush_accounting/rebase/phase14.5.40_chunks/**'
+      - 'fush_accounting/rebase/phase14.5.40_chunks_v3/**'
   workflow_dispatch:
 
 permissions:
@@ -47,22 +47,24 @@ jobs:
         run: |
           set -euo pipefail
           ROOT="$GITHUB_WORKSPACE"
-          CH="$ROOT/fush_accounting/rebase/phase14.5.40_chunks"
-          test "$(wc -c < "$CH/part00.b64")" -eq 4000
-          test "$(wc -c < "$CH/part01.b64")" -eq 4000
-          test "$(wc -c < "$CH/part02.b64")" -eq 1820
-          echo '014e37e9b32142973a69cc9679e95e097f7fb0c50ec461777ebb0f88f4d2a13c  part00.b64' | (cd "$CH" && sha256sum -c -)
-          echo '16f66fbbfb1e53f910171d66a2710050017423f2b6d7938175ff66bab8bdbebc  part01.b64' | (cd "$CH" && sha256sum -c -)
-          echo '3af4b8fb04dc1b9511ae1ed99235cacb4556c0f1e4a897dda3e0307a078b24a3  part02.b64' | (cd "$CH" && sha256sum -c -)
-          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 > /tmp/phase40.patch.gz.b64
-          test "$(wc -c < /tmp/phase40.patch.gz.b64)" -eq 9820
-          echo 'c23abbe49ef929df08ed7468c827bb622b51ec91df5555878c0b22ee44e1ba97  /tmp/phase40.patch.gz.b64' | sha256sum -c -
+          CH="$ROOT/fush_accounting/rebase/phase14.5.40_chunks_v3"
+          for n in 00 01 02 03 04; do test "$(wc -c < "$CH/part${n}.b64")" -eq 2000; done
+          test "$(wc -c < "$CH/part05.b64")" -eq 168
+          echo 'f9bee4a56ed9e44f02b24a3b6f38d851667bb500790881767c5c1695bf8b4635  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'e96dee5e6e722b8ac136d851e4823cb45eaa87d77e8174be4a414bbf964453fe  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'f740a45b81f66c8a1f8cc6f8c29ccb96b5c09c39f6ba1cb0a882f554360ebe81  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '769166f689e4e0feffc5b96842fed4e0f4c35a9c174241656b295f3b6330b9a1  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'c8838a54540721fe97a4647723439208fe8024f5503b3a636bfe024e2ebb95cd  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo '5ebeb385e29dfdaf1bf461432a0ee197bbdbc6d9e6e394d055f67451553090b9  part05.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 > /tmp/phase40.patch.gz.b64
+          test "$(wc -c < /tmp/phase40.patch.gz.b64)" -eq 10168
+          echo 'a326b68fefb0e171872b664c9ac373aed44fc2affea4ffdb51a64846031d4418  /tmp/phase40.patch.gz.b64' | sha256sum -c -
           base64 --decode /tmp/phase40.patch.gz.b64 > /tmp/phase40.patch.gz
-          echo '37c8144b58fe806584a4ef461a3da62c69ba0e071f1e310a256f1f45e65e3dbd  /tmp/phase40.patch.gz' | sha256sum -c -
+          echo '0e54cf5305814adf5f82129e7ba728323065cae3c75469d3b0fb59f6658f4f58  /tmp/phase40.patch.gz' | sha256sum -c -
           gzip -t /tmp/phase40.patch.gz
           gzip -dc /tmp/phase40.patch.gz > /tmp/phase40.patch
-          test "$(wc -c < /tmp/phase40.patch)" -eq 35180
-          echo '0000ac829f1f217129ef26f94c2a464f8d03d9218f07307335c38d8a9e1d7e5c  /tmp/phase40.patch' | sha256sum -c -
+          test "$(wc -c < /tmp/phase40.patch)" -eq 36354
+          echo 'd3046bd31e811548567c1cf1f2af35bf47f7c49e9b7c5f75c23ffdba7af107ac  /tmp/phase40.patch' | sha256sum -c -
 
       - name: Apply Phase 14.5.40 to validated Phase 14.5.39
         shell: bash
@@ -103,6 +105,7 @@ jobs:
           grep -q 'accumulatedDepreciationSubledger' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
           test -f app/src/test/java/com/fush/erp/domain/FixedAssetMathTest.kt
+          grep -q 'class FixedAssetMathTest' app/src/test/java/com/fush/erp/domain/FixedAssetMathTest.kt
 
       - name: Unit tests
         working-directory: work/repo
@@ -140,7 +143,7 @@ jobs:
           Branch testing versionCode retained: 77
           Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
           Accounting branch Room schema: 33 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
-          Phase 14.5.40 patch SHA-256: 0000ac829f1f217129ef26f94c2a464f8d03d9218f07307335c38d8a9e1d7e5c
+          Phase 14.5.40 patch SHA-256: d3046bd31e811548567c1cf1f2af35bf47f7c49e9b7c5f75c23ffdba7af107ac
           Unit Tests: PASS
           Release Build: PASS
           Room Schema 33 generation: PASS
