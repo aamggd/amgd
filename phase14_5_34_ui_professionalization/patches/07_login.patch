@@ -1,0 +1,140 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
+@@ -1,5 +1,6 @@
+ package com.fush.erp.ui.screens
+ 
++import androidx.compose.foundation.background
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.text.KeyboardActions
+ import androidx.compose.foundation.text.KeyboardOptions
+@@ -7,6 +8,7 @@
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Brush
+ import androidx.compose.ui.platform.LocalFocusManager
+ import androidx.compose.ui.text.input.ImeAction
+ import androidx.compose.ui.text.input.PasswordVisualTransformation
+@@ -14,6 +16,7 @@
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.domain.PasswordHasher
++import com.fush.erp.ui.FushBrand
+ import kotlinx.coroutines.launch
+ 
+ @Composable
+@@ -41,35 +44,88 @@
+         }
+     }
+ 
+-    Surface(modifier = Modifier.fillMaxSize()) {
+-        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+-            Card(Modifier.fillMaxWidth().widthIn(max = 520.dp)) {
+-                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+-                    Text("Fush ERP", style = MaterialTheme.typography.headlineMedium)
+-                    Text("نظام إدارة المصنع والمحاسبة", style = MaterialTheme.typography.titleMedium)
+-                    OutlinedTextField(
+-                        value = username,
+-                        onValueChange = { username = it },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        label = { Text("اسم المستخدم") },
+-                        singleLine = true
++    val background = Brush.verticalGradient(
++        listOf(
++            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f),
++            MaterialTheme.colorScheme.background,
++            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.28f),
++        )
++    )
++
++    Box(
++        modifier = Modifier.fillMaxSize().background(background).padding(horizontal = 20.dp, vertical = 28.dp),
++        contentAlignment = Alignment.Center,
++    ) {
++        ElevatedCard(
++            modifier = Modifier.fillMaxWidth().widthIn(max = 460.dp),
++            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 5.dp),
++        ) {
++            Column(
++                modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
++                verticalArrangement = Arrangement.spacedBy(18.dp),
++            ) {
++                FushBrand()
++
++                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                    Text("مرحبًا بعودتك", style = MaterialTheme.typography.headlineSmall)
++                    Text(
++                        "سجّل الدخول للوصول إلى لوحة الإدارة ووحدات النظام.",
++                        style = MaterialTheme.typography.bodyMedium,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                     )
+-                    OutlinedTextField(
+-                        value = password,
+-                        onValueChange = { password = it },
+-                        modifier = Modifier.fillMaxWidth(),
+-                        label = { Text("كلمة المرور") },
+-                        singleLine = true,
+-                        visualTransformation = PasswordVisualTransformation(),
+-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+-                        keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); submit() })
+-                    )
+-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+-                    Button(onClick = ::submit, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+-                        Text(if (busy) "جاري الدخول..." else "تسجيل الدخول")
++                }
++
++                OutlinedTextField(
++                    value = username,
++                    onValueChange = { username = it; error = null },
++                    modifier = Modifier.fillMaxWidth(),
++                    label = { Text("اسم المستخدم") },
++                    supportingText = { Text("استخدم حسابك المصرّح به في النظام") },
++                    singleLine = true,
++                    shape = MaterialTheme.shapes.medium,
++                )
++
++                OutlinedTextField(
++                    value = password,
++                    onValueChange = { password = it; error = null },
++                    modifier = Modifier.fillMaxWidth(),
++                    label = { Text("كلمة المرور") },
++                    singleLine = true,
++                    shape = MaterialTheme.shapes.medium,
++                    visualTransformation = PasswordVisualTransformation(),
++                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
++                    keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); submit() }),
++                    isError = error != null,
++                    supportingText = {
++                        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++                    },
++                )
++
++                Button(
++                    onClick = ::submit,
++                    enabled = !busy && username.isNotBlank() && password.isNotBlank(),
++                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
++                    shape = MaterialTheme.shapes.medium,
++                ) {
++                    if (busy) {
++                        CircularProgressIndicator(
++                            modifier = Modifier.size(20.dp),
++                            strokeWidth = 2.dp,
++                            color = MaterialTheme.colorScheme.onPrimary,
++                        )
++                        Spacer(Modifier.width(10.dp))
+                     }
+-                    Text("بيانات الاختبار الأولى: admin / Fush@2026", style = MaterialTheme.typography.bodySmall)
++                    Text(if (busy) "جاري التحقق..." else "تسجيل الدخول")
+                 }
++
++                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                Text(
++                    "FUSH ERP Mobile • وصول محمي حسب صلاحيات المستخدم",
++                    style = MaterialTheme.typography.bodySmall,
++                    color = MaterialTheme.colorScheme.onSurfaceVariant,
++                    modifier = Modifier.align(Alignment.CenterHorizontally),
++                )
+             }
+         }
+     }
