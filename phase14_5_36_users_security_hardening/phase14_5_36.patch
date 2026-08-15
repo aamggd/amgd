@@ -14,7 +14,7 @@ index faad463..a0aa040 100644
          testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
      }
 diff --git a/app/src/main/java/com/fush/erp/data/AppContainer.kt b/app/src/main/java/com/fush/erp/data/AppContainer.kt
-index 3863b80..0dafd50 100644
+index 3863b80..ba4a6e2 100644
 --- a/app/src/main/java/com/fush/erp/data/AppContainer.kt
 +++ b/app/src/main/java/com/fush/erp/data/AppContainer.kt
 @@ -5,7 +5,6 @@ import androidx.room.Room
@@ -25,8 +25,34 @@ index 3863b80..0dafd50 100644
  import com.fush.erp.domain.PurchaseService
  import com.fush.erp.domain.ProductionService
  import com.fush.erp.domain.SalesService
-@@ -48,19 +47,6 @@ class AppContainer(context: Context) {
+@@ -45,22 +44,32 @@ class AppContainer(context: Context) {
+     val planningService = PlanningService(db)
+     val securityService = SecurityService(db)
+ 
++    private fun ensureImmutableAuditLog() {
++        val sqlite = db.openHelper.writableDatabase
++        sqlite.execSQL(
++            """
++            CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_update
++            BEFORE UPDATE ON audit_events
++            BEGIN
++                SELECT RAISE(ABORT, 'audit_events are immutable');
++            END
++            """.trimIndent()
++        )
++        sqlite.execSQL(
++            """
++            CREATE TRIGGER IF NOT EXISTS trg_audit_events_no_delete
++            BEFORE DELETE ON audit_events
++            BEGIN
++                SELECT RAISE(ABORT, 'audit_events are immutable');
++            END
++            """.trimIndent()
++        )
++    }
++
      suspend fun seedIfNeeded() = withContext(Dispatchers.IO) {
++        ensureImmutableAuditLog()
          db.withTransaction {
              securityService.seedDefaults()
 -            if (db.userDao().count() == 0) {
@@ -221,7 +247,7 @@ index d6bfe75..b7bd0a8 100644
                  break
              }
 diff --git a/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
-index 02e664a..34d14d0 100644
+index 02e664a..9acce6d 100644
 --- a/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
 +++ b/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
 @@ -15,10 +15,101 @@ import com.fush.erp.data.entity.RoleEntity
@@ -326,7 +352,7 @@ index 02e664a..34d14d0 100644
  @Composable
  fun UsersPermissionsScreen(container: AppContainer, currentUser: UserEntity, modifier: Modifier = Modifier) {
      val users by container.db.userDao().observeAll().collectAsState(initial = emptyList())
-@@ -298,10 +389,11 @@ private fun RolesTab(
+@@ -298,12 +389,13 @@ private fun RolesTab(
  private fun SecurityPolicyTab() {
      LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
          item { Text("سياسة الأمان", style = MaterialTheme.typography.headlineSmall) }
@@ -338,8 +364,11 @@ index 02e664a..34d14d0 100644
 +        item { PolicyCard("الجلسات", "جلسة واحدة فقط لكل مستخدم. انتهاء الجلسة: ${SessionPolicy.ADMIN_SESSION_MINUTES} دقائق للمدير و${SessionPolicy.USER_SESSION_MINUTES} دقائق لبقية المستخدمين، مع قفل خمول ${SessionPolicy.ADMIN_IDLE_MINUTES}/${SessionPolicy.USER_IDLE_MINUTES} دقائق وحد مطلق ${SessionPolicy.ADMIN_ABSOLUTE_HOURS}/${SessionPolicy.USER_ABSOLUTE_HOURS} ساعات.") }
 +        item { PolicyCard("تغيير الدور أو كلمة المرور", "يتم إبطال الجلسة الحالية فور تغيير الدور أو إعادة ضبط كلمة المرور، كما أن تسجيل دخول جديد يبطل الجلسة السابقة.") }
          item { PolicyCard("الحماية من فقد الإدارة", "لا يمكن تعطيل آخر مدير نظام نشط أو إزالة دور ADMIN منه.") }
-         item { PolicyCard("سجل التدقيق", "تُسجل عمليات الدخول، إنشاء المستخدمين، تغيير الأدوار، التعطيل، وكلمات المرور في سجل التدقيق.") }
+-        item { PolicyCard("سجل التدقيق", "تُسجل عمليات الدخول، إنشاء المستخدمين، تغيير الأدوار، التعطيل، وكلمات المرور في سجل التدقيق.") }
++        item { PolicyCard("سجل التدقيق", "تُسجل عمليات الدخول وإدارة المستخدمين والأدوار، كما تمنع قاعدة البيانات تعديل أحداث التدقيق أو حذفها بعد تسجيلها.") }
      }
+ }
+ 
 diff --git a/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt b/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
 index 0774976..3f304be 100644
 --- a/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
