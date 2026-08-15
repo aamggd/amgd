@@ -1,0 +1,263 @@
+name: Build FUSH UI Security Integration 14.5.53 R4
+
+on:
+  push:
+    branches: [fush/integration-ui-security-14.5.53-release]
+    paths:
+      - '.github/workflows/build-ui-security-integration-14.5.53-r4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 1}
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.4.1'}
+
+      - name: Download validated central 14.5.52 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.52-Integrated-Updates-Build
+          path: artifacts/base52
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31873356076
+
+      - name: Reconstruct base and pin handoffs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base52/FushERP-Mobile-Phase14.5.52-Integrated-Updates-Source.zip
+          test -s "$ZIP"
+          mkdir -p sources/base52 final-repo handoff/ui handoff/security
+          unzip -q "$ZIP" -d sources/base52
+          BASE=$(find sources/base52 -mindepth 1 -maxdepth 1 -type d | head -1)
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" final-repo/
+          cd final-repo
+          git init -q; git config user.email integration@fush.local; git config user.name FUSH
+          git add -A; git commit -qm baseline-14.5.52
+          TREE=$(git write-tree); echo "BASE52_TREE=$TREE"; test "$TREE" = 'ec6ef782c72d066e0e5778e922f94138a6fc49ee'
+          grep -q 'versionCode = 91' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          cd ..
+          UI_SHA=657f8db9508551dde3d7143c34ee38f3f48aab08
+          SEC_SHA=0ed4877c17d14c6ede05ed3c288cd5d55ca2a7f3
+          git fetch --no-tags --depth=1 origin "$UI_SHA"
+          git fetch --no-tags --depth=1 origin "$SEC_SHA"
+          ui_files=(
+            phase14_5_50_1_theme_toggle/patches/03_theme_strings.patch
+            phase14_5_50_1_theme_toggle/patches/04_theme_state_persistence.patch
+            phase14_5_50_1_theme_toggle/patches/05_theme_toggle_button.patch
+            phase14_5_51_core_operations_localization/patches/03_strings_en_1.patch
+            phase14_5_51_core_operations_localization/patches/03_strings_en_2.patch
+            phase14_5_51_core_operations_localization/patches/04_strings_ar_1.patch
+            phase14_5_51_core_operations_localization/patches/04_strings_ar_2.patch
+            phase14_5_51_core_operations_localization/patches/05_sales_1.patch
+            phase14_5_51_core_operations_localization/patches/05_sales_2.patch
+            phase14_5_51_core_operations_localization/patches/06_purchases_1.patch
+            phase14_5_51_core_operations_localization/patches/07_parties_1.patch
+            phase14_5_51_core_operations_localization/patches/07_parties_2.patch
+            phase14_5_51_core_operations_localization/patches/08_accounting_1.patch
+            phase14_5_51_core_operations_localization/patches/08_accounting_2.patch
+            phase14_5_51_core_operations_localization/patches/09_inventory_1.patch
+            phase14_5_51_core_operations_localization/patches/09_inventory_2.patch
+            phase14_5_51_1_preferences_controls/patches/03_preference_strings.patch
+            phase14_5_51_1_preferences_controls/patches/04_language_theme_state.patch
+            phase14_5_51_1_preferences_controls/patches/05_drawer_preferences.patch
+          )
+          i=0
+          for p in "${ui_files[@]}"; do out=$(printf 'handoff/ui/%02d.patch' "$i"); git show "$UI_SHA:$p" > "$out"; test -s "$out"; i=$((i+1)); done
+          git show "$SEC_SHA:security_rebase_official_14_5_38_final/session_timeout_settings.patch" > handoff/security/session_timeout_settings.patch
+          test -s handoff/security/session_timeout_settings.patch
+          sha256sum handoff/ui/*.patch handoff/security/*.patch > handoff/PATCH_SHA256SUMS.txt
+
+      - name: Apply UI handoff with compatibility preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          apply_normal() {
+            local p="$1"; echo "=== APPLY $p ==="
+            if git apply --check "$p"; then git apply "$p"; else patch -p1 --batch --forward -F3 < "$p"; fi
+            if find . -name '*.rej' -print -quit | grep -q .; then find . -name '*.rej' -print; exit 1; fi
+            git diff --check
+          }
+          for p in ../handoff/ui/{00..11}.patch; do apply_normal "$p"; done
+
+          # Accounting localization part 1: allow central fixed-assets/periods and richer treasury to remain.
+          set +e; patch -p1 --batch --forward -F3 < ../handoff/ui/12.patch; set -e
+          rm -f app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt.rej
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'); s=f.read_text()
+          if 'import androidx.compose.ui.res.stringResource' not in s: s=s.replace('import androidx.compose.ui.Modifier\n','import androidx.compose.ui.Modifier\nimport androidx.compose.ui.res.stringResource\n')
+          if 'import com.fush.erp.R' not in s: s=s.replace('import com.fush.erp.data.AppContainer\n','import com.fush.erp.R\nimport com.fush.erp.data.AppContainer\n')
+          old='    val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي", "الأصول الثابتة", "الفترات والمطابقة")'
+          new='''    val tabs = listOf(
+                  R.string.accounting_tab_journal, R.string.accounting_tab_treasury, R.string.accounting_tab_expenses,
+                  R.string.accounting_tab_manual, R.string.accounting_tab_ledger, R.string.accounting_tab_trial_balance,
+                  R.string.accounting_tab_income_statement, R.string.accounting_tab_balance_sheet, R.string.accounting_tab_cash_flow,
+                  R.string.accounting_tab_fixed_assets, R.string.accounting_tab_periods_reconciliation,
+              )'''
+          if old in s: s=s.replace(old,new)
+          s=s.replace('tabs.forEachIndexed { index, title ->\n                Tab(\n                    selected = selected == index,\n                    onClick = { selected = index },\n                    text = { Text(title, maxLines = 1) },','tabs.forEachIndexed { index, titleRes ->\n                Tab(\n                    selected = selected == index,\n                    onClick = { selected = index },\n                    text = { Text(stringResource(titleRes), maxLines = 1) },')
+          s=s.replace('title = "الخزينة والبنوك",','title = stringResource(R.string.treasury_title),')
+          s=s.replace('subtitle = "الأرصدة الدفترية والسندات والجرد والمطابقة البنكية في مساحة رقابية موحّدة",','subtitle = stringResource(R.string.treasury_subtitle),')
+          s=s.replace('OutlinedButton(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("إضافة خزينة/بنك") }','OutlinedButton(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text(stringResource(R.string.treasury_add_account)) }')
+          f.write_text(s)
+          def add(path,name,value):
+              p=Path(path); x=p.read_text()
+              if f'name="{name}"' not in x: p.write_text(x.replace('</resources>',f'    <string name="{name}">{value}</string>\n</resources>'))
+          add('app/src/main/res/values/strings.xml','accounting_tab_fixed_assets','Fixed Assets')
+          add('app/src/main/res/values/strings.xml','accounting_tab_periods_reconciliation','Periods &amp; Reconciliation')
+          add('app/src/main/res/values-ar/strings.xml','accounting_tab_fixed_assets','الأصول الثابتة')
+          add('app/src/main/res/values-ar/strings.xml','accounting_tab_periods_reconciliation','الفترات والمطابقة')
+          PY
+
+          # Accounting localization part 2: labels only; preserve original-currency balance, cash count and bank reconciliation.
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'); s=f.read_text()
+          pairs=[
+          ('FushMetricCard("إجمالي السيولة", money(totalBalance), Modifier.weight(1f), "القيمة الدفترية بـ YER_NEW", FushStatusTone.Info)','FushMetricCard(stringResource(R.string.treasury_total_liquidity), money(totalBalance), Modifier.weight(1f), stringResource(R.string.treasury_book_balance), FushStatusTone.Info)'),
+          ('FushMetricCard("الصناديق", money(cashBalance), Modifier.weight(1f), "${balances.count { it.kind == "CASH" }} صندوق", FushStatusTone.Success)','FushMetricCard(stringResource(R.string.treasury_cashboxes), money(cashBalance), Modifier.weight(1f), stringResource(R.string.treasury_cashbox_count, balances.count { it.kind == "CASH" }), FushStatusTone.Success)'),
+          ('FushMetricCard("البنوك", money(bankBalance), Modifier.weight(1f), "${balances.count { it.kind == "BANK" }} حساب", FushStatusTone.Info)','FushMetricCard(stringResource(R.string.treasury_banks), money(bankBalance), Modifier.weight(1f), stringResource(R.string.treasury_bank_count, balances.count { it.kind == "BANK" }), FushStatusTone.Info)'),
+          ('FushMetricCard("حسابات الخزينة", balances.size.toString(), Modifier.weight(1f), "صناديق وبنوك", FushStatusTone.Neutral)','FushMetricCard(stringResource(R.string.treasury_accounts), balances.size.toString(), Modifier.weight(1f), stringResource(R.string.treasury_cash_and_banks), FushStatusTone.Neutral)'),
+          ('FushSectionHeader("إجراءات سريعة", "كل سند يُرحّل محاسبيًا وفق الحساب والطرف المحدد")','FushSectionHeader(stringResource(R.string.treasury_quick_actions), stringResource(R.string.treasury_quick_actions_detail))'),
+          ('Text("سند قبض")','Text(stringResource(R.string.treasury_receipt_voucher))'),('Text("سند صرف")','Text(stringResource(R.string.treasury_payment_voucher))'),('Text("إيراد")','Text(stringResource(R.string.treasury_income))'),('Text("تحويل")','Text(stringResource(R.string.treasury_transfer))'),
+          ('FushSectionHeader("الحسابات النقدية", "${balances.size} حساب خزينة أو بنك")','FushSectionHeader(stringResource(R.string.treasury_cash_accounts), stringResource(R.string.treasury_account_count, balances.size))'),
+          ('title = "لا توجد خزينة أو حساب بنكي",','title = stringResource(R.string.treasury_empty),'),('detail = "أضف أول حساب خزينة أو بنك قبل تسجيل السندات والتحويلات.",','detail = stringResource(R.string.treasury_empty_detail),'),
+          ('FushStatusPill(if (row.kind == "BANK") "بنك" else "صندوق", if (row.kind == "BANK") FushStatusTone.Info else FushStatusTone.Success)','FushStatusPill(if (row.kind == "BANK") stringResource(R.string.treasury_bank) else stringResource(R.string.treasury_cashbox), if (row.kind == "BANK") FushStatusTone.Info else FushStatusTone.Success)'),
+          ('Text(row.bankName.ifBlank { "حساب بنكي" }, style = MaterialTheme.typography.labelLarge)','Text(row.bankName.ifBlank { stringResource(R.string.treasury_bank_account) }, style = MaterialTheme.typography.labelLarge)')]
+          for a,b in pairs: s=s.replace(a,b)
+          f.write_text(s)
+          PY
+          git diff --check
+
+          apply_normal ../handoff/ui/14.patch
+          apply_normal ../handoff/ui/15.patch
+
+          # Preference strings are appended semantically because localization made strings.xml longer than the handoff's line context.
+          python3 - <<'PY'
+          from pathlib import Path
+          def add(path, items):
+              p=Path(path); x=p.read_text()
+              for name,value in items:
+                  if f'name="{name}"' not in x:
+                      x=x.replace('</resources>',f'    <string name="{name}">{value}</string>\n</resources>')
+              p.write_text(x)
+          add('app/src/main/res/values/strings.xml', [('preferences_title','Display &amp; language'),('preferences_language','Language'),('language_arabic','Arabic'),('language_english','English'),('preferences_theme','Appearance')])
+          add('app/src/main/res/values-ar/strings.xml', [('preferences_title','المظهر واللغة'),('preferences_language','اللغة'),('language_arabic','العربية'),('language_english','الإنجليزية'),('preferences_theme','المظهر')])
+          PY
+          apply_normal ../handoff/ui/17.patch
+          apply_normal ../handoff/ui/18.patch
+          grep -q 'preferences_title' app/src/main/res/values/strings.xml
+          grep -q 'preferences_title' app/src/main/res/values-ar/strings.xml
+          git diff --check
+
+      - name: Apply pinned permissions update and set central version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          P=../handoff/security/session_timeout_settings.patch
+          echo "=== APPLY SECURITY ==="
+          if git apply --check "$P"; then git apply "$P"; else patch -p1 --batch --forward -F3 < "$P"; fi
+          if find . -name '*.rej' -print -quit | grep -q .; then find . -name '*.rej' -print; exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts'); s=p.read_text(); s2=s.replace('versionCode = 91','versionCode = 92').replace('versionName = "0.15.4.52-integrated-updates"','versionName = "0.15.4.53-ui-security-updates"')
+          if s2 == s: raise SystemExit('central version replacement failed')
+          p.write_text(s2)
+          PY
+          git diff --check
+          ! grep -R -n -E '<<<<<<<|=======|>>>>>>>' app/src/main app/build.gradle.kts
+          git add -A; git commit -qm ui-security-14.5.53
+          echo "FINAL53_TREE=$(git write-tree)"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 92' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.53-ui-security-updates"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_32_33_SECURITY' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'MIGRATION_33_34_FIXED_ASSETS' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'REPORTS_EXPORT' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          test -s app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
+          grep -q 'automaticLogoutEnabled' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'SESSION_POLICY_CHANGED' app/src/main/java/com/fush/erp/domain/SecurityService.kt
+          grep -q 'sessionSettings.current()' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'الإغلاق التلقائي للجلسة' app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
+          grep -q 'onLanguageChange' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'theme_dark' app/src/main/res/values/strings.xml
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' app/src/main/java
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+      - name: Validate package schema and align APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=final-repo/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery' versionCode='92' versionName='0.15.4.53-ui-security-updates'" apk-badging.txt
+          test -s final-repo/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q '"version": 34' final-repo/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' final-repo/app/src/main/java
+          mkdir -p final-output/apksigner/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$APK" final-output/FushERP-Phase14.5.53-UI-Security-Updates-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 final-output/FushERP-Phase14.5.53-UI-Security-Updates-aligned-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" final-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" final-output/apksigner/lib/apksigner.jar
+          chmod +x final-output/apksigner/apksigner
+          sha256sum final-output/FushERP-Phase14.5.53-UI-Security-Updates-aligned-unsigned.apk > final-output/FushERP-Phase14.5.53-UI-Security-Updates-aligned-unsigned.apk.sha256
+      - name: Package source and report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-output
+          rm -rf FushERP_Mobile_Phase14_5_53_UI_Security_Updates; mkdir FushERP_Mobile_Phase14_5_53_UI_Security_Updates
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' final-repo/ FushERP_Mobile_Phase14_5_53_UI_Security_Updates/
+          zip -qr final-output/FushERP-Mobile-Phase14.5.53-UI-Security-Updates-Source.zip FushERP_Mobile_Phase14_5_53_UI_Security_Updates
+          cp handoff/PATCH_SHA256SUMS.txt final-output/UI-SECURITY-HANDOFF-SHA256SUMS.txt
+          cat > final-output/FushERP-Phase14.5.53-INTEGRATION-REPORT.txt <<'EOF'
+          FUSH ERP Mobile 14.5.53 — UI + permissions/security only
+          Base: validated central 14.5.52
+          App ID: com.fush.erp.recovery
+          versionCode: 92
+          versionName: 0.15.4.53-ui-security-updates
+          Room schema: 34 unchanged
+          UI pinned: 657f8db9508551dde3d7143c34ee38f3f48aab08
+          Security pinned: 0ed4877c17d14c6ede05ed3c288cd5d55ca2a7f3
+          Included: theme toggle; Arabic/English core localization; language/theme drawer controls; configurable automatic session logout/timeouts and security audit.
+          Compatibility preservation: fixed assets; periods/reconciliation; original-currency treasury; cash count; bank reconciliation.
+          Excluded: all newer accounting, reports/printing, bugfix and other branch updates.
+          Room schema remains 34; no destructive migration fallback.
+          Gates: Unit Tests -> Release Build -> package/version/schema -> zipalign. Signing is local with permanent FUSH certificate.
+          EOF
+          sha256sum final-output/FushERP-Mobile-Phase14.5.53-UI-Security-Updates-Source.zip > final-output/FushERP-Mobile-Phase14.5.53-UI-Security-Updates-Source.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-UI-Security-Integrated-Build
+          path: final-output/
+          if-no-files-found: error
+          retention-days: 7
