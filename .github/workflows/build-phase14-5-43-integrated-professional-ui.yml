@@ -1,0 +1,176 @@
+name: Build Fush ERP Phase 14.5.43 Integrated Professional UI
+
+on:
+  push:
+    branches: [fush/ui-professional-integration-14.5.43]
+    paths:
+      - '.github/workflows/build-phase14-5-43-integrated-professional-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Read UI phases 42-43 from redesign branch without modifying it
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/ui-professional-redesign --depth=1
+          echo "Read-only redesign HEAD: $(git rev-parse origin/fush/ui-professional-redesign)"
+          git archive --format=tar origin/fush/ui-professional-redesign \
+            phase14_5_42_reports_adaptive_ui \
+            phase14_5_43_accessibility_polish_ui | tar -xf -
+          test -f phase14_5_42_reports_adaptive_ui/patches/06_adaptive_shell.patch
+          test -f phase14_5_43_accessibility_polish_ui/patches/08_backup_restore_states.patch
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.41 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.41-Integrated-Professional-UI-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31860689151
+
+      - name: Restore Phase 14.5.41 and apply UI phases 42-43
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.41-Integrated-Professional-UI-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build
+          git init -q
+
+          echo 'Applying Phase 14.5.42 reports/adaptive UI'
+          for patch_file in ../phase14_5_42_reports_adaptive_ui/patches/*.patch; do
+            echo "  -> $(basename "$patch_file")"
+            git apply --check "$patch_file"
+            git apply "$patch_file"
+          done
+
+          # Phase 14.5.43 source patch was authored against the pre-compatibility
+          # ProfessionalComponents import list. Recreate that one context line
+          # only while applying the source patch, then remove it before compile.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt')
+          text = p.read_text(encoding='utf-8')
+          bad = 'import androidx.compose.foundation.layout.weight\n'
+          if bad not in text:
+              anchor = 'import androidx.compose.foundation.layout.size\n'
+              if anchor not in text:
+                  raise SystemExit('size import anchor not found')
+              text = text.replace(anchor, anchor + bad, 1)
+              p.write_text(text, encoding='utf-8')
+          PY
+
+          echo 'Applying Phase 14.5.43 accessibility/final UX UI'
+          for patch_file in ../phase14_5_43_accessibility_polish_ui/patches/*.patch; do
+            echo "  -> $(basename "$patch_file")"
+            git apply --check "$patch_file"
+            git apply "$patch_file"
+          done
+
+          # The explicit import is incompatible with the Compose version used by
+          # this Android project. RowScope.weight calls remain valid without it.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace('import androidx.compose.foundation.layout.weight\n', '')
+          p.write_text(text, encoding='utf-8')
+          PY
+
+          git add -A
+          git diff --cached --check
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 82' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.43-ui-accessibility-polish"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test "$(grep -c '^import androidx.compose.foundation.layout.weight$' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt || true)" = "0"
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 82' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.43-ui-accessibility-polish"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-43-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-43-output/FushERP-Phase14.5.43-Integrated-Professional-UI-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-43-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-43-output/lib/apksigner.jar
+          chmod +x phase14-5-43-output/apksigner
+          zip -qr phase14-5-43-output/FushERP-Mobile-Phase14.5.43-Integrated-Professional-UI-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.43 — Integrated Professional UI' \
+            'Base verified source: Phase 14.5.41 Integrated Professional UI' \
+            'Read-only source branch: fush/ui-professional-redesign' \
+            'Applied Phase 14.5.42 Reports & Adaptive UI and Phase 14.5.43 Accessibility & Final UX Polish.' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 82' \
+            'Version name: 0.15.4.43-ui-accessibility-polish' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-43-output/FushERP-Phase14.5.43-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.43-Integrated-Professional-UI-Build
+          path: phase14-5-43-output/
+          if-no-files-found: error
+          retention-days: 7
