@@ -1,0 +1,90 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -44,49 +54,51 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+ 
+     val modules = remember {
+         listOf(
+-            ModuleCard("المحاسبة والخزينة", "اليومية، الأستاذ، الخزينة والبنوك، ميزان المراجعة والقوائم المالية", "الحسابات", "مالي"),
+-            ModuleCard("الأصناف والوحدات", "مواد خام، تغليف، منتج نهائي وتحويل الوحدات", "المواد والأصناف", "بيانات"),
+-            ModuleCard("المخزون والمستودعات", "جرد، تحويلات بين المستودعات، تشغيلات، صلاحية، حجر، إعادة طلب وحركة مخزون", "المخزون", "تشغيل"),
+-            ModuleCard("المشتريات والموردون", "وحدة مشتريات مستقلة وملفات موردين تفصيلية", "المشتريات", "توريد"),
+-            ModuleCard("الإنتاج والجودة", "BOM، أوامر الإنتاج، الدفعات، الفحص وCAPA", "الإنتاج", "إنتاج"),
+-            ModuleCard("المبيعات والعملاء", "مبيعات مستقلة وملفات عملاء مع كشف حساب وسندات أطراف", "المبيعات", "مبيعات"),
+-            ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "العملات", "تسعير"),
+-            ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "الصيانة", "أصول"),
+-            ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "الحوكمة", "حوكمة"),
+-            ModuleCard("الموظفون", "ملفات الموظفين، الأقسام، الحالة، التدريب، تصاريح المعدات والحركات المرتبطة", "الموظفون", "موارد"),
+-            ModuleCard("مناديب المبيعات", "ملفات المناديب، العملاء، المبيعات، التحصيل، المرتجعات والعمولات", "مناديب المبيعات", "مبيعات"),
+-            ModuleCard("التقارير الشاملة", "مبيعات، مشتريات، مخزون، إنتاج، جودة ومالية مع PDF وExcel والمشاركة والطباعة", "التقارير", "تحليل"),
+-            ModuleCard("المخاطر والرقابة الداخلية", "سجل مخاطر، ضوابط، اختبارات، استثناءات وفصل المهام", "المخاطر", "رقابة"),
+-            ModuleCard("لوحة الإدارة", "KPI، التنبيهات الحمراء والقرارات المعلقة", "الرئيسية", "إدارة"),
+-            ModuleCard("التخطيط والموسمية", "الموازنة، الموسمية، خطة الإنتاج واحتياجات المواد ومخزون الأمان", "التخطيط", "تخطيط"),
+-            ModuleCard("النسخ الاحتياطي والاستعادة", "نسخة كاملة، تحقق سلامة، استعادة آمنة ومشاركة", "النسخ الاحتياطي", "نظام")
++            ModuleCard(R.string.module_accounting_title, R.string.module_accounting_subtitle, "الحسابات", R.string.badge_finance),
++            ModuleCard(R.string.module_items_title, R.string.module_items_subtitle, "المواد والأصناف", R.string.badge_data),
++            ModuleCard(R.string.module_inventory_title, R.string.module_inventory_subtitle, "المخزون", R.string.badge_operations),
++            ModuleCard(R.string.module_purchases_title, R.string.module_purchases_subtitle, "المشتريات", R.string.badge_supply),
++            ModuleCard(R.string.module_production_title, R.string.module_production_subtitle, "الإنتاج", R.string.badge_production),
++            ModuleCard(R.string.module_sales_title, R.string.module_sales_subtitle, "المبيعات", R.string.badge_sales),
++            ModuleCard(R.string.module_geo_title, R.string.module_geo_subtitle, "العملات", R.string.badge_pricing),
++            ModuleCard(R.string.module_maintenance_title, R.string.module_maintenance_subtitle, "الصيانة", R.string.badge_assets),
++            ModuleCard(R.string.module_governance_title, R.string.module_governance_subtitle, "الحوكمة", R.string.badge_governance),
++            ModuleCard(R.string.module_employees_title, R.string.module_employees_subtitle, "الموظفون", R.string.badge_hr),
++            ModuleCard(R.string.module_reps_title, R.string.module_reps_subtitle, "مناديب المبيعات", R.string.badge_sales),
++            ModuleCard(R.string.module_reports_title, R.string.module_reports_subtitle, "التقارير", R.string.badge_analytics),
++            ModuleCard(R.string.module_risks_title, R.string.module_risks_subtitle, "المخاطر", R.string.badge_control),
++            ModuleCard(R.string.module_dashboard_title, R.string.module_dashboard_subtitle, "الرئيسية", R.string.badge_management),
++            ModuleCard(R.string.module_planning_title, R.string.module_planning_subtitle, "التخطيط", R.string.badge_planning),
++            ModuleCard(R.string.module_backup_title, R.string.module_backup_subtitle, "النسخ الاحتياطي", R.string.badge_system),
+         )
+     }
+ 
+ 
+     val drawerItems = remember {
+         listOf(
+-            "الرئيسية" to "الرئيسية",
+-            "المبيعات" to "المبيعات",
+-            "العملاء" to "العملاء",
+-            "الإنتاج والجودة" to "الإنتاج",
+-            "التخطيط والموسمية" to "التخطيط",
+-            "النسخ الاحتياطي والاستعادة" to "النسخ الاحتياطي",
+-            "المخزون والمستودعات" to "المخزون",
+-            "المشتريات" to "المشتريات",
+-            "الموردون" to "الموردون",
+-            "الحسابات والخزينة" to "الحسابات",
+-            "العملات والمحافظات" to "العملات",
+-            "الموظفون" to "الموظفون",
+-            "مناديب المبيعات" to "مناديب المبيعات",
+-            "الصيانة والسلامة" to "الصيانة",
+-            "الحوكمة والتدقيق" to "الحوكمة",
+-            "لوحة الإدارة التنفيذية" to "الرئيسية",
+-            "التقارير الشاملة" to "التقارير",
+-            "المخاطر والرقابة الداخلية" to "المخاطر"
++            DrawerItem(R.string.nav_home, "الرئيسية"),
++            DrawerItem(R.string.nav_sales, "المبيعات"),
++            DrawerItem(R.string.nav_customers, "العملاء"),
++            DrawerItem(R.string.nav_production_quality, "الإنتاج"),
++            DrawerItem(R.string.nav_planning_seasonality, "التخطيط"),
++            DrawerItem(R.string.nav_backup_restore, "النسخ الاحتياطي"),
++            DrawerItem(R.string.nav_inventory_warehouses, "المخزون"),
++            DrawerItem(R.string.nav_purchases, "المشتريات"),
++            DrawerItem(R.string.nav_suppliers, "الموردون"),
++            DrawerItem(R.string.nav_accounting_treasury, "الحسابات"),
++            DrawerItem(R.string.nav_currencies_governorates, "العملات"),
++            DrawerItem(R.string.nav_employees, "الموظفون"),
++            DrawerItem(R.string.nav_sales_reps, "مناديب المبيعات"),
++            DrawerItem(R.string.nav_maintenance_safety, "الصيانة"),
++            DrawerItem(R.string.nav_governance_audit, "الحوكمة"),
++            DrawerItem(R.string.nav_executive_dashboard, "الرئيسية"),
++            DrawerItem(R.string.nav_comprehensive_reports, "التقارير"),
++            DrawerItem(R.string.nav_risks_controls, "المخاطر"),
+         )
+     }
+ 
++    val openMenuDescription = stringResource(R.string.drawer_open_main_menu)
++
+     ModalNavigationDrawer(
+         drawerState = drawerState,
+         drawerContent = {
