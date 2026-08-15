@@ -1,0 +1,90 @@
+-                            FilterChip(
+-                                selected = section == label,
+-                                onClick = { section = label },
+-                                label = { Text(label, maxLines = 1) },
+-                                modifier = Modifier.weight(1f),
+-                            )
+-                        }
+-                        if (rowSections.size == 1) Spacer(Modifier.weight(1f))
+-                    }
++            }
++
++            item {
++                InventorySectionTabs(
++                    selectedSection = section,
++                    onSectionSelected = { section = it },
++                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
++                )
++                Spacer(Modifier.height(18.dp))
++            }
++
++            message?.let { text ->
++                item {
++                    Surface(
++                        color = MaterialTheme.colorScheme.secondaryContainer,
++                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                        shape = MaterialTheme.shapes.medium,
++                    ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
++                    Spacer(Modifier.height(10.dp))
+                 }
+             }
+-        }
+-        message?.let { text ->
+-            Spacer(Modifier.height(8.dp))
+-            Surface(
+-                color = MaterialTheme.colorScheme.secondaryContainer,
+-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                shape = MaterialTheme.shapes.medium,
+-            ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
+-        }
+-        Spacer(Modifier.height(8.dp))
+ 
+-        when (section) {
+-            "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })
+-            "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
+-            "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
+-            "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
+-            "الحركة" -> InventoryMovements(movements)
+-            else -> InventoryBalances(balances, lots, warehouses)
++            item {
++                Box(
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .height(inventoryViewportHeight)
++                        .padding(bottom = 8.dp),
++                ) {
++                    when (section) {
++                        "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })
++                        "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
++                        "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
++                        "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
++                        "الحركة" -> InventoryMovements(movements)
++                        else -> InventoryBalances(balances, lots, warehouses)
++                    }
++                }
++            }
+         }
+     }
+ 
+@@ -247,6 +252,51 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     }
+ }
+ 
++@Composable
++internal fun InventorySectionTabs(
++    selectedSection: String,
++    onSectionSelected: (String) -> Unit,
++    modifier: Modifier = Modifier,
++) {
++    val inventorySections = remember { listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة") }
++    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
++        Column(
++            modifier = modifier.fillMaxWidth().wrapContentHeight(),
++            verticalArrangement = Arrangement.spacedBy(8.dp),
++        ) {
++            inventorySections.chunked(2).forEach { rowSections ->
++                Row(
++                    modifier = Modifier.fillMaxWidth().wrapContentHeight(),
++                    horizontalArrangement = Arrangement.spacedBy(10.dp),
++                    verticalAlignment = Alignment.CenterVertically,
++                ) {
