@@ -1,0 +1,150 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -25,6 +25,27 @@
+ 
+ private data class ModuleCard(val title: String, val subtitle: String, val phase: String)
+ 
++internal fun homeModuleTarget(title: String): String? = when (title) {
++    "المحاسبة والخزينة" -> "الحسابات"
++    "الأصناف والوحدات" -> "المواد والأصناف"
++    "المخزون والمستودعات" -> "المخزون"
++    "المشتريات والموردون" -> "المشتريات"
++    "الإنتاج والجودة" -> "الإنتاج"
++    "المبيعات والعملاء" -> "المبيعات"
++    "العملات والمحافظات" -> "العملات"
++    "الأصول والصيانة والسلامة" -> "الصيانة"
++    "الحوكمة والتدقيق" -> "الحوكمة"
++    "الموظفون" -> "الموظفون"
++    "مناديب المبيعات" -> "مناديب المبيعات"
++    "التقارير الشاملة" -> "التقارير"
++    "المخاطر والرقابة الداخلية" -> "المخاطر"
++    "التخطيط والموسمية" -> "التخطيط"
++    "النسخ الاحتياطي والاستعادة" -> "النسخ الاحتياطي"
++    "المستخدمون والصلاحيات" -> "المستخدمون"
++    "لوحة الإدارة" -> null
++    else -> null
++}
++
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+@@ -96,6 +117,7 @@
+             ModuleCard("العملات والمحافظات", "صرف تاريخي، تسعير المحافظات، النقل والرسوم وربحية جغرافية", "المرحلة 9 جاهزة"),
+             ModuleCard("الأصول والصيانة والسلامة", "الأصول، الأعطال، الوقائي، المعايرة والحوادث", "المرحلة 5 جاهزة"),
+             ModuleCard("الحوكمة والتدقيق", "SOP، النماذج، إدارة التغيير، الموافقات وسجل التدقيق", "المرحلة 6 جاهزة"),
++            ModuleCard("المستخدمون والصلاحيات", "إدارة المستخدمين والأدوار والصلاحيات وMFA وسياسات الوصول", "الأمان جاهز"),
+             ModuleCard("الموظفون", "ملفات الموظفين، الأقسام، الحالة، التدريب، تصاريح المعدات والحركات المرتبطة", "المرحلة 14.5.29"),
+             ModuleCard("مناديب المبيعات", "ملفات المناديب، العملاء، المبيعات، التحصيل، المرتجعات والعمولات", "المرحلة 14.5.29"),
+             ModuleCard("التقارير الشاملة", "مبيعات، مشتريات، مخزون، إنتاج، جودة ومالية مع PDF وExcel والمشاركة والطباعة", "المرحلة 15.2 جاهزة"),
+@@ -109,6 +131,7 @@
+     val drawerItems = remember {
+         listOf(
+             "الرئيسية" to "الرئيسية",
++            "المستخدمون والصلاحيات" to "المستخدمون",
+             "المبيعات" to "المبيعات",
+             "العملاء" to "العملاء",
+             "الإنتاج والجودة" to "الإنتاج",
+@@ -125,8 +148,7 @@
+             "الحوكمة والتدقيق" to "الحوكمة",
+             "لوحة الإدارة التنفيذية" to "الرئيسية",
+             "التقارير الشاملة" to "التقارير",
+-            "المخاطر والرقابة الداخلية" to "المخاطر",
+-            "المستخدمون والصلاحيات" to "المستخدمون"
++            "المخاطر والرقابة الداخلية" to "المخاطر"
+         )
+     }
+ 
+@@ -393,25 +415,7 @@
+         else -> "مستقر"
+     }
+     fun moduleVisible(title: String): Boolean {
+-        val target = when (title) {
+-            "المحاسبة والخزينة" -> "الحسابات"
+-            "الأصناف والوحدات" -> "المواد والأصناف"
+-            "المخزون والمستودعات" -> "المخزون"
+-            "المشتريات والموردون" -> "المشتريات"
+-            "الإنتاج والجودة" -> "الإنتاج"
+-            "المبيعات والعملاء" -> "المبيعات"
+-            "العملات والمحافظات" -> "العملات"
+-            "الأصول والصيانة والسلامة" -> "الصيانة"
+-            "الحوكمة والتدقيق" -> "الحوكمة"
+-            "الموظفون" -> "الموظفون"
+-            "مناديب المبيعات" -> "مناديب المبيعات"
+-            "التقارير الشاملة" -> "التقارير"
+-            "المخاطر والرقابة الداخلية" -> "المخاطر"
+-            "التخطيط والموسمية" -> "التخطيط"
+-            "النسخ الاحتياطي والاستعادة" -> "النسخ الاحتياطي"
+-            "لوحة الإدارة" -> null
+-            else -> null
+-        }
++        val target = homeModuleTarget(title)
+         return target == null || target in allowedTargets
+     }
+ 
+@@ -436,6 +440,32 @@
+             }
+         }
+ 
++        if ("المستخدمون" in allowedTargets) {
++            item {
++                ElevatedCard(
++                    onClick = { onNavigate("المستخدمون") },
++                    modifier = Modifier.fillMaxWidth(),
++                ) {
++                    Row(
++                        modifier = Modifier.fillMaxWidth().padding(16.dp),
++                        verticalAlignment = Alignment.CenterVertically,
++                        horizontalArrangement = Arrangement.spacedBy(12.dp),
++                    ) {
++                        NavGlyph("م", selected = true)
++                        Column(Modifier.weight(1f)) {
++                            Text("المستخدمون والصلاحيات", style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                "إدارة المستخدمين والأدوار والصلاحيات والتحقق الثنائي",
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            )
++                        }
++                        Text("فتح", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++                    }
++                }
++            }
++        }
++
+         item {
+             FushSectionHeader("المؤشرات الرئيسية", "أهم الأرقام المالية والتشغيلية في نظرة واحدة")
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+@@ -529,11 +559,18 @@
+ 
+         item { FushSectionHeader("وحدات النظام", "كل وحدات FUSH ERP ومجال كل وحدة") }
+         items(modules.filter { moduleVisible(it.title) }) { module ->
++            val target = homeModuleTarget(module.title)
+             FushModuleCard(
+                 title = module.title,
+                 subtitle = module.subtitle,
+                 badge = module.phase,
+-                modifier = Modifier.fillMaxWidth(),
++                modifier = Modifier
++                    .fillMaxWidth()
++                    .then(
++                        if (target != null && target in allowedTargets) {
++                            Modifier.clickable { onNavigate(target) }
++                        } else Modifier
++                    ),
+             )
+         }
+     }
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/ui/screens/HomeShellNavigationTest.kt
+@@ -0,0 +1,11 @@
++package com.fush.erp.ui.screens
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class HomeShellNavigationTest {
++    @Test
++    fun usersPermissionsModuleRoutesToSecurityScreen() {
++        assertEquals("المستخدمون", homeModuleTarget("المستخدمون والصلاحيات"))
++    }
++}
