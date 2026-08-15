@@ -54,12 +54,7 @@ jobs:
           git config user.name 'FUSH Integration CI'
           git config user.email 'fush-integration@example.invalid'
           git add -A && git commit -qm 'Phase 14.5.38 baseline'
-          for phase in \
-            phase14_5_39_production_quality_ui \
-            phase14_5_40_employees_sales_reps_ui \
-            phase14_5_41_assets_maintenance_expenses_ui \
-            phase14_5_42_reports_adaptive_ui
-          do
+          for phase in phase14_5_39_production_quality_ui phase14_5_40_employees_sales_reps_ui phase14_5_41_assets_maintenance_expenses_ui phase14_5_42_reports_adaptive_ui; do
             for p in ../$phase/patches/*.patch; do
               if git apply --check "$p"; then
                 git apply "$p"
@@ -106,26 +101,56 @@ jobs:
           p=Path('app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt')
           s=p.read_text()
           old='''                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }\n                OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }'''
-          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }\n                OutlinedButton(\n                    onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." },\n                    modifier = Modifier.weight(1f),\n                    shape = MaterialTheme.shapes.medium,\n                ) { Text("صرف للعميل") }'''
+          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }\n                OutlinedButton(onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("صرف للعميل") }'''
           if old not in s: raise SystemExit('customer button block not found')
           s=s.replace(old,new,1)
           old='''                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }\n                OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }'''
-          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("دفع فاتورة") }\n                OutlinedButton(\n                    onClick = { message = "قبض مبلغ من المورد يجب أن يتم من مرتجع المشتريات مع اختيار استرداد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." },\n                    modifier = Modifier.weight(1f),\n                    shape = MaterialTheme.shapes.medium,\n                ) { Text("قبض من المورد") }'''
+          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("دفع فاتورة") }\n                OutlinedButton(onClick = { message = "قبض مبلغ من المورد يجب أن يتم من مرتجع المشتريات مع اختيار استرداد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("قبض من المورد") }'''
           if old not in s: raise SystemExit('supplier button block not found')
           p.write_text(s.replace(old,new,1))
           PY
-          grep -q 'تحصيل فاتورة' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
-          grep -q 'دفع فاتورة' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
           git add -A && git commit -qm 'Rebase accounting integrity onto professional party UI'
 
-          if git apply --check --verbose --exclude=app/build.gradle.kts /tmp/accounting35.patch; then
-            git apply --exclude=app/build.gradle.kts /tmp/accounting35.patch
-          else
-            echo ACCOUNTING35_REBASE_REQUIRED
-            git apply --check --verbose --exclude=app/build.gradle.kts /tmp/accounting35.patch || true
-            exit 22
-          fi
-          git add -A && git commit -qm 'Apply accounting periods and reconciliation'
+          # Apply schema/service/reconciliation core while preserving the professional accounting workspace.
+          git apply --check --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt /tmp/accounting35.patch
+          git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt /tmp/accounting35.patch
+
+          # Port the new periods/reconciliation tab into the current professional screen.
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          patch=Path('/tmp/accounting35.patch').read_text()
+          target='app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'
+          part=next(x for x in re.split(r'(?=^diff --git )',patch,flags=re.M) if x.startswith('diff --git ') and f' b/{target}' in x.splitlines()[0])
+          added=[]; capture=False
+          for line in part.splitlines():
+              if line.startswith('+@Composable'):
+                  capture=True
+              if capture:
+                  if line.startswith('+') and not line.startswith('+++'):
+                      added.append(line[1:])
+                  elif line.startswith(' @Composable') and added:
+                      break
+          block='\n'.join(added).rstrip()+'\n\n'
+          if 'private fun AccountingPeriodsTab' not in block:
+              raise SystemExit('AccountingPeriodsTab extraction failed')
+          p=Path(target); s=p.read_text()
+          old='val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي")'
+          new='val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي", "الفترات والمطابقة")'
+          if old not in s: raise SystemExit('accounting tabs line not found')
+          s=s.replace(old,new,1)
+          old='''            7 -> BalanceSheetTab(container, Modifier.weight(1f))\n            else -> CashFlowTab(container, Modifier.weight(1f))'''
+          new='''            7 -> BalanceSheetTab(container, Modifier.weight(1f))\n            8 -> CashFlowTab(container, Modifier.weight(1f))\n            else -> AccountingPeriodsTab(container, user, Modifier.weight(1f))'''
+          if old not in s: raise SystemExit('accounting route block not found')
+          s=s.replace(old,new,1)
+          marker='@Composable\nprivate fun JournalTab'
+          if marker not in s: raise SystemExit('JournalTab marker not found')
+          s=s.replace(marker,block+marker,1)
+          p.write_text(s)
+          PY
+          grep -q 'الفترات والمطابقة' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          grep -q 'private fun AccountingPeriodsTab' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          git add -A && git commit -qm 'Rebase accounting periods and reconciliation onto professional UI'
           grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/Migrations.kt
           echo ACCOUNTING_34_35_OK
