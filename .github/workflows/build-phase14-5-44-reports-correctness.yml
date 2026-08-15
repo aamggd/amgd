@@ -52,10 +52,13 @@ jobs:
           cd FushERP_Mobile_Phase5
           rm -rf .git app/build .gradle build
           git init -q
+          git config user.name "Fush CI"
+          git config user.email "ci@fush.local"
+          git add -A
+          git commit -q -m "Phase 14.5.43 baseline"
           git apply --check ../phase14_5_44_reports_correctness/patches/01_reports_receivables_correctness.patch
           git apply ../phase14_5_44_reports_correctness/patches/01_reports_receivables_correctness.patch
-          git add -A
-          git diff --cached --check
+          git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 83' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.44-reports-correctness"' app/build.gradle.kts
