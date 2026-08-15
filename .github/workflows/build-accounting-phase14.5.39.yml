@@ -1,0 +1,160 @@
+name: Validate FUSH Accounting Phase 14.5.39 FX Treasury
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.39.yml'
+      - 'fush_accounting/rebase/phase14.5.39_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase39-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated accounting rebase source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Rebase-14.5.38-Validated-Build
+          path: accounting-rebase-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31863175468
+
+      - name: Reconstruct and verify Phase 14.5.39 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.39_chunks"
+
+          test "$(wc -c < "$CH/part00.b64")" -eq 12000
+          test "$(wc -c < "$CH/part01.b64")" -eq 12000
+          test "$(wc -c < "$CH/part02.b64")" -eq 1276
+
+          echo '263ac97e66e2ba2d6b89de99f46d6c0cd7883c2248c8b5d9c720203462f2e1ba  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '05f8376a1d838e7b1f3c745448c563cccfed37340d90da399f493582b442bc00  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'a69953a02793856dc5da34c4c68f8dbeb662feef47a8436061fb2481a429f2c6  part02.b64' | (cd "$CH" && sha256sum -c -)
+
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 > /tmp/phase39.patch.gz.b64
+          test "$(wc -c < /tmp/phase39.patch.gz.b64)" -eq 25480
+          echo 'e3a2039723bcae31c4ea9235408fb7120ac60669fd555fa4febe0dabae20f755  /tmp/phase39.patch.gz.b64' | sha256sum -c -
+
+          base64 --decode /tmp/phase39.patch.gz.b64 > /tmp/phase39.patch.gz
+          echo '1e8e19545b924471f29fc67fe528be509925c50130c73c301c3680d8e278a9f0  /tmp/phase39.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase39.patch.gz
+          gzip -dc /tmp/phase39.patch.gz > /tmp/phase39.patch
+          test "$(wc -c < /tmp/phase39.patch)" -eq 99351
+          echo '61d1b605a77b493aebc93b74f539035d8c7c55931b708b03994e61aed574cd33  /tmp/phase39.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.39 to validated accounting rebase
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/accounting-rebase-artifact/FushERP-Mobile-Accounting-Rebased-on-14.5.38-Professional-UI-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase39 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated accounting rebase baseline'
+          git apply --check /tmp/phase39.patch
+          git apply /tmp/phase39.patch
+          git diff --check
+
+      - name: Verify identity, schema and migration safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 32' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_31_32' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_31_32' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          test -f app/src/test/java/com/fush/erp/domain/TreasuryFxMathTest.kt
+
+      - name: Unit tests
+        working-directory: work/repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/32.json
+          grep -q '"version": 32' app/schemas/com.fush.erp.data.FushDatabase/32.json
+
+          mkdir -p "$ROOT/phase39-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            "$ROOT/phase39-output/FushERP-Accounting-Phase14.5.39-FX-Treasury-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 \
+            "$ROOT/phase39-output/FushERP-Accounting-Phase14.5.39-FX-Treasury-aligned-unsigned.apk"
+
+          cp /tmp/phase39.patch "$ROOT/phase39-output/FushERP-Phase14.5.39-Foreign-Currency-Treasury-Revaluation.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase39-output/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip" repo
+          sha256sum "$ROOT/phase39-output/"* > "$ROOT/phase39-output/SHA256SUMS.txt"
+
+          cat > "$ROOT/phase39-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.39 validation
+          Base: validated Accounting Rebase on official Phase 14.5.38 Professional UI
+          Base validation run: 31863175468
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 32 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
+          Phase 14.5.39 patch SHA-256: 61d1b605a77b493aebc93b74f539035d8c7c55931b708b03994e61aed574cd33
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 32 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_39_FX_TREASURY_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: phase39-output/
+          if-no-files-found: error
+          retention-days: 7
