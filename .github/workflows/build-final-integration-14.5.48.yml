@@ -150,11 +150,10 @@ jobs:
           }
           merge_ours() {
             local branch="$1" label="$2" expected="$3"
-            set +e
-            git merge --no-ff --no-commit "$branch"
-            rc=$?
-            set -e
+            local rc=0
+            git merge --no-ff --no-commit "$branch" || rc=$?
             if [ "$rc" -ne 0 ]; then
+              test "$rc" -eq 1
               git diff --name-only --diff-filter=U -z | xargs -0 -r git checkout --ours --
             fi
             test -z "$(git diff --name-only --diff-filter=U)"
