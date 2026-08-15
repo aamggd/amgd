@@ -56,7 +56,12 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm baseline-14.5.50
-          cp ../phase14_5_51_inventory_analytics/payload/i51.b64.part00 ../phase14_5_51_inventory_analytics/i51.full.b64
+          echo '944d20101979c18f05ab8a7ef26a069942685bb7a798cf2fb290d4e6b4fa9e56  ../phase14_5_51_inventory_analytics/payload2/i51-00.txt' | sha256sum -c -
+          echo '758cbda1c768b0e25278250b0207283e80b947aff2939e44b40231460a4d04ae  ../phase14_5_51_inventory_analytics/payload2/i51-01.txt' | sha256sum -c -
+          echo 'eba251fc18286fdb4017259ff946bd66ce62ebdd35279a3aed6815bf72520fd1  ../phase14_5_51_inventory_analytics/payload2/i51-02.txt' | sha256sum -c -
+          echo '5bd1bc0ad07e6797d59eb214e460ca7ac5d0d85d4becbe86a6e9d0659e6ef5b7  ../phase14_5_51_inventory_analytics/payload2/i51-03.txt' | sha256sum -c -
+          echo '3c797504190ef3d90617ab56bda27b1cbf72c51e042bbdf960b6840e8f024f76  ../phase14_5_51_inventory_analytics/payload2/i51-04.txt' | sha256sum -c -
+          cat ../phase14_5_51_inventory_analytics/payload2/i51-0*.txt > ../phase14_5_51_inventory_analytics/i51.full.b64
           echo '7483fa1dafba12b907abfae576b95b33a32a0a551f2c93c3857c79deefb9e96f  ../phase14_5_51_inventory_analytics/i51.full.b64' | sha256sum -c -
           base64 -d ../phase14_5_51_inventory_analytics/i51.full.b64 | gzip -dc > ../phase14_5_51_inventory_analytics/01_inventory_analytics.patch
           echo 'be110bd9756f372a90fd539f9c055c2850d40fb126598f5071a92fb2ef431555  ../phase14_5_51_inventory_analytics/01_inventory_analytics.patch' | sha256sum -c -
