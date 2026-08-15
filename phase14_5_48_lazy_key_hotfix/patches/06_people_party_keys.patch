@@ -1,0 +1,120 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 9bd5196..fd519e0 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -407,7 +407,7 @@ private fun EmployeeProfileScreen(
+                 1 -> {
+                     item { FushSectionHeader("التدريب والكفاءة", "صلاحية الموظف للمهام تعتمد على التدريب ومدة سريانه") }
+                     if (trainings.isEmpty()) item { FushInlineState("لا توجد سجلات تدريب لهذا الموظف.") }
+-                    items(trainings, key = { it.id }) { row ->
++                    items(trainings, key = { "employee-training-${it.id}" }) { row ->
+                         val expired = row.expiresAt != null && row.expiresAt < now
+                         val valid = row.result == "PASS" && !expired
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -425,7 +425,7 @@ private fun EmployeeProfileScreen(
+                 2 -> {
+                     item { FushSectionHeader("تصاريح المعدات", "الترخيص التشغيلي المرتبط بالمعدة والتدريب المؤهل") }
+                     if (authorizations.isEmpty()) item { FushInlineState("لا توجد تصاريح تشغيل مرتبطة بهذا الموظف.") }
+-                    items(authorizations, key = { it.id }) { row ->
++                    items(authorizations, key = { "employee-authorization-${it.id}" }) { row ->
+                         val expired = row.expiresAt != null && row.expiresAt < now
+                         val active = row.status == "ACTIVE" && !expired
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -458,7 +458,7 @@ private fun EmployeeProfileScreen(
+                         )
+                     }
+                     if (productionCompensations.isEmpty()) item { FushInlineState("لا توجد أوامر إنتاج مرتبطة بهذا الموظف.") }
+-                    items(productionCompensations, key = { it.orderId }) { row ->
++                    items(productionCompensations, key = { "employee-production-comp-${it.orderId}" }) { row ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -478,7 +478,7 @@ private fun EmployeeProfileScreen(
+                 4 -> {
+                     item { FushSectionHeader("السندات المرتبطة بالموظف", "السند المرحل لا يُحذف؛ أي تصحيح يتم بقيد عكسي مستقل") }
+                     if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الموظف.") }
+-                    items(vouchers, key = { it.id }) { voucher ->
++                    items(vouchers, key = { "employee-voucher-${it.id}" }) { voucher ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -495,7 +495,7 @@ private fun EmployeeProfileScreen(
+                 else -> {
+                     item { FushSectionHeader("سجل التدقيق", "تاريخ التغييرات والإجراءات المرتبطة بملف الموظف") }
+                     if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق لهذا الموظف.") }
+-                    items(audits, key = { it.id }) { audit ->
++                    items(audits, key = { "employee-audit-${it.id}" }) { audit ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                 Text("${employeeDateTime(audit.eventAt)} • ${audit.action}", style = MaterialTheme.typography.titleSmall)
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 11bcd38..1af6f54 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -834,7 +834,7 @@ private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEven
+ private fun LazyListScope.voucherItems(vouchers: List<PartyVoucherEntity>, onReverse: (PartyVoucherEntity)->Unit) {
+     item { FushSectionHeader("السندات المرتبطة بالطرف", "السند المرحل لا يعدل أو يحذف؛ التصحيح بالعكس فقط.") }
+     if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الطرف.") }
+-    items(vouchers, key={it.id}) { v ->
++    items(vouchers, key={"party-voucher-${it.id}"}) { v ->
+         ElevatedCard(Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                 Text("${partyDate(v.voucherDate)} • ${if(v.voucherType=="RECEIPT") "سند قبض" else "سند صرف"} • ${v.voucherNo}")
+@@ -851,7 +851,7 @@ private fun LazyListScope.voucherItems(vouchers: List<PartyVoucherEntity>, onRev
+ private fun LazyListScope.auditItems(rows: List<AuditEventEntity>) {
+     item { FushSectionHeader("سجل التدقيق والحركات", "الأحداث والتعديلات المرتبطة بهذا الطرف") }
+     if(rows.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+-    items(rows,key={it.id}) { e ->
++    items(rows,key={"party-audit-${it.id}"}) { e ->
+         ElevatedCard(Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(10.dp)) {
+                 Text("${partyDateTime(e.eventAt)} • ${e.action} • مستخدم #${e.userId}")
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index cd726e6..df29e9a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -249,7 +249,7 @@ private fun SalesRepresentativeProfile(
+                 1 -> {
+                     item { FushSectionHeader("العملاء التابعون", "${customers.size} عميل مرتبط بالمندوب") }
+                     if (customers.isEmpty()) item { FushInlineState("لا يوجد عملاء مرتبطون بهذا المندوب.") }
+-                    items(customers, key = { it.id }) { c ->
++                    items(customers, key = { "rep-customer-${it.id}" }) { c ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                 Text(c.nameAr, style = MaterialTheme.typography.titleMedium)
+@@ -261,7 +261,7 @@ private fun SalesRepresentativeProfile(
+                 2 -> {
+                     item { FushSectionHeader("فواتير المبيعات", "الفواتير المرتبطة بهوية المندوب الثابتة") }
+                     if (invoices.isEmpty()) item { FushInlineState("لا توجد فواتير مرتبطة بهذا المندوب.") }
+-                    items(invoices, key = { it.id }) { inv ->
++                    items(invoices, key = { "rep-invoice-${it.id}" }) { inv ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                 Text(inv.invoiceNo, style = MaterialTheme.typography.titleMedium)
+@@ -283,7 +283,7 @@ private fun SalesRepresentativeProfile(
+                         )
+                     }
+                     if (commissions.isEmpty()) item { FushInlineState("لا توجد عمولات مكتسبة بعد. العمولة تستحق بعد التحصيل.") }
+-                    items(commissions, key = { it.id }) { c ->
++                    items(commissions, key = { "rep-commission-${it.id}" }) { c ->
+                         val net = c.earnedBase - c.reversedBase
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@@ -300,7 +300,7 @@ private fun SalesRepresentativeProfile(
+                 4 -> {
+                     item { FushSectionHeader("سندات عمولة المندوب", "كل سند مرتبط بالمندوب؛ السند المرحل يُصحح بالعكس ولا يُحذف") }
+                     if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا المندوب.") }
+-                    items(vouchers, key = { it.id }) { v ->
++                    items(vouchers, key = { "rep-voucher-${it.id}" }) { v ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -317,7 +317,7 @@ private fun SalesRepresentativeProfile(
+                 else -> {
+                     item { FushSectionHeader("سجل التدقيق", "الأحداث والتعديلات المرتبطة بملف المندوب") }
+                     if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+-                    items(audits, key = { it.id }) { a ->
++                    items(audits, key = { "rep-audit-${it.id}" }) { a ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                 Text("${repDateTime(a.eventAt)} • ${a.action}", style = MaterialTheme.typography.titleSmall)
