@@ -118,7 +118,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             cd FushERP_Mobile_Phase5
             gradle --no-daemon :app:connectedDebugAndroidTest
             adb shell run-as com.fush.erp.recovery ls -l files/
