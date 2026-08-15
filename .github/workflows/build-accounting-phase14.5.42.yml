@@ -1,0 +1,176 @@
+name: Validate FUSH Accounting Phase 14.5.42 Posting Profiles
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.42.yml'
+      - 'fush_accounting/rebase/phase14.5.42_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase42-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.41 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.41-Multi-Invoice-Settlement-Validated-Build
+          path: phase41-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31869145938
+
+      - name: Reconstruct and verify Phase 14.5.42 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.42_chunks"
+          for n in 00 01 02 03 04 05 06 07 08 09; do test "$(wc -c < "$CH/part${n}.b64")" -eq 2000; done
+          test "$(wc -c < "$CH/part10.b64")" -eq 1092
+          echo '1c4e0b0551a59691a97c9f37996ca98d82bea62e485796d24679385c9091bd8b  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '9c64d58bccdd768a2b9d99f4046cd44e8425afdc611d395e0339841bffc451d9  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '89f8136caaf9d5ab7775a37f33d438d28f1d9e6a02cb831c94273f4a0c02bc38  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '89f9620bcb6836872507c19d3220f10439c7abd09e800eda27f1b46e02213c50  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo '69f3d259ed808cc694955df467cd44b08f12cba708b4d0dcb755fa2bbc3fce85  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'b8aab3f16fcf07662b3cd4aa97aab31cb8737dc0b6571d1e48b01bda93f897e8  part05.b64' | (cd "$CH" && sha256sum -c -)
+          echo '738eb3f530f8abfb04ae0e297021addf2bac7445ff791fdcbeabdebe17b3788d  part06.b64' | (cd "$CH" && sha256sum -c -)
+          echo '467e05931cdaeb22d1d4843d33bbe6500acf5c491c075a2e4c7535ae37402ff9  part07.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'defc217dcffec931501aeca82c44525009107a8ea9ae5eda8dbb8bd24088424e  part08.b64' | (cd "$CH" && sha256sum -c -)
+          echo '54d6977149011104b96a22d4a4ababef21f4a439ab32811eb578a3e00bb4f9a0  part09.b64' | (cd "$CH" && sha256sum -c -)
+          echo '79dba00cc819727c5b30575fb1031fc4dd088a47b6eba4a60b61666a98075eb6  part10.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 "$CH"/part06.b64 "$CH"/part07.b64 "$CH"/part08.b64 "$CH"/part09.b64 "$CH"/part10.b64 > /tmp/phase42.patch.gz.b64
+          test "$(wc -c < /tmp/phase42.patch.gz.b64)" -eq 21092
+          echo '1fb373b63c28b1358e75a281a31133411812e1532bd2ef44c18df446af3cd4de  /tmp/phase42.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase42.patch.gz.b64 > /tmp/phase42.patch.gz
+          test "$(wc -c < /tmp/phase42.patch.gz)" -eq 15818
+          echo '8cf899a8303acef6993ac39c3416225a094a9c41a794a0364e4b6145b51bd098  /tmp/phase42.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase42.patch.gz
+          gzip -dc /tmp/phase42.patch.gz > /tmp/phase42.patch
+          test "$(wc -c < /tmp/phase42.patch)" -eq 80940
+          echo 'c634f8ee2467f22b3bc6b39b9472a5015591e83f66d1eec2f312ea3b7b05bd04  /tmp/phase42.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.42 to validated Phase 14.5.41
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/phase41-artifact/FushERP-Mobile-Phase14.5.41-Multi-Invoice-Settlement-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase42 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated Phase14.5.41 baseline'
+          git apply --check /tmp/phase42.patch
+          git apply /tmp/phase42.patch
+          git diff --check
+
+      - name: Verify identity, schema and posting-profile safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_33_34' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_33_34' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f app/src/main/java/com/fush/erp/data/entity/PostingProfileEntities.kt
+          test -f app/src/main/java/com/fush/erp/data/dao/PostingProfileDao.kt
+          test -f app/src/main/java/com/fush/erp/domain/PostingProfiles.kt
+          grep -q 'PostingProfileEntity::class' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'abstract fun postingProfileDao(): PostingProfileDao' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'trg_posting_profile_protect_account_update' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'trg_posting_profile_protect_account_delete' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'PostingProfilesTab' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          ! grep -R --line-number -E 'accountDao\(\)\.byCode\("(1200|1210|1300|1500|1590|2100|2200|2300|3100|3300|4000|4100|4200|4250|5000|6300|6400|6750|6800|6900|6950)"' app/src/main/java/com/fush/erp/domain
+          ! grep -R --line-number -E 'offset\?\.code|"1300" ->|"2100" ->|"2200" ->|"2300" ->' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          test -f app/src/test/java/com/fush/erp/domain/PostingRoleTest.kt
+
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase42-unit-test.log"
+
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.42-Unit-Test-Diagnostics
+          path: phase42-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q '"version": 34' app/schemas/com.fush.erp.data.FushDatabase/34.json
+          mkdir -p "$ROOT/phase42-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk "$ROOT/phase42-output/FushERP-Accounting-Phase14.5.42-Posting-Profiles-COA-Safety-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/phase42-output/FushERP-Accounting-Phase14.5.42-Posting-Profiles-COA-Safety-aligned-unsigned.apk"
+          cp /tmp/phase42.patch "$ROOT/phase42-output/FushERP-Phase14.5.42-Posting-Profiles-COA-Safety.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase42-output/FushERP-Mobile-Phase14.5.42-Posting-Profiles-COA-Safety-Source.zip" repo
+          sha256sum "$ROOT/phase42-output/"* > "$ROOT/phase42-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase42-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.42 validation
+          Base: validated Accounting Phase 14.5.41 Multi-Invoice Settlement
+          Base validation run: 31869145938
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 34 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
+          Phase 14.5.42 patch SHA-256: c634f8ee2467f22b3bc6b39b9472a5015591e83f66d1eec2f312ea3b7b05bd04
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 34 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_42_POSTING_PROFILES_COA_SAFETY_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.42-Posting-Profiles-COA-Safety-Validated-Build
+          path: phase42-output/
+          if-no-files-found: error
+          retention-days: 7
