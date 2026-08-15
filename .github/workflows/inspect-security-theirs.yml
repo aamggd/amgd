@@ -1,0 +1,48 @@
+name: Inspect Security Theirs
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths: ['.github/workflows/inspect-security-theirs.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.33-Expense-Dimensions-Build
+          path: baseline33-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31854443269
+      - name: Build security source and print key files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/users-permissions --depth=1
+          git archive --format=tar origin/fush/users-permissions phase14_5_34_users_permissions phase14_5_36_users_security_hardening | tar -xf -
+          python - <<'PY'
+          import base64,gzip,pathlib
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          pathlib.Path('/tmp/u34.patch').write_bytes(gzip.decompress(base64.b64decode(''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64'))))))
+          PY
+          unzip -q baseline33-build/FushERP-Mobile-Phase14.5.33-Expense-Dimensions-Source.zip -d /tmp/base
+          cd /tmp/base/FushERP_Mobile_Phase5
+          git init -q && git config user.name CI && git config user.email ci@example.invalid && git add -A && git commit -qm base
+          git apply "$GITHUB_WORKSPACE/../u34.patch" 2>/dev/null || git apply /tmp/u34.patch
+          git apply "$GITHUB_WORKSPACE/phase14_5_36_users_security_hardening/phase14_5_36.patch"
+          for f in \
+            app/src/main/java/com/fush/erp/ui/FushErpApp.kt \
+            app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt \
+            app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt \
+            app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt \
+            app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt \
+            app/src/main/java/com/fush/erp/domain/SecurityService.kt \
+            app/src/main/java/com/fush/erp/data/AppContainer.kt
+          do
+            echo "========== $f =========="
+            cat "$f"
+          done
