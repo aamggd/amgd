@@ -29,6 +29,7 @@ jobs:
 
       - name: Apply verified final security rebase
         run: |
+          set -euo pipefail
           cd source/FushERP_Mobile_Phase5
           rm -rf app/build .gradle .kotlin
           git init -q
@@ -48,6 +49,9 @@ jobs:
           echo '821bd4419050f0631415e2b872bed46b597b0a1d862860d4e4692e1885e30537  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
           git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git apply ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          echo 'fa54f84809e5e6dca8a1fc033939045d0bae346b80ed3eb0a552c8aaa203f4a6  ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch' | sha256sum -c -
+          git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch
+          git apply ../../security_rebase_official_14_5_38_final/database_encryption_cleanup_root_fix.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'minSdk = 26' app/build.gradle.kts
@@ -63,7 +67,7 @@ jobs:
           grep -q 'androidx.test.ext:junit:1.3.0' app/build.gradle.kts
           grep -q 'SupportOpenHelperFactory' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/DatabaseKeyManager.kt
-          grep -q 'cleanupStalePlaintextSafety' app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
+          grep -q 'cleanupStalePlaintextSafety(context)' app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
           grep -q 'allowBackup="false"' app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
           test -f app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
@@ -115,23 +119,49 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           sudo chmod 666 /dev/kvm || true
-          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6" --path "$ANDROID_AVD_HOME/fush-security-ci.avd"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee security-ci-out/avd-list.log
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx 'fush-security-ci'
           nohup "$ANDROID_HOME/emulator/emulator" -avd fush-security-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > security-ci-out/emulator.log 2>&1 &
-          adb wait-for-device
+          EMU_PID=$!
+          device_seen=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator exited before ADB became available'
+              cat security-ci-out/emulator.log
+              exit 1
+            fi
+            if adb devices | grep -q '^emulator-'; then
+              device_seen=1
+              break
+            fi
+            sleep 2
+          done
+          test "$device_seen" = "1" || { echo 'Emulator did not appear in ADB'; cat security-ci-out/emulator.log; exit 1; }
+          timeout 60s adb wait-for-device
           booted=""
-          for i in $(seq 1 150); do
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator exited before boot completed'
+              cat security-ci-out/emulator.log
+              exit 1
+            fi
             booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
             [ "$booted" = "1" ] && break
             sleep 2
           done
-          test "$booted" = "1"
+          test "$booted" = "1" || { echo 'Android boot timeout'; cat security-ci-out/emulator.log; exit 1; }
           adb shell settings put global window_animation_scale 0 || true
           adb shell settings put global transition_animation_scale 0 || true
           adb shell settings put global animator_duration_scale 0 || true
           cd source/FushERP_Mobile_Phase5
-          gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest 2>&1 | tee ../../security-ci-out/instrumented-encryption.log
+          set -o pipefail
+          timeout 900s gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest 2>&1 | tee ../../security-ci-out/instrumented-encryption.log
 
       - name: Package validation outputs
         id: package
