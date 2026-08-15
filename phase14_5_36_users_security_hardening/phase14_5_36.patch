@@ -1,0 +1,370 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index faad463..a0aa040 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 73
+-        versionName = "0.15.4.34-users-permissions"
++        versionCode = 75
++        versionName = "0.15.4.36-users-security-hardening"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/com/fush/erp/data/AppContainer.kt b/app/src/main/java/com/fush/erp/data/AppContainer.kt
+index 3863b80..0dafd50 100644
+--- a/app/src/main/java/com/fush/erp/data/AppContainer.kt
++++ b/app/src/main/java/com/fush/erp/data/AppContainer.kt
+@@ -5,7 +5,6 @@ import androidx.room.Room
+ import androidx.room.withTransaction
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.InventoryService
+-import com.fush.erp.domain.PasswordHasher
+ import com.fush.erp.domain.PurchaseService
+ import com.fush.erp.domain.ProductionService
+ import com.fush.erp.domain.SalesService
+@@ -48,19 +47,6 @@ class AppContainer(context: Context) {
+     suspend fun seedIfNeeded() = withContext(Dispatchers.IO) {
+         db.withTransaction {
+             securityService.seedDefaults()
+-            if (db.userDao().count() == 0) {
+-                val salt = PasswordHasher.newSalt()
+-                db.userDao().insert(
+-                    UserEntity(
+-                        username = "admin",
+-                        displayName = "مدير النظام",
+-                        passwordHash = PasswordHasher.hash("Fush@2026".toCharArray(), salt),
+-                        salt = salt,
+-                        mustChangePassword = true
+-                    )
+-                )
+-            }
+-
+             db.currencyDao().insertDefaultsIgnore(
+                 listOf(
+                     CurrencyEntity("YER_NEW", "ريال يمني - طبعة جديدة", "Yemeni Rial - New", "ر.ي", 2, isBase = true),
+diff --git a/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt b/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+index d1cf027..25557c3 100644
+--- a/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
++++ b/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+@@ -52,6 +52,12 @@ object SecurityPermissions {
+ object PasswordPolicy {
+     const val MIN_LENGTH = 15
+     const val HISTORY_COUNT = 10
++    const val MAX_AGE_DAYS = 60L
++
++    fun isExpired(passwordChangedAt: Long?, now: Long = System.currentTimeMillis()): Boolean {
++        val changedAt = passwordChangedAt ?: return true
++        return now - changedAt >= MAX_AGE_DAYS * 24L * 60L * 60_000L
++    }
+ 
+     fun validate(password: CharArray, username: String = ""): String? {
+         val value = password.concatToString()
+@@ -65,6 +71,25 @@ object PasswordPolicy {
+     }
+ }
+ 
++
++object SessionPolicy {
++    const val ADMIN_IDLE_MINUTES = 3L
++    const val USER_IDLE_MINUTES = 5L
++    const val ADMIN_SESSION_MINUTES = 5L
++    const val USER_SESSION_MINUTES = 10L
++    const val ADMIN_ABSOLUTE_HOURS = 4L
++    const val USER_ABSOLUTE_HOURS = 8L
++
++    fun idleTimeoutMs(roleCode: String): Long =
++        (if (roleCode == "ADMIN") ADMIN_IDLE_MINUTES else USER_IDLE_MINUTES) * 60_000L
++
++    fun sessionTimeoutMs(roleCode: String): Long =
++        (if (roleCode == "ADMIN") ADMIN_SESSION_MINUTES else USER_SESSION_MINUTES) * 60_000L
++
++    fun absoluteTimeoutMs(roleCode: String): Long =
++        (if (roleCode == "ADMIN") ADMIN_ABSOLUTE_HOURS else USER_ABSOLUTE_HOURS) * 60L * 60_000L
++}
++
+ data class LockoutDecision(val failedAttempts: Int, val lockoutCount: Int, val lockedUntil: Long?)
+ 
+ object LoginLockoutPolicy {
+diff --git a/app/src/main/java/com/fush/erp/domain/SecurityService.kt b/app/src/main/java/com/fush/erp/domain/SecurityService.kt
+index 9bd6ac9..e73d312 100644
+--- a/app/src/main/java/com/fush/erp/domain/SecurityService.kt
++++ b/app/src/main/java/com/fush/erp/domain/SecurityService.kt
+@@ -26,6 +26,45 @@ class SecurityService(private val db: FushDatabase) {
+         }
+     }
+ 
++    suspend fun bootstrapFirstAdmin(
++        username: String,
++        displayName: String,
++        password: CharArray,
++        now: Long = System.currentTimeMillis()
++    ): UserEntity = db.withTransaction {
++        require(db.userDao().count() == 0) { "تم إعداد مدير النظام مسبقًا" }
++        val normalized = username.trim()
++        require(normalized.matches(Regex("[A-Za-z0-9._-]{3,40}"))) {
++            "اسم المستخدم يجب أن يكون 3-40 حرفًا إنجليزيًا/رقمًا ويمكن استخدام . _ -"
++        }
++        require(displayName.trim().length >= 2) { "أدخل الاسم الظاهر لمدير النظام" }
++        PasswordPolicy.validate(password, normalized)?.let { throw IllegalArgumentException(it) }
++
++        val salt = PasswordHasher.newSalt()
++        val hash = PasswordHasher.hash(password, salt)
++        val id = db.userDao().insert(
++            UserEntity(
++                username = normalized,
++                displayName = displayName.trim(),
++                passwordHash = hash,
++                salt = salt,
++                role = "ADMIN",
++                isActive = true,
++                mustChangePassword = false,
++                lastLoginAt = now,
++                passwordChangedAt = now,
++                sessionVersion = 1,
++                createdAt = now,
++                updatedAt = now
++            )
++        )
++        db.securityDao().insertPasswordHistory(
++            UserPasswordHistoryEntity(userId = id, passwordHash = hash, salt = salt, createdAt = now)
++        )
++        audit(id, "ADMIN_BOOTSTRAPPED", "USER", id.toString(), newValue = "username=$normalized;role=ADMIN")
++        db.userDao().byId(id) ?: error("تعذر إنشاء مدير النظام")
++    }
++
+     suspend fun authenticate(username: String, password: CharArray, now: Long = System.currentTimeMillis()): AuthenticationResult {
+         val normalized = username.trim()
+         if (normalized.isBlank() || password.isEmpty()) return AuthenticationResult.Failure("اسم المستخدم أو كلمة المرور غير صحيحة")
+@@ -60,6 +99,8 @@ class SecurityService(private val db: FushDatabase) {
+                 failedLoginAttempts = 0,
+                 lockedUntil = null,
+                 lastLoginAt = now,
++                mustChangePassword = user.mustChangePassword || PasswordPolicy.isExpired(user.passwordChangedAt, now),
++                sessionVersion = user.sessionVersion + 1,
+                 updatedAt = now
+             )
+             dao.update(updated)
+diff --git a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+index f54f82f..7b9d01a 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -8,18 +8,21 @@ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.ui.screens.ChangePasswordScreen
+ import com.fush.erp.ui.screens.HomeShell
+ import com.fush.erp.ui.screens.LoginScreen
++import com.fush.erp.ui.screens.InitialAdminSetupScreen
+ 
+ @Composable
+ fun FushErpApp(container: AppContainer) {
+     val context = LocalContext.current
+     var seeded by remember { mutableStateOf(false) }
+     var user by remember { mutableStateOf<UserEntity?>(null) }
++    var needsInitialAdmin by remember { mutableStateOf(false) }
+     var startupError by remember { mutableStateOf<String?>(null) }
+ 
+     LaunchedEffect(Unit) {
+         try {
+             container.seedIfNeeded()
+             BackupRestoreManager.recordAppliedRestoreAudit(context, container.db)
++            needsInitialAdmin = container.db.userDao().count() == 0
+             seeded = true
+         } catch (t: Throwable) {
+             startupError = (t::class.simpleName ?: "Error") + ": " + (t.message ?: "بدون تفاصيل")
+@@ -34,6 +37,11 @@ fun FushErpApp(container: AppContainer) {
+         )
+     } else if (!seeded) {
+         androidx.compose.material3.Text("جاري تهيئة قاعدة البيانات...")
++    } else if (needsInitialAdmin) {
++        InitialAdminSetupScreen(container) { created ->
++            user = created
++            needsInitialAdmin = false
++        }
+     } else if (user == null) {
+         LoginScreen(container) { user = it }
+     } else if (user!!.mustChangePassword) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index d6bfe75..b7bd0a8 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -15,6 +15,7 @@ import com.fush.erp.BuildConfig
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.SecurityPermissions
++import com.fush.erp.domain.SessionPolicy
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
+ import java.util.concurrent.atomic.AtomicLong
+@@ -64,15 +65,17 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+ 
+     LaunchedEffect(user.id, user.sessionVersion) {
+         val sessionStartedAt = user.lastLoginAt ?: System.currentTimeMillis()
+-        val absoluteSessionMs = if (user.role == "ADMIN") 4L * 60L * 60L * 1000L else 8L * 60L * 60L * 1000L
+-        val idleSessionMs = if (user.role == "ADMIN") 3L * 60L * 1000L else 5L * 60L * 1000L
++        val absoluteSessionMs = SessionPolicy.absoluteTimeoutMs(user.role)
++        val idleSessionMs = SessionPolicy.idleTimeoutMs(user.role)
++        val sessionTimeoutMs = SessionPolicy.sessionTimeoutMs(user.role)
+         while (true) {
+-            delay(30_000L)
++            delay(15_000L)
+             val fresh = container.db.userDao().byId(user.id)
+             val now = System.currentTimeMillis()
+-            val expired = now - sessionStartedAt >= absoluteSessionMs
++            val sessionExpired = now - sessionStartedAt >= sessionTimeoutMs
++            val absoluteExpired = now - sessionStartedAt >= absoluteSessionMs
+             val idle = now - lastActivityAt.get() >= idleSessionMs
+-            if (fresh == null || !fresh.isActive || fresh.sessionVersion != user.sessionVersion || expired || idle) {
++            if (fresh == null || !fresh.isActive || fresh.sessionVersion != user.sessionVersion || sessionExpired || absoluteExpired || idle) {
+                 onLogout()
+                 break
+             }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
+index 02e664a..34d14d0 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
+@@ -15,10 +15,101 @@ import com.fush.erp.data.entity.RoleEntity
+ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.domain.PasswordPolicy
+ import com.fush.erp.domain.SecurityPermissions
++import com.fush.erp.domain.SessionPolicy
+ import kotlinx.coroutines.launch
+ import java.text.DateFormat
+ import java.util.Date
+ 
++@Composable
++fun InitialAdminSetupScreen(
++    container: AppContainer,
++    onCreated: (UserEntity) -> Unit,
++    modifier: Modifier = Modifier
++) {
++    var username by remember { mutableStateOf("admin") }
++    var displayName by remember { mutableStateOf("مدير النظام") }
++    var password by remember { mutableStateOf("") }
++    var confirm by remember { mutableStateOf("") }
++    var message by remember { mutableStateOf<String?>(null) }
++    var busy by remember { mutableStateOf(false) }
++    val scope = rememberCoroutineScope()
++
++    Surface(modifier.fillMaxSize()) {
++        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
++            Card(Modifier.fillMaxWidth().widthIn(max = 560.dp)) {
++                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++                    Text("إعداد مدير النظام", style = MaterialTheme.typography.headlineSmall)
++                    Text(
++                        "هذه أول مرة يتم فيها تشغيل النظام. أنشئ حساب المدير الآن. لا توجد كلمة مرور افتراضية أو ثابتة داخل التطبيق.",
++                        style = MaterialTheme.typography.bodyMedium
++                    )
++                    OutlinedTextField(
++                        value = username,
++                        onValueChange = { username = it },
++                        label = { Text("اسم المستخدم") },
++                        singleLine = true,
++                        enabled = !busy,
++                        modifier = Modifier.fillMaxWidth()
++                    )
++                    OutlinedTextField(
++                        value = displayName,
++                        onValueChange = { displayName = it },
++                        label = { Text("الاسم الظاهر") },
++                        singleLine = true,
++                        enabled = !busy,
++                        modifier = Modifier.fillMaxWidth()
++                    )
++                    OutlinedTextField(
++                        value = password,
++                        onValueChange = { password = it },
++                        label = { Text("كلمة المرور") },
++                        singleLine = true,
++                        enabled = !busy,
++                        visualTransformation = PasswordVisualTransformation(),
++                        modifier = Modifier.fillMaxWidth()
++                    )
++                    OutlinedTextField(
++                        value = confirm,
++                        onValueChange = { confirm = it },
++                        label = { Text("تأكيد كلمة المرور") },
++                        singleLine = true,
++                        enabled = !busy,
++                        visualTransformation = PasswordVisualTransformation(),
++                        modifier = Modifier.fillMaxWidth()
++                    )
++                    Text(
++                        "${PasswordPolicy.MIN_LENGTH} حرفًا على الأقل + حرف كبير وصغير + رقم + رمز خاص.",
++                        style = MaterialTheme.typography.bodySmall
++                    )
++                    message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++                    Button(
++                        enabled = !busy && username.isNotBlank() && displayName.isNotBlank() &&
++                            password.isNotBlank() && password == confirm,
++                        onClick = {
++                            busy = true
++                            message = null
++                            scope.launch {
++                                runCatching {
++                                    container.securityService.bootstrapFirstAdmin(
++                                        username = username,
++                                        displayName = displayName,
++                                        password = password.toCharArray()
++                                    )
++                                }.onSuccess(onCreated)
++                                    .onFailure { message = it.message ?: "تعذر إنشاء مدير النظام" }
++                                password = ""
++                                confirm = ""
++                                busy = false
++                            }
++                        },
++                        modifier = Modifier.fillMaxWidth()
++                    ) { Text("إنشاء مدير النظام") }
++                }
++            }
++        }
++    }
++}
++
+ @Composable
+ fun UsersPermissionsScreen(container: AppContainer, currentUser: UserEntity, modifier: Modifier = Modifier) {
+     val users by container.db.userDao().observeAll().collectAsState(initial = emptyList())
+@@ -298,10 +389,11 @@ private fun RolesTab(
+ private fun SecurityPolicyTab() {
+     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+         item { Text("سياسة الأمان", style = MaterialTheme.typography.headlineSmall) }
+-        item { PolicyCard("كلمات المرور", "15 حرفًا على الأقل، حرف كبير وصغير ورقم ورمز خاص، ومنع إعادة استخدام آخر 10 كلمات مرور.") }
++        item { PolicyCard("كلمات المرور", "${PasswordPolicy.MIN_LENGTH} حرفًا على الأقل، حرف كبير وصغير ورقم ورمز خاص، ومنع إعادة استخدام آخر ${PasswordPolicy.HISTORY_COUNT} كلمات مرور، وتغيير إلزامي بعد ${PasswordPolicy.MAX_AGE_DAYS} يومًا.") }
+         item { PolicyCard("الحسابات الجديدة", "كلمة المرور الأولية مؤقتة ويجب تغييرها عند أول دخول.") }
+         item { PolicyCard("محاولات الدخول", "بعد 5 محاولات فاشلة: قفل 15 دقيقة. عند تكرار القفل: 60 دقيقة.") }
+-        item { PolicyCard("تغيير الدور أو كلمة المرور", "يتم رفع رقم الجلسة الأمنية لإبطال الجلسات القديمة عند تطبيق إدارة الجلسات المشتركة.") }
++        item { PolicyCard("الجلسات", "جلسة واحدة فقط لكل مستخدم. انتهاء الجلسة: ${SessionPolicy.ADMIN_SESSION_MINUTES} دقائق للمدير و${SessionPolicy.USER_SESSION_MINUTES} دقائق لبقية المستخدمين، مع قفل خمول ${SessionPolicy.ADMIN_IDLE_MINUTES}/${SessionPolicy.USER_IDLE_MINUTES} دقائق وحد مطلق ${SessionPolicy.ADMIN_ABSOLUTE_HOURS}/${SessionPolicy.USER_ABSOLUTE_HOURS} ساعات.") }
++        item { PolicyCard("تغيير الدور أو كلمة المرور", "يتم إبطال الجلسة الحالية فور تغيير الدور أو إعادة ضبط كلمة المرور، كما أن تسجيل دخول جديد يبطل الجلسة السابقة.") }
+         item { PolicyCard("الحماية من فقد الإدارة", "لا يمكن تعطيل آخر مدير نظام نشط أو إزالة دور ADMIN منه.") }
+         item { PolicyCard("سجل التدقيق", "تُسجل عمليات الدخول، إنشاء المستخدمين، تغيير الأدوار، التعطيل، وكلمات المرور في سجل التدقيق.") }
+     }
+diff --git a/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt b/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
+index 0774976..3f304be 100644
+--- a/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
+@@ -42,4 +42,23 @@ class SecurityPolicyTest {
+         val decision = LoginLockoutPolicy.onFailure(4, 1, now)
+         assertEquals(now + 60L * 60_000L, decision.lockedUntil)
+     }
++    @Test
++    fun sessionPolicyMatchesSecurityBaseline() {
++        assertEquals(3L * 60_000L, SessionPolicy.idleTimeoutMs("ADMIN"))
++        assertEquals(5L * 60_000L, SessionPolicy.idleTimeoutMs("ACCOUNTANT"))
++        assertEquals(5L * 60_000L, SessionPolicy.sessionTimeoutMs("ADMIN"))
++        assertEquals(10L * 60_000L, SessionPolicy.sessionTimeoutMs("ACCOUNTANT"))
++        assertEquals(4L * 60L * 60_000L, SessionPolicy.absoluteTimeoutMs("ADMIN"))
++        assertEquals(8L * 60L * 60_000L, SessionPolicy.absoluteTimeoutMs("ACCOUNTANT"))
++    }
++    @Test
++    fun passwordExpiresAfterSixtyDays() {
++        val changedAt = 1_000L
++        val beforeExpiry = changedAt + (60L * 24L * 60L * 60_000L) - 1L
++        val atExpiry = changedAt + 60L * 24L * 60L * 60_000L
++        assertFalse(PasswordPolicy.isExpired(changedAt, beforeExpiry))
++        assertTrue(PasswordPolicy.isExpired(changedAt, atExpiry))
++        assertTrue(PasswordPolicy.isExpired(null, atExpiry))
++    }
++
+ }
