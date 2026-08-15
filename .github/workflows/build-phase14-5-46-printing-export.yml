@@ -44,7 +44,7 @@ jobs:
           repository: aamggd/amgd
           run-id: 31865139140
 
-      - name: Restore Phase 14.5.45 and apply Phase 14.5.46 printing patches
+      - name: Restore Phase 14.5.45 and install Phase 14.5.46 exporter
         shell: bash
         run: |
           set -euo pipefail
@@ -56,12 +56,20 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm baseline-14.5.45
-          cat ../phase14_5_46_printing_export/patches/01_professional_printing_export.patch.part* > ../phase14_5_46_printing_export/combined-printing.patch
-          git apply --check ../phase14_5_46_printing_export/combined-printing.patch
-          git apply ../phase14_5_46_printing_export/combined-printing.patch
+
+          cat ../phase14_5_46_printing_export/files/ReportExportSupport.kt.gz.b64.part* \
+            | base64 -d \
+            | gzip -d \
+            > app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+          echo '7e8cb427ae42b4c27b3b26db9b3eb1e5a6b564d8cdf88f28cd5d3c658d8f2cca  app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt' | sha256sum -c -
+
+          sed -i 's/versionCode = 84/versionCode = 85/' app/build.gradle.kts
+          sed -i 's/versionName = "0.15.4.45-financial-reports"/versionName = "0.15.4.46-printing-export"/' app/build.gradle.kts
+
           git apply --check ../phase14_5_46_printing_export/patches/02_spreadsheet_numeric_cells.patch
           git apply ../phase14_5_46_printing_export/patches/02_spreadsheet_numeric_cells.patch
           git diff --check HEAD
+
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 85' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.46-printing-export"' app/build.gradle.kts
