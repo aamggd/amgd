@@ -48,9 +48,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'b246625582d8791d26011049469743c22473148a5d7dfeb7ca286cfaeb977f18  phase14_5_56_direct_print_coverage/payload/p56-part00.txt' | sha256sum -c -
-          echo '4f9da35c6cac15d425547cb473c961698aa2b31a5f1d425e0ca0b1efda055024  phase14_5_56_direct_print_coverage/payload/p56-part01.txt' | sha256sum -c -
-          cat phase14_5_56_direct_print_coverage/payload/p56-part*.txt > phase14_5_56_direct_print_coverage/p56.full.b64
+          echo '792c0941767ac3bdeb30d0fedebee6bd3ac8ccbec05c39f5978ff8389d46b1c2  phase14_5_56_direct_print_coverage/payload/v2-p56-part00.txt' | sha256sum -c -
+          echo 'cb5b8b671607d1445220bbd8877add4c584717c1a593a1ce26cd4c2c28008ac7  phase14_5_56_direct_print_coverage/payload/v2-p56-part01.txt' | sha256sum -c -
+          echo '864d261d9b3ae09256b12e41c0c1f59b6fbbb6bf8865304e2d37f4897d64866e  phase14_5_56_direct_print_coverage/payload/v2-p56-part02.txt' | sha256sum -c -
+          echo 'c3ee73664e658f331e9947ee4bb30c00ddd490ff819c298367919abd7e1dabb7  phase14_5_56_direct_print_coverage/payload/v2-p56-part03.txt' | sha256sum -c -
+          echo '62b81cd9da60e16f4ed1657c674c544e3646e568bb90a81d30bf8e46d424e117  phase14_5_56_direct_print_coverage/payload/v2-p56-part04.txt' | sha256sum -c -
+          echo 'e273a7284e7fbce73bb74ba8b327bd400be5330fe3af263f5edc518a0390ad80  phase14_5_56_direct_print_coverage/payload/v2-p56-part05.txt' | sha256sum -c -
+          echo '773ab2bff6f241933acd6b37cc1203b84248ed22b9a6d4d9752cda7354edbdb3  phase14_5_56_direct_print_coverage/payload/v2-p56-part06.txt' | sha256sum -c -
+          cat phase14_5_56_direct_print_coverage/payload/v2-p56-part*.txt > phase14_5_56_direct_print_coverage/p56.full.b64
           echo 'fb673d216bf9601b25a68b8d223b3d97cac5597e7dac791a8b05b5976ee04649  phase14_5_56_direct_print_coverage/p56.full.b64' | sha256sum -c -
           base64 -d phase14_5_56_direct_print_coverage/p56.full.b64 | gzip -dc > phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch
           echo 'bac9368c5c4d3a4213cbd978738263f6781e8715741fcf9d87c8af1fb106ff73  phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch' | sha256sum -c -
