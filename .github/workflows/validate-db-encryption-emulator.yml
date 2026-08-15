@@ -1,0 +1,114 @@
+name: Validate DB Encryption on Android
+
+on:
+  push:
+    branches: [fush/users-permissions]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  android-encryption:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout security branch
+        uses: actions/checkout@v4
+
+      - name: Download and patch official Phase 14.5.38 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir baseline-artifact source security-ci-out
+          gh run download 31858347166 --repo "$GITHUB_REPOSITORY" --name FushERP-Phase14.5.38-Professional-UI-Build --dir baseline-artifact
+          echo 'd4ff24af274e3aedc14cdf39762e9a0b3bd6ff4f3b563062063e5b79342ec38f  baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip' | sha256sum -c -
+          unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d source
+          cd source/FushERP_Mobile_Phase5
+          rm -rf app/build .gradle .kotlin
+          git init -q
+          git config user.name security-ci
+          git config user.email security-ci@users.noreply.github.com
+          git add . && git commit -qm baseline
+          python ../../security_rebase_official_14_5_38_final/apply_patch.py
+          git apply ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
+          git apply ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
+          git apply ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
+          cat ../../security_rebase_official_14_5_38_final/database_encryption_parts_v2/part_*.b64 | tr -d '\n\r' > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64
+          echo '3ffd9d682cdb9fb65b6696a1152990824377b936be01a32133a85210a0499f06  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64' | sha256sum -c -
+          base64 -d ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64 | gzip -dc > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          echo '821bd4419050f0631415e2b872bed46b597b0a1d862860d4e4692e1885e30537  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
+          git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          git apply ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          git diff --check
+          test -f app/src/androidTest/java/com/fush/erp/backup/DatabaseEncryptionInstrumentedTest.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install emulator image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Boot emulator and run SQLCipher migration test
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod 666 /dev/kvm || true
+          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd fush-security-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > security-ci-out/emulator.log 2>&1 &
+          EMU_PID=$!
+          device_seen=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator exited before ADB became available'
+              cat security-ci-out/emulator.log
+              exit 1
+            fi
+            if adb devices | grep -q '^emulator-'; then
+              device_seen=1
+              break
+            fi
+            sleep 2
+          done
+          test "$device_seen" = "1" || { echo 'Emulator did not appear in ADB'; cat security-ci-out/emulator.log; exit 1; }
+          timeout 60s adb wait-for-device
+          booted=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator exited before boot completed'
+              cat security-ci-out/emulator.log
+              exit 1
+            fi
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            [ "$booted" = "1" ] && break
+            sleep 2
+          done
+          test "$booted" = "1" || { echo 'Android boot timeout'; cat security-ci-out/emulator.log; exit 1; }
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          cd source/FushERP_Mobile_Phase5
+          timeout 900s gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest 2>&1 | tee ../../security-ci-out/instrumented-encryption.log
+
+      - name: Upload emulator logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-DB-Encryption-Android-Validation
+          path: security-ci-out/*
+          if-no-files-found: warn
