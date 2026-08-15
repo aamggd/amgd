@@ -1,0 +1,50 @@
+name: Inspect Accounting Party Rejects
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths: ['.github/workflows/inspect-accounting-party-rejects.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+      - name: Reproduce and inspect rejects
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/ui-professional-redesign fush/accounting --depth=1
+          git archive --format=tar origin/fush/ui-professional-redesign phase14_5_39_production_quality_ui phase14_5_40_employees_sales_reps_ui phase14_5_41_assets_maintenance_expenses_ui phase14_5_42_reports_adaptive_ui | tar -xf -
+          git archive --format=tar origin/fush/accounting fush_accounting | tar -xf -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git && git init -q && git config user.name CI && git config user.email ci@example.invalid && git add -A && git commit -qm base
+          for phase in phase14_5_39_production_quality_ui phase14_5_40_employees_sales_reps_ui phase14_5_41_assets_maintenance_expenses_ui phase14_5_42_reports_adaptive_ui; do
+            for p in ../$phase/patches/*.patch; do
+              if git apply --check "$p"; then git apply "$p"; else cp "$p" /tmp/x.patch; printf '\n' >> /tmp/x.patch; git apply --recount /tmp/x.patch; fi
+            done
+          done
+          base64 -d ../fush_accounting/patches/phase14.5.34-accounting-integrity.patch.gz.b64 | gzip -dc > /tmp/a34.patch
+          git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt /tmp/a34.patch
+          python - <<'PY'
+          import pathlib,re
+          raw=pathlib.Path('/tmp/a34.patch').read_text(); target='app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt'
+          part=next(p for p in re.split(r'(?=^diff --git )',raw,flags=re.M) if p.startswith('diff --git ') and f' b/{target}' in p.splitlines()[0])
+          pathlib.Path('/tmp/party.patch').write_text(part)
+          PY
+          set +e
+          patch -p1 --forward --fuzz=3 < /tmp/party.patch
+          set -e
+          echo '=== REJECTS ==='
+          cat app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt.rej || true
+          echo '=== CURRENT relevant terms ==='
+          grep -n -C 8 'سند\|قبض\|صرف\|settle\|payment\|receipt\|invoice' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt | head -n 300 || true
