@@ -63,6 +63,8 @@ jobs:
           cd FushERP_Mobile_Phase5
           rm -rf .git app/build .gradle build
           git init -q
+          git add -A
+          git -c user.name='FUSH Build' -c user.email='build@local.invalid' commit -qm 'Phase 14.5.41 baseline'
 
           echo 'Applying Phase 14.5.42 reports/adaptive UI'
           for patch_file in ../phase14_5_42_reports_adaptive_ui/patches/*.patch; do
