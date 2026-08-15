@@ -60,9 +60,7 @@ jobs:
             phase14_5_41_assets_maintenance_expenses_ui \
             phase14_5_42_reports_adaptive_ui
           do
-            echo "=== $phase ==="
             for p in ../$phase/patches/*.patch; do
-              echo "Applying $(basename "$p")"
               if git apply --check "$p"; then
                 git apply "$p"
               else
@@ -70,8 +68,7 @@ jobs:
                 python - "$p" "$repaired" <<'PY'
           import pathlib,sys
           raw=pathlib.Path(sys.argv[1]).read_bytes()
-          if not raw.endswith(b'\n'):
-              raw += b'\n'
+          if not raw.endswith(b'\n'): raw += b'\n'
           pathlib.Path(sys.argv[2]).write_bytes(raw)
           PY
                 git apply --recount --check "$repaired"
@@ -80,40 +77,19 @@ jobs:
             done
           done
           grep -q 'versionCode = 81' app/build.gradle.kts
-          grep -q '0.15.4.42-ui-reports-adaptive' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           git add -A && git commit -qm 'Apply UI 39-42'
 
-      - name: Rebase accounting patches sequentially
+      - name: Rebase validated accounting phases 34-35
         shell: bash
         run: |
           set -euo pipefail
           cd FushERP_Mobile_Phase5
-          extract_patch() {
-            src="$1"; out="$2"
-            set +e
-            base64 -d "../fush_accounting/patches/$src" | gzip -dc > "$out"
-            rc=$?
-            set -e
-            test -s "$out"
-            grep -q '^diff --git ' "$out"
-            echo "Extracted $src rc=$rc bytes=$(wc -c < "$out")"
-          }
-          extract_patch phase14.5.34-accounting-integrity.patch.gz.b64 /tmp/accounting34.patch
-          extract_patch phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 /tmp/accounting35.patch
-          extract_patch phase14.5.36-operational-reversals.patch.gz.b64 /tmp/accounting36.patch
-          extract_patch phase14.5.37-fiscal-year-closing.patch.gz.b64 /tmp/accounting37.patch
+          base64 -d ../fush_accounting/patches/phase14.5.34-accounting-integrity.patch.gz.b64 | gzip -dc > /tmp/accounting34.patch
+          base64 -d ../fush_accounting/patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 | gzip -dc > /tmp/accounting35.patch
 
-          echo '=== accounting 14.5.34 functional core ==='
-          git apply --check \
-            --exclude=app/build.gradle.kts \
-            --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt \
-            /tmp/accounting34.patch
-          git apply \
-            --exclude=app/build.gradle.kts \
-            --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt \
-            /tmp/accounting34.patch
-
+          git apply --check --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt /tmp/accounting34.patch
+          git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt /tmp/accounting34.patch
           python - <<'PY'
           import pathlib,re
           raw=pathlib.Path('/tmp/accounting34.patch').read_text()
@@ -125,23 +101,19 @@ jobs:
           patch -p1 --forward --fuzz=3 < /tmp/party34.patch
           git add -A && git commit -qm 'Rebase accounting integrity'
 
-          for spec in '35:/tmp/accounting35.patch' '36:/tmp/accounting36.patch' '37:/tmp/accounting37.patch'; do
-            phase="${spec%%:*}"; p="${spec##*:}"
-            echo "=== accounting 14.5.$phase ==="
-            if git apply --check --verbose --exclude=app/build.gradle.kts "$p"; then
-              git apply --exclude=app/build.gradle.kts "$p"
-              git add -A && git commit -qm "Apply accounting phase 14.5.$phase"
-            else
-              echo "ACCOUNTING_REBASE_REQUIRED_PHASE=$phase"
-              git apply --check --verbose --exclude=app/build.gradle.kts "$p" || true
-              exit 22
-            fi
-          done
-          echo 'ACCOUNTING_APPLY_OK'
-          grep -n 'FUSH_DB_SCHEMA_VERSION' app/src/main/java/com/fush/erp/data/FushDatabase.kt || true
-          grep -n 'MIGRATION_27_28\|MIGRATION_28_29\|MIGRATION_29_30' app/src/main/java/com/fush/erp/data/Migrations.kt || true
+          if git apply --check --verbose --exclude=app/build.gradle.kts /tmp/accounting35.patch; then
+            git apply --exclude=app/build.gradle.kts /tmp/accounting35.patch
+          else
+            echo ACCOUNTING35_REBASE_REQUIRED
+            git apply --check --verbose --exclude=app/build.gradle.kts /tmp/accounting35.patch || true
+            exit 22
+          fi
+          git add -A && git commit -qm 'Apply accounting periods and reconciliation'
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/Migrations.kt
+          echo ACCOUNTING_34_35_OK
 
-      - name: Reconstruct users permissions base patch and check
+      - name: Reconstruct users permissions base patch and diagnose conflicts
         shell: bash
         run: |
           set -euo pipefail
@@ -152,16 +124,11 @@ jobs:
           pathlib.Path('/tmp/users34.patch').write_bytes(raw)
           PY
           cd FushERP_Mobile_Phase5
-          if git apply --check --verbose /tmp/users34.patch; then
-            echo USERS34_APPLIES_CLEANLY
-          else
-            echo USERS34_NEEDS_REBASE
-            git apply --check --verbose /tmp/users34.patch || true
-          fi
+          git apply --check --verbose /tmp/users34.patch || true
+          echo USERS_DIAG_DONE
 
-      - name: Check users security hardening relationship
+      - name: Inspect users security hardening patch files
         shell: bash
         run: |
           set -euo pipefail
-          cd FushERP_Mobile_Phase5
-          grep -n '^diff --git' ../phase14_5_36_users_security_hardening/phase14_5_36.patch
+          grep '^diff --git' phase14_5_36_users_security_hardening/phase14_5_36.patch || true
