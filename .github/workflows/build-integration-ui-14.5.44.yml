@@ -89,7 +89,10 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
           test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
-          ! grep -R --line-number --include='*.kt' 'fallbackToDestructiveMigration' app/src/main || false
+          if grep -R --line-number --include='*.kt' 'fallbackToDestructiveMigration' app/src/main; then
+            echo 'ERROR: destructive Room fallback detected'
+            exit 1
+          fi
 
           # Handoff must not have changed any non-UI business/data source file.
           bad="$(git diff --cached --name-only | grep -Ev '^(app/build.gradle.kts|app/src/main/java/com/fush/erp/ui/|.*\.md$)' || true)"
@@ -164,3 +167,5 @@ jobs:
           path: integration-ui-output/
           if-no-files-found: error
           retention-days: 7
+
+# trigger: central-ui-integration-validation
