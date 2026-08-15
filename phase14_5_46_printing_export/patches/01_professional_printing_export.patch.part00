@@ -1,0 +1,243 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index a0a549d..7a983db 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 84
+-        versionName = "0.15.4.45-financial-reports"
++        versionCode = 85
++        versionName = "0.15.4.46-printing-export"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt b/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+index dd21602..597b154 100644
+--- a/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
++++ b/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+@@ -44,10 +44,11 @@ data class ReportExportTable(
+ )
+ 
+ object ReportExportSupport {
+-    private const val PDF_PAGE_WIDTH = 595
+-    private const val PDF_PAGE_HEIGHT = 842
+-    private const val MARGIN = 36f
+-    private const val CONTENT_WIDTH = PDF_PAGE_WIDTH - (MARGIN * 2)
++    private const val A4_SHORT = 595
++    private const val A4_LONG = 842
++    private const val MARGIN = 32f
++    private const val FOOTER_SPACE = 22f
++    private const val CELL_PADDING = 5f
+ 
+     fun exportPdf(context: Context, document: ReportExportDocument, baseName: String): Uri {
+         val bytes = buildPdf(document)
+@@ -90,54 +91,106 @@ object ReportExportSupport {
+         val pdfBytes = buildPdf(document)
+         val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+         val adapter = ByteArrayPdfPrintAdapter(jobName, pdfBytes)
++        val mediaSize = if (requiresLandscape(document)) {
++            PrintAttributes.MediaSize.ISO_A4.asLandscape()
++        } else {
++            PrintAttributes.MediaSize.ISO_A4
++        }
+         val attributes = PrintAttributes.Builder()
+-            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
++            .setMediaSize(mediaSize)
+             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+             .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+             .build()
+         printManager.print(jobName, adapter, attributes)
+     }
+ 
++    private fun requiresLandscape(document: ReportExportDocument): Boolean =
++        document.tables.any { it.headers.size >= 6 || it.rows.any { row -> row.size >= 6 } }
++
+     private fun buildPdf(document: ReportExportDocument): ByteArray {
++        val landscape = requiresLandscape(document)
++        val pageWidth = if (landscape) A4_LONG else A4_SHORT
++        val pageHeight = if (landscape) A4_SHORT else A4_LONG
++        val contentWidth = pageWidth - (MARGIN * 2)
++        val pageBottom = pageHeight - MARGIN - FOOTER_SPACE
+         val pdf = PdfDocument()
++
+         val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+             color = Color.rgb(30, 30, 30)
+-            textSize = 10.5f
++            textSize = 9.5f
+             textAlign = Paint.Align.RIGHT
+             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+         }
+         val label = Paint(body).apply { typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+-        val heading = Paint(body).apply { textSize = 20f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+-        val section = Paint(body).apply { textSize = 14f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
+-        val small = Paint(body).apply { textSize = 8.5f; color = Color.DKGRAY }
+-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.LTGRAY; strokeWidth = 0.8f }
++        val heading = Paint(body).apply { textSize = 18f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
++        val section = Paint(body).apply { textSize = 12.5f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
++        val small = Paint(body).apply { textSize = 8f; color = Color.DKGRAY }
++        val tableHeader = Paint(body).apply { textSize = 8.5f; typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD) }
++        val tableBody = Paint(body).apply { textSize = 8.3f }
++        val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.LTGRAY; strokeWidth = 0.8f }
++        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = Color.rgb(190, 190, 190)
++            strokeWidth = 0.7f
++            style = Paint.Style.STROKE
++        }
++        val headerFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = Color.rgb(238, 240, 243)
++            style = Paint.Style.FILL
++        }
++        val alternateFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
++            color = Color.rgb(249, 249, 249)
++            style = Paint.Style.FILL
++        }
+ 
+         var pageNo = 0
+         var page: PdfDocument.Page? = null
+         var y = 0f
++        val generatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
++
++        fun finishPage() {
++            val current = page ?: return
++            val footer = Paint(small).apply { textAlign = Paint.Align.CENTER }
++            current.canvas.drawText(
++                "Fush ERP • $generatedAt • صفحة $pageNo",
++                pageWidth / 2f,
++                pageHeight - 14f,
++                footer
++            )
++            pdf.finishPage(current)
++            page = null
++        }
+ 
+         fun startPage() {
+-            page?.let { pdf.finishPage(it) }
++            finishPage()
+             pageNo += 1
+-            page = pdf.startPage(PdfDocument.PageInfo.Builder(PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT, pageNo).create())
++            page = pdf.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNo).create())
+             y = MARGIN
+             val canvas = page!!.canvas
+-            canvas.drawText("Fush ERP", PDF_PAGE_WIDTH - MARGIN, y, small)
+-            canvas.drawText("صفحة $pageNo", MARGIN + 34f, y, Paint(small).apply { textAlign = Paint.Align.LEFT })
++            canvas.drawText("Fush ERP", pageWidth - MARGIN, y + small.textSize, small)
++            canvas.drawText(
++                if (landscape) "A4 أفقي" else "A4 عمودي",
++                MARGIN,
++                y + small.textSize,
++                Paint(small).apply { textAlign = Paint.Align.LEFT }
++            )
+             y += 18f
+         }
+ 
+-        fun ensure(space: Float) {
++        fun ensure(space: Float): Boolean {
+             if (page == null) startPage()
+-            if (y + space > PDF_PAGE_HEIGHT - MARGIN) startPage()
++            if (y + space > pageBottom) {
++                startPage()
++                return true
++            }
++            return false
+         }
+ 
+         fun drawWrapped(text: String, paint: Paint = body, indent: Float = 0f, extraAfter: Float = 3f) {
+             val clean = text.ifBlank { "—" }
+-            val lines = wrapText(clean, paint, CONTENT_WIDTH - indent)
++            val lines = wrapText(clean, paint, contentWidth - indent)
+             for (line in lines) {
+                 ensure(paint.textSize + 8f)
+-                page!!.canvas.drawText(line, PDF_PAGE_WIDTH - MARGIN - indent, y + paint.textSize, paint)
++                page!!.canvas.drawText(line, pageWidth - MARGIN - indent, y + paint.textSize, paint)
+                 y += paint.textSize + 4f
+             }
+             y += extraAfter
+@@ -146,13 +199,13 @@ object ReportExportSupport {
+         fun drawKeyValue(key: String, value: String) {
+             val keyText = "$key:"
+             val keyWidth = label.measureText(keyText)
+-            val available = CONTENT_WIDTH - keyWidth - 16f
++            val available = contentWidth - keyWidth - 16f
+             val valuePaint = Paint(body)
+             val lines = wrapText(value.ifBlank { "—" }, valuePaint, available.coerceAtLeast(150f))
+             val requiredHeight = label.textSize + 8f + ((lines.size - 1).coerceAtLeast(0) * (valuePaint.textSize + 4f))
+             ensure(requiredHeight)
+             val canvas = page!!.canvas
+-            val xRight = PDF_PAGE_WIDTH - MARGIN
++            val xRight = pageWidth - MARGIN
+             canvas.drawText(keyText, xRight, y + label.textSize, label)
+             val valueRight = xRight - keyWidth - 12f
+             for ((index, line) in lines.withIndex()) {
+@@ -164,43 +217,108 @@ object ReportExportSupport {
+ 
+         fun divider() {
+             ensure(12f)
+-            page!!.canvas.drawLine(MARGIN, y, PDF_PAGE_WIDTH - MARGIN, y, linePaint)
+-            y += 10f
++            page!!.canvas.drawLine(MARGIN, y, pageWidth - MARGIN, y, dividerPaint)
++            y += 9f
+         }
+ 
+-        startPage()
+-        drawWrapped(document.title, heading, extraAfter = 4f)
+-        if (document.subtitle.isNotBlank()) drawWrapped(document.subtitle, small, extraAfter = 8f)
+-        divider()
++        fun columnWidths(headers: List<String>): List<Float> {
++            if (headers.isEmpty()) return emptyList()
++            val weights = headers.map { header ->
++                when {
++                    header.contains("البيان") || header.contains("الوصف") || header.contains("الحساب") || header.contains("الطرف") -> 1.8f
++                    header.contains("التاريخ") || header.contains("المرجع") || header.contains("المستند") -> 1.2f
++                    else -> 1f
++                }
++            }
++            val total = weights.sum().coerceAtLeast(1f)
++            return weights.map { contentWidth * it / total }
++        }
+ 
+-        if (document.summary.isNotEmpty()) {
+-            drawWrapped("الملخص", section)
+-            document.summary.forEach { (k, v) -> drawKeyValue(k, v) }
+-            divider()
++        fun cellLines(text: String, paint: Paint, width: Float, maxLines: Int): List<String> {
++            val all = wrapText(text.ifBlank { "—" }, paint, (width - CELL_PADDING * 2).coerceAtLeast(24f))
++            if (all.size <= maxLines) return all
++            val kept = all.take(maxLines).toMutableList()
++            val last = kept.last().trimEnd()
++            kept[kept.lastIndex] = if (last.endsWith("…")) last else "$last…"
++            return kept
+         }
+ 
+-        for (table in document.tables) {
++        fun rowHeight(cells: List<String>, widths: List<Float>, paint: Paint, maxLines: Int): Float {
++            val lineHeight = paint.textSize + 3.5f
++            val maxCount = widths.indices.maxOfOrNull { i ->
++                cellLines(cells.getOrElse(i) { "" }, paint, widths[i], maxLines).size
++            } ?: 1
++            return (maxCount * lineHeight + CELL_PADDING * 2).coerceAtLeast(24f)
++        }
++
++        fun drawRow(cells: List<String>, widths: List<Float>, paint: Paint, isHeader: Boolean, alternate: Boolean = false) {
++            val height = rowHeight(cells, widths, paint, if (isHeader) 3 else 4)
++            ensure(height)
++            val canvas = page!!.canvas
++            var right = pageWidth - MARGIN
++            for (i in widths.indices) {
++                val width = widths[i]
++                val left = right - width
++                if (isHeader) canvas.drawRect(left, y, right, y + height, headerFill)
++                else if (alternate) canvas.drawRect(left, y, right, y + height, alternateFill)
++                canvas.drawRect(left, y, right, y + height, borderPaint)
++                val lines = cellLines(cells.getOrElse(i) { "" }, paint, width, if (isHeader) 3 else 4)
++                val lineHeight = paint.textSize + 3.5f
++                lines.forEachIndexed { index, line ->
++                    canvas.drawText(line, right - CELL_PADDING, y + CELL_PADDING + paint.textSize + index * lineHeight, paint)
++                }
++                right = left
++            }
++            y += height
++        }
++
++        fun drawTable(table: ReportExportTable) {
