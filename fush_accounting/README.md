@@ -17,6 +17,7 @@
 2. Phase 14.5.39 — Foreign Currency Treasury & Revaluation.
 3. Phase 14.5.40 — Fixed Asset Accounting.
 4. Phase 14.5.41 — Multi-Invoice Settlement.
+5. Phase 14.5.42 — Accounting Posting Profiles & COA Safety.
 
 ### Accounting Rebase الأساسي
 - Workflow: `.github/workflows/build-accounting-rebase-14.5.38.yml`
@@ -83,6 +84,16 @@
    - Successful validation run: `31869145938`.
    - Patch SHA-256: `069b0a847e3b42244b04b11417280058286b5581a1b9b31448e14b41ab304f0b`.
 
+9. **Accounting Posting Profiles & COA Safety — Phase 14.5.42**
+   - استبدال الاعتماد التشغيلي على أكواد الحسابات الثابتة بأدوار محاسبية مستقرة مرتبطة بـ`accountId`.
+   - المبيعات والمشتريات والمخزون والإنتاج والعملات والأصول والعمولات والإقفال والمطابقات تستخدم `PostingRole` مركزيًا.
+   - حسابات الرقابة AR/AP/Employee/Sales Rep تبقى مرتبطة بدفاترها المساندة حتى لو تغير كود الحساب.
+   - إعدادات ترحيل داخل شاشة الحسابات لتغيير الحساب المرتبط بكل دور مع التحقق من النوع والحالة.
+   - Triggers في SQLite تمنع ربط دور بحساب غير صالح أو تعطيل/تغيير نوع/حذف حساب مستخدم في الترحيل.
+   - إزالة الاستدعاءات المباشرة لأكواد الترحيل السابقة من خدمات المجال المستهدفة.
+   - Successful validation run: `31872176530`.
+   - Patch SHA-256: `4949f6bf3c83392deee8e1b2974fda6bd6f60e421012fd40e65c88ec395a72a7`.
+
 ## Room Schema — أرقام الفرع مؤقتة فقط
 السلسلة المستقلة الحالية تستخدم:
 - `27 -> 28`: Accounting periods/reconciliation.
@@ -92,18 +103,24 @@
 - `31 -> 32`: Foreign-currency treasury/revaluation.
 - `32 -> 33`: Fixed-asset accounting.
 - Phase 14.5.41: **no migration**؛ يبقى Schema `33`.
+- `33 -> 34`: Posting profiles / COA safety.
 
 هذه الأرقام **BRANCH ONLY / PROVISIONAL** وليست أرقام الـSchema النهائية للمشروع الموحد. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على نفس SQL والبيانات وعدم استخدام destructive migration.
 
 ## بوابة التحقق الأحدث
-Phase 14.5.41 — Run `31869145938` نجح في:
-- Patch integrity / SHA-256 / GZIP verification: PASS.
-- Apply to validated Phase 14.5.40 source: PASS.
+Phase 14.5.42 — Run `31872176530` نجح في:
+- Patch chunk integrity / SHA-256 / GZIP verification: PASS.
+- Corrected final patch integrity: PASS.
+- Apply to validated Phase 14.5.41 source: PASS.
 - Application ID / baseline identity guard: PASS.
-- Schema remains 33 / no new migration: PASS.
+- Schema 34 / Migration 33->34: PASS.
+- Database posting-profile guards: PASS.
+- No destructive migration: PASS.
+- No former fixed posting-code lookup in domain services: PASS.
+- Role-based control-party routing: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
-- Room Schema 33 verification: PASS.
+- Room Schema 34 generation: PASS.
 - Zipalign: PASS.
 - Artifact upload: PASS.
 
@@ -114,4 +131,6 @@ Phase 14.5.41 — Run `31869145938` نجح في:
 - `fush_accounting/PHASE14_5_40_VALIDATION.md`
 - `fush_accounting/PHASE14_5_41_SCOPE.md`
 - `fush_accounting/PHASE14_5_41_VALIDATION.md`
+- `fush_accounting/PHASE14_5_42_SCOPE.md`
+- `fush_accounting/PHASE14_5_42_VALIDATION.md`
 - `fush_accounting/rebase/VALIDATION_STATUS.md`
