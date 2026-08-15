@@ -42,7 +42,10 @@ jobs:
           git apply ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
           git apply --check ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
           git apply ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
-          base64 -d ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch.gz.b64 | gzip -dc > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          cat ../../security_rebase_official_14_5_38_final/database_encryption_parts/part_*.b64 | tr -d '\n\r' > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64
+          echo '474598fee129f0b7bb259cec4beb0aa58e4c278f8977718ee13c3b8710d40d1d  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64' | sha256sum -c -
+          base64 -d ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64 | gzip -dc > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
+          echo '83468803ef235f4bf2d8e03132c7246e054227f9740b47ca91d43baaacf71b03  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
           git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git apply ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git diff --check
@@ -58,6 +61,7 @@ jobs:
           grep -q 'sqlcipher-android:4.17.0' app/build.gradle.kts
           grep -q 'SupportOpenHelperFactory' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/DatabaseKeyManager.kt
+          grep -q 'cleanupStalePlaintextSafety' app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
           test -f app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
           test -f app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
           test -f app/src/test/java/com/fush/erp/backup/DatabaseEncryptionManagerTest.kt
