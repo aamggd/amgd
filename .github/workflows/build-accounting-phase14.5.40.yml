@@ -49,27 +49,27 @@ jobs:
           ROOT="$GITHUB_WORKSPACE"
           CH="$ROOT/fush_accounting/rebase/phase14.5.40_chunks_v4"
           for n in 00 01 02 03 04 05 06 07 08; do test "$(wc -c < "$CH/part${n}.b64")" -eq 2000; done
-          test "$(wc -c < "$CH/part09.b64")" -eq 484
+          test "$(wc -c < "$CH/part09.b64")" -eq 480
           echo '2bfc5004a3a4f28b1531c6a17ae0851da28b3a7c40c56bcf2475df96ce6d2d95  part00.b64' | (cd "$CH" && sha256sum -c -)
           echo '20c5626ec05b7972d01d54440aeddf5c800412eff9cfa053b14ea09e92a02d43  part01.b64' | (cd "$CH" && sha256sum -c -)
           echo 'de9cf1f97575e24a36e0e38d6eace140d16231700872a4d91354ff2798b8153c  part02.b64' | (cd "$CH" && sha256sum -c -)
           echo '0b50febe7bb7a42bad3b8dd2ad5b47a48a701334a93b52dfe635f6b344704925  part03.b64' | (cd "$CH" && sha256sum -c -)
           echo 'a1960cd7024dfc4dd5893f86471ce9a71b5518e3f45f6a5479b745df1ffc1fc9  part04.b64' | (cd "$CH" && sha256sum -c -)
           echo 'abbe6b6b0e2b770d170a1e51154120b4bc4f684a958b0a28c06c02508b70f94a  part05.b64' | (cd "$CH" && sha256sum -c -)
-          echo '02440a4752ac4c13f72abb34896a7332600a3f01f7587f00bbbdef736374632d  part06.b64' | (cd "$CH" && sha256sum -c -)
-          echo 'dfbc0d68ef83a7ee0241454356c5a253724173a3391b240fdf95ac8d5abbe4cb  part07.b64' | (cd "$CH" && sha256sum -c -)
-          echo 'baab87350b086182068269c07ae3c811f45ca935c59e78c2f322da3dc7ce2972  part08.b64' | (cd "$CH" && sha256sum -c -)
-          echo '40155c50d2b229df8cad1da7dcdf3ac906c6f3c1f3791fcef0e8b9131bfeb77b  part09.b64' | (cd "$CH" && sha256sum -c -)
+          echo '51560d926704aecb766bbaef01e8173b6534710447035cf01eed5d4692c5c8a5  part06.b64' | (cd "$CH" && sha256sum -c -)
+          echo '76df296b654148eea0f80b5276a116f4ea672d84d7942923b169664bce494107  part07.b64' | (cd "$CH" && sha256sum -c -)
+          echo '81ad41e2a7da1d91fdfc8ca6686920629d908f6871e949b6e37868b546b96198  part08.b64' | (cd "$CH" && sha256sum -c -)
+          echo '2eb486b85b8d801e0e096201fcf94340cec702fde265f86aab4acd168169d8cb  part09.b64' | (cd "$CH" && sha256sum -c -)
           cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 "$CH"/part06.b64 "$CH"/part07.b64 "$CH"/part08.b64 "$CH"/part09.b64 > /tmp/phase40.patch.gz.b64
-          test "$(wc -c < /tmp/phase40.patch.gz.b64)" -eq 18484
-          echo 'a9c8174bf45fb9bd30b25057faa4e0442fc8ec4fa4eea690ce3140149f6be017  /tmp/phase40.patch.gz.b64' | sha256sum -c -
+          test "$(wc -c < /tmp/phase40.patch.gz.b64)" -eq 18480
+          echo 'f6f0c625e6c40fe2e591a6e097b1f36a89807332b1653c3b368a4050d5b28b13  /tmp/phase40.patch.gz.b64' | sha256sum -c -
           base64 --decode /tmp/phase40.patch.gz.b64 > /tmp/phase40.patch.gz
-          test "$(wc -c < /tmp/phase40.patch.gz)" -eq 13861
-          echo 'c63319a7259588bc8f4c9e41c618cc39bf5efb208039a9d66832e98d2c58a958  /tmp/phase40.patch.gz' | sha256sum -c -
+          test "$(wc -c < /tmp/phase40.patch.gz)" -eq 13860
+          echo '45a605cc0091d9795fa2652eee2d95dd25fa54c04f54fa26e9cd4941dd714f55  /tmp/phase40.patch.gz' | sha256sum -c -
           gzip -t /tmp/phase40.patch.gz
           gzip -dc /tmp/phase40.patch.gz > /tmp/phase40.patch
-          test "$(wc -c < /tmp/phase40.patch)" -eq 77156
-          echo '97dcc07a18d82693ab532d22e489d82fef6c923ce668a329b60f8d20774ec0cf  /tmp/phase40.patch' | sha256sum -c -
+          test "$(wc -c < /tmp/phase40.patch)" -eq 77155
+          echo 'f3969bbeee458a99050749b0162940b3d823dc162a9d62d41a8a4d18958e4095  /tmp/phase40.patch' | sha256sum -c -
 
       - name: Apply Phase 14.5.40 to validated Phase 14.5.39
         shell: bash
@@ -127,7 +127,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Phase14.5.40-Unit-Test-Diagnostics-v4
+          name: FushERP-Phase14.5.40-Unit-Test-Diagnostics-v5
           path: phase40-unit-test.log
           if-no-files-found: ignore
           retention-days: 2
@@ -164,7 +164,7 @@ jobs:
           Branch testing versionCode retained: 77
           Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
           Accounting branch Room schema: 33 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
-          Phase 14.5.40 patch SHA-256: 97dcc07a18d82693ab532d22e489d82fef6c923ce668a329b60f8d20774ec0cf
+          Phase 14.5.40 patch SHA-256: f3969bbeee458a99050749b0162940b3d823dc162a9d62d41a8a4d18958e4095
           Unit Tests: PASS
           Release Build: PASS
           Room Schema 33 generation: PASS
