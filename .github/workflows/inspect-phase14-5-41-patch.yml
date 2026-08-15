@@ -1,0 +1,30 @@
+name: Inspect Phase 14.5.41 Patch
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths: ['.github/workflows/inspect-phase14-5-41-patch.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect raw patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/ui-professional-redesign --depth=1
+          git show origin/fush/ui-professional-redesign:phase14_5_41_assets_maintenance_expenses_ui/patches/04_maintenance_workorders_risk.patch > /tmp/p.patch
+          echo '--- wc ---'
+          wc -l -c /tmp/p.patch
+          echo '--- numbered lines ---'
+          nl -ba /tmp/p.patch | tail -n 35
+          echo '--- python repr last lines ---'
+          python - <<'PY'
+          from pathlib import Path
+          ls=Path('/tmp/p.patch').read_text().splitlines(True)
+          for i,s in enumerate(ls[-35:], start=max(1,len(ls)-34)):
+              print(i, repr(s))
+          PY
