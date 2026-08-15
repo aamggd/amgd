@@ -1,0 +1,28 @@
+name: Inspect Users Permissions Patch
+on:
+  push:
+    branches: ['fush/integration-users-permissions-check']
+    paths: ['.github/workflows/inspect-users-permissions-patch.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and inspect patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64,gzip,hashlib,pathlib
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          encoded=''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64')))
+          raw=gzip.decompress(base64.b64decode(encoded))
+          print('SHA256', hashlib.sha256(raw).hexdigest())
+          pathlib.Path('users-permissions.patch').write_bytes(raw)
+          PY
+          echo '=== PATCH FILE MANIFEST ==='
+          grep '^+++ ' users-permissions.patch || true
+          echo '=== DATABASE/MIGRATION PATCH LINES ==='
+          grep -nEi 'FushDatabase|Migrations.kt|AppContainer|schema|Migration\(27|MIGRATION_27_28|@Entity|@Dao|RoleEntity|PermissionEntity|RolePermission|user_roles|permissions|roles' users-permissions.patch | head -500 || true
+          echo '=== PATCH STATS ==='
+          git apply --stat users-permissions.patch || true
