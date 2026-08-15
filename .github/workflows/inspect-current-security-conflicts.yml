@@ -1,0 +1,83 @@
+name: Inspect Current Security Conflicts
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths: ['.github/workflows/inspect-current-security-conflicts.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+      - name: Compose current integrated source and print key files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin fush/ui-professional-redesign fush/accounting --depth=1
+          git archive --format=tar origin/fush/ui-professional-redesign phase14_5_39_production_quality_ui phase14_5_40_employees_sales_reps_ui phase14_5_41_assets_maintenance_expenses_ui phase14_5_42_reports_adaptive_ui | tar -xf -
+          git archive --format=tar origin/fush/accounting fush_accounting | tar -xf -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip
+          cd FushERP_Mobile_Phase5
+          git init -q && git config user.name CI && git config user.email ci@example.invalid && git add -A && git commit -qm base
+          for phase in phase14_5_39_production_quality_ui phase14_5_40_employees_sales_reps_ui phase14_5_41_assets_maintenance_expenses_ui phase14_5_42_reports_adaptive_ui; do
+            for p in ../$phase/patches/*.patch; do
+              if git apply --check "$p"; then git apply "$p"; else cp "$p" /tmp/x.patch; printf '\n' >> /tmp/x.patch; git apply --recount /tmp/x.patch; fi
+            done
+          done
+          base64 -d ../fush_accounting/patches/phase14.5.34-accounting-integrity.patch.gz.b64 | gzip -dc > /tmp/a34.patch
+          base64 -d ../fush_accounting/patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 | gzip -dc > /tmp/a35.patch
+          git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt /tmp/a34.patch
+          python - <<'PY'
+          from pathlib import Path
+          import re,subprocess
+          raw=Path('/tmp/a34.patch').read_text(); target='app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt'
+          part=next(p for p in re.split(r'(?=^diff --git )', raw, flags=re.M) if p.startswith('diff --git ') and f' b/{target}' in p.splitlines()[0])
+          Path('/tmp/party.patch').write_text(part)
+          subprocess.run(['patch','-p1','--forward','--fuzz=3'],input=part,text=True,check=False)
+          p=Path(target); s=p.read_text()
+          s=s.replace('''                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }\n                OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }''','''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }\n                OutlinedButton(onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("صرف للعميل") }''',1)
+          s=s.replace('''                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }\n                OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }''','''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("دفع فاتورة") }\n                OutlinedButton(onClick = { message = "قبض مبلغ من المورد يجب أن يتم من مرتجع المشتريات مع اختيار استرداد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("قبض من المورد") }''',1)
+          p.write_text(s)
+          PY
+          rm -f app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt.rej
+          git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt /tmp/a35.patch
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          patch=Path('/tmp/a35.patch').read_text(); target='app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'
+          part=next(x for x in re.split(r'(?=^diff --git )',patch,flags=re.M) if x.startswith('diff --git ') and f' b/{target}' in x.splitlines()[0])
+          added=[]; capture=False
+          for line in part.splitlines():
+              if line.startswith('+@Composable'): capture=True
+              if capture:
+                  if line.startswith('+') and not line.startswith('+++'): added.append(line[1:])
+                  elif line.startswith(' @Composable') and added: break
+          block='\n'.join(added).rstrip()+'\n\n'
+          p=Path(target); s=p.read_text()
+          s=s.replace('val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي")','val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي", "الفترات والمطابقة")',1)
+          s=s.replace('''            7 -> BalanceSheetTab(container, Modifier.weight(1f))\n            else -> CashFlowTab(container, Modifier.weight(1f))''','''            7 -> BalanceSheetTab(container, Modifier.weight(1f))\n            8 -> CashFlowTab(container, Modifier.weight(1f))\n            else -> AccountingPeriodsTab(container, user, Modifier.weight(1f))''',1)
+          s=s.replace('@Composable\nprivate fun JournalTab',block+'@Composable\nprivate fun JournalTab',1)
+          p.write_text(s)
+          PY
+          for f in \
+            app/src/main/java/com/fush/erp/data/Migrations.kt \
+            app/src/main/java/com/fush/erp/ui/FushErpApp.kt \
+            app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt \
+            app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt \
+            app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt \
+            app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt \
+            app/src/main/java/com/fush/erp/data/FushDatabase.kt \
+            app/src/main/java/com/fush/erp/data/AppContainer.kt
+          do
+            echo "========== $f =========="
+            cat "$f"
+          done
