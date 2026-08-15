@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     steps:
       - name: Checkout security branch
         uses: actions/checkout@v4
@@ -42,14 +42,15 @@ jobs:
           git apply ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
           git apply --check ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
           git apply ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
-          cat ../../security_rebase_official_14_5_38_final/database_encryption_parts/part_*.b64 | tr -d '\n\r' > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64
-          echo '474598fee129f0b7bb259cec4beb0aa58e4c278f8977718ee13c3b8710d40d1d  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64' | sha256sum -c -
+          cat ../../security_rebase_official_14_5_38_final/database_encryption_parts_v2/part_*.b64 | tr -d '\n\r' > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64
+          echo '3ffd9d682cdb9fb65b6696a1152990824377b936be01a32133a85210a0499f06  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64' | sha256sum -c -
           base64 -d ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.combined.b64 | gzip -dc > ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
-          echo '83468803ef235f4bf2d8e03132c7246e054227f9740b47ca91d43baaacf71b03  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
+          echo '821bd4419050f0631415e2b872bed46b597b0a1d862860d4e4692e1885e30537  ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch' | sha256sum -c -
           git apply --check ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git apply ../../security_rebase_official_14_5_38_final/database_encryption_at_rest.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'minSdk = 26' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
@@ -59,12 +60,15 @@ jobs:
           grep -q 'الإغلاق التلقائي للجلسة' app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
           grep -q 'SessionSettingsStore' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'sqlcipher-android:4.17.0' app/build.gradle.kts
+          grep -q 'androidx.test.ext:junit:1.3.0' app/build.gradle.kts
           grep -q 'SupportOpenHelperFactory' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/DatabaseKeyManager.kt
           grep -q 'cleanupStalePlaintextSafety' app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
+          grep -q 'allowBackup="false"' app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
           test -f app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
           test -f app/src/test/java/com/fush/erp/backup/DatabaseEncryptionManagerTest.kt
+          test -f app/src/androidTest/java/com/fush/erp/backup/DatabaseEncryptionInstrumentedTest.kt
           test -f app/src/test/java/com/fush/erp/ui/screens/HomeShellNavigationTest.kt
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
           test -z "$(find . -name '*.p12' -print -quit)"
@@ -78,10 +82,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install Android SDK and emulator packages
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
@@ -106,6 +110,29 @@ jobs:
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee ../../security-ci-out/release-build.log
 
+      - name: Run encrypted database migration on Android emulator
+        id: instrumented
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          sudo chmod 666 /dev/kvm || true
+          echo no | avdmanager create avd --force --name fush-security-ci --package "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd fush-security-ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > security-ci-out/emulator.log 2>&1 &
+          adb wait-for-device
+          booted=""
+          for i in $(seq 1 150); do
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            [ "$booted" = "1" ] && break
+            sleep 2
+          done
+          test "$booted" = "1"
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          cd source/FushERP_Mobile_Phase5
+          gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest 2>&1 | tee ../../security-ci-out/instrumented-encryption.log
+
       - name: Package validation outputs
         id: package
         continue-on-error: true
@@ -115,6 +142,7 @@ jobs:
           grep -q '"version": 28' app/schemas/com.fush.erp.data.FushDatabase/28.json
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
           unzip -l app/build/outputs/apk/release/app-release-unsigned.apk | grep -q 'lib/arm64-v8a/libsqlcipher.so'
+          unzip -l app/build/outputs/apk/release/app-release-unsigned.apk | grep -q 'lib/x86_64/libsqlcipher.so'
           cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk
           sha256sum ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk > ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk.sha256
           cd ..
@@ -135,7 +163,9 @@ jobs:
         run: |
           echo "unit_outcome=${{ steps.unit.outcome }}"
           echo "release_outcome=${{ steps.release.outcome }}"
+          echo "instrumented_outcome=${{ steps.instrumented.outcome }}"
           echo "package_outcome=${{ steps.package.outcome }}"
           test "${{ steps.unit.outcome }}" = "success"
           test "${{ steps.release.outcome }}" = "success"
+          test "${{ steps.instrumented.outcome }}" = "success"
           test "${{ steps.package.outcome }}" = "success"
