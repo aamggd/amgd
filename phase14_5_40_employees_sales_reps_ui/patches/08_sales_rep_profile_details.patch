@@ -1,0 +1,162 @@
+From 017e92440bfbc53d41485b0ae25e161c4b94b7c2 Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:08:43 +0000
+Subject: [PATCH] sales rep profile details
+
+---
+ .../ui/screens/SalesRepresentativeScreens.kt  | 126 +++++++++++++-----
+ 1 file changed, 94 insertions(+), 32 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index c89fe49..a5ce5f1 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -207,52 +207,114 @@ private fun SalesRepresentativeProfile(
+         }
+         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+             when (tab) {
+-                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    item { FushSectionHeader("بيانات المندوب", "الهوية، نوع الارتباط، النطاق ونسبة العمولة الافتراضية") }
+                     item {
+-                        Text("المعلومات الأساسية", style = MaterialTheme.typography.titleLarge)
+-                        Text("الكود: ${rep.code}")
+-                        Text("النوع: ${if (rep.repType == "INTERNAL") "مندوب داخلي مرتبط بموظف" else "مندوب خارجي"}")
+-                        Text("الهاتف: ${rep.phone.ifBlank { "—" }}")
+-                        Text("المنطقة/النطاق: ${rep.territory.ifBlank { "—" }}")
+-                        Text("نسبة العمولة الافتراضية: ${repMoney(rep.commissionRatePct)}%")
+-                        Text("الحالة: ${rep.status}")
+-                        if (rep.notes.isNotBlank()) Text("ملاحظات: ${rep.notes}")
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Text("الكود: ${rep.code}")
++                                Text("النوع: ${if (rep.repType == "INTERNAL") "مندوب داخلي مرتبط بموظف" else "مندوب خارجي"}")
++                                Text("الهاتف: ${rep.phone.ifBlank { "—" }}")
++                                Text("المنطقة/النطاق: ${rep.territory.ifBlank { "—" }}")
++                                Text("نسبة العمولة الافتراضية: ${repMoney(rep.commissionRatePct)}%")
++                                if (rep.notes.isNotBlank()) Text("ملاحظات: ${rep.notes}", color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
+                     }
++                    item { FushSectionHeader("مؤشرات العمولة", "توضح دورة الاستحقاق من الاكتساب حتى الصرف") }
+                     item {
+-                        Text("مؤشرات المندوب", style = MaterialTheme.typography.titleLarge)
+-                        RepMetric("إجمالي المبيعات", salesBase)
+-                        RepMetric("التحصيلات المرتبطة بفواتيره", collectionsBase)
+-                        RepMetric("مرتجعات المبيعات", returnsBase)
+-                        RepMetric("العمولة المكتسبة", earned)
+-                        RepMetric("العمولة المعكوسة", reversed)
+-                        RepMetric("العمولة المصروفة", paid)
+-                        RepMetric("المتبقي المستحق", due)
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                            FushMetricCard("المكتسبة", "${repMoney(earned)} ر.ي", Modifier.weight(1f), tone = FushStatusTone.Info)
++                            FushMetricCard("المعكوسة", "${repMoney(reversed)} ر.ي", Modifier.weight(1f), tone = if (reversed > 0.000001) FushStatusTone.Warning else FushStatusTone.Neutral)
++                        }
++                    }
++                    item {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                            FushMetricCard("المصروفة", "${repMoney(paid)} ر.ي", Modifier.weight(1f), tone = FushStatusTone.Success)
++                            FushMetricCard("المتبقية", "${repMoney(due)} ر.ي", Modifier.weight(1f), tone = if (due > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
++                        }
+                     }
+                 }
+-                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("العملاء التابعون للمندوب (${customers.size})", style = MaterialTheme.typography.titleLarge) }
++                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("العملاء التابعون", "${customers.size} عميل مرتبط بالمندوب") }
+                     if (customers.isEmpty()) item { Text("لا يوجد عملاء مرتبطون بهذا المندوب.") }
+-                    items(customers, key = { it.id }) { c -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text(c.nameAr); Text("${c.code} • ${c.province} • ${c.phone.ifBlank { "بدون هاتف" }}", style = MaterialTheme.typography.bodySmall) } } }
++                    items(customers, key = { it.id }) { c ->
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                                Text(c.nameAr, style = MaterialTheme.typography.titleMedium)
++                                Text("${c.code} • ${c.province} • ${c.phone.ifBlank { "بدون هاتف" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
+                 }
+-                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("فواتير المبيعات", style = MaterialTheme.typography.titleLarge) }
++                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("فواتير المبيعات", "الفواتير المرتبطة بهوية المندوب الثابتة") }
+                     if (invoices.isEmpty()) item { Text("لا توجد فواتير مرتبطة بهذا المندوب.") }
+-                    items(invoices, key = { it.id }) { inv -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${repDate(inv.invoiceDate)} • ${inv.invoiceNo}"); Text("${repMoney(inv.totalBase)} ريال • ${inv.salesRepNameSnapshot.ifBlank { rep.fullNameAr }} • ${repMoney(inv.salesRepRatePct)}%", style = MaterialTheme.typography.bodySmall) } } }
++                    items(invoices, key = { it.id }) { inv ->
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                                Text(inv.invoiceNo, style = MaterialTheme.typography.titleMedium)
++                                Text("${repDate(inv.invoiceDate)} • ${repMoney(inv.totalBase)} ريال")
++                                Text("${inv.salesRepNameSnapshot.ifBlank { rep.fullNameAr }} • نسبة ${repMoney(inv.salesRepRatePct)}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
+                 }
+-                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("سجل العمولات", style = MaterialTheme.typography.titleLarge); Text("المستحق الحالي: ${repMoney(due)} ريال", style = MaterialTheme.typography.titleMedium) }
++                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("سجل العمولات", "العمولة تستحق بعد التحصيل وتُخفض بالعكس أو المرتجع حسب قواعد النظام") }
++                    item {
++                        FushMetricCard(
++                            "المستحق الحالي",
++                            "${repMoney(due)} ر.ي",
++                            Modifier.fillMaxWidth(),
++                            helper = "جاهز للصرف عبر سند عمولة مرتبط بالمندوب",
++                            tone = if (due > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
++                        )
++                    }
+                     if (commissions.isEmpty()) item { Text("لا توجد عمولات مكتسبة بعد. العمولة تستحق بعد التحصيل.") }
+-                    items(commissions, key = { it.id }) { c -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("فاتورة #${c.invoiceId} • ${repDate(c.createdAt)}"); Text("مكتسب ${repMoney(c.earnedBase)} • معكوس ${repMoney(c.reversedBase)} • صافي ${repMoney(c.earnedBase-c.reversedBase)} ريال"); Text("النسبة ${repMoney(c.ratePct)}% • ${c.status}", style = MaterialTheme.typography.bodySmall) } } }
++                    items(commissions, key = { it.id }) { c ->
++                        val net = c.earnedBase - c.reversedBase
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text("فاتورة #${c.invoiceId}", style = MaterialTheme.typography.titleMedium)
++                                    FushStatusPill(c.status, if (net > 0.000001) FushStatusTone.Success else FushStatusTone.Warning)
++                                }
++                                Text("${repDate(c.createdAt)} • صافي العمولة ${repMoney(net)} ريال", style = MaterialTheme.typography.titleSmall)
++                                Text("مكتسب ${repMoney(c.earnedBase)} • معكوس ${repMoney(c.reversedBase)} • النسبة ${repMoney(c.ratePct)}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
+                 }
+-                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("سندات عمولة المندوب", style = MaterialTheme.typography.titleLarge); Text("السند المرحل لا يحذف؛ التصحيح بالعكس فقط.", style = MaterialTheme.typography.bodySmall) }
++                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("سندات عمولة المندوب", "كل سند مرتبط بالمندوب؛ السند المرحل يُصحح بالعكس ولا يُحذف") }
+                     if (vouchers.isEmpty()) item { Text("لا توجد سندات مرتبطة بهذا المندوب.") }
+-                    items(vouchers, key = { it.id }) { v -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${repDate(v.voucherDate)} • ${v.voucherNo}"); Text("${if (v.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${repMoney(v.amountBase)} ريال • ${v.status}"); Text(v.description, style = MaterialTheme.typography.bodySmall); if (v.status == "POSTED") OutlinedButton(onClick = { reverseVoucher = v }) { Text("عكس السند") } } } }
++                    items(vouchers, key = { it.id }) { v ->
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text(v.voucherNo, style = MaterialTheme.typography.titleMedium)
++                                    FushStatusPill(v.status, if (v.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
++                                }
++                                Text("${repDate(v.voucherDate)} • ${if (v.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${repMoney(v.amountBase)} ريال")
++                                Text(v.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                if (v.status == "POSTED") OutlinedButton(onClick = { reverseVoucher = v }) { Text("عكس السند") }
++                            }
++                        }
++                    }
+                 }
+-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("سجل التدقيق", style = MaterialTheme.typography.titleLarge) }
++                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("سجل التدقيق", "الأحداث والتعديلات المرتبطة بملف المندوب") }
+                     if (audits.isEmpty()) item { Text("لا توجد أحداث تدقيق.") }
+-                    items(audits, key = { it.id }) { a -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${repDateTime(a.eventAt)} • ${a.action}"); if (a.reason.isNotBlank()) Text(a.reason); if (a.newValue.isNotBlank()) Text(a.newValue, style = MaterialTheme.typography.bodySmall) } } }
++                    items(audits, key = { it.id }) { a ->
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                                Text("${repDateTime(a.eventAt)} • ${a.action}", style = MaterialTheme.typography.titleSmall)
++                                if (a.reason.isNotBlank()) Text(a.reason)
++                                if (a.newValue.isNotBlank()) Text(a.newValue, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
+                 }
+             }
+         }
+-- 
+2.47.3
