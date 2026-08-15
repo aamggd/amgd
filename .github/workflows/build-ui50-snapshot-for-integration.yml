@@ -1,0 +1,90 @@
+name: Build UI50 Snapshot For Integration
+
+on:
+  push:
+    branches: [fush/integration-updates-14.5.52]
+    paths:
+      - '.github/workflows/build-ui50-snapshot-for-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Download frozen UI47 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.47-Frozen-UI-Source
+          path: artifacts/ui47
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31867210033
+
+      - name: Fetch protected UI handoff branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/ui-professional-redesign:refs/remotes/origin/ui-redesign
+
+      - name: Reconstruct UI50 source deterministically
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sources/ui47 work
+          unzip -q artifacts/ui47/FushERP-Mobile-Phase14.5.47-Frozen-UI-Source.zip -d sources/ui47
+          UI47=$(find sources/ui47 -mindepth 1 -maxdepth 1 -type d | head -1)
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$UI47/" work/
+          cd work
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm ui47
+          apply_remote_phase() {
+            local phase="$1"
+            echo "Applying $phase"
+            while IFS= read -r p; do
+              echo "  $p"
+              git --git-dir="$GITHUB_WORKSPACE/.git" show "refs/remotes/origin/ui-redesign:$p" > /tmp/ui.patch
+              git apply --check /tmp/ui.patch
+              git apply /tmp/ui.patch
+            done < <(git --git-dir="$GITHUB_WORKSPACE/.git" ls-tree -r --name-only refs/remotes/origin/ui-redesign "$phase/patches" | grep '\.patch$' | sort -V)
+            git diff --check
+            git add -A
+            git commit -qm "$phase"
+          }
+          apply_remote_phase phase14_5_48_lazy_key_hotfix
+          apply_remote_phase phase14_5_49_navigation_feedback_polish
+          apply_remote_phase phase14_5_50_localization_foundation
+
+          grep -q 'versionCode = 89' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.50-ui-localization-foundation"' app/build.gradle.kts
+          ! find app/src/main/java/com/fush/erp/data app/src/main/java/com/fush/erp/domain -type f -newer app/build.gradle.kts -print -quit | grep -q . || true
+          git diff --check HEAD^
+          echo "UI50_TREE=$(git write-tree)" | tee "$GITHUB_WORKSPACE/ui50-tree.txt"
+
+      - name: Package UI50 source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work/.git work/.gradle work/.kotlin work/build work/app/build
+          mkdir -p output/FushERP_Mobile_Phase14_5_50_UI_Snapshot
+          rsync -a work/ output/FushERP_Mobile_Phase14_5_50_UI_Snapshot/
+          (cd output && zip -qr FushERP-Mobile-Phase14.5.50-UI-Snapshot-Source.zip FushERP_Mobile_Phase14_5_50_UI_Snapshot)
+          mv ui50-tree.txt output/
+          sha256sum output/FushERP-Mobile-Phase14.5.50-UI-Snapshot-Source.zip > output/FushERP-Mobile-Phase14.5.50-UI-Snapshot-Source.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.50-UI-Snapshot-For-Integration
+          path: output/*
+          retention-days: 7
