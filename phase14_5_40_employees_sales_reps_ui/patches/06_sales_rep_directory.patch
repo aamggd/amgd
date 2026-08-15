@@ -1,0 +1,132 @@
+From 98517e7b959fc8ea5b97faf03e7b8ef5ce591824 Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:08:42 +0000
+Subject: [PATCH] sales rep directory
+
+---
+ .../ui/screens/SalesRepresentativeScreens.kt  | 82 +++++++++++++++----
+ 1 file changed, 66 insertions(+), 16 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index 01a51c5..6e22371 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -7,10 +7,15 @@ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import com.fush.erp.domain.AccountingService
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+@@ -26,6 +31,7 @@ fun SalesRepresentativesScreen(container: AppContainer, user: UserEntity, modifi
+     var selectedId by remember { mutableStateOf<Long?>(null) }
+     var showAdd by remember { mutableStateOf(false) }
+     var search by remember { mutableStateOf("") }
++    var statusFilter by remember { mutableStateOf("ALL") }
+     var message by remember { mutableStateOf<String?>(null) }
+ 
+     val selected = reps.firstOrNull { it.id == selectedId }
+@@ -40,32 +46,76 @@ fun SalesRepresentativesScreen(container: AppContainer, user: UserEntity, modifi
+         return
+     }
+ 
+-    val filtered = remember(reps, search) {
++    val activeCount = reps.count { it.status == "ACTIVE" }
++    val internalCount = reps.count { it.repType == "INTERNAL" }
++    val externalCount = reps.size - internalCount
++    val filtered = remember(reps, search, statusFilter) {
+         val q = search.trim().lowercase(Locale.ROOT)
+-        if (q.isBlank()) reps else reps.filter {
+-            listOf(it.code, it.fullNameAr, it.fullNameEn, it.phone, it.territory, it.repType, it.status)
++        reps.filter { rep ->
++            val statusMatches = statusFilter == "ALL" || rep.status == statusFilter
++            val searchMatches = q.isBlank() || listOf(rep.code, rep.fullNameAr, rep.fullNameEn, rep.phone, rep.territory, rep.repType, rep.status)
+                 .any { value -> value.lowercase(Locale.ROOT).contains(q) }
++            statusMatches && searchMatches
+         }
+     }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+-            Text("مناديب المبيعات", style = MaterialTheme.typography.headlineSmall)
+-            Text("كل مندوب له هوية ثابتة، عملاء، فواتير، تحصيلات، مرتجعات، عمولات وسندات صرف مستقلة.", style = MaterialTheme.typography.bodySmall)
+-            Spacer(Modifier.height(8.dp))
+-            Button(onClick = { showAdd = true }) { Text("مندوب جديد") }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-            OutlinedTextField(search, { search = it }, label = { Text("بحث عن مندوب") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
++            FushSectionHeader(
++                "مناديب المبيعات",
++                "هوية ثابتة لكل مندوب مع العملاء والفواتير والتحصيلات والمرتجعات والعمولات والسندات المرتبطة."
++            )
+         }
+-        if (filtered.isEmpty()) item { Text("لا يوجد مناديب مبيعات بعد.") }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("إجمالي المناديب", reps.size.toString(), Modifier.weight(1f), helper = "كل الملفات")
++                FushMetricCard("النشطون", activeCount.toString(), Modifier.weight(1f), helper = "متاحون للبيع والتحصيل", tone = FushStatusTone.Success)
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("داخليون", internalCount.toString(), Modifier.weight(1f), helper = "مرتبطون بموظفين", tone = FushStatusTone.Info)
++                FushMetricCard("خارجيون", externalCount.toString(), Modifier.weight(1f), helper = "مندوبون مستقلون")
++            }
++        }
++        item {
++            Button(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة مندوب مبيعات") }
++            message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp)) }
++        }
++        item {
++            OutlinedTextField(
++                search,
++                { search = it },
++                label = { Text("بحث بالاسم أو الكود أو المنطقة أو الهاتف") },
++                modifier = Modifier.fillMaxWidth(),
++                singleLine = true
++            )
++        }
++        item {
++            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FilterChip(selected = statusFilter == "ALL", onClick = { statusFilter = "ALL" }, label = { Text("الكل") })
++                FilterChip(selected = statusFilter == "ACTIVE", onClick = { statusFilter = "ACTIVE" }, label = { Text("نشط") })
++                FilterChip(selected = statusFilter == "INACTIVE", onClick = { statusFilter = "INACTIVE" }, label = { Text("موقوف") })
++            }
++        }
++        item { FushSectionHeader("دليل المناديب", "${filtered.size} ملف مطابق للبحث والتصفية") }
++        if (filtered.isEmpty()) item { Text("لا يوجد مناديب مطابقون للبحث.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         items(filtered, key = { it.id }) { rep ->
+             ElevatedCard(onClick = { selectedId = rep.id }, modifier = Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text(rep.fullNameAr, style = MaterialTheme.typography.titleMedium)
+-                    Text("${rep.code} • ${if (rep.repType == "INTERNAL") "مندوب داخلي" else "مندوب خارجي"} • ${rep.status}")
+-                    Text("المنطقة: ${rep.territory.ifBlank { "غير محددة" }} • العمولة: ${repMoney(rep.commissionRatePct)}%")
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column(Modifier.weight(1f)) {
++                            Text(rep.fullNameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${rep.code} • ${if (rep.repType == "INTERNAL") "مندوب داخلي" else "مندوب خارجي"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(if (rep.status == "ACTIVE") "نشط" else "موقوف", if (rep.status == "ACTIVE") FushStatusTone.Success else FushStatusTone.Warning)
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Text("المنطقة: ${rep.territory.ifBlank { "غير محددة" }}")
++                        Text("عمولة ${repMoney(rep.commissionRatePct)}%", color = MaterialTheme.colorScheme.primary)
++                    }
+                     if (rep.phone.isNotBlank()) Text(rep.phone, style = MaterialTheme.typography.bodySmall)
+-                    Text("فتح ملف المندوب ←", color = MaterialTheme.colorScheme.primary)
++                    Text("فتح ملف المندوب ←", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                 }
+             }
+         }
+-- 
+2.47.3
