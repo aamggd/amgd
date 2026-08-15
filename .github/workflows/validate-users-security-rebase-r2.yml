@@ -77,7 +77,6 @@ jobs:
 
       - name: Build release with captured log
         id: release
-        if: steps.unit.outcome == 'success'
         continue-on-error: true
         working-directory: source/FushERP_Mobile_Phase5
         shell: bash
@@ -85,8 +84,9 @@ jobs:
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee ../../security-ci-out/release-build.log
 
-      - name: Package successful validation outputs
-        if: steps.unit.outcome == 'success' && steps.release.outcome == 'success'
+      - name: Package validation outputs
+        id: package
+        continue-on-error: true
         run: |
           cd source/FushERP_Mobile_Phase5
           test -f app/schemas/com.fush.erp.data.FushDatabase/28.json
@@ -110,5 +110,7 @@ jobs:
         run: |
           echo "unit_outcome=${{ steps.unit.outcome }}"
           echo "release_outcome=${{ steps.release.outcome }}"
+          echo "package_outcome=${{ steps.package.outcome }}"
           test "${{ steps.unit.outcome }}" = "success"
           test "${{ steps.release.outcome }}" = "success"
+          test "${{ steps.package.outcome }}" = "success"
