@@ -15,6 +15,7 @@ This stage hardens the Phase 14.5.34 users/permissions implementation. It intent
 - Password maximum age: 60 days; expired passwords force the existing change-password flow.
 - Password history remains 10 and minimum length remains 15 characters.
 - Polls account/session validity every 15 seconds and terminates stale/disabled/replaced sessions.
+- Installs SQLite triggers that allow audit inserts but block UPDATE and DELETE on `audit_events`.
 - Adds/extends unit tests for session and password-age policies.
 
 ## Validation
@@ -22,9 +23,10 @@ This stage hardens the Phase 14.5.34 users/permissions implementation. It intent
 - legacy hardcoded password scan: PASS (not present in production source)
 - `git apply --check` against Phase 14.5.34 users-permissions source: PASS
 - exact post-apply changed-file comparison: PASS
+- SQLite audit immutability test: INSERT PASS; UPDATE BLOCKED; DELETE BLOCKED
 
 ## Patch integrity
-SHA-256: `90b459347c75403eaa1d24ef0dd6b086ebbd0bbc31ef4625b86999e2c0f12c46`
+SHA-256: `a17965137613db3c7e7a48ddcfae4c083e35e45088c9d367c2e421863a9bdef8`
 
 ## Apply
 From a clean Phase 14.5.34 users-permissions source checkout:
