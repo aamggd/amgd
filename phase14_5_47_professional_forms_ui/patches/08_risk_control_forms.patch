@@ -1,0 +1,109 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+index 5abd4dc..8ef1d58 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+@@ -220,6 +220,44 @@ private fun riskBandAr(score: Int): String = when (RiskControlMath.band(score))
+     else -> "منخفض"
+ }
+ 
++private fun riskCategoryAr(value: String): String = when (value) {
++    "OPERATIONAL" -> "تشغيلي"
++    "FINANCIAL" -> "مالي"
++    "QUALITY" -> "جودة"
++    "INVENTORY" -> "مخزون"
++    "MARKET" -> "سوق"
++    else -> value
++}
++
++private fun riskControlTypeAr(value: String): String = when (value) {
++    "PREVENTIVE" -> "وقائي"
++    "DETECTIVE" -> "اكتشافي"
++    else -> value
++}
++
++private fun riskFrequencyAr(value: String): String = when (value) {
++    "DAILY" -> "يومي"
++    "WEEKLY" -> "أسبوعي"
++    "MONTHLY" -> "شهري"
++    else -> value
++}
++
++private fun riskSeverityAr(value: String): String = when (value) {
++    "LOW" -> "منخفض"
++    "MEDIUM" -> "متوسط"
++    "HIGH" -> "مرتفع"
++    "CRITICAL" -> "حرج"
++    else -> value
++}
++
++private fun riskStatusAr(value: String): String = when (value) {
++    "OPEN" -> "مفتوح"
++    "MITIGATING" -> "قيد المعالجة"
++    "ACCEPTED" -> "مقبول"
++    "CLOSED" -> "مغلق"
++    else -> value
++}
++
+ @Composable
+ private fun AddRiskDialog(onDismiss: () -> Unit, onSave: (String,String,String,Int,Int,String,String,Long?) -> Unit) {
+     var title by remember { mutableStateOf("") }; var category by remember { mutableStateOf("OPERATIONAL") }; var description by remember { mutableStateOf("") }
+@@ -227,14 +265,14 @@ private fun AddRiskDialog(onDismiss: () -> Unit, onSave: (String,String,String,I
+     val l = likelihood.toIntOrNull(); val i = impact.toIntOrNull(); val score = if (l in 1..5 && i in 1..5) l!! * i!! else null
+     AlertDialog(onDismissRequest=onDismiss, title={Text("إضافة خطر")}, text={ LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         item { OutlinedTextField(title,{title=it},label={Text("عنوان الخطر")},singleLine=true) }
+-        item { OutlinedTextField(category,{category=it},label={Text("الفئة: مالي / تشغيلي / جودة / مخزون / سوق")},singleLine=true) }
++        item { FushCodeSelectionField("الفئة", category, listOf("OPERATIONAL","FINANCIAL","QUALITY","INVENTORY","MARKET"), ::riskCategoryAr, modifier = Modifier.fillMaxWidth()) { category = it } }
+         item { OutlinedTextField(description,{description=it},label={Text("الوصف")}) }
+-        item { OutlinedTextField(likelihood,{likelihood=it},label={Text("الاحتمال 1–5")},singleLine=true) }
+-        item { OutlinedTextField(impact,{impact=it},label={Text("الأثر 1–5")},singleLine=true) }
++        item { FushIntegerField(likelihood,{likelihood=it},"الاحتمال 1–5", modifier = Modifier.fillMaxWidth()) }
++        item { FushIntegerField(impact,{impact=it},"الأثر 1–5", modifier = Modifier.fillMaxWidth()) }
+         item { score?.let { Text("الدرجة: $it/25 — ${riskBandAr(it)}", color = if (it >= 15) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) } }
+         item { OutlinedTextField(mitigation,{mitigation=it},label={Text("خطة المعالجة")}) }
+         item { OutlinedTextField(owner,{owner=it},label={Text("الدور المسؤول")},singleLine=true) }
+-        item { OutlinedTextField(due,{due=it},label={Text("المهلة بالأيام")},singleLine=true) }
++        item { FushIntegerField(due,{due=it},"المهلة بالأيام", modifier = Modifier.fillMaxWidth()) }
+     }}, confirmButton={Button(enabled=title.isNotBlank()&&l in 1..5&&i in 1..5,onClick={onSave(title,category,description,l!!,i!!,mitigation,owner,due.toLongOrNull())}){Text("حفظ")}}, dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -244,8 +282,8 @@ private fun AddControlDialog(risks: List<RiskEntity>, onDismiss: () -> Unit, onS
+     var selectedRisk by remember { mutableStateOf<RiskEntity?>(null) }; var expanded by remember { mutableStateOf(false) }; var design by remember { mutableStateOf("") }; var evidence by remember { mutableStateOf("") }
+     AlertDialog(onDismissRequest=onDismiss, title={Text("ضابط رقابي جديد")}, text={ Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         OutlinedTextField(title,{title=it},label={Text("اسم الضابط")},singleLine=true)
+-        OutlinedTextField(type,{type=it},label={Text("النوع: PREVENTIVE / DETECTIVE")},singleLine=true)
+-        OutlinedTextField(frequency,{frequency=it},label={Text("التكرار: DAILY / WEEKLY / MONTHLY")},singleLine=true)
++        FushCodeSelectionField("نوع الضابط", type, listOf("PREVENTIVE","DETECTIVE"), ::riskControlTypeAr, modifier = Modifier.fillMaxWidth()) { type = it }
++        FushCodeSelectionField("التكرار", frequency, listOf("DAILY","WEEKLY","MONTHLY"), ::riskFrequencyAr, modifier = Modifier.fillMaxWidth()) { frequency = it }
+         OutlinedTextField(owner,{owner=it},label={Text("الدور المسؤول")},singleLine=true)
+         Box { OutlinedButton(onClick={expanded=true}) { Text(selectedRisk?.let { "مرتبط: ${it.riskNo}" } ?: "ربط بخطر (اختياري)") }; DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) { DropdownMenuItem(text={Text("بدون ربط")},onClick={selectedRisk=null;expanded=false}); risks.forEach { r -> DropdownMenuItem(text={Text("${r.riskNo} — ${r.title}")},onClick={selectedRisk=r;expanded=false}) } } }
+         OutlinedTextField(design,{design=it},label={Text("وصف تصميم الرقابة")})
+@@ -259,10 +297,10 @@ private fun AddControlTestDialog(controls: List<InternalControlEntity>, onDismis
+     var evidence by remember { mutableStateOf("") }; var finding by remember { mutableStateOf("") }; var severity by remember { mutableStateOf("MEDIUM") }; var due by remember { mutableStateOf("7") }
+     AlertDialog(onDismissRequest=onDismiss, title={Text("اختبار ضابط")}, text={ Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+         Box { OutlinedButton(onClick={expanded=true}) { Text(control?.let { "${it.controlCode} — ${it.title}" } ?: "اختر الضابط") }; DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) { controls.forEach { c -> DropdownMenuItem(text={Text("${c.controlCode} — ${c.title}")},onClick={control=c;expanded=false}) } } }
+-        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { FilterChip(selected=result=="PASS",onClick={result="PASS"},label={Text("PASS")}); FilterChip(selected=result=="FAIL",onClick={result="FAIL"},label={Text("FAIL")}) }
++        Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { FilterChip(selected=result=="PASS",onClick={result="PASS"},label={Text("ناجح")}); FilterChip(selected=result=="FAIL",onClick={result="FAIL"},label={Text("فشل")}) }
+         OutlinedTextField(evidence,{evidence=it},label={Text("مرجع الدليل")},singleLine=true)
+         OutlinedTextField(finding,{finding=it},label={Text("الملاحظة / النتيجة")})
+-        if (result=="FAIL") { OutlinedTextField(severity,{severity=it},label={Text("الخطورة: LOW / MEDIUM / HIGH / CRITICAL")},singleLine=true); OutlinedTextField(due,{due=it},label={Text("مهلة معالجة الاستثناء بالأيام")},singleLine=true) }
++        if (result=="FAIL") { FushCodeSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::riskSeverityAr, modifier = Modifier.fillMaxWidth()) { severity = it }; FushIntegerField(due,{due=it},"مهلة معالجة الاستثناء بالأيام", modifier = Modifier.fillMaxWidth()) }
+     }}, confirmButton={Button(enabled=control!=null,onClick={onSave(control!!.id,result,evidence,finding,severity,if(result=="FAIL") due.toLongOrNull() else null)}){Text("تسجيل")}}, dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -270,7 +308,7 @@ private fun AddControlTestDialog(controls: List<InternalControlEntity>, onDismis
+ private fun ManualExceptionDialog(onDismiss: () -> Unit, onSave: (String,String,String,Long?) -> Unit) {
+     var description by remember { mutableStateOf("") }; var severity by remember { mutableStateOf("MEDIUM") }; var owner by remember { mutableStateOf("ADMIN") }; var due by remember { mutableStateOf("7") }
+     AlertDialog(onDismissRequest=onDismiss,title={Text("استثناء رقابي يدوي")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
+-        OutlinedTextField(description,{description=it},label={Text("وصف الاستثناء")}); OutlinedTextField(severity,{severity=it},label={Text("الخطورة")},singleLine=true); OutlinedTextField(owner,{owner=it},label={Text("الدور المسؤول")},singleLine=true); OutlinedTextField(due,{due=it},label={Text("المهلة بالأيام")},singleLine=true)
++        OutlinedTextField(description,{description=it},label={Text("وصف الاستثناء")}); FushCodeSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::riskSeverityAr, modifier = Modifier.fillMaxWidth()) { severity = it }; OutlinedTextField(owner,{owner=it},label={Text("الدور المسؤول")},singleLine=true); FushIntegerField(due,{due=it},"المهلة بالأيام", modifier = Modifier.fillMaxWidth())
+     }},confirmButton={Button(enabled=description.isNotBlank(),onClick={onSave(description,severity,owner,due.toLongOrNull())}){Text("فتح")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -279,7 +317,7 @@ private fun ReviewRiskDialog(row: RiskEntity, onDismiss: () -> Unit, onSave: (In
+     var likelihood by remember { mutableStateOf(row.residualLikelihood.toString()) }; var impact by remember { mutableStateOf(row.residualImpact.toString()) }; var status by remember { mutableStateOf(row.status) }; var mitigation by remember { mutableStateOf(row.mitigationPlan) }
+     val l=likelihood.toIntOrNull(); val i=impact.toIntOrNull(); val score=if(l in 1..5&&i in 1..5) l!!*i!! else null
+     AlertDialog(onDismissRequest=onDismiss,title={Text("مراجعة ${row.riskNo}")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
+-        OutlinedTextField(likelihood,{likelihood=it},label={Text("الاحتمال المتبقي 1–5")},singleLine=true); OutlinedTextField(impact,{impact=it},label={Text("الأثر المتبقي 1–5")},singleLine=true); score?.let{Text("الدرجة المتبقية: $it/25 — ${riskBandAr(it)}")}; OutlinedTextField(status,{status=it},label={Text("الحالة: OPEN / MITIGATING / ACCEPTED / CLOSED")},singleLine=true); OutlinedTextField(mitigation,{mitigation=it},label={Text("خطة المعالجة")})
++        FushIntegerField(likelihood,{likelihood=it},"الاحتمال المتبقي 1–5", modifier = Modifier.fillMaxWidth()); FushIntegerField(impact,{impact=it},"الأثر المتبقي 1–5", modifier = Modifier.fillMaxWidth()); score?.let{Text("الدرجة المتبقية: $it/25 — ${riskBandAr(it)}")}; FushCodeSelectionField("الحالة", status, listOf("OPEN","MITIGATING","ACCEPTED","CLOSED"), ::riskStatusAr, modifier = Modifier.fillMaxWidth()) { status = it }; OutlinedTextField(mitigation,{mitigation=it},label={Text("خطة المعالجة")})
+     }},confirmButton={Button(enabled=l in 1..5&&i in 1..5,onClick={onSave(l!!,i!!,status.trim().uppercase(),mitigation)}){Text("تحديث")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
