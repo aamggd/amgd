@@ -1,0 +1,278 @@
+name: Build FUSH Final Integrated 14.5.48
+
+on:
+  push:
+    branches: [fush/integration-final-14.5.48]
+    paths:
+      - '.github/workflows/build-final-integration-14.5.48.yml'
+      - 'integration_14_5_48/merge_resolution_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download official Professional UI 14.5.38 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: artifacts/base
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+
+      - name: Download frozen Professional UI 14.5.47
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.47-Frozen-UI-Source
+          path: artifacts/ui47
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31867210033
+
+      - name: Download validated accounting 14.5.39
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: artifacts/accounting
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865418288
+
+      - name: Download validated users and permissions security source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Security-Rebase-Final-Validation
+          path: artifacts/security
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865181875
+
+      - name: Download validated reports and printing source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Professional-Printing-Build
+          path: artifacts/reports
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865897444
+
+      - name: Reconstruct and verify central merge resolutions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find integration_14_5_48/merge_resolution_chunks -maxdepth 1 -type f -name 'part*.b64' | wc -l)" -eq 12
+          cat integration_14_5_48/merge_resolution_chunks/part*.b64 | base64 -d > merge-resolutions.tar.gz
+          echo '95c4a923b5551debf50b17e23b91c9f90fc9c094a6af0c5d9a84e64e247dfd29  merge-resolutions.tar.gz' | sha256sum -c -
+          mkdir resolutions
+          tar -xzf merge-resolutions.tar.gz -C resolutions
+          test -s resolutions/accounting-resolution.patch
+          test -s resolutions/security-resolution.patch
+          test -s resolutions/reports-resolution.patch
+          echo 'a494ed2e3cfda0d16dfc714a0a57ddf4adbb27b33382f33e65207775aa790bd8  resolutions/accounting-resolution.patch' | sha256sum -c -
+          echo '1a8715c462847a6bfb5d8205a3a8a3e2e72fe4b79dd16992743d79a3d85fca4c  resolutions/security-resolution.patch' | sha256sum -c -
+          echo 'e51d5c8dfc3261b01222b94dab4b9601752c2515633154fdd89e484d25c9d85f  resolutions/reports-resolution.patch' | sha256sum -c -
+
+      - name: Extract trusted source snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sources/{base,ui47,accounting,security,reports}
+          unzip -q artifacts/base/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d sources/base
+          unzip -q artifacts/ui47/FushERP-Mobile-Phase14.5.47-Frozen-UI-Source.zip -d sources/ui47
+          unzip -q artifacts/accounting/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip -d sources/accounting
+          unzip -q artifacts/security/FushERP-Security-Rebase-Final-Source.zip -d sources/security
+          unzip -q artifacts/reports/FushERP-Mobile-Phase14.5.46-Professional-Printing-Source.zip -d sources/reports
+
+      - name: Deterministically reproduce final integrated tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          one_dir() { find "$1" -mindepth 1 -maxdepth 1 -type d | head -1; }
+          BASE=$(one_dir "$ROOT/sources/base")
+          UI=$(one_dir "$ROOT/sources/ui47")
+          ACCOUNTING=$(one_dir "$ROOT/sources/accounting")
+          SECURITY=$(one_dir "$ROOT/sources/security")
+          REPORTS=$(one_dir "$ROOT/sources/reports")
+          REPO="$ROOT/final-repo"
+          mkdir -p "$REPO"
+          cd "$REPO"
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+
+          replace_tree() {
+            local src="$1"
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+            rsync -a --exclude='.git' "$src/" ./
+            rm -rf app/build .gradle .kotlin build
+          }
+          assert_tree() {
+            local expected="$1"
+            local actual
+            actual=$(git write-tree)
+            echo "tree=$actual expected=$expected"
+            test "$actual" = "$expected"
+          }
+          import_branch() {
+            local branch="$1" src="$2" expected="$3" base_commit="$4"
+            git checkout -q -B "$branch" "$base_commit"
+            replace_tree "$src"
+            git add -A
+            git commit -qm "$branch"
+            assert_tree "$expected"
+          }
+          merge_ours() {
+            local branch="$1" label="$2" expected="$3"
+            set +e
+            git merge --no-ff --no-commit "$branch"
+            rc=$?
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              git diff --name-only --diff-filter=U -z | xargs -0 -r git checkout --ours --
+            fi
+            test -z "$(git diff --name-only --diff-filter=U)"
+            git add -A
+            git commit -qm "naive $label merge"
+            assert_tree "$expected"
+          }
+          apply_resolution() {
+            local patch="$1" label="$2" expected="$3"
+            git apply --check "$patch"
+            git apply "$patch"
+            git diff --check
+            git add -A
+            git commit -qm "$label central resolution"
+            assert_tree "$expected"
+          }
+
+          replace_tree "$BASE"
+          git add -A
+          git commit -qm base38
+          assert_tree 6445a6a3580aa439e84e3f2c2e62dab3d9e42296
+          BASE_COMMIT=$(git rev-parse HEAD)
+
+          import_branch ui47 "$UI" d6e6149a48e70fd8a1b18562b34839b6c7d5b0bc "$BASE_COMMIT"
+          UI_COMMIT=$(git rev-parse HEAD)
+          import_branch accounting39 "$ACCOUNTING" 4c1ee430afea641251ed55b1cdbf02ca33ae4190 "$BASE_COMMIT"
+          import_branch security_final "$SECURITY" 613ce5049d4c93d4812ef4499f3bddd19b4d8a7a "$BASE_COMMIT"
+          import_branch reports_printing "$REPORTS" f826a5ae3de236fe3e1526902fec943da8b8ca51 "$BASE_COMMIT"
+
+          git checkout -q ui47
+          test "$(git rev-parse HEAD)" = "$UI_COMMIT"
+          merge_ours accounting39 accounting c7827d62c5e731d4eb90d1b21d3b32187ab66fde
+          apply_resolution "$ROOT/resolutions/accounting-resolution.patch" accounting a77a3e7e359ff90a41eb573d7697b29cee8ab8d7
+          merge_ours security_final security d10c6b0274d0329afbefafe9db2dfa2ff138d90a
+          apply_resolution "$ROOT/resolutions/security-resolution.patch" security 8d12272751bfae3ed8731b1fdfddde60b82e59b6
+          merge_ours reports_printing reports b01902bd004a406ae70aa464fdc58fe888c5233b
+          apply_resolution "$ROOT/resolutions/reports-resolution.patch" reports 2648b3227ed529c52fccb1d4b3a914d749fa10c6
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 87' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.48-final-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 33' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_32_33_SECURITY' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'REPORTS_EXPORT' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' app/src/main/java
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Validate package version schema and align APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO=final-repo
+          APK="$REPO/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery' versionCode='87' versionName='0.15.4.48-final-integrated'" apk-badging.txt
+          SCHEMA="$REPO/app/schemas/com.fush.erp.data.FushDatabase/33.json"
+          test -s "$SCHEMA"
+          grep -q '"version": 33' "$SCHEMA"
+          mkdir -p final-output/apksigner/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$APK" final-output/FushERP-Phase14.5.48-Final-Integrated-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 final-output/FushERP-Phase14.5.48-Final-Integrated-aligned-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" final-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" final-output/apksigner/lib/apksigner.jar
+          chmod +x final-output/apksigner/apksigner
+          sha256sum final-output/FushERP-Phase14.5.48-Final-Integrated-aligned-unsigned.apk > final-output/FushERP-Phase14.5.48-Final-Integrated-aligned-unsigned.apk.sha256
+
+      - name: Package full validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf FushERP_Mobile_Phase14_5_48_Final_Integrated
+          mkdir FushERP_Mobile_Phase14_5_48_Final_Integrated
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.kotlin' \
+            --exclude='build' \
+            --exclude='app/build' \
+            final-repo/ FushERP_Mobile_Phase14_5_48_Final_Integrated/
+          zip -qr final-output/FushERP-Mobile-Phase14.5.48-Final-Integrated-Source.zip FushERP_Mobile_Phase14_5_48_Final_Integrated
+          sha256sum final-output/FushERP-Mobile-Phase14.5.48-Final-Integrated-Source.zip > final-output/FushERP-Mobile-Phase14.5.48-Final-Integrated-Source.zip.sha256
+          cat > final-output/FushERP-Phase14.5.48-FINAL-INTEGRATION-REPORT.txt <<'EOF'
+          FUSH ERP Mobile — Final Integrated Phase 14.5.48
+          App ID: com.fush.erp.recovery
+          versionCode: 87
+          versionName: 0.15.4.48-final-integrated
+          Room schema: 33
+          Final verified Git tree: 2648b3227ed529c52fccb1d4b3a914d749fa10c6
+
+          Integrated streams:
+          - Professional UI through Phase 14.5.47
+          - Accounting / integrity / treasury / FX Phase 14.5.39
+          - Users / roles / permissions / MFA / audit security final rebase
+          - Professional reports / PDF / Excel / print preview
+
+          Validation gates:
+          - trusted source tree fingerprints reproduced exactly
+          - central conflict resolution fingerprints reproduced exactly
+          - no destructive Room migration fallback
+          - Android unit tests passed
+          - release build passed
+          - package/version/schema checks passed
+          - APK zipalign check passed
+
+          Signing is intentionally performed outside GitHub with the permanent FUSH signing certificate.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.48-Final-Integrated-Build
+          path: final-output/
+          if-no-files-found: error
+          retention-days: 7
