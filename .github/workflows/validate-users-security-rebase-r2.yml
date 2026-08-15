@@ -1,4 +1,4 @@
-name: Validate Users Security Rebase R2
+name: Validate Users Security Rebase Final
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           echo 'd4ff24af274e3aedc14cdf39762e9a0b3bd6ff4f3b563062063e5b79342ec38f  baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip' | sha256sum -c -
           unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d source
 
-      - name: Apply verified security rebase
+      - name: Apply verified final security rebase
         run: |
           cd source/FushERP_Mobile_Phase5
           rm -rf app/build .gradle .kotlin
@@ -35,11 +35,9 @@ jobs:
           git config user.name security-ci
           git config user.email security-ci@users.noreply.github.com
           git add . && git commit -qm baseline
-          python ../../security_rebase_official_14_5_38_r1/apply_patch.py
-          git apply --check ../../security_rebase_official_14_5_38_r1/security_rebase.patch
-          git apply ../../security_rebase_official_14_5_38_r1/security_rebase.patch
-          git apply --check ../../security_rebase_official_14_5_38_r1/compile_fix_01.patch
-          git apply ../../security_rebase_official_14_5_38_r1/compile_fix_01.patch
+          python ../../security_rebase_official_14_5_38_final/apply_patch.py
+          git apply --check ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
+          git apply ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
@@ -94,15 +92,17 @@ jobs:
           test -f app/schemas/com.fush.erp.data.FushDatabase/28.json
           grep -q '"version": 28' app/schemas/com.fush.erp.data.FushDatabase/28.json
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
-          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk
-          sha256sum ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk > ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk.sha256
-          cd .. && zip -qr ../../security-ci-out/FushERP-Security-Rebase-R1-Source.zip FushERP_Mobile_Phase5
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk
+          sha256sum ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk > ../../security-ci-out/FushERP-Security-Rebase-Final-release-unsigned.apk.sha256
+          cd ..
+          zip -qr ../security-ci-out/FushERP-Security-Rebase-Final-Source.zip FushERP_Mobile_Phase5
+          sha256sum ../security-ci-out/FushERP-Security-Rebase-Final-Source.zip > ../security-ci-out/FushERP-Security-Rebase-Final-Source.zip.sha256
 
       - name: Upload validation logs and artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Security-Rebase-R1-Validation-R2
+          name: FushERP-Security-Rebase-Final-Validation
           path: security-ci-out/*
           if-no-files-found: error
 
