@@ -18,6 +18,11 @@ Apply after **14.5.51** in this order:
 ## Safety boundary
 UI/resource preference only. No Room schema/migration, DAO, posting, inventory, production, payroll/commission, permission/authentication, or backup behavior changes.
 
+## Validation notes
+- All five patch files are syntactically valid unified diffs.
+- The MainActivity locale/theme state diff was checked against the reconstructed post-14.5.50.1 MainActivity source.
+- Android resource/localization integration still requires the central full Android build and device regression test because the UI branch package is patch-based.
+
 ## Branch test identity
 - versionCode `92`
 - versionName `0.15.4.51.1-ui-language-theme-controls`
