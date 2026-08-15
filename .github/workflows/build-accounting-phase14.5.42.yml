@@ -71,6 +71,17 @@ jobs:
           gzip -dc /tmp/phase42.patch.gz > /tmp/phase42.patch
           test "$(wc -c < /tmp/phase42.patch)" -eq 80940
           echo 'c634f8ee2467f22b3bc6b39b9472a5015591e83f66d1eec2f312ea3b7b05bd04  /tmp/phase42.patch' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/phase42.patch')
+          s = p.read_text()
+          old = 'arrayOf(row[0], row[2], row[3], row[4].toInt(), row[1])'
+          new = 'arrayOf<Any>(row[0], row[2], row[3], row[4].toInt(), row[1])'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          PY
+          test "$(wc -c < /tmp/phase42.patch)" -eq 80945
+          echo '1db15d2eb06a93ae45c773d617520742b8459bc54000dbb250a5f33fd5e9fd40  /tmp/phase42.patch' | sha256sum -c -
 
       - name: Apply Phase 14.5.42 to validated Phase 14.5.41
         shell: bash
@@ -101,6 +112,7 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_33_34' app/src/main/java/com/fush/erp/data/Migrations.kt
           grep -q 'MIGRATION_33_34' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'arrayOf<Any>(row\[0\], row\[2\], row\[3\], row\[4\]\.toInt(), row\[1\])' app/src/main/java/com/fush/erp/data/Migrations.kt
           test -f app/src/main/java/com/fush/erp/data/entity/PostingProfileEntities.kt
           test -f app/src/main/java/com/fush/erp/data/dao/PostingProfileDao.kt
           test -f app/src/main/java/com/fush/erp/domain/PostingProfiles.kt
@@ -159,7 +171,7 @@ jobs:
           Branch testing versionCode retained: 77
           Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
           Accounting branch Room schema: 34 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
-          Phase 14.5.42 patch SHA-256: c634f8ee2467f22b3bc6b39b9472a5015591e83f66d1eec2f312ea3b7b05bd04
+          Phase 14.5.42 patch SHA-256: 1db15d2eb06a93ae45c773d617520742b8459bc54000dbb250a5f33fd5e9fd40
           Unit Tests: PASS
           Release Build: PASS
           Room Schema 34 generation: PASS
