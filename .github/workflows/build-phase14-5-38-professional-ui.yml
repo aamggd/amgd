@@ -47,7 +47,6 @@ jobs:
           unzip -q previous-build/FushERP-Mobile-Phase14.5.33-Expense-Dimensions-Source.zip
           cd FushERP_Mobile_Phase5
           git init -q
-          git add -A
           for phase in \
             phase14_5_34_ui_professionalization \
             phase14_5_35_sales_customers_ui \
@@ -60,14 +59,12 @@ jobs:
             git apply --check "/tmp/$phase.patch"
             git apply "/tmp/$phase.patch"
           done
-          git add -A
-          git diff --cached --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
-          rm -rf .git
+          rm -rf .git app/build .gradle build
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -87,6 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'versionCode = 77' FushERP_Mobile_Phase5/app/build.gradle.kts
           grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' FushERP_Mobile_Phase5/app/build.gradle.kts
           test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
