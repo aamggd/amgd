@@ -1,0 +1,68 @@
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -1,12 +1,20 @@
+ package com.fush.erp.ui
+ 
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.padding
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Surface
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.unit.dp
++import com.fush.erp.backup.BackupRestoreManager
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.ui.screens.HomeShell
+ import com.fush.erp.ui.screens.LoginScreen
+-import com.fush.erp.backup.BackupRestoreManager
+-import androidx.compose.ui.platform.LocalContext
+ 
+ @Composable
+ fun FushErpApp(container: AppContainer) {
+@@ -25,17 +33,30 @@
+         }
+     }
+ 
+-    if (startupError != null) {
+-        androidx.compose.material3.Text(
+-            "تعذر فتح قاعدة البيانات - لم يتم حذف بياناتك\n" +
+-                (startupError ?: "") +
+-                "\nأرسل صورة هذه الرسالة لإصلاح الترحيل بدون حذف البيانات."
+-        )
+-    } else if (!seeded) {
+-        androidx.compose.material3.Text("جاري تهيئة قاعدة البيانات...")
+-    } else if (user == null) {
+-        LoginScreen(container) { user = it }
+-    } else {
+-        HomeShell(container, user!!) { user = null }
++    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
++        when {
++            startupError != null -> {
++                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
++                    FushSystemState(
++                        title = "تعذر فتح قاعدة البيانات",
++                        detail = "لم يتم حذف بياناتك. تفاصيل الخطأ: ${startupError ?: "غير متاح"}. احتفظ بصورة هذه الرسالة لإصلاح الترحيل بأمان.",
++                        modifier = Modifier.fillMaxSize(),
++                        isError = true,
++                    )
++                }
++            }
++            !seeded -> {
++                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
++                    FushSystemState(
++                        title = "تهيئة FUSH ERP",
++                        detail = "جاري التحقق من قاعدة البيانات وتجهيز بيئة العمل...",
++                        modifier = Modifier.fillMaxSize(),
++                        loading = true,
++                    )
++                }
++            }
++            user == null -> LoginScreen(container) { user = it }
++            else -> HomeShell(container, user!!) { user = null }
++        }
+     }
+ }
