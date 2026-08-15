@@ -1,0 +1,105 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 16fd774..1ef825f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -397,7 +397,7 @@ private fun EmployeeProfileScreen(
+                 }
+                 1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("التدريب والكفاءة", "صلاحية الموظف للمهام تعتمد على التدريب ومدة سريانه") }
+-                    if (trainings.isEmpty()) item { Text("لا توجد سجلات تدريب لهذا الموظف.") }
++                    if (trainings.isEmpty()) item { FushInlineState("لا توجد سجلات تدريب لهذا الموظف.") }
+                     items(trainings, key = { it.id }) { row ->
+                         val expired = row.expiresAt != null && row.expiresAt < now
+                         val valid = row.result == "PASS" && !expired
+@@ -415,7 +415,7 @@ private fun EmployeeProfileScreen(
+                 }
+                 2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("تصاريح المعدات", "الترخيص التشغيلي المرتبط بالمعدة والتدريب المؤهل") }
+-                    if (authorizations.isEmpty()) item { Text("لا توجد تصاريح لهذا الموظف.") }
++                    if (authorizations.isEmpty()) item { FushInlineState("لا توجد تصاريح تشغيل مرتبطة بهذا الموظف.") }
+                     items(authorizations, key = { it.id }) { row ->
+                         val expired = row.expiresAt != null && row.expiresAt < now
+                         val active = row.status == "ACTIVE" && !expired
+@@ -448,7 +448,7 @@ private fun EmployeeProfileScreen(
+                             tone = if (outstandingProductionCompensation > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
+                         )
+                     }
+-                    if (productionCompensations.isEmpty()) item { Text("لا توجد أوامر إنتاج مرتبطة بهذا الموظف.") }
++                    if (productionCompensations.isEmpty()) item { FushInlineState("لا توجد أوامر إنتاج مرتبطة بهذا الموظف.") }
+                     items(productionCompensations, key = { it.orderId }) { row ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@@ -468,7 +468,7 @@ private fun EmployeeProfileScreen(
+                 }
+                 4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("السندات المرتبطة بالموظف", "السند المرحل لا يُحذف؛ أي تصحيح يتم بقيد عكسي مستقل") }
+-                    if (vouchers.isEmpty()) item { Text("لا توجد سندات مرتبطة بهذا الموظف.") }
++                    if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الموظف.") }
+                     items(vouchers, key = { it.id }) { voucher ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@@ -485,7 +485,7 @@ private fun EmployeeProfileScreen(
+                 }
+                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("سجل التدقيق", "تاريخ التغييرات والإجراءات المرتبطة بملف الموظف") }
+-                    if (audits.isEmpty()) item { Text("لا توجد أحداث تدقيق لهذا الموظف.") }
++                    if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق لهذا الموظف.") }
+                     items(audits, key = { it.id }) { audit ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 11cb136..ab9d20a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -797,7 +797,7 @@ private fun CustomerLedgerTab(rows: List<Pair<CustomerLedgerEventRow,Double>>) {
+         if (rows.isEmpty()) {
+             item {
+                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+-                    Text("لا توجد حركات على حساب العميل حتى الآن.", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    FushInlineState("لا توجد حركات على حساب العميل حتى الآن.")
+                 }
+             }
+         }
+@@ -853,7 +853,7 @@ private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
+         if (rows.isEmpty()) {
+             item {
+                 Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+-                    Text("لا توجد حركات على حساب المورد حتى الآن.", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    FushInlineState("لا توجد حركات على حساب المورد حتى الآن.")
+                 }
+             }
+         }
+@@ -893,13 +893,13 @@ private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
+ 
+ @Composable private fun VoucherList(vouchers: List<PartyVoucherEntity>, onReverse: (PartyVoucherEntity)->Unit) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+     item { Text("سندات القبض والصرف المرتبطة بالطرف", style=MaterialTheme.typography.titleLarge); Text("السند المرحل لا يعدل أو يحذف؛ التصحيح بالعكس فقط.", style=MaterialTheme.typography.bodySmall) }
+-    if(vouchers.isEmpty()) item { Text("لا توجد سندات مرتبطة بهذا الطرف.") }
++    if(vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الطرف.") }
+     items(vouchers, key={it.id}) { v -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(3.dp)) { Text("${partyDate(v.voucherDate)} • ${if(v.voucherType=="RECEIPT") "سند قبض" else "سند صرف"} • ${v.voucherNo}"); Text("${v.partyNameSnapshot} • ${partyMoney(v.amountOriginal)} ${v.currencyCode}"); Text(v.description); Text("الحالة: ${if(v.status=="POSTED") "مرحل" else "معكوس"}"); if(v.status=="REVERSED") Text("سبب العكس: ${v.reversalReason}", color=MaterialTheme.colorScheme.error); if(v.status=="POSTED") OutlinedButton(onClick={onReverse(v)}) { Text("عكس السند") } } } }
+ } }
+ 
+ @Composable private fun AuditTab(rows: List<AuditEventEntity>) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+     item { Text("سجل التدقيق والحركات", style=MaterialTheme.typography.titleLarge) }
+-    if(rows.isEmpty()) item { Text("لا توجد أحداث تدقيق.") }
++    if(rows.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+     items(rows,key={it.id}) { e -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${partyDateTime(e.eventAt)} • ${e.action} • مستخدم #${e.userId}"); Text("${e.entityType} #${e.entityId}", style=MaterialTheme.typography.bodySmall); if(e.reason.isNotBlank()) Text(e.reason); if(e.newValue.isNotBlank()) Text(e.newValue, style=MaterialTheme.typography.bodySmall) } } }
+ } }
+ 
+@@ -922,7 +922,7 @@ private fun AttachmentTab(container: AppContainer, user: UserEntity, customerId:
+     }
+     Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+         Text("المرفقات", style=MaterialTheme.typography.titleLarge); Button(onClick={launcher.launch(arrayOf("*/*"))}){Text("إضافة مرفق")}
+-        if(attachments.isEmpty()) Text("لا توجد مرفقات.")
++        if(attachments.isEmpty()) FushInlineState("لا توجد مرفقات.")
+         attachments.forEach { a -> ElevatedCard(Modifier.fillMaxWidth()) { Row(Modifier.padding(10.dp), horizontalArrangement=Arrangement.SpaceBetween) { Column(Modifier.weight(1f)){Text(a.fileName); Text("${a.mimeType.ifBlank{"ملف"}} • ${partyDateTime(a.createdAt)}",style=MaterialTheme.typography.bodySmall)}; TextButton(onClick={ runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure{onMessage("تعذر فتح المرفق")}}){Text("فتح")} } } }
+     }
+ }
+@@ -947,7 +947,7 @@ private fun QuickPartyVoucherDialog(container: AppContainer, type:String, custom
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable private fun <T> PartySelectionField(label:String,current:String,options:List<T>,optionLabel:(T)->String,onSelected:(T)->Unit){ var expanded by remember{mutableStateOf(false)}; ExposedDropdownMenuBox(expanded,onExpandedChange={expanded=!expanded}){OutlinedTextField(current,{},readOnly=true,label={Text(label)},trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(expanded)},modifier=Modifier.menuAnchor().fillMaxWidth());ExposedDropdownMenu(expanded,onDismissRequest={expanded=false}){options.forEach{o->DropdownMenuItem(text={Text(optionLabel(o))},onClick={onSelected(o);expanded=false})}}} }
+ 
+-@Composable private fun AddCustomerPartyDialog(currencies:List<CurrencyEntity>,salesReps:List<SalesRepresentativeEntity>,onDismiss:()->Unit,onSave:(String,String,String,String,CurrencyEntity,Double,Int,Boolean,SalesRepresentativeEntity?)->Unit){ var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var province by remember{mutableStateOf("تعز")};var channel by remember{mutableStateOf("RETAIL")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var limit by remember{mutableStateOf("408000")};var days by remember{mutableStateOf("30")};var credit by remember{mutableStateOf(false)};var rep by remember{mutableStateOf<SalesRepresentativeEntity?>(null)};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text("عميل جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text("الاسم")});OutlinedTextField(phone,{phone=it},label={Text("الهاتف")});OutlinedTextField(province,{province=it},label={Text("المحافظة")});PartySelectionField("قناة البيع",channel,listOf("DIRECT","RETAIL","DISTRIBUTOR_CASH","DISTRIBUTOR_CREDIT"),{it}){channel=it};PartySelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it};Row{Checkbox(credit,{credit=it});Text("السماح بالآجل")};if(credit){OutlinedTextField(limit,{limit=it},label={Text("السقف الائتماني")});OutlinedTextField(days,{days=it},label={Text("أيام الائتمان")})};if(salesReps.isNotEmpty())PartySelectionField("مندوب المبيعات",rep?.let{"${it.code} — ${it.fullNameAr}"}?:"بدون مندوب",salesReps,{"${it.code} — ${it.fullNameAr}"}){rep=it}else Text("لا يوجد مناديب مبيعات نشطون. يمكنك إضافتهم من قسم مناديب المبيعات.",style=MaterialTheme.typography.bodySmall)}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&limit.toDoubleOrNull()!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,province,channel,currency!!,limit.toDouble(),days.toInt(),credit,rep)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
++@Composable private fun AddCustomerPartyDialog(currencies:List<CurrencyEntity>,salesReps:List<SalesRepresentativeEntity>,onDismiss:()->Unit,onSave:(String,String,String,String,CurrencyEntity,Double,Int,Boolean,SalesRepresentativeEntity?)->Unit){ var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var province by remember{mutableStateOf("تعز")};var channel by remember{mutableStateOf("RETAIL")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var limit by remember{mutableStateOf("408000")};var days by remember{mutableStateOf("30")};var credit by remember{mutableStateOf(false)};var rep by remember{mutableStateOf<SalesRepresentativeEntity?>(null)};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text("عميل جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text("الاسم")});OutlinedTextField(phone,{phone=it},label={Text("الهاتف")});OutlinedTextField(province,{province=it},label={Text("المحافظة")});PartySelectionField("قناة البيع",channel,listOf("DIRECT","RETAIL","DISTRIBUTOR_CASH","DISTRIBUTOR_CREDIT"),{it}){channel=it};PartySelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it};Row{Checkbox(credit,{credit=it});Text("السماح بالآجل")};if(credit){OutlinedTextField(limit,{limit=it},label={Text("السقف الائتماني")});OutlinedTextField(days,{days=it},label={Text("أيام الائتمان")})};if(salesReps.isNotEmpty())PartySelectionField("مندوب المبيعات",rep?.let{"${it.code} — ${it.fullNameAr}"}?:"بدون مندوب",salesReps,{"${it.code} — ${it.fullNameAr}"}){rep=it}else FushInlineState("لا يوجد مناديب مبيعات نشطون. يمكنك إضافتهم من قسم مناديب المبيعات.")}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&limit.toDoubleOrNull()!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,province,channel,currency!!,limit.toDouble(),days.toInt(),credit,rep)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
+ @Composable private fun AddSupplierPartyDialog(currencies:List<CurrencyEntity>,onDismiss:()->Unit,onSave:(String,String,CurrencyEntity,Int,String)->Unit){var name by remember{mutableStateOf("")};var phone by remember{mutableStateOf("")};var currency by remember{mutableStateOf<CurrencyEntity?>(null)};var days by remember{mutableStateOf("0")};var address by remember{mutableStateOf("")};LaunchedEffect(currencies){if(currency==null)currency=currencies.firstOrNull{it.code=="YER_NEW"}?:currencies.firstOrNull()};AlertDialog(onDismissRequest=onDismiss,title={Text("مورد جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){OutlinedTextField(name,{name=it},label={Text("الاسم")});OutlinedTextField(phone,{phone=it},label={Text("الهاتف")});OutlinedTextField(address,{address=it},label={Text("العنوان")});PartySelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it};OutlinedTextField(days,{days=it},label={Text("أيام السداد")})}},confirmButton={Button(enabled=name.isNotBlank()&&currency!=null&&days.toIntOrNull()!=null,onClick={onSave(name,phone,currency!!,days.toInt(),address)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
+ 
+ private fun partyEventLabel(t:String)=when(t){"INVOICE"->"فاتورة";"RECEIPT"->"تحصيل";"PAYMENT"->"دفعة";"RETURN","SALES_RETURN"->"مرتجع";"CASH_REFUND"->"رد نقدي";"VOUCHER_RECEIPT"->"سند قبض";"VOUCHER_PAYMENT"->"سند صرف";"VOUCHER_REVERSAL"->"عكس سند";else->t}
