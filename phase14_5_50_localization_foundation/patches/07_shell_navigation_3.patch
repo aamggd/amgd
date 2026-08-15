@@ -1,0 +1,86 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -112,7 +124,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                             Column(Modifier.weight(1f)) {
+                                 Text(user.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                 Text(
+-                                    "جلسة مستخدم نشطة",
++                                    stringResource(R.string.drawer_active_session),
+                                     style = MaterialTheme.typography.bodySmall,
+                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                 )
+@@ -121,14 +133,15 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     }
+                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                     Text(
+-                        "أقسام النظام",
++                        stringResource(R.string.drawer_system_sections),
+                         style = MaterialTheme.typography.labelLarge,
+                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                     )
+-                    drawerItems.forEach { (label, target) ->
++                    drawerItems.forEach { item ->
++                        val target = item.target
+                         NavigationDrawerItem(
+-                            label = { Text(label, maxLines = 1) },
++                            label = { Text(stringResource(item.labelRes), maxLines = 1) },
+                             icon = { NavIcon(destinationIcon(target), selected = page == target) },
+                             selected = page == target,
+                             onClick = {
+@@ -141,13 +154,13 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     }
+                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                     Text(
+-                        "البيانات الأساسية",
++                        stringResource(R.string.drawer_master_data),
+                         style = MaterialTheme.typography.labelLarge,
+                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                     )
+                     NavigationDrawerItem(
+-                        label = { Text("المواد والأصناف") },
++                        label = { Text(stringResource(R.string.nav_items)) },
+                         icon = { NavIcon(Icons.Filled.List, selected = page == "المواد والأصناف") },
+                         selected = page == "المواد والأصناف",
+                         onClick = {
+@@ -158,7 +171,7 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                         shape = MaterialTheme.shapes.medium,
+                     )
+                     NavigationDrawerItem(
+-                        label = { Text("الوحدات") },
++                        label = { Text(stringResource(R.string.nav_units)) },
+                         icon = { NavIcon(Icons.Filled.Settings, selected = page == "الوحدات") },
+                         selected = page == "الوحدات",
+                         onClick = {
+@@ -179,9 +192,9 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                 TopAppBar(
+                     title = {
+                         Column {
+-                            Text(page, style = MaterialTheme.typography.titleMedium, maxLines = 1)
++                            Text(stringResource(destinationTitleRes(page)), style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                             Text(
+-                                "FUSH ERP",
++                                stringResource(R.string.brand_name),
+                                 style = MaterialTheme.typography.labelSmall,
+                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                             )
+@@ -190,14 +203,14 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                     navigationIcon = {
+                         IconButton(
+                             onClick = { scope.launch { drawerState.open() } },
+-                            modifier = Modifier.semantics { contentDescription = "فتح القائمة الرئيسية" },
++                            modifier = Modifier.semantics { contentDescription = openMenuDescription },
+                         ) {
+                             NavIcon(Icons.Filled.Menu, selected = true)
+                         }
+                     },
+                     actions = {
+                         FushUserAvatar(user.displayName, Modifier.padding(horizontal = 4.dp))
+-                        TextButton(onClick = onLogout) { Text("خروج") }
++                        TextButton(onClick = onLogout) { Text(stringResource(R.string.common_logout)) }
+                     },
+                     colors = TopAppBarDefaults.topAppBarColors(
+                         containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
