@@ -43,6 +43,15 @@ jobs:
           repository: aamggd/amgd
           run-id: 31858347166
 
+      - name: Download original Users Permissions base Phase 14.5.33
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.33-Expense-Dimensions-Build
+          path: baseline33-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31854443269
+
       - name: Restore baseline and apply completed UI phases 39-42 sequentially
         shell: bash
         run: |
@@ -98,8 +107,7 @@ jobs:
           rm -f app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt.rej
           python - <<'PY'
           from pathlib import Path
-          p=Path('app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt')
-          s=p.read_text()
+          p=Path('app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt'); s=p.read_text()
           old='''                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }\n                OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }'''
           new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }\n                OutlinedButton(onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("صرف للعميل") }'''
           if old not in s: raise SystemExit('customer button block not found')
@@ -111,29 +119,21 @@ jobs:
           PY
           git add -A && git commit -qm 'Rebase accounting integrity onto professional party UI'
 
-          # Apply schema/service/reconciliation core while preserving the professional accounting workspace.
           git apply --check --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt /tmp/accounting35.patch
           git apply --exclude=app/build.gradle.kts --exclude=app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt /tmp/accounting35.patch
-
-          # Port the new periods/reconciliation tab into the current professional screen.
           python - <<'PY'
           from pathlib import Path
           import re
-          patch=Path('/tmp/accounting35.patch').read_text()
-          target='app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'
+          patch=Path('/tmp/accounting35.patch').read_text(); target='app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'
           part=next(x for x in re.split(r'(?=^diff --git )',patch,flags=re.M) if x.startswith('diff --git ') and f' b/{target}' in x.splitlines()[0])
           added=[]; capture=False
           for line in part.splitlines():
-              if line.startswith('+@Composable'):
-                  capture=True
+              if line.startswith('+@Composable'): capture=True
               if capture:
-                  if line.startswith('+') and not line.startswith('+++'):
-                      added.append(line[1:])
-                  elif line.startswith(' @Composable') and added:
-                      break
+                  if line.startswith('+') and not line.startswith('+++'): added.append(line[1:])
+                  elif line.startswith(' @Composable') and added: break
           block='\n'.join(added).rstrip()+'\n\n'
-          if 'private fun AccountingPeriodsTab' not in block:
-              raise SystemExit('AccountingPeriodsTab extraction failed')
+          if 'private fun AccountingPeriodsTab' not in block: raise SystemExit('AccountingPeriodsTab extraction failed')
           p=Path(target); s=p.read_text()
           old='val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي")'
           new='val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي", "الفترات والمطابقة")'
@@ -145,17 +145,14 @@ jobs:
           s=s.replace(old,new,1)
           marker='@Composable\nprivate fun JournalTab'
           if marker not in s: raise SystemExit('JournalTab marker not found')
-          s=s.replace(marker,block+marker,1)
-          p.write_text(s)
+          p.write_text(s.replace(marker,block+marker,1))
           PY
-          grep -q 'الفترات والمطابقة' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
-          grep -q 'private fun AccountingPeriodsTab' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
           git add -A && git commit -qm 'Rebase accounting periods and reconciliation onto professional UI'
           grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/Migrations.kt
           echo ACCOUNTING_34_35_OK
 
-      - name: Reconstruct users permissions base patch and diagnose conflicts
+      - name: Three-way merge users permissions and security hardening
         shell: bash
         run: |
           set -euo pipefail
@@ -165,12 +162,53 @@ jobs:
           raw=gzip.decompress(base64.b64decode(''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64')))))
           pathlib.Path('/tmp/users34.patch').write_bytes(raw)
           PY
-          cd FushERP_Mobile_Phase5
-          git apply --check --verbose /tmp/users34.patch || true
-          echo USERS_DIAG_DONE
+          mkdir -p /tmp/base33 /tmp/users33
+          unzip -q baseline33-build/FushERP-Mobile-Phase14.5.33-Expense-Dimensions-Source.zip -d /tmp/base33
+          cp -a /tmp/base33/FushERP_Mobile_Phase5 /tmp/users33/FushERP_Mobile_Phase5
+          cd /tmp/users33/FushERP_Mobile_Phase5
+          rm -rf .git && git init -q && git config user.name CI && git config user.email ci@example.invalid
+          git add -A && git commit -qm base33
+          git apply --check /tmp/users34.patch
+          git apply /tmp/users34.patch
+          git add -A && git commit -qm users34
+          git apply --check "$GITHUB_WORKSPACE/phase14_5_36_users_security_hardening/phase14_5_36.patch"
+          git apply "$GITHUB_WORKSPACE/phase14_5_36_users_security_hardening/phase14_5_36.patch"
+          git diff --name-only HEAD^ > /tmp/hardening_changed.txt || true
+          git add -A && git commit -qm users36
+          git diff --name-only HEAD~2 HEAD | sort -u > /tmp/users_changed.txt
+          echo '=== combined security changed files ==='
+          cat /tmp/users_changed.txt
 
-      - name: Inspect users security hardening patch files
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep '^diff --git' phase14_5_36_users_security_hardening/phase14_5_36.patch || true
+          cd "$GITHUB_WORKSPACE/FushERP_Mobile_Phase5"
+          : > /tmp/security_conflicts.txt
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if [ "$f" = 'app/build.gradle.kts' ]; then continue; fi
+            base="/tmp/base33/FushERP_Mobile_Phase5/$f"
+            theirs="/tmp/users33/FushERP_Mobile_Phase5/$f"
+            ours="$f"
+            if [ -f "$theirs" ] && [ ! -e "$base" ]; then
+              mkdir -p "$(dirname "$ours")"; cp "$theirs" "$ours"; continue
+            fi
+            if [ ! -e "$theirs" ]; then
+              rm -f "$ours"; continue
+            fi
+            if [ -f "$base" ] && [ -f "$ours" ]; then
+              set +e
+              git merge-file -p "$ours" "$base" "$theirs" > /tmp/merged-security-file
+              rc=$?
+              set -e
+              cp /tmp/merged-security-file "$ours"
+              if [ "$rc" -gt 0 ]; then echo "$f" >> /tmp/security_conflicts.txt; fi
+            elif [ -f "$theirs" ]; then
+              mkdir -p "$(dirname "$ours")"; cp "$theirs" "$ours"
+            fi
+          done < /tmp/users_changed.txt
+          echo '=== THREE WAY CONFLICTS ==='
+          cat /tmp/security_conflicts.txt || true
+          echo '=== conflict marker context ==='
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            echo "----- $f -----"
+            grep -n -B5 -A12 '<<<<<<<' "$f" || true
+          done < /tmp/security_conflicts.txt
