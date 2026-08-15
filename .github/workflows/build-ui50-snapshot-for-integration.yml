@@ -80,8 +80,13 @@ jobs:
                 apply_ui49_shared_components_semantic
               else
                 git --git-dir="$GITHUB_WORKSPACE/.git" show "refs/remotes/origin/ui-redesign:$p" > /tmp/ui.patch
-                git apply --check /tmp/ui.patch
-                git apply /tmp/ui.patch
+                if git apply --check /tmp/ui.patch; then
+                  git apply /tmp/ui.patch
+                else
+                  echo "Formatting/context drift detected; applying bounded fuzz for $p"
+                  patch --batch --forward --fuzz=3 -p1 < /tmp/ui.patch
+                  test -z "$(find . -name '*.rej' -print -quit)"
+                fi
               fi
               git diff --check
               git add -A
@@ -96,6 +101,7 @@ jobs:
           grep -q 'versionName = "0.15.4.50-ui-localization-foundation"' app/build.gradle.kts
           grep -q 'val LocalFushSnackbar' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
           grep -q 'fun FushDialogForm' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          test -z "$(find . -name '*.rej' -print -quit)"
           git diff --check
           echo "UI50_TREE=$(git write-tree)" | tee "$GITHUB_WORKSPACE/ui50-tree.txt"
 
