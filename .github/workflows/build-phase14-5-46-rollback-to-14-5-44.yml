@@ -1,0 +1,121 @@
+name: Build Fush ERP Phase 14.5.46 Rollback to 14.5.44
+
+on:
+  push:
+    branches: [fush/rollback-14.5.46-to-14.5.44]
+    paths:
+      - 'phase14_5_46_rollback.patch'
+      - '.github/workflows/build-phase14-5-46-rollback-to-14-5-44.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout rollback branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.44 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Inventory-Theme-Fix-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31862525770
+
+      - name: Restore Phase 14.5.44 and apply safe rollback version bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.44-Inventory-Theme-Fix-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git apply --check ../phase14_5_46_rollback.patch
+          git apply ../phase14_5_46_rollback.patch
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 85' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.46-rollback-to-14.5.44"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 85' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.46-rollback-to-14.5.44"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-46-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-46-output/FushERP-Phase14.5.46-Rollback-to-14.5.44-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-46-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-46-output/lib/apksigner.jar
+          chmod +x phase14-5-46-output/apksigner
+          zip -qr phase14-5-46-output/FushERP-Mobile-Phase14.5.46-Rollback-to-14.5.44-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.46 — Safe rollback to Phase 14.5.44 behavior' \
+            'Base source: verified Phase 14.5.44 Inventory Theme Fix' \
+            'Purpose: install over Phase 14.5.45 without uninstalling or downgrading versionCode.' \
+            'Only build identity changed: versionCode 85, rollback versionName.' \
+            'Package: com.fush.erp.recovery' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-46-output/FushERP-Phase14.5.46-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Rollback-to-14.5.44-Build
+          path: phase14-5-46-output/
+          if-no-files-found: error
+          retention-days: 7
