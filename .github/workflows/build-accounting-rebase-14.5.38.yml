@@ -1,0 +1,210 @@
+name: Validate FUSH Accounting Rebase on Professional UI 14.5.38
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-rebase-14.5.38.yml'
+      - 'fush_accounting/rebase/**'
+      - 'fush_accounting/patches/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  rebase-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download functional base 14.5.33
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.33-Expense-Dimensions-Build
+          path: base33-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31854443269
+
+      - name: Download official Professional UI 14.5.38 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: ui38-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+
+      - name: Reconstruct accounting lineage and three-way rebase
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+
+          unzip -q "$ROOT/base33-artifact/FushERP-Mobile-Phase14.5.33-Expense-Dimensions-Source.zip"
+          mv FushERP_Mobile_Phase5 repo
+          unzip -q "$ROOT/ui38-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip" -d ui38-source
+
+          cd repo
+          rm -rf .git app/build .gradle .kotlin build
+          git init -q
+          git config user.name 'FUSH Accounting Rebase CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'baseline Phase 14.5.33'
+          BASE_SHA=$(git rev-parse HEAD)
+
+          git checkout -qb accounting-old
+          decode_patch() {
+            local name="$1"
+            base64 --decode "$ROOT/fush_accounting/patches/${name}.patch.gz.b64" | gzip -d > "/tmp/${name}.patch"
+            test -s "/tmp/${name}.patch"
+          }
+
+          decode_patch phase14.5.34-accounting-integrity
+          git apply --check /tmp/phase14.5.34-accounting-integrity.patch
+          git apply /tmp/phase14.5.34-accounting-integrity.patch
+
+          decode_patch phase14.5.35-accounting-periods-reconciliation
+          git apply --check /tmp/phase14.5.35-accounting-periods-reconciliation.patch
+          git apply /tmp/phase14.5.35-accounting-periods-reconciliation.patch
+
+          decode_patch phase14.5.36-operational-reversals
+          patch --dry-run -p5 --batch < /tmp/phase14.5.36-operational-reversals.patch
+          patch -p5 --batch --forward < /tmp/phase14.5.36-operational-reversals.patch
+
+          decode_patch phase14.5.37-fiscal-year-closing
+          patch --dry-run -p5 --batch < /tmp/phase14.5.37-fiscal-year-closing.patch
+          patch -p5 --batch --forward < /tmp/phase14.5.37-fiscal-year-closing.patch
+
+          decode_patch phase14.5.38-treasury-bank-reconciliation
+          git apply --check /tmp/phase14.5.38-treasury-bank-reconciliation.patch
+          git apply /tmp/phase14.5.38-treasury-bank-reconciliation.patch
+
+          git add -A
+          git commit -qm 'accounting lineage 14.5.34-14.5.38'
+
+          git checkout -qb ui38 "$BASE_SHA"
+          rsync -a --delete --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='app/build' --exclude='build' \
+            "$ROOT/work/ui38-source/FushERP_Mobile_Phase5/" ./
+          git add -A
+          git commit -qm 'official Professional UI Phase 14.5.38'
+          UI_SHA=$(git rev-parse HEAD)
+
+          git checkout -qb rebased
+          set +e
+          git merge --no-commit --no-ff accounting-old
+          MERGE_RC=$?
+          set -e
+          test "$MERGE_RC" -eq 1
+          mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+          test "${#conflicts[@]}" -eq 3
+          printf '%s\n' "${conflicts[@]}" | grep -qx 'app/build.gradle.kts'
+          printf '%s\n' "${conflicts[@]}" | grep -qx 'app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt'
+          printf '%s\n' "${conflicts[@]}" | grep -qx 'app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt'
+
+          python "$ROOT/fush_accounting/rebase/resolve_rebase_conflicts.py" "$PWD"
+          git add app/build.gradle.kts app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+
+          # Do not carry old branch release metadata/docs into the modern baseline.
+          git checkout ui38 -- README_AR.md
+          rm -f PHASE14_5_34_SCOPE.md PHASE14_5_34_VALIDATION.md \
+                PHASE14_5_35_SCOPE.md PHASE14_5_35_VALIDATION.md \
+                PHASE14_5_36_SCOPE.md PHASE14_5_36_VALIDATION.md \
+                PHASE14_5_37_SCOPE.md PHASE14_5_37_VALIDATION.md \
+                PHASE14_5_38_SCOPE.md PHASE14_5_38_VALIDATION.md VALIDATION_14_5_38.txt
+          cp "$ROOT/fush_accounting/rebase/ACCOUNTING_REBASE_14_5_38.md" ./ACCOUNTING_REBASE_14_5_38.md
+          git add -A
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git diff --cached --check
+          git commit -qm 'Rebase accounting on Professional UI 14.5.38'
+
+          mkdir -p "$ROOT/rebase-output"
+          git diff --binary "$UI_SHA"..HEAD > "$ROOT/rebase-output/FushERP-Accounting-Rebased-on-Phase14.5.38-Professional-UI.patch"
+          test -s "$ROOT/rebase-output/FushERP-Accounting-Rebased-on-Phase14.5.38-Professional-UI.patch"
+          git apply --check "$ROOT/rebase-output/FushERP-Accounting-Rebased-on-Phase14.5.38-Professional-UI.patch" < /dev/null || true
+
+      - name: Verify identity, schema and migration safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 31' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_27_28' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_28_29' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_29_30' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_30_31' app/src/main/java/com/fush/erp/data/Migrations.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+
+      - name: Unit tests
+        working-directory: work/repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/31.json
+          grep -q '"version": 31' app/schemas/com.fush.erp.data.FushDatabase/31.json
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            "$GITHUB_WORKSPACE/rebase-output/FushERP-Accounting-Rebase-14.5.38-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 \
+            "$GITHUB_WORKSPACE/rebase-output/FushERP-Accounting-Rebase-14.5.38-aligned-unsigned.apk"
+
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$GITHUB_WORKSPACE/work"
+          zip -qr "$GITHUB_WORKSPACE/rebase-output/FushERP-Mobile-Accounting-Rebased-on-14.5.38-Professional-UI-Source.zip" repo
+          sha256sum "$GITHUB_WORKSPACE/rebase-output/"* > "$GITHUB_WORKSPACE/rebase-output/SHA256SUMS.txt"
+          cat > "$GITHUB_WORKSPACE/rebase-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting rebase validation
+          Baseline: official Phase 14.5.38 Professional UI artifact
+          Application ID: com.fush.erp.recovery
+          Baseline versionCode retained for branch testing: 77
+          Baseline versionName retained for branch testing: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 31 (PROVISIONAL / BRANCH ONLY; integration must renumber after other migrations)
+          Unit Tests: PASS
+          Release Build: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent key/password are intentionally not stored in GitHub
+          ACCOUNTING_REBASE_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Rebase-14.5.38-Validated-Build
+          path: rebase-output/
+          if-no-files-found: error
+          retention-days: 7
