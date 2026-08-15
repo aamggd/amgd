@@ -1,0 +1,222 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -429,21 +591,79 @@
+     val payments by produceState(initialValue = emptyList<SupplierPaymentDetailRow>(), supplier.id) { value = container.db.purchaseDao().supplierPayments(supplier.id) }
+     val returns by produceState(initialValue = emptyList<PurchaseReturnEntity>(), supplier.id) { value = container.db.purchaseDao().supplierReturns(supplier.id) }
+     val running = remember(events) { var b=0.0; events.map { b += it.creditBase-it.debitBase; it to b } }
++    val currentBalance = running.lastOrNull()?.second ?: 0.0
+ 
+     Column(modifier.fillMaxSize()) {
+-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            OutlinedButton(onClick = onBack) { Text("رجوع") }
+-            Column(Modifier.weight(1f)) {
+-                Text(supplier.nameAr, style = MaterialTheme.typography.headlineSmall)
+-                Text("${supplier.code} • ${supplier.currencyCode}", style = MaterialTheme.typography.bodySmall)
+-            }
+-        }
+-        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            Button(onClick = { voucherType = "PAYMENT" }) { Text("سند صرف") }
+-            OutlinedButton(onClick = { voucherType = "RECEIPT" }) { Text("سند قبض") }
+-        }
+-        message?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary) }
+-        ScrollableTabRow(selectedTabIndex = tab) { tabs.forEachIndexed { i,t -> Tab(tab==i,{tab=i},text={Text(t)}) } }
++        Column(
++            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
++            verticalArrangement = Arrangement.spacedBy(10.dp),
++        ) {
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.spacedBy(10.dp),
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text("رجوع") }
++                FushUserAvatar(supplier.nameAr)
++                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                    Text(supplier.nameAr, style = MaterialTheme.typography.titleLarge)
++                    Text(
++                        "${supplier.code} • ${supplier.currencyCode}",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                    )
++                }
++            }
++
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
++                FushStatusPill(if (supplier.isActive) "نشط" else "غير نشط", if (supplier.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
++                FushStatusPill(
++                    if (supplier.paymentTermsDays > 0) "أجل ${supplier.paymentTermsDays} يوم" else "نقدي",
++                    if (supplier.paymentTermsDays > 0) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++                FushStatusPill(supplier.currencyCode, FushStatusTone.Info)
++            }
++
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "الرصيد المستحق",
++                    value = partyMoney(currentBalance),
++                    helper = "بالعملة الأساسية",
++                    modifier = Modifier.weight(1f),
++                    tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++                FushMetricCard(
++                    label = "فواتير المشتريات",
++                    value = invoices.size.toString(),
++                    helper = "${payments.size} دفعة • ${returns.size} مرتجع",
++                    modifier = Modifier.weight(1f),
++                    tone = FushStatusTone.Info,
++                )
++            }
++
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }
++                OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }
++            }
++
++            message?.let { text ->
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.small,
++                ) {
++                    Text(text, Modifier.fillMaxWidth().padding(10.dp), style = MaterialTheme.typography.bodySmall)
++                }
++            }
++        }
++
++        ScrollableTabRow(
++            selectedTabIndex = tab,
++            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++            edgePadding = 10.dp,
++        ) {
++            tabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
++        }
+         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+             when(tab) {
+                 0 -> PartyInfoSupplier(supplier)
+@@ -526,9 +746,56 @@
+     }
+     if (divider) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+ }
+-@Composable private fun PartyInfoSupplier(s: SupplierEntity) { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement=Arrangement.spacedBy(6.dp)) {
+-    Text("المعلومات الأساسية", style=MaterialTheme.typography.titleLarge); Text("الكود: ${s.code}"); Text("الاسم: ${s.nameAr}"); if(s.nameEn.isNotBlank()) Text("English: ${s.nameEn}"); Text("الهاتف: ${s.phone.ifBlank{"—"}}"); Text("العنوان: ${s.address.ifBlank{"—"}}"); Text("العملة: ${s.currencyCode}"); Text("شروط الدفع: ${s.paymentTermsDays} يوم"); Text("تاريخ الإنشاء: ${partyDate(s.createdAt)}")
+-} }
++@Composable
++private fun PartyInfoSupplier(s: SupplierEntity) {
++    Column(
++        Modifier.verticalScroll(rememberScrollState()),
++        verticalArrangement = Arrangement.spacedBy(12.dp),
++    ) {
++        FushSectionHeader("المعلومات الأساسية", "بيانات المورد وشروط الدفع")
++        ElevatedCard(
++            Modifier.fillMaxWidth(),
++            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++        ) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                SupplierInfoRow("الكود", s.code)
++                SupplierInfoRow("الاسم", s.nameAr)
++                if (s.nameEn.isNotBlank()) SupplierInfoRow("English", s.nameEn)
++                SupplierInfoRow("الهاتف", s.phone.ifBlank { "—" })
++                SupplierInfoRow("العنوان", s.address.ifBlank { "—" })
++                SupplierInfoRow("العملة", s.currencyCode)
++                SupplierInfoRow("تاريخ الإنشاء", partyDate(s.createdAt), divider = false)
++            }
++        }
++        Surface(
++            color = if (s.paymentTermsDays > 0) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
++            contentColor = if (s.paymentTermsDays > 0) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
++            shape = MaterialTheme.shapes.medium,
++        ) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                Text("شروط الدفع", style = MaterialTheme.typography.titleSmall)
++                Text(
++                    if (s.paymentTermsDays > 0) "مدة السداد المتفق عليها ${s.paymentTermsDays} يوم." else "المورد مضبوط على السداد النقدي دون فترة أجل.",
++                    style = MaterialTheme.typography.bodyMedium,
++                )
++            }
++        }
++    }
++}
++
++@Composable
++private fun SupplierInfoRow(label: String, value: String, divider: Boolean = true) {
++    Row(
++        Modifier.fillMaxWidth().padding(vertical = 8.dp),
++        horizontalArrangement = Arrangement.SpaceBetween,
++        verticalAlignment = Alignment.Top,
++    ) {
++        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++        Spacer(Modifier.width(16.dp))
++        Text(value, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
++    }
++    if (divider) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++}
+ 
+ @Composable
+ private fun CustomerLedgerTab(rows: List<Pair<CustomerLedgerEventRow,Double>>) {
+@@ -586,11 +853,61 @@
+         }
+     }
+ }
+-@Composable private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+-    item { Text("كشف الحساب الزمني الموحد", style=MaterialTheme.typography.titleLarge); Text("الرصيد الحالي: ${partyMoney(rows.lastOrNull()?.second?:0.0)}", style=MaterialTheme.typography.titleMedium) }
+-    if(rows.isEmpty()) item { Text("لا توجد حركات.") }
+-    items(rows) { (e,b) -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${partyDate(e.eventDate)} • ${partyEventLabel(e.eventType)} • ${e.referenceNo}"); Text("مدين ${partyMoney(e.debitBase)} • دائن ${partyMoney(e.creditBase)} • الرصيد ${partyMoney(b)}"); if(e.notes.isNotBlank()) Text(e.notes, style=MaterialTheme.typography.bodySmall) } } }
+-} }
++@Composable
++private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
++    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            val balance = rows.lastOrNull()?.second ?: 0.0
++            FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات المورد")
++            Spacer(Modifier.height(8.dp))
++            FushMetricCard(
++                label = "الرصيد المستحق",
++                value = partyMoney(balance),
++                helper = "المبلغ المستحق للمورد",
++                modifier = Modifier.fillMaxWidth(),
++                tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++            )
++        }
++        if (rows.isEmpty()) {
++            item {
++                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
++                    Text("لا توجد حركات على حساب المورد حتى الآن.", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++            }
++        }
++        items(rows) { (event, balance) ->
++            ElevatedCard(
++                Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++            ) {
++                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(partyEventLabel(event.eventType), style = MaterialTheme.typography.titleSmall)
++                            Text("${partyDate(event.eventDate)} • ${event.referenceNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill("رصيد ${partyMoney(balance)}", if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f), shape = MaterialTheme.shapes.small) {
++                            Column(Modifier.padding(9.dp)) {
++                                Text("مدين", style = MaterialTheme.typography.labelSmall)
++                                Text(partyMoney(event.debitBase), style = MaterialTheme.typography.titleSmall)
++                            }
++                        }
++                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f), shape = MaterialTheme.shapes.small) {
++                            Column(Modifier.padding(9.dp)) {
++                                Text("دائن", style = MaterialTheme.typography.labelSmall)
++                                Text(partyMoney(event.creditBase), style = MaterialTheme.typography.titleSmall)
++                            }
++                        }
++                    }
++                    if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++            }
++        }
++    }
++}
+ 
+ @Composable private fun VoucherList(vouchers: List<PartyVoucherEntity>, onReverse: (PartyVoucherEntity)->Unit) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+     item { Text("سندات القبض والصرف المرتبطة بالطرف", style=MaterialTheme.typography.titleLarge); Text("السند المرحل لا يعدل أو يحذف؛ التصحيح بالعكس فقط.", style=MaterialTheme.typography.bodySmall) }
