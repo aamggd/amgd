@@ -1,0 +1,45 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index bb87d68..513f2e0 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -37,7 +37,13 @@ private data class DrawerItem(@StringRes val labelRes: Int, val target: String)
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+-fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
++fun HomeShell(
++    container: AppContainer,
++    user: UserEntity,
++    darkTheme: Boolean,
++    onToggleTheme: () -> Unit,
++    onLogout: () -> Unit,
++) {
+     var page by rememberSaveable { mutableStateOf("الرئيسية") }
+     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+     val scope = rememberCoroutineScope()
+@@ -98,6 +104,9 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+     }
+ 
+     val openMenuDescription = stringResource(R.string.drawer_open_main_menu)
++    val themeToggleDescription = stringResource(
++        if (darkTheme) R.string.theme_switch_to_light else R.string.theme_switch_to_dark
++    )
+ 
+     ModalNavigationDrawer(
+         drawerState = drawerState,
+@@ -209,6 +218,15 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                         }
+                     },
+                     actions = {
++                        TextButton(
++                            onClick = onToggleTheme,
++                            modifier = Modifier.semantics { contentDescription = themeToggleDescription },
++                        ) {
++                            Text(
++                                stringResource(if (darkTheme) R.string.theme_light else R.string.theme_dark),
++                                maxLines = 1,
++                            )
++                        }
+                         FushUserAvatar(user.displayName, Modifier.padding(horizontal = 4.dp))
+                         TextButton(onClick = onLogout) { Text(stringResource(R.string.common_logout)) }
+                     },
