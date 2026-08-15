@@ -16,6 +16,7 @@
 
 1. `patches/phase14.5.34-accounting-integrity.patch.gz.b64`
 2. `patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64`
+3. `patches/phase14.5.36-operational-reversals.patch.gz.b64`
 
 ## فك الحزمة وتطبيقها
 مثال Linux/macOS:
@@ -26,6 +27,9 @@ git apply phase14.5.34.patch
 
 base64 -d patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 | gzip -d > phase14.5.35.patch
 git apply phase14.5.35.patch
+
+base64 -d patches/phase14.5.36-operational-reversals.patch.gz.b64 | gzip -d > phase14.5.36.patch
+git apply phase14.5.36.patch
 ```
 
 ## Phase 14.5.34 — Accounting Integrity
@@ -47,5 +51,15 @@ git apply phase14.5.35.patch
 - فحص فرق ميزان المراجعة.
 - منع إقفال الفترة إذا كانت المطابقات غير سليمة ضمن سماحية 0.01 من العملة الأساسية.
 
+## Phase 14.5.36 — Operational Reversals
+- Schema 29.
+- عكس موثق لتحصيلات الفواتير الآجلة دون حذف المستند الأصلي.
+- إعادة فتح ذمة الفاتورة تلقائيًا عبر تخصيص عكسي.
+- عكس القيد الأصلي نفسه، بما فيه الخزينة وفروق العملة.
+- إعادة احتساب عمولة المندوب بعد عكس التحصيل.
+- عكس دفعات الموردين وإعادة رصيد الفاتورة المستحق.
+- منع العكس المكرر والعكس داخل فترة محاسبية مقفلة.
+- إظهار مستند العكس في ملف العميل والمورد وكشف الحساب وسجل التدقيق.
+
 ## ملاحظات الدمج
-عند الدمج في `fush/main` يجب الحفاظ على ترتيب المرحلتين. أي تعارض مع فرع الواجهات أو فرع الصلاحيات يجب حله على مستوى التكامل دون إسقاط منطق سلامة الحسابات.
+عند الدمج في `fush/main` يجب الحفاظ على ترتيب المراحل. أي تعارض مع فرع الواجهات أو فرع الصلاحيات يجب حله على مستوى التكامل دون إسقاط منطق سلامة الحسابات.
