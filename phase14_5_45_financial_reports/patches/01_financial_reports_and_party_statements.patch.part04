@@ -1,0 +1,90 @@
+         subtitle = reportPeriodSubtitle(periodLabel, from, to),
+         summary = summary,
+         tables = tables,
+-        notes = if (pnl == null && trial == null && cash == null) listOf("لا توجد بيانات مالية متاحة للفترة المحددة.") else emptyList()
++        notes = if (pnl == null && trial == null && cash == null && balanceSheet == null) listOf("لا توجد بيانات مالية متاحة للفترة المحددة.") else emptyList()
++    )
++}
++
++private fun buildLedgerReportExportDocument(
++    account: AccountEntity?,
++    ledger: LedgerReport?,
++    periodLabel: String,
++    from: Long,
++    to: Long
++): ReportExportDocument {
++    val accountLabel = account?.let { "${it.code} — ${it.nameAr}" } ?: "لم يتم اختيار حساب"
++    return ReportExportDocument(
++        title = "دفتر الأستاذ العام — Fush ERP",
++        subtitle = reportPeriodSubtitle(periodLabel, from, to),
++        summary = listOf(
++            "الحساب" to accountLabel,
++            "الرصيد الافتتاحي" to (ledger?.let { reportBalanceLabel(it.openingBalance) } ?: "—"),
++            "إجمالي المدين" to (ledger?.let { money(it.lines.sumOf { line -> line.debit }) } ?: "—"),
++            "إجمالي الدائن" to (ledger?.let { money(it.lines.sumOf { line -> line.credit }) } ?: "—"),
++            "الرصيد الختامي" to (ledger?.let { reportBalanceLabel(it.closingBalance) } ?: "—")
++        ),
++        tables = ledger?.let { report ->
++            listOf(
++                ReportExportTable(
++                    title = "حركة الحساب",
++                    headers = listOf("التاريخ", "رقم القيد", "المصدر", "البيان", "مدين", "دائن", "الرصيد"),
++                    rows = report.lines.map { line ->
++                        listOf(
++                            fmtDate(line.entryDate),
++                            line.entryNo,
++                            line.sourceType,
++                            line.description,
++                            money(line.debit),
++                            money(line.credit),
++                            reportBalanceLabel(line.runningBalance)
++                        )
++                    }
++                )
++            )
++        } ?: emptyList(),
++        notes = if (ledger == null) listOf("اختر حساب ترحيل لإعداد دفتر الأستاذ.") else emptyList()
++    )
++}
++
++private fun buildPartyStatementExportDocument(
++    partyType: String,
++    customer: CustomerEntity?,
++    supplier: SupplierEntity?,
++    statement: PartyStatementPeriod?,
++    periodLabel: String,
++    from: Long,
++    to: Long
++): ReportExportDocument {
++    val partyLabel = if (partyType == "SUPPLIER") {
++        supplier?.let { "${it.code} — ${it.nameAr}" }
++    } else {
++        customer?.let { "${it.code} — ${it.nameAr}" }
++    } ?: "لم يتم اختيار الطرف"
++    val typeLabel = if (partyType == "SUPPLIER") "مورد" else "عميل"
++    return ReportExportDocument(
++        title = "كشف حساب $typeLabel — Fush ERP",
++        subtitle = reportPeriodSubtitle(periodLabel, from, to),
++        summary = listOf(
++            "نوع الطرف" to typeLabel,
++            "الطرف" to partyLabel,
++            "الرصيد الافتتاحي" to (statement?.let { partyBalanceLabel(it.openingBalance, partyType) } ?: "—"),
++            "إجمالي المدين" to (statement?.let { money(it.totalDebit) } ?: "—"),
++            "إجمالي الدائن" to (statement?.let { money(it.totalCredit) } ?: "—"),
++            "الرصيد الختامي" to (statement?.let { partyBalanceLabel(it.closingBalance, partyType) } ?: "—")
++        ),
++        tables = statement?.let { report ->
++            listOf(
++                ReportExportTable(
++                    title = "الحركة التفصيلية",
++                    headers = listOf("التاريخ", "نوع الحركة", "المرجع", "البيان", "مدين", "دائن", "الرصيد"),
++                    rows = report.lines.map { line ->
++                        listOf(
++                            fmtDate(line.eventDate),
++                            partyEventTypeAr(line.eventType),
++                            line.referenceNo,
++                            line.description.ifBlank { "—" },
++                            money(line.debitBase),
++                            money(line.creditBase),
++                            partyBalanceLabel(line.runningBalance, partyType)
++                        )
