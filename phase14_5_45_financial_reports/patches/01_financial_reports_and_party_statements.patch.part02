@@ -1,0 +1,90 @@
+@@ -84,7 +150,9 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+ 
+     val exportDocument = remember(
+         tab, period, from, to, executive, customers, salesProductQuantities, provinces, commissions, suppliers,
+-        inventory, production, productionMaterials, quality, maintenance, pnl, trial, cash
++        inventory, production, productionMaterials, quality, maintenance, pnl, trial, cash, balanceSheet, accounts,
++        ledgerAccountId, ledger, statementCustomers, statementSuppliers, statementPartyType, statementCustomerId,
++        statementSupplierId, partyStatement
+     ) {
+         buildCurrentReportExportDocument(
+             tab = tab,
+@@ -104,7 +172,14 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+             maintenance = maintenance,
+             pnl = pnl,
+             trial = trial,
+-            cash = cash
++            cash = cash,
++            balanceSheet = balanceSheet,
++            ledgerAccount = accounts.firstOrNull { it.id == ledgerAccountId },
++            ledger = ledger,
++            statementPartyType = statementPartyType,
++            statementCustomer = statementCustomers.firstOrNull { it.id == statementCustomerId },
++            statementSupplier = statementSuppliers.firstOrNull { it.id == statementSupplierId },
++            partyStatement = partyStatement
+         )
+     }
+ 
+@@ -127,7 +202,13 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+                     ReportWorkspaceHeader(tab, period, from, to)
+                     ReportLoadingAndExport(loading, error, exportDocument, tab)
+                     Box(Modifier.weight(1f).fillMaxWidth()) {
+-                        ReportTabContent(tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory, production, productionMaterials, maintenance, quality, pnl, trial, cash)
++                        ReportTabContent(
++                        tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory,
++                        production, productionMaterials, maintenance, quality, pnl, trial, cash, balanceSheet, accounts,
++                        ledgerAccountId, { ledgerAccountId = it }, ledger, statementCustomers, statementSuppliers,
++                        statementPartyType, { statementPartyType = it }, statementCustomerId, { statementCustomerId = it },
++                        statementSupplierId, { statementSupplierId = it }, partyStatement
++                    )
+                     }
+                 }
+             }
+@@ -148,7 +229,13 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+                 }
+                 ReportLoadingAndExport(loading, error, exportDocument, tab)
+                 Box(Modifier.weight(1f).fillMaxWidth()) {
+-                    ReportTabContent(tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory, production, productionMaterials, maintenance, quality, pnl, trial, cash)
++                    ReportTabContent(
++                        tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory,
++                        production, productionMaterials, maintenance, quality, pnl, trial, cash, balanceSheet, accounts,
++                        ledgerAccountId, { ledgerAccountId = it }, ledger, statementCustomers, statementSuppliers,
++                        statementPartyType, { statementPartyType = it }, statementCustomerId, { statementCustomerId = it },
++                        statementSupplierId, { statementSupplierId = it }, partyStatement
++                    )
+                 }
+             }
+         }
+@@ -156,7 +243,9 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+ }
+ 
+ private val reportPeriods = listOf("اليوم", "هذا الشهر", "30 يوم", "هذه السنة", "كل الفترة")
+-private val reportTabs = listOf("ملخص", "المبيعات", "المشتريات", "المخزون", "الإنتاج", "الجودة", "المالية")
++private val reportTabs = listOf(
++    "ملخص", "المبيعات", "المشتريات", "المخزون", "الإنتاج", "الجودة", "المالية", "الأستاذ العام", "كشف الأطراف"
++)
+ 
+ @Composable
+ private fun ReportWorkspaceHeader(tab: String, period: String, from: Long, to: Long) {
+@@ -241,7 +330,21 @@ private fun ReportTabContent(
+     quality: List<QualityReportRow>,
+     pnl: ProfitLossReport?,
+     trial: TrialBalanceReport?,
+-    cash: CashFlowReport?
++    cash: CashFlowReport?,
++    balanceSheet: BalanceSheetReport?,
++    accounts: List<AccountEntity>,
++    ledgerAccountId: Long?,
++    onLedgerAccountChange: (Long) -> Unit,
++    ledger: LedgerReport?,
++    statementCustomers: List<CustomerEntity>,
++    statementSuppliers: List<SupplierEntity>,
++    statementPartyType: String,
++    onStatementPartyTypeChange: (String) -> Unit,
++    statementCustomerId: Long?,
++    onStatementCustomerChange: (Long) -> Unit,
++    statementSupplierId: Long?,
++    onStatementSupplierChange: (Long) -> Unit,
++    partyStatement: PartyStatementPeriod?
+ ) {
+     when (tab) {
