@@ -66,11 +66,47 @@ jobs:
             "--include=app/src/main/res/values-ar/strings.xml"
           )
 
+          add_51_1_preference_strings() {
+            python3 - <<'PY'
+          from pathlib import Path
+          additions = {
+              'app/src/main/res/values/strings.xml': [
+                  ('preferences_title', 'Display &amp; language'),
+                  ('preferences_language', 'Language'),
+                  ('language_arabic', 'Arabic'),
+                  ('language_english', 'English'),
+                  ('preferences_theme', 'Appearance'),
+              ],
+              'app/src/main/res/values-ar/strings.xml': [
+                  ('preferences_title', 'المظهر واللغة'),
+                  ('preferences_language', 'اللغة'),
+                  ('language_arabic', 'العربية'),
+                  ('language_english', 'الإنجليزية'),
+                  ('preferences_theme', 'المظهر'),
+              ],
+          }
+          for name, rows in additions.items():
+              p = Path(name)
+              s = p.read_text()
+              if 'name="preferences_title"' in s:
+                  continue
+              block = ''.join(f'    <string name="{key}">{value}</string>\n' for key, value in rows)
+              if '</resources>' not in s:
+                  raise SystemExit(f'missing resources close tag: {name}')
+              p.write_text(s.replace('</resources>', block + '</resources>', 1))
+          PY
+          }
+
           for pkg in "${packages[@]}"; do
             [ -d "$GITHUB_WORKSPACE/$pkg/patches" ] || continue
             while IFS= read -r patch; do
               if [[ "$patch" == *"phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch" ]]; then
                 echo "Skipping obsolete parallel inventory layout $patch"
+                continue
+              fi
+              if [[ "$patch" == *"phase14_5_51_1_preferences_controls/patches/03_preference_strings.patch" ]]; then
+                echo "Adding 14.5.51.1 preference strings at current resource tail"
+                add_51_1_preference_strings
                 continue
               fi
               if grep -Eq 'app/src/main/java/com/fush/erp/ui/screens/(SalesScreens|PurchaseScreens|PartyScreens|AccountingScreens|AdvancedInventoryScreens)\.kt|app/src/main/res/values(-ar)?/strings\.xml' "$patch"; then
