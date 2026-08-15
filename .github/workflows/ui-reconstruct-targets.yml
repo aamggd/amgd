@@ -47,7 +47,6 @@ jobs:
             phase14_5_44_final_ui_handoff
             phase14_5_45_inventory_scroll_hotfix
             phase14_5_46_scroll_profile_polish
-            phase14_5_47_inventory_final_layout
             phase14_5_47_professional_forms_ui
             phase14_5_48_lazy_key_hotfix
             phase14_5_49_navigation_feedback_polish
@@ -67,70 +66,13 @@ jobs:
             "--include=app/src/main/res/values-ar/strings.xml"
           )
 
-          apply_inventory_47_layout() {
-            python3 - <<'PY'
-          from pathlib import Path
-          p = Path('app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt')
-          s = p.read_text()
-          s2 = s.replace(
-              'contentPadding = PaddingValues(12.dp),',
-              'contentPadding = PaddingValues(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 36.dp),',
-              1,
-          )
-          old = '''                LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                      items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
-                          FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
-                      }
-                  }'''
-          new = '''                val inventorySections = listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")
-                  Column(
-                      modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                      verticalArrangement = Arrangement.spacedBy(8.dp),
-                  ) {
-                      inventorySections.chunked(2).forEach { rowSections ->
-                          Row(
-                              modifier = Modifier.fillMaxWidth().wrapContentHeight(),
-                              horizontalArrangement = Arrangement.spacedBy(10.dp),
-                          ) {
-                              rowSections.forEach { label ->
-                                  FilterChip(
-                                      selected = section == label,
-                                      onClick = { section = label },
-                                      label = {
-                                          Text(
-                                              text = label,
-                                              modifier = Modifier.fillMaxWidth(),
-                                              textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                              softWrap = true,
-                                          )
-                                      },
-                                      modifier = Modifier
-                                          .weight(1f)
-                                          .heightIn(min = 48.dp)
-                                          .wrapContentHeight(),
-                                  )
-                              }
-                              if (rowSections.size == 1) Spacer(Modifier.weight(1f))
-                          }
-                      }
-                  }'''
-          if old not in s2:
-              raise SystemExit('14.5.47 inventory layout source context not found')
-          s2 = s2.replace(old, new, 1)
-          p.write_text(s2)
-          PY
-          }
-
           for pkg in "${packages[@]}"; do
             [ -d "$GITHUB_WORKSPACE/$pkg/patches" ] || continue
             while IFS= read -r patch; do
+              # This older parallel layout is not part of the baseline used to create
+              # 14.5.51; the 14.5.51 inventory patches confirm the LazyRow baseline.
               if [[ "$patch" == *"phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch" ]]; then
-                echo "Skipping obsolete parallel layout $patch"
-                continue
-              fi
-              if [[ "$patch" == *"phase14_5_47_inventory_final_layout/patches/02_inventory_tabs_layout.patch" ]]; then
-                echo "Applying canonical 14.5.47 inventory layout from preserved change"
-                apply_inventory_47_layout
+                echo "Skipping obsolete parallel inventory layout $patch"
                 continue
               fi
               if grep -Eq 'app/src/main/java/com/fush/erp/ui/screens/(SalesScreens|PurchaseScreens|PartyScreens|AccountingScreens|AdvancedInventoryScreens)\.kt|app/src/main/res/values(-ar)?/strings\.xml' "$patch"; then
