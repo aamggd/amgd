@@ -16,6 +16,7 @@
 1. Accounting Rebase 14.5.38.
 2. Phase 14.5.39 — Foreign Currency Treasury & Revaluation.
 3. Phase 14.5.40 — Fixed Asset Accounting.
+4. Phase 14.5.41 — Multi-Invoice Settlement.
 
 ### Accounting Rebase الأساسي
 - Workflow: `.github/workflows/build-accounting-rebase-14.5.38.yml`
@@ -70,7 +71,17 @@
    - عكس الإهلاك والاستبعاد وإلغاء الاقتناء بقيود موثقة بدل الحذف.
    - مطابقة `1500` و`1590` مع دفتر الأصول ومنع الإقفال عند وجود إهلاك مستحق أو فرق.
    - Successful validation run: `31868347639`.
-   - Patch SHA-256: `f3969bbeee458a99050749b0162940b3d823dc162a9d62d41a8a4d18958e4095`.
+
+8. **Multi-Invoice Settlement — Phase 14.5.41**
+   - تحصيل عميل واحد يمكن توزيعه على عدة فواتير مفتوحة بنفس العملة.
+   - دفعة مورد واحدة يمكن توزيعها على عدة فواتير شراء مفتوحة بنفس العملة.
+   - Auto Allocation حسب الأقدم FIFO مع عدم تجاوز رصيد أي فاتورة.
+   - كل فاتورة تُسوى بسعرها التاريخي الخاص، وحركة الخزينة بسعر الحركة الحالي، مع تجميع فرق العملة المحقق.
+   - احتساب عمولة المندوب لكل تخصيص عند تحصيل العميل.
+   - الاحتفاظ بخيار تسوية فاتورة واحدة.
+   - لا توجد Migration جديدة؛ Schema يبقى `33`.
+   - Successful validation run: `31869145938`.
+   - Patch SHA-256: `069b0a847e3b42244b04b11417280058286b5581a1b9b31448e14b41ab304f0b`.
 
 ## Room Schema — أرقام الفرع مؤقتة فقط
 السلسلة المستقلة الحالية تستخدم:
@@ -80,19 +91,19 @@
 - `30 -> 31`: Treasury/bank reconciliation.
 - `31 -> 32`: Foreign-currency treasury/revaluation.
 - `32 -> 33`: Fixed-asset accounting.
+- Phase 14.5.41: **no migration**؛ يبقى Schema `33`.
 
 هذه الأرقام **BRANCH ONLY / PROVISIONAL** وليست أرقام الـSchema النهائية للمشروع الموحد. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على نفس SQL والبيانات وعدم استخدام destructive migration.
 
 ## بوابة التحقق الأحدث
-Phase 14.5.40 — Run `31868347639` نجح في:
+Phase 14.5.41 — Run `31869145938` نجح في:
 - Patch integrity / SHA-256 / GZIP verification: PASS.
-- Apply to validated Phase 14.5.39 source: PASS.
+- Apply to validated Phase 14.5.40 source: PASS.
 - Application ID / baseline identity guard: PASS.
-- Migration safety / no destructive migration: PASS.
-- Fixed Asset DAO/Entities/Math/Service wiring: PASS.
+- Schema remains 33 / no new migration: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
-- Room Schema 33 generation: PASS.
+- Room Schema 33 verification: PASS.
 - Zipalign: PASS.
 - Artifact upload: PASS.
 
@@ -101,4 +112,6 @@ Phase 14.5.40 — Run `31868347639` نجح في:
 راجع:
 - `fush_accounting/PHASE14_5_40_SCOPE.md`
 - `fush_accounting/PHASE14_5_40_VALIDATION.md`
+- `fush_accounting/PHASE14_5_41_SCOPE.md`
+- `fush_accounting/PHASE14_5_41_VALIDATION.md`
 - `fush_accounting/rebase/VALIDATION_STATUS.md`
