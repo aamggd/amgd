@@ -10,8 +10,8 @@ index bf61ffb..68d3d98 100644
 +    var balanceSheet by remember { mutableStateOf<BalanceSheetReport?>(null) }
 +
 +    val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
-+    val statementCustomers by container.db.salesDao().observeAll().collectAsState(initial = emptyList())
-+    val statementSuppliers by container.db.purchaseDao().observeAll().collectAsState(initial = emptyList())
++    val statementCustomers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
++    val statementSuppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
 +    var ledgerAccountId by remember { mutableStateOf<Long?>(null) }
 +    var ledger by remember { mutableStateOf<LedgerReport?>(null) }
 +    var statementPartyType by remember { mutableStateOf("CUSTOMER") }
