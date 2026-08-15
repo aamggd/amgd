@@ -1,0 +1,166 @@
+name: Build FUSH Integrated UI Phase 14.5.44
+
+on:
+  push:
+    branches: [fush/integration-ui-14.5.44]
+    paths:
+      - '.github/workflows/build-integration-ui-14.5.44.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout UI integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate Phase 14.5.44 UI handoff scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f phase14_5_44_final_ui_handoff/README.md
+          for n in 01_scope 02_handoff_manifest 03_build_gradle 04_shared_inline_states 05_governance_risk 06_planning_geography 07_operations_state_consistency 08_people_profile_states 09_production_purchase_states 10_sales_rep_sales_states; do
+            test -f "phase14_5_44_final_ui_handoff/patches/${n}.patch"
+          done
+
+          # UI handoff may modify only docs, build version metadata and UI source files.
+          # Fail immediately if a patch attempts to alter database, DAO, service or domain logic.
+          while IFS= read -r path; do
+            case "$path" in
+              /dev/null|*.md|app/build.gradle.kts|app/src/main/java/com/fush/erp/ui/*) ;;
+              *) echo "ERROR: non-UI path in UI handoff: $path"; exit 1 ;;
+            esac
+          done < <(grep -h '^+++ ' phase14_5_44_final_ui_handoff/patches/*.patch | sed 's#^+++ b/##' | sort -u)
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.43 integrated UI source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.43-Integrated-Professional-UI-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31861273525
+
+      - name: Restore Phase 14.5.43 and apply final Phase 14.5.44 UI handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.43-Integrated-Professional-UI-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle .kotlin build
+          git init -q
+          git add -A
+          git -c user.name='FUSH UI Integration' -c user.email='ui-integration@local.invalid' commit -qm 'Verified Phase 14.5.43 UI baseline'
+
+          for n in 01_scope 02_handoff_manifest 03_build_gradle 04_shared_inline_states 05_governance_risk 06_planning_geography 07_operations_state_consistency 08_people_profile_states 09_production_purchase_states 10_sales_rep_sales_states; do
+            patch_file="../phase14_5_44_final_ui_handoff/patches/${n}.patch"
+            echo "Applying ${n}.patch"
+            git apply --check "$patch_file"
+            git apply "$patch_file"
+          done
+
+          git add -A
+          git diff --cached --check
+
+          # Immutable application identity and database safety gates.
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 83' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.44-ui-final-consistency"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          ! grep -R --line-number --include='*.kt' 'fallbackToDestructiveMigration' app/src/main || false
+
+          # Handoff must not have changed any non-UI business/data source file.
+          bad="$(git diff --cached --name-only | grep -Ev '^(app/build.gradle.kts|app/src/main/java/com/fush/erp/ui/|.*\.md$)' || true)"
+          if [ -n "$bad" ]; then
+            echo "ERROR: final UI integration changed non-UI files:"
+            echo "$bad"
+            exit 1
+          fi
+
+          git -c user.name='FUSH UI Integration' -c user.email='ui-integration@local.invalid' commit -qm 'Integrate final Professional UI Phase 14.5.44'
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=FushERP_Mobile_Phase5
+          test -f "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionCode = 83' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "0.15.4.44-ui-final-consistency"' "$ROOT/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/27.json"
+          test ! -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/28.json"
+
+      - name: Zipalign and package integrated UI outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p integration-ui-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=integration-ui-output/FushERP-Phase14.5.44-Integrated-UI-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" integration-ui-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" integration-ui-output/lib/apksigner.jar
+          chmod +x integration-ui-output/apksigner
+          zip -qr integration-ui-output/FushERP-Mobile-Phase14.5.44-Integrated-UI-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          sha256sum integration-ui-output/FushERP-Mobile-Phase14.5.44-Integrated-UI-Source.zip > integration-ui-output/FushERP-Mobile-Phase14.5.44-Integrated-UI-Source.zip.sha256
+          printf '%s\n' \
+            'FUSH ERP Mobile — Central UI Integration Phase 14.5.44' \
+            'Integration branch: fush/integration-ui-14.5.44' \
+            'Verified source base: Phase 14.5.43 Integrated Professional UI' \
+            'Final handoff: phase14_5_44_final_ui_handoff (10 patches)' \
+            'Application ID: com.fush.erp.recovery' \
+            'UI branch version code: 83' \
+            'UI branch version name: 0.15.4.44-ui-final-consistency' \
+            'Room schema: 27 unchanged' \
+            'Business/data source scope guard: PASS' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > integration-ui-output/FushERP-Phase14.5.44-UI-INTEGRATION-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Central-Integrated-UI-Build
+          path: integration-ui-output/
+          if-no-files-found: error
+          retention-days: 7
