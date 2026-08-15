@@ -1,0 +1,154 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+index cab40b4..e984221 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -9,7 +9,9 @@ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
++import com.fush.erp.R
+ import com.fush.erp.backup.BackupRestoreManager
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
+@@ -21,7 +23,8 @@ fun FushErpApp(container: AppContainer) {
+     val context = LocalContext.current
+     var seeded by remember { mutableStateOf(false) }
+     var user by remember { mutableStateOf<UserEntity?>(null) }
+-    var startupError by remember { mutableStateOf<String?>(null) }
++    var startupErrorType by remember { mutableStateOf<String?>(null) }
++    var startupErrorMessage by remember { mutableStateOf<String?>(null) }
+ 
+     LaunchedEffect(Unit) {
+         try {
+@@ -29,17 +32,20 @@ fun FushErpApp(container: AppContainer) {
+             BackupRestoreManager.recordAppliedRestoreAudit(context, container.db)
+             seeded = true
+         } catch (t: Throwable) {
+-            startupError = (t::class.simpleName ?: "Error") + ": " + (t.message ?: "بدون تفاصيل")
++            startupErrorType = t::class.simpleName
++            startupErrorMessage = t.message
+         }
+     }
+ 
+     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+         when {
+-            startupError != null -> {
++            startupErrorType != null || startupErrorMessage != null -> {
+                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
++                    val errorType = startupErrorType ?: stringResource(R.string.startup_error_class)
++                    val errorMessage = startupErrorMessage ?: stringResource(R.string.startup_no_details)
+                     FushSystemState(
+-                        title = "تعذر فتح قاعدة البيانات",
+-                        detail = "لم يتم حذف بياناتك. تفاصيل الخطأ: ${startupError ?: "غير متاح"}. احتفظ بصورة هذه الرسالة لإصلاح الترحيل بأمان.",
++                        title = stringResource(R.string.startup_database_error_title),
++                        detail = stringResource(R.string.startup_database_error_detail, "$errorType: $errorMessage"),
+                         modifier = Modifier.fillMaxSize(),
+                         isError = true,
+                     )
+@@ -48,8 +54,8 @@ fun FushErpApp(container: AppContainer) {
+             !seeded -> {
+                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                     FushSystemState(
+-                        title = "تهيئة FUSH ERP",
+-                        detail = "جاري التحقق من قاعدة البيانات وتجهيز بيئة العمل...",
++                        title = stringResource(R.string.startup_initializing_title),
++                        detail = stringResource(R.string.startup_initializing_detail),
+                         modifier = Modifier.fillMaxSize(),
+                         loading = true,
+                     )
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
+index 3f3f7cd..170de4a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
+@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.Brush
+ import androidx.compose.ui.platform.LocalFocusManager
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.semantics.LiveRegionMode
+ import androidx.compose.ui.semantics.liveRegion
+ import androidx.compose.ui.semantics.semantics
+@@ -17,6 +18,7 @@ import androidx.compose.ui.semantics.stateDescription
+ import androidx.compose.ui.text.input.ImeAction
+ import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.ui.unit.dp
++import com.fush.erp.R
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.domain.PasswordHasher
+@@ -31,6 +33,8 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+     var busy by remember { mutableStateOf(false) }
+     val scope = rememberCoroutineScope()
+     val focus = LocalFocusManager.current
++    val invalidCredentials = stringResource(R.string.login_invalid_credentials)
++    val loginStateDescription = if (busy) stringResource(R.string.login_checking_state) else stringResource(R.string.login_ready_state)
+ 
+     fun submit() {
+         if (busy) return
+@@ -41,7 +45,7 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+             if (row != null && row.isActive && PasswordHasher.verify(password.toCharArray(), row.salt, row.passwordHash)) {
+                 onLogin(row)
+             } else {
+-                error = "اسم المستخدم أو كلمة المرور غير صحيحة"
++                error = invalidCredentials
+             }
+             password = ""
+             busy = false
+@@ -72,9 +76,9 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                 FushBrand()
+ 
+                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Text("مرحبًا بعودتك", style = MaterialTheme.typography.headlineSmall)
++                    Text(stringResource(R.string.login_welcome), style = MaterialTheme.typography.headlineSmall)
+                     Text(
+-                        "سجّل الدخول للوصول إلى لوحة الإدارة ووحدات النظام.",
++                        stringResource(R.string.login_subtitle),
+                         style = MaterialTheme.typography.bodyMedium,
+                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                     )
+@@ -84,8 +88,8 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                     value = username,
+                     onValueChange = { username = it; error = null },
+                     modifier = Modifier.fillMaxWidth(),
+-                    label = { Text("اسم المستخدم") },
+-                    supportingText = { Text("استخدم حسابك المصرّح به في النظام") },
++                    label = { Text(stringResource(R.string.login_username)) },
++                    supportingText = { Text(stringResource(R.string.login_username_helper)) },
+                     singleLine = true,
+                     shape = MaterialTheme.shapes.medium,
+                 )
+@@ -94,7 +98,7 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                     value = password,
+                     onValueChange = { password = it; error = null },
+                     modifier = Modifier.fillMaxWidth(),
+-                    label = { Text("كلمة المرور") },
++                    label = { Text(stringResource(R.string.login_password)) },
+                     singleLine = true,
+                     shape = MaterialTheme.shapes.medium,
+                     visualTransformation = PasswordVisualTransformation(),
+@@ -118,7 +122,7 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                     modifier = Modifier
+                         .fillMaxWidth()
+                         .heightIn(min = 52.dp)
+-                        .semantics { stateDescription = if (busy) "جاري التحقق من بيانات الدخول" else "جاهز لتسجيل الدخول" },
++                        .semantics { stateDescription = loginStateDescription },
+                     shape = MaterialTheme.shapes.medium,
+                 ) {
+                     if (busy) {
+@@ -129,12 +133,12 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                         )
+                         Spacer(Modifier.width(10.dp))
+                     }
+-                    Text(if (busy) "جاري التحقق..." else "تسجيل الدخول")
++                    Text(if (busy) stringResource(R.string.login_checking) else stringResource(R.string.login_action))
+                 }
+ 
+                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                 Text(
+-                    "FUSH ERP Mobile • وصول محمي حسب صلاحيات المستخدم",
++                    stringResource(R.string.login_security_note),
+                     style = MaterialTheme.typography.bodySmall,
+                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                     modifier = Modifier.align(Alignment.CenterHorizontally),
