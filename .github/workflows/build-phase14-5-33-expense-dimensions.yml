@@ -43,8 +43,8 @@ jobs:
           unzip -q previous-build/FushERP-Mobile-Phase14.5.32-Production-Employee-Compensation-Source.zip
           cat phase14_5_33_patch.part00 | base64 -d | gunzip > /tmp/phase14_5_33.patch
           cd FushERP_Mobile_Phase5
-          patch --dry-run -p4 < /tmp/phase14_5_33.patch
-          patch -p4 < /tmp/phase14_5_33.patch
+          patch --dry-run -p5 < /tmp/phase14_5_33.patch
+          patch -p5 < /tmp/phase14_5_33.patch
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 72' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.33-expense-dimensions-reporting"' app/build.gradle.kts
