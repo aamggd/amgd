@@ -40,6 +40,8 @@ jobs:
           git apply ../../security_rebase_official_14_5_38_final/security_rebase_final.patch
           git apply --check ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
           git apply ../../security_rebase_official_14_5_38_final/users_permissions_visible_entry_fix.patch
+          git apply --check ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
+          git apply ../../security_rebase_official_14_5_38_final/session_timeout_settings.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
@@ -47,6 +49,10 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'MIGRATION_27_28_SECURITY_BRANCH_ONLY' app/src/main/java/com/fush/erp/data/SecurityMigrations.kt
           grep -q '"المستخدمون والصلاحيات" -> "المستخدمون"' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'automaticLogoutEnabled: Boolean = false' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'الإغلاق التلقائي للجلسة' app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt
+          grep -q 'SessionSettingsStore' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
           test -f app/src/test/java/com/fush/erp/ui/screens/HomeShellNavigationTest.kt
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
           test -z "$(find . -name '*.p12' -print -quit)"
