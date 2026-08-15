@@ -1,0 +1,291 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 6f7981d..a45b0ad 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 82
+-        versionName = "0.15.4.43-ui-accessibility-polish"
++        versionCode = 83
++        versionName = "0.15.4.44-inventory-theme-fix"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/com/fush/erp/MainActivity.kt b/app/src/main/java/com/fush/erp/MainActivity.kt
+index 1e219b1..fbd752e 100644
+--- a/app/src/main/java/com/fush/erp/MainActivity.kt
++++ b/app/src/main/java/com/fush/erp/MainActivity.kt
+@@ -4,16 +4,31 @@ import android.os.Bundle
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.setContent
+ import androidx.activity.enableEdgeToEdge
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.platform.LocalContext
+ import com.fush.erp.ui.FushErpApp
+ import com.fush.erp.ui.FushTheme
++import com.fush.erp.ui.FushThemePreferences
+ 
+ class MainActivity : ComponentActivity() {
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         enableEdgeToEdge()
+         setContent {
+-            FushTheme {
+-                FushErpApp((application as FushErpApplication).container)
++            val context = LocalContext.current
++            var themeMode by remember { mutableStateOf(FushThemePreferences.read(context)) }
++            FushTheme(mode = themeMode) {
++                FushErpApp(
++                    container = (application as FushErpApplication).container,
++                    themeMode = themeMode,
++                    onThemeModeChange = { newMode ->
++                        themeMode = newMode
++                        FushThemePreferences.write(context, newMode)
++                    },
++                )
+             }
+         }
+     }
+diff --git a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+index cab40b4..6426087 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -17,7 +17,11 @@ import com.fush.erp.ui.screens.HomeShell
+ import com.fush.erp.ui.screens.LoginScreen
+ 
+ @Composable
+-fun FushErpApp(container: AppContainer) {
++fun FushErpApp(
++    container: AppContainer,
++    themeMode: FushThemeMode,
++    onThemeModeChange: (FushThemeMode) -> Unit,
++) {
+     val context = LocalContext.current
+     var seeded by remember { mutableStateOf(false) }
+     var user by remember { mutableStateOf<UserEntity?>(null) }
+@@ -56,7 +60,13 @@ fun FushErpApp(container: AppContainer) {
+                 }
+             }
+             user == null -> LoginScreen(container) { user = it }
+-            else -> HomeShell(container, user!!) { user = null }
++            else -> HomeShell(
++                container = container,
++                user = user!!,
++                themeMode = themeMode,
++                onThemeModeChange = onThemeModeChange,
++                onLogout = { user = null },
++            )
+         }
+     }
+ }
+diff --git a/app/src/main/java/com/fush/erp/ui/FushTheme.kt b/app/src/main/java/com/fush/erp/ui/FushTheme.kt
+index 710a066..56b3ec7 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushTheme.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushTheme.kt
+@@ -1,5 +1,6 @@
+ package com.fush.erp.ui
+ 
++import android.content.Context
+ import androidx.compose.foundation.isSystemInDarkTheme
+ import androidx.compose.material3.MaterialTheme
+ import androidx.compose.material3.Shapes
+@@ -103,11 +104,42 @@ private val FushShapes = Shapes(
+     extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
+ )
+ 
++enum class FushThemeMode(val storageValue: String, val labelAr: String) {
++    SYSTEM("system", "حسب النظام"),
++    LIGHT("light", "فاتح"),
++    DARK("dark", "داكن");
++
++    companion object {
++        fun fromStorage(value: String?): FushThemeMode = entries.firstOrNull { it.storageValue == value } ?: SYSTEM
++    }
++}
++
++object FushThemePreferences {
++    private const val PREFS_NAME = "fush_ui_preferences"
++    private const val KEY_THEME_MODE = "theme_mode"
++
++    fun read(context: Context): FushThemeMode = FushThemeMode.fromStorage(
++        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_THEME_MODE, FushThemeMode.SYSTEM.storageValue)
++    )
++
++    fun write(context: Context, mode: FushThemeMode) {
++        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
++            .edit()
++            .putString(KEY_THEME_MODE, mode.storageValue)
++            .apply()
++    }
++}
++
+ @Composable
+ fun FushTheme(
+-    darkTheme: Boolean = isSystemInDarkTheme(),
++    mode: FushThemeMode = FushThemeMode.SYSTEM,
+     content: @Composable () -> Unit,
+ ) {
++    val darkTheme = when (mode) {
++        FushThemeMode.SYSTEM -> isSystemInDarkTheme()
++        FushThemeMode.LIGHT -> false
++        FushThemeMode.DARK -> true
++    }
+     MaterialTheme(
+         colorScheme = if (darkTheme) FushDarkColors else FushLightColors,
+         typography = FushTypography,
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 8723241..06bbdbe 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -3,11 +3,14 @@ package com.fush.erp.ui.screens
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyRow
++import androidx.compose.foundation.lazy.rememberLazyListState
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalLayoutDirection
++import androidx.compose.ui.unit.LayoutDirection
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
+ import com.fush.erp.data.AppContainer
+@@ -78,9 +81,22 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+         Spacer(Modifier.height(7.dp))
+         OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
+         Spacer(Modifier.height(10.dp))
+-        LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+-            items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
+-                FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++        val inventorySections = remember { listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة") }
++        val sectionListState = rememberLazyListState()
++        LaunchedEffect(section) {
++            val index = inventorySections.indexOf(section)
++            if (index >= 0) sectionListState.animateScrollToItem(index)
++        }
++        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
++            LazyRow(
++                state = sectionListState,
++                modifier = Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.spacedBy(5.dp),
++                contentPadding = PaddingValues(horizontal = 4.dp),
++            ) {
++                items(inventorySections) { label ->
++                    FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++                }
+             }
+         }
+         message?.let { text ->
+@@ -247,7 +263,7 @@ private fun InventoryBalances(
+     }
+     val grouped = remember(filtered) { filtered.groupBy { it.warehouseId } }
+ 
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("الأرصدة الحالية", "الرصيد مفصول حسب المخزن الفعلي ونوع الصنف")
+             Spacer(Modifier.height(8.dp))
+@@ -355,7 +371,7 @@ private fun InventoryAlerts(
+     onConfigure: () -> Unit
+ ) {
+     val now = System.currentTimeMillis()
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("تنبيهات المخزون", "إعادة الطلب والصلاحية التي تحتاج إجراءً")
+             Spacer(Modifier.height(8.dp))
+@@ -527,7 +543,7 @@ private fun WarehouseReorderPolicyDialog(
+ 
+ @Composable
+ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد محاضر جرد بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -555,7 +571,7 @@ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long)
+ 
+ @Composable
+ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أرصدة تشغيلات حالياً.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -584,7 +600,7 @@ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (Inventor
+ 
+ @Composable
+ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+         item { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
+         if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد حركات مخزون حتى الآن.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+@@ -604,7 +620,7 @@ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+ 
+ @Composable
+ private fun InventoryTransfers(rows: List<WarehouseTransferSummaryRow>, onOpen: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+             FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
+         }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index a2e3ed7..f28ce17 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -25,7 +25,13 @@ private data class ModuleCard(val title: String, val subtitle: String, val phase
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+-fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
++fun HomeShell(
++    container: AppContainer,
++    user: UserEntity,
++    themeMode: FushThemeMode,
++    onThemeModeChange: (FushThemeMode) -> Unit,
++    onLogout: () -> Unit,
++) {
+     var page by rememberSaveable { mutableStateOf("الرئيسية") }
+     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+     val scope = rememberCoroutineScope()
+@@ -155,6 +161,32 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                         modifier = Modifier.padding(horizontal = 10.dp),
+                         shape = MaterialTheme.shapes.medium,
+                     )
++                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
++                    Text(
++                        "المظهر",
++                        style = MaterialTheme.typography.labelLarge,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
++                    )
++                    Text(
++                        "اختر الثيم وسيتم حفظه تلقائيًا على هذا الجهاز.",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp),
++                    )
++                    Row(
++                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
++                        horizontalArrangement = Arrangement.spacedBy(6.dp),
++                    ) {
++                        FushThemeMode.entries.forEach { mode ->
++                            FilterChip(
++                                selected = themeMode == mode,
++                                onClick = { onThemeModeChange(mode) },
++                                label = { Text(mode.labelAr, maxLines = 1) },
++                                modifier = Modifier.weight(1f),
++                            )
++                        }
++                    }
+                     Spacer(Modifier.height(18.dp))
+                 }
+             }
