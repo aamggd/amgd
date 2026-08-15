@@ -1,0 +1,89 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+index 0e5b9d0..01781d7 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+@@ -69,7 +69,7 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 if (documents.isEmpty()) item {
+                     FushEmptyState("لا توجد وثائق مضبوطة", "أنشئ أول وثيقة أو إجراء ليظهر سجل الإصدارات وحالة الاعتماد هنا.")
+                 }
+-                items(documents, key = { it.id }) { d ->
++                items(documents, key = { "governance-document-${it.id}" }) { d ->
+                     ListItem(
+                         headlineContent = { Text("${d.documentCode} — ${d.titleAr}") },
+                         supportingContent = { Text("الإصدار ${d.versionNo} • ${d.category} • ${d.status}") },
+@@ -92,7 +92,7 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 if (changes.isEmpty()) item {
+                     FushEmptyState("لا توجد طلبات تغيير", "طلبات التغيير المقترحة والمعتمدة ستظهر هنا مع أثرها وحالتها.")
+                 }
+-                items(changes, key = { it.id }) { c ->
++                items(changes, key = { "governance-change-${it.id}" }) { c ->
+                     ListItem(
+                         headlineContent = { Text("${c.requestNo} — ${c.subject}") },
+                         supportingContent = { Text("${c.changeType} • ${c.status}\n${c.reason}") },
+@@ -114,7 +114,7 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 if (approvals.isEmpty()) item {
+                     FushEmptyState("لا توجد موافقات", "لا توجد طلبات موافقة مسجلة أو معلقة حاليًا.")
+                 }
+-                items(approvals, key = { it.id }) { a ->
++                items(approvals, key = { "governance-approval-${it.id}" }) { a ->
+                     ListItem(
+                         headlineContent = { Text(a.title) },
+                         supportingContent = { Text("${a.referenceType} #${a.referenceId} • ${a.status} • مطلوب: ${a.requestedRole}") },
+@@ -136,7 +136,7 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 if (audit.isEmpty()) item {
+                     FushEmptyState("لا توجد أحداث تدقيق", "ستظهر هنا عمليات الإنشاء والاعتماد والرفض والتغييرات المسجلة.")
+                 }
+-                items(audit, key = { it.id }) { e ->
++                items(audit, key = { "governance-audit-${it.id}" }) { e ->
+                     ListItem(
+                         headlineContent = { Text("${e.action} • ${e.entityType} #${e.entityId}") },
+                         supportingContent = { Text("المستخدم ${e.userId} • ${e.reason}\n${e.oldValue} → ${e.newValue}") }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+index 8ef1d58..1085261 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+@@ -75,7 +75,7 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             0 -> {
+                 item { Button(onClick = { showRisk = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("إضافة خطر") } }
+                 if (risks.isEmpty()) item { FushEmptyState("لا توجد مخاطر مسجلة", "أضف أول خطر وحدد الاحتمال والأثر وخطة المعالجة والمسؤول.") }
+-                items(risks, key = { it.id }) { r ->
++                items(risks, key = { "risk-${it.id}" }) { r ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                             Text("${r.riskNo} — ${r.title}", style = MaterialTheme.typography.titleMedium)
+@@ -91,7 +91,7 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             1 -> {
+                 item { Button(onClick = { showControl = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("إضافة ضابط رقابي") } }
+                 if (controls.isEmpty()) item { FushEmptyState("لا توجد ضوابط رقابية", "اربط الضوابط بالمخاطر وحدد التكرار والمسؤول والدليل المطلوب.") }
+-                items(controls, key = { it.id }) { c ->
++                items(controls, key = { "risk-control-${it.id}" }) { c ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp)) {
+                             Text("${c.controlCode} — ${c.title}", style = MaterialTheme.typography.titleMedium)
+@@ -106,7 +106,7 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 item { Button(enabled = controls.isNotEmpty(), onClick = { showTest = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("اختبار ضابط") } }
+                 item { FushInlineState("أي نتيجة FAIL تنشئ استثناءً مفتوحًا تلقائيًا.", tone = FushStatusTone.Info) }
+                 if (tests.isEmpty()) item { FushEmptyState("لا توجد اختبارات رقابية", "سجّل اختبارًا لأحد الضوابط لتوثيق النتيجة والدليل والملاحظات.") }
+-                items(tests, key = { it.id }) { t ->
++                items(tests, key = { "risk-test-${it.id}" }) { t ->
+                     val c = controls.firstOrNull { it.id == t.controlId }
+                     ListItem(
+                         headlineContent = { Text("${c?.controlCode ?: "CTL#${t.controlId}"} • ${t.result}") },
+@@ -118,7 +118,7 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             3 -> {
+                 item { Button(onClick = { showManualException = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("استثناء يدوي") } }
+                 if (exceptions.isEmpty()) item { FushEmptyState("لا توجد استثناءات رقابية", "الاستثناءات الناتجة عن فشل الضوابط أو المسجلة يدويًا ستظهر هنا.") }
+-                items(exceptions, key = { it.id }) { e ->
++                items(exceptions, key = { "risk-exception-${it.id}" }) { e ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp)) {
+                             Text("${e.exceptionNo} — ${e.severity}", style = MaterialTheme.typography.titleMedium)
+@@ -140,7 +140,7 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             else -> {
+                 item { FushSectionHeader("قواعد فصل المهام", "منشئ العملية لا يعتمد نفس العملية عندما تتطلب القاعدة مستخدمًا مختلفًا.") }
+                 if (rules.isEmpty()) item { FushEmptyState("لا توجد قواعد فصل مهام", "ستظهر هنا قواعد الفصل بين المنشئ والمعتمد عند تعريفها.") }
+-                items(rules, key = { it.id }) { rule ->
++                items(rules, key = { "risk-rule-${it.id}" }) { rule ->
+                     ListItem(
+                         headlineContent = { Text("${rule.ruleCode} — ${rule.actionKey}") },
+                         supportingContent = { Text("${rule.initiatorRole} → ${rule.approverRole}\n${rule.description}${if (rule.requireDifferentUser) " • مستخدم مختلف إلزامي" else ""}") }
