@@ -1,0 +1,88 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -481,59 +500,59 @@ private fun DashboardScreen(
+                         horizontalArrangement = Arrangement.SpaceBetween,
+                         verticalAlignment = Alignment.CenterVertically,
+                     ) {
+-                        Text(alert.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                        Text(stringResource(alert.titleRes), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                         Spacer(Modifier.width(8.dp))
+                         FushStatusPill(
+-                            if (alert.critical) "حرج" else "متابعة",
++                            if (alert.critical) stringResource(R.string.common_critical) else stringResource(R.string.common_follow_up),
+                             if (alert.critical) FushStatusTone.Danger else FushStatusTone.Warning,
+                         )
+                     }
+-                    Text(alert.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                    TextButton(onClick = { onNavigate(alert.target) }) { Text("فتح القسم") }
++                    Text(stringResource(alert.detailRes, *alert.detailArgs.toTypedArray()), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    TextButton(onClick = { onNavigate(alert.target) }) { Text(stringResource(R.string.common_open_section)) }
+                 }
+             }
+         }
+ 
+         item {
+-            FushSectionHeader("نبضة النظام", "اضغط على أي بطاقة للانتقال مباشرة إلى القسم المرتبط")
++            FushSectionHeader(stringResource(R.string.dashboard_system_pulse), stringResource(R.string.dashboard_system_pulse_subtitle))
+             Spacer(Modifier.height(6.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("العملاء", customerCount.toString(), Modifier.weight(1f)) { onNavigate("العملاء") }
+-                Metric("فواتير البيع", salesCount.toString(), Modifier.weight(1f)) { onNavigate("المبيعات") }
+-                Metric("التحصيلات", receiptCount.toString(), Modifier.weight(1f)) { onNavigate("المبيعات") }
++                Metric(stringResource(R.string.metric_customers), customerCount.toString(), Modifier.weight(1f)) { onNavigate("العملاء") }
++                Metric(stringResource(R.string.metric_sales_invoices), salesCount.toString(), Modifier.weight(1f)) { onNavigate("المبيعات") }
++                Metric(stringResource(R.string.metric_collections), receiptCount.toString(), Modifier.weight(1f)) { onNavigate("المبيعات") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("الموردون", supplierCount.toString(), Modifier.weight(1f)) { onNavigate("الموردون") }
+-                Metric("المشتريات", purchaseCount.toString(), Modifier.weight(1f)) { onNavigate("المشتريات") }
+-                Metric("أوامر الإنتاج", productionCount.toString(), Modifier.weight(1f)) { onNavigate("الإنتاج") }
++                Metric(stringResource(R.string.metric_suppliers), supplierCount.toString(), Modifier.weight(1f)) { onNavigate("الموردون") }
++                Metric(stringResource(R.string.metric_purchases), purchaseCount.toString(), Modifier.weight(1f)) { onNavigate("المشتريات") }
++                Metric(stringResource(R.string.metric_production_orders), productionCount.toString(), Modifier.weight(1f)) { onNavigate("الإنتاج") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("الأصناف", itemCount.toString(), Modifier.weight(1f)) { onNavigate("المواد والأصناف") }
+-                Metric("الموظفون", employeeCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
+-                Metric("المناديب", salesRepCount.toString(), Modifier.weight(1f)) { onNavigate("مناديب المبيعات") }
++                Metric(stringResource(R.string.metric_items), itemCount.toString(), Modifier.weight(1f)) { onNavigate("المواد والأصناف") }
++                Metric(stringResource(R.string.metric_employees), employeeCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
++                Metric(stringResource(R.string.metric_sales_reps), salesRepCount.toString(), Modifier.weight(1f)) { onNavigate("مناديب المبيعات") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("صيانة مفتوحة", openMaintenanceCount.toString(), Modifier.weight(1f)) { onNavigate("الصيانة") }
+-                Metric("مخاطر مفتوحة", openRiskCount.toString(), Modifier.weight(1f)) { onNavigate("المخاطر") }
+-                Metric("موافقات", pendingApprovalCount.toString(), Modifier.weight(1f)) { onNavigate("الحوكمة") }
++                Metric(stringResource(R.string.metric_open_maintenance), openMaintenanceCount.toString(), Modifier.weight(1f)) { onNavigate("الصيانة") }
++                Metric(stringResource(R.string.metric_open_risks), openRiskCount.toString(), Modifier.weight(1f)) { onNavigate("المخاطر") }
++                Metric(stringResource(R.string.metric_approvals), pendingApprovalCount.toString(), Modifier.weight(1f)) { onNavigate("الحوكمة") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("تدريب منتهي", expiredTrainingCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
+-                Metric("تصاريح منتهية", expiredAuthorizationCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
+-                Metric("استثناءات متأخرة", overdueExceptionCount.toString(), Modifier.weight(1f)) { onNavigate("المخاطر") }
++                Metric(stringResource(R.string.metric_expired_training), expiredTrainingCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
++                Metric(stringResource(R.string.metric_expired_authorizations), expiredAuthorizationCount.toString(), Modifier.weight(1f)) { onNavigate("الموظفون") }
++                Metric(stringResource(R.string.metric_overdue_exceptions), overdueExceptionCount.toString(), Modifier.weight(1f)) { onNavigate("المخاطر") }
+             }
+         }
+ 
+-        item { FushSectionHeader("وحدات النظام", "كل وحدات FUSH ERP ومجال كل وحدة") }
++        item { FushSectionHeader(stringResource(R.string.dashboard_system_modules), stringResource(R.string.dashboard_system_modules_subtitle)) }
+         items(modules) { module ->
+             FushModuleCard(
+-                title = module.title,
+-                subtitle = module.subtitle,
+-                badge = module.badge,
++                title = stringResource(module.titleRes),
++                subtitle = stringResource(module.subtitleRes),
++                badge = module.badgeRes?.let { stringResource(it) },
+                 modifier = Modifier.fillMaxWidth(),
+                 onClick = { onNavigate(module.target) },
+             )
