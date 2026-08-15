@@ -1,0 +1,102 @@
+name: Validate Users Security Rebase
+
+on:
+  push:
+    branches: [fush/users-permissions]
+    paths:
+      - 'security_rebase_official_14_5_38_r1/**'
+      - '.github/workflows/validate-users-security-rebase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout security branch
+        uses: actions/checkout@v4
+
+      - name: Download official Phase 14.5.38 build artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir baseline-artifact
+          gh run download 31858347166 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name FushERP-Phase14.5.38-Professional-UI-Build \
+            --dir baseline-artifact
+          test -f baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip
+          echo 'd4ff24af274e3aedc14cdf39762e9a0b3bd6ff4f3b563062063e5b79342ec38f  baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip' | sha256sum -c -
+
+      - name: Extract official baseline and apply security rebase
+        run: |
+          mkdir source
+          unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d source
+          cd source/FushERP_Mobile_Phase5
+          rm -rf app/build .gradle .kotlin
+          git init -q
+          git config user.name security-ci
+          git config user.email security-ci@users.noreply.github.com
+          git add .
+          git commit -qm baseline
+          python ../../security_rebase_official_14_5_38_r1/apply_patch.py
+          git apply --check ../../security_rebase_official_14_5_38_r1/security_rebase.patch
+          git apply ../../security_rebase_official_14_5_38_r1/security_rebase.patch
+          git diff --check
+          test "$(grep -c 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts)" -eq 1
+          test "$(grep -c 'versionCode = 77' app/build.gradle.kts)" -eq 1
+          test "$(grep -c 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts)" -eq 1
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_27_28_SECURITY_BRANCH_ONLY' app/src/main/java/com/fush/erp/data/SecurityMigrations.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -z "$(find . -name '*.p12' -print -quit)"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run unit tests
+        working-directory: source/FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release
+        working-directory: source/FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package build artifact
+        run: |
+          cd source/FushERP_Mobile_Phase5
+          test -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          grep -q '"version": 28' app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          mkdir -p ../../security-ci-out
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk
+          sha256sum ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk > ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk.sha256
+          cd ..
+          zip -qr ../../security-ci-out/FushERP-Security-Rebase-R1-Source.zip FushERP_Mobile_Phase5
+
+      - name: Upload validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Security-Rebase-R1-Validation
+          path: security-ci-out/*
+          if-no-files-found: error
