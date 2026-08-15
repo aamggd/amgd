@@ -1,0 +1,19 @@
+--- a/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
++++ b/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
+ import androidx.compose.foundation.layout.height
+ import androidx.compose.foundation.layout.padding
+ import androidx.compose.foundation.layout.size
+-import androidx.compose.foundation.layout.weight
+ import androidx.compose.foundation.shape.CircleShape
+ import androidx.compose.material3.CardDefaults
+ import androidx.compose.material3.ElevatedCard
+@@ -171,7 +170,7 @@ fun FushModuleCard(
+     ) {
+         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier)
+                 Spacer(Modifier.size(10.dp))
+                 FushStatusPill(badge, FushStatusTone.Info)
+             }
