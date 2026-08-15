@@ -5,7 +5,7 @@ on:
     branches: [agent/phase14-5-24-party-subledger-vouchers]
     paths:
       - '.github/workflows/build-phase14-5-32-production-employee-compensation.yml'
-      - 'phase14_5_32_patch.gz.b64'
+      - 'phase14_5_32_patch.part*'
   workflow_dispatch:
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           unzip -q previous-build/FushERP-Mobile-Phase14.5.31-Sales-Rep-History-Link-Source.zip
-          base64 -d phase14_5_32_patch.gz.b64 | gunzip > /tmp/phase14_5_32.patch
+          cat phase14_5_32_patch.part00 phase14_5_32_patch.part01 phase14_5_32_patch.part02 phase14_5_32_patch.part03 phase14_5_32_patch.part04 | base64 -d | gunzip > /tmp/phase14_5_32.patch
           cd FushERP_Mobile_Phase5
           patch --dry-run -p2 < /tmp/phase14_5_32.patch
           patch -p2 < /tmp/phase14_5_32.patch
