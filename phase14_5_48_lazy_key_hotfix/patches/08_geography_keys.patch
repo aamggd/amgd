@@ -1,0 +1,22 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
+index 5f58567..bd42295 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
+@@ -373,7 +373,7 @@ private fun GeographicProfitabilityTab(container: AppContainer, user: UserEntity
+         }
+         item { Text("حسب المحافظة", style = MaterialTheme.typography.titleMedium) }
+         if (provinces.isEmpty()) item { FushInlineState("لا توجد نتائج ربحية حسب المحافظة ضمن الفترة المحددة.") }
+-        items(provinces, key = { it.province }) { p ->
++        items(provinces, key = { "geo-province-${it.province}" }) { p ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                     Text(p.province, style = MaterialTheme.typography.titleMedium)
+@@ -385,7 +385,7 @@ private fun GeographicProfitabilityTab(container: AppContainer, user: UserEntity
+         }
+         item { Text("حسب الفاتورة والعميل", style = MaterialTheme.typography.titleMedium) }
+         if (invoices.isEmpty()) item { FushInlineState("لا توجد فواتير ربحية ضمن الفترة المحددة.") }
+-        items(invoices, key = { it.invoiceId }) { r ->
++        items(invoices, key = { "geo-invoice-${it.invoiceId}" }) { r ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                     Text("${r.invoiceNo} — ${r.customerName}", style = MaterialTheme.typography.titleMedium)
