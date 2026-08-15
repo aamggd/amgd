@@ -1,0 +1,13 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 83
+-        versionName = "0.15.4.44-inventory-theme-fix"
++        versionCode = 85
++        versionName = "0.15.4.46-rollback-to-14.5.44"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
