@@ -65,6 +65,16 @@ jobs:
           git commit -qm baseline-14.5.51
           git apply --check ../phase14_5_52_audit_reporting/01_audit_reporting_v2.patch
           git apply ../phase14_5_52_audit_reporting/01_audit_reporting_v2.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt')
+          s = p.read_text()
+          old = 'columns = listOf("التاريخ والوقت", "المستخدم", "الدور", "العملية", "الكيان", "المعرف", "السبب", "القيمة السابقة", "القيمة الجديدة", "الجهاز")'
+          new = 'headers = listOf("التاريخ والوقت", "المستخدم", "الدور", "العملية", "الكيان", "المعرف", "السبب", "القيمة السابقة", "القيمة الجديدة", "الجهاز")'
+          if old not in s:
+              raise SystemExit('audit export table columns marker missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
           git diff --check HEAD
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 91' app/build.gradle.kts
@@ -77,6 +87,7 @@ jobs:
           grep -q 'suspend fun auditReport' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
           grep -q 'ae.action AS actionCode' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
           grep -q 'LEFT JOIN users u ON u.id = ae.userId' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
+          grep -q 'headers = listOf("التاريخ والوقت"' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
           grep -q 'سجل التدقيق' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
           rm -rf .git
 
@@ -125,6 +136,7 @@ jobs:
             'Branch: fush/reports-printing' \
             'Audit period query with user join: PASS' \
             'Reserved SQL alias corrected without schema change: PASS' \
+            'Audit export table API corrected: PASS' \
             'User/action/entity/search filters: PASS' \
             'Filtered PDF/XLSX export: PASS' \
             'Old/new value visibility: PASS' \
