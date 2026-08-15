@@ -117,3 +117,4 @@ index f8deb8a..8bf4cbb 100644
 +        OutlinedTextField(area,{area=it},label={Text("المنطقة")});FushCodeSelectionField("نوع الفحص", type, listOf("DAILY","GAS","FIRE_EXTINGUISHER","PPE","EVACUATION","OTHER"), ::maintenanceSafetyInspectionTypeAr, modifier = Modifier.fillMaxWidth()) { type=it };FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it };OutlinedTextField(findings,{findings=it},label={Text("النتائج")});OutlinedTextField(action,{action=it},label={Text("الإجراء التصحيحي")})
      }},confirmButton={Button(enabled=area.isNotBlank(),onClick={onSave(area,type,result,findings,action)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
  }
+ 
