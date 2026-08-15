@@ -1,0 +1,172 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 3dddbeb..8ec103d 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -9,8 +9,10 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
++import com.fush.erp.R
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.ui.*
+@@ -55,15 +57,17 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+     var showAging by remember { mutableStateOf(false) }
+     var purchaseSearch by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
++    val cashLabel = stringResource(R.string.common_cash)
++    val creditLabel = stringResource(R.string.common_credit)
+ 
+-    val filteredPurchases = remember(purchases, purchaseSearch) {
++    val filteredPurchases = remember(purchases, purchaseSearch, cashLabel, creditLabel) {
+         val q = purchaseSearch.trim().lowercase(Locale.ROOT)
+         if (q.isBlank()) purchases else purchases.filter { purchase ->
+             listOf(
+                 purchase.invoiceNo,
+                 purchase.supplierName,
+                 purchase.currencyCode,
+-                if (purchase.paymentType == "CASH") "نقدي" else "آجل",
++                if (purchase.paymentType == "CASH") cashLabel else creditLabel,
+             ).any { it.lowercase(Locale.ROOT).contains(q) }
+         }
+     }
+@@ -83,8 +87,8 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                 verticalAlignment = Alignment.CenterVertically,
+             ) {
+                 FushSectionHeader(
+-                    title = "المشتريات",
+-                    subtitle = "فواتير الشراء ومرتجعاتها مع متابعة التزامات الموردين",
++                    title = stringResource(R.string.purchases_title),
++                    subtitle = stringResource(R.string.purchases_subtitle),
+                     modifier = Modifier.weight(1f),
+                 )
+                 Spacer(Modifier.width(12.dp))
+@@ -92,15 +96,15 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                     onClick = { showPurchase = true },
+                     enabled = suppliers.isNotEmpty(),
+                     shape = MaterialTheme.shapes.medium,
+-                ) { Text("فاتورة جديدة") }
++                ) { Text(stringResource(R.string.purchases_new_invoice)) }
+             }
+         }
+ 
+         if (suppliers.isEmpty()) {
+             item {
+                 FushSystemState(
+-                    title = "لا يوجد موردون بعد",
+-                    detail = "أنشئ مورداً من صفحة الموردين قبل تسجيل أول فاتورة شراء.",
++                    title = stringResource(R.string.purchases_no_suppliers),
++                    detail = stringResource(R.string.purchases_create_supplier_first),
+                 )
+             }
+         }
+@@ -112,16 +116,16 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "إجمالي المشتريات",
++                    label = stringResource(R.string.purchases_total),
+                     value = formatMoney(totalPurchaseBase),
+-                    helper = "بالعملة الأساسية",
++                    helper = stringResource(R.string.common_base_currency),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+                 FushMetricCard(
+-                    label = "مستحق للموردين",
++                    label = stringResource(R.string.purchases_supplier_due),
+                     value = formatMoney(totalPayablesBase),
+-                    helper = "رصيد دائنين مفتوح",
++                    helper = stringResource(R.string.purchases_open_payables),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalPayablesBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -130,16 +134,16 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "متأخر للموردين",
++                    label = stringResource(R.string.purchases_overdue_suppliers),
+                     value = formatMoney(overduePayablesBase),
+-                    helper = "يحتاج تسوية",
++                    helper = stringResource(R.string.purchases_needs_settlement),
+                     modifier = Modifier.weight(1f),
+                     tone = if (overduePayablesBase > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
+                 )
+                 FushMetricCard(
+-                    label = "فواتير شراء آجلة",
++                    label = stringResource(R.string.purchases_credit_invoices),
+                     value = creditPurchaseCount.toString(),
+-                    helper = "من إجمالي ${purchases.size}",
++                    helper = stringResource(R.string.purchases_from_total, purchases.size),
+                     modifier = Modifier.weight(1f),
+                     tone = if (creditPurchaseCount > 0) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -152,18 +156,18 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                 enabled = suppliers.isNotEmpty(),
+                 modifier = Modifier.fillMaxWidth(),
+                 shape = MaterialTheme.shapes.medium,
+-            ) { Text("عرض أعمار ديون الموردين") }
++            ) { Text(stringResource(R.string.purchases_supplier_aging)) }
+         }
+ 
+         item {
+-            FushSectionHeader("فواتير المشتريات", "${filteredPurchases.size} من ${purchases.size} فاتورة")
++            FushSectionHeader(stringResource(R.string.purchases_invoices_header), stringResource(R.string.purchases_invoice_count, filteredPurchases.size, purchases.size))
+             Spacer(Modifier.height(8.dp))
+             OutlinedTextField(
+                 value = purchaseSearch,
+                 onValueChange = { purchaseSearch = it },
+                 modifier = Modifier.fillMaxWidth(),
+-                label = { Text("بحث في فواتير المشتريات") },
+-                placeholder = { Text("رقم الفاتورة، المورد، العملة أو نوع الدفع") },
++                label = { Text(stringResource(R.string.purchases_search_invoices)) },
++                placeholder = { Text(stringResource(R.string.purchases_search_hint)) },
+                 singleLine = true,
+                 shape = MaterialTheme.shapes.medium,
+             )
+@@ -172,8 +176,8 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         if (filteredPurchases.isEmpty()) {
+             item {
+                 FushEmptyState(
+-                    title = if (purchases.isEmpty()) "لا توجد فواتير مشتريات" else "لا توجد نتائج مطابقة",
+-                    detail = if (purchases.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية شراء." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                    title = if (purchases.isEmpty()) stringResource(R.string.purchases_no_invoices) else stringResource(R.string.common_no_matching_results),
++                    detail = if (purchases.isEmpty()) stringResource(R.string.purchases_no_invoices_detail) else stringResource(R.string.common_change_search),
+                 )
+             }
+         }
+@@ -200,25 +204,25 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                             )
+                         }
+                         Spacer(Modifier.width(8.dp))
+-                        FushStatusPill(if (isCash) "نقدي" else "آجل", if (isCash) FushStatusTone.Success else FushStatusTone.Warning)
++                        FushStatusPill(if (isCash) cashLabel else creditLabel, if (isCash) FushStatusTone.Success else FushStatusTone.Warning)
+                     }
+ 
+                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+ 
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                         Column {
+-                            Text("الإجمالي", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.common_total), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text("${formatMoney(purchase.totalOriginal)} ${purchase.currencyCode}", style = MaterialTheme.typography.titleMedium)
+                         }
+                         Column(horizontalAlignment = Alignment.End) {
+-                            Text("بالعملة الأساسية", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.common_base_currency), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text(formatMoney(purchase.totalBase), style = MaterialTheme.typography.titleMedium)
+                         }
+                     }
+ 
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        OutlinedButton(onClick = { detailInvoice = purchase }, modifier = Modifier.weight(1f)) { Text("التفاصيل") }
+-                        OutlinedButton(onClick = { returnInvoice = purchase }, modifier = Modifier.weight(1f)) { Text("مرتجع") }
++                        OutlinedButton(onClick = { detailInvoice = purchase }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_details)) }
++                        OutlinedButton(onClick = { returnInvoice = purchase }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_return)) }
+                     }
+                 }
+             }
