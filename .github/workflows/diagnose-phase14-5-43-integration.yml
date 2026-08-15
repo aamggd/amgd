@@ -27,7 +27,8 @@ jobs:
           git archive --format=tar origin/fush/ui-professional-redesign \
             phase14_5_39_production_quality_ui \
             phase14_5_40_employees_sales_reps_ui \
-            phase14_5_41_assets_maintenance_expenses_ui | tar -xf -
+            phase14_5_41_assets_maintenance_expenses_ui \
+            phase14_5_42_reports_adaptive_ui | tar -xf -
           git archive --format=tar origin/fush/accounting fush_accounting | tar -xf -
           git archive --format=tar origin/fush/users-permissions \
             phase14_5_34_users_permissions \
@@ -42,7 +43,7 @@ jobs:
           repository: aamggd/amgd
           run-id: 31858347166
 
-      - name: Restore baseline and apply completed UI phases 39-41 sequentially
+      - name: Restore baseline and apply completed UI phases 39-42 sequentially
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +57,8 @@ jobs:
           for phase in \
             phase14_5_39_production_quality_ui \
             phase14_5_40_employees_sales_reps_ui \
-            phase14_5_41_assets_maintenance_expenses_ui
+            phase14_5_41_assets_maintenance_expenses_ui \
+            phase14_5_42_reports_adaptive_ui
           do
             echo "=== $phase ==="
             for p in ../$phase/patches/*.patch; do
@@ -77,19 +79,30 @@ jobs:
               fi
             done
           done
-          grep -q 'versionCode = 80' app/build.gradle.kts
-          grep -q '0.15.4.41-ui-assets-maintenance-expenses' app/build.gradle.kts
+          grep -q 'versionCode = 81' app/build.gradle.kts
+          grep -q '0.15.4.42-ui-reports-adaptive' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          git add -A && git commit -qm 'Apply UI 39-41'
+          git add -A && git commit -qm 'Apply UI 39-42'
 
       - name: Rebase accounting patches sequentially
         shell: bash
         run: |
           set -euo pipefail
           cd FushERP_Mobile_Phase5
-          base64 -d ../fush_accounting/patches/phase14.5.34-accounting-integrity.patch.gz.b64 | gzip -d > /tmp/accounting34.patch
-          base64 -d ../fush_accounting/patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 | gzip -d > /tmp/accounting35.patch
-          base64 -d ../fush_accounting/patches/phase14.5.36-operational-reversals.patch.gz.b64 | gzip -d > /tmp/accounting36.patch
+          extract_patch() {
+            src="$1"; out="$2"
+            set +e
+            base64 -d "../fush_accounting/patches/$src" | gzip -dc > "$out"
+            rc=$?
+            set -e
+            test -s "$out"
+            grep -q '^diff --git ' "$out"
+            echo "Extracted $src rc=$rc bytes=$(wc -c < "$out")"
+          }
+          extract_patch phase14.5.34-accounting-integrity.patch.gz.b64 /tmp/accounting34.patch
+          extract_patch phase14.5.35-accounting-periods-reconciliation.patch.gz.b64 /tmp/accounting35.patch
+          extract_patch phase14.5.36-operational-reversals.patch.gz.b64 /tmp/accounting36.patch
+          extract_patch phase14.5.37-fiscal-year-closing.patch.gz.b64 /tmp/accounting37.patch
 
           echo '=== accounting 14.5.34 functional core ==='
           git apply --check \
@@ -109,11 +122,10 @@ jobs:
           part=next(p for p in parts if p.startswith('diff --git ') and f' b/{target}' in p.splitlines()[0])
           pathlib.Path('/tmp/party34.patch').write_text(part)
           PY
-          echo '=== accounting 14.5.34 PartyScreens fuzzy merge ==='
           patch -p1 --forward --fuzz=3 < /tmp/party34.patch
           git add -A && git commit -qm 'Rebase accounting integrity'
 
-          for spec in '35:/tmp/accounting35.patch' '36:/tmp/accounting36.patch'; do
+          for spec in '35:/tmp/accounting35.patch' '36:/tmp/accounting36.patch' '37:/tmp/accounting37.patch'; do
             phase="${spec%%:*}"; p="${spec##*:}"
             echo "=== accounting 14.5.$phase ==="
             if git apply --check --verbose --exclude=app/build.gradle.kts "$p"; then
@@ -127,7 +139,7 @@ jobs:
           done
           echo 'ACCOUNTING_APPLY_OK'
           grep -n 'FUSH_DB_SCHEMA_VERSION' app/src/main/java/com/fush/erp/data/FushDatabase.kt || true
-          grep -n 'MIGRATION_27_28\|MIGRATION_28_29' app/src/main/java/com/fush/erp/data/Migrations.kt || true
+          grep -n 'MIGRATION_27_28\|MIGRATION_28_29\|MIGRATION_29_30' app/src/main/java/com/fush/erp/data/Migrations.kt || true
 
       - name: Reconstruct users permissions base patch and check
         shell: bash
