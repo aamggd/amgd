@@ -34,7 +34,7 @@ jobs:
 
       - name: Extract official baseline and apply security rebase
         run: |
-          mkdir source
+          mkdir source security-ci-out
           unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d source
           cd source/FushERP_Mobile_Phase5
           rm -rf app/build .gradle .kotlin
@@ -76,11 +76,17 @@ jobs:
 
       - name: Run unit tests
         working-directory: source/FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:testDebugUnitTest
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest 2>&1 | tee ../../security-ci-out/unit-tests.log
 
       - name: Build release
         working-directory: source/FushERP_Mobile_Phase5
-        run: gradle --no-daemon :app:assembleRelease
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:assembleRelease 2>&1 | tee ../../security-ci-out/release-build.log
 
       - name: Verify Room schema and package build artifact
         run: |
@@ -88,15 +94,15 @@ jobs:
           test -f app/schemas/com.fush.erp.data.FushDatabase/28.json
           grep -q '"version": 28' app/schemas/com.fush.erp.data.FushDatabase/28.json
           test -f app/build/outputs/apk/release/app-release-unsigned.apk
-          mkdir -p ../../security-ci-out
           cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk
           sha256sum ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk > ../../security-ci-out/FushERP-Security-Rebase-R1-release-unsigned.apk.sha256
           cd ..
           zip -qr ../../security-ci-out/FushERP-Security-Rebase-R1-Source.zip FushERP_Mobile_Phase5
 
-      - name: Upload validation artifacts
+      - name: Upload validation artifacts and logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: FushERP-Security-Rebase-R1-Validation
           path: security-ci-out/*
-          if-no-files-found: error
+          if-no-files-found: warn
