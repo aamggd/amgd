@@ -1,0 +1,90 @@
++}
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index bf61ffb..68d3d98 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -46,10 +46,32 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+     var pnl by remember { mutableStateOf<ProfitLossReport?>(null) }
+     var trial by remember { mutableStateOf<TrialBalanceReport?>(null) }
+     var cash by remember { mutableStateOf<CashFlowReport?>(null) }
++    var balanceSheet by remember { mutableStateOf<BalanceSheetReport?>(null) }
++
++    val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
++    val statementCustomers by container.db.salesDao().observeAll().collectAsState(initial = emptyList())
++    val statementSuppliers by container.db.purchaseDao().observeAll().collectAsState(initial = emptyList())
++    var ledgerAccountId by remember { mutableStateOf<Long?>(null) }
++    var ledger by remember { mutableStateOf<LedgerReport?>(null) }
++    var statementPartyType by remember { mutableStateOf("CUSTOMER") }
++    var statementCustomerId by remember { mutableStateOf<Long?>(null) }
++    var statementSupplierId by remember { mutableStateOf<Long?>(null) }
++    var partyStatement by remember { mutableStateOf<PartyStatementPeriod?>(null) }
++
+     var loading by remember { mutableStateOf(false) }
+     var error by remember { mutableStateOf<String?>(null) }
+ 
+-    LaunchedEffect(tab, from, to) {
++    LaunchedEffect(accounts) {
++        if (ledgerAccountId == null) ledgerAccountId = accounts.firstOrNull { it.isPosting }?.id
++    }
++    LaunchedEffect(statementCustomers) {
++        if (statementCustomerId == null) statementCustomerId = statementCustomers.firstOrNull()?.id
++    }
++    LaunchedEffect(statementSuppliers) {
++        if (statementSupplierId == null) statementSupplierId = statementSuppliers.firstOrNull()?.id
++    }
++
++    LaunchedEffect(tab, from, to, ledgerAccountId, statementPartyType, statementCustomerId, statementSupplierId) {
+         loading = true
+         error = null
+         try {
+@@ -73,6 +95,50 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+                     pnl = container.accountingService.profitLoss(from, to)
+                     trial = container.accountingService.trialBalance(to)
+                     cash = container.accountingService.cashFlow(from, to)
++                    balanceSheet = container.accountingService.balanceSheet(to)
++                }
++                "الأستاذ العام" -> {
++                    ledger = ledgerAccountId?.let { container.accountingService.ledger(it, from, to) }
++                }
++                "كشف الأطراف" -> {
++                    partyStatement = when (statementPartyType) {
++                        "SUPPLIER" -> statementSupplierId?.let { supplierId ->
++                            PartyStatementMath.build(
++                                events = container.db.purchaseDao().supplierLedgerEvents(supplierId, to).map { event ->
++                                    PartyStatementEvent(
++                                        eventDate = event.eventDate,
++                                        eventOrder = event.eventOrder,
++                                        eventType = event.eventType,
++                                        referenceNo = event.referenceNo,
++                                        description = event.notes,
++                                        debitBase = event.debitBase,
++                                        creditBase = event.creditBase
++                                    )
++                                },
++                                fromDate = from,
++                                toDate = to,
++                                customerBalance = false
++                            )
++                        }
++                        else -> statementCustomerId?.let { customerId ->
++                            PartyStatementMath.build(
++                                events = container.db.salesDao().customerLedgerEvents(customerId).map { event ->
++                                    PartyStatementEvent(
++                                        eventDate = event.eventDate,
++                                        eventOrder = event.eventOrder,
++                                        eventType = event.eventType,
++                                        referenceNo = event.referenceNo,
++                                        description = listOf(event.invoiceNo, event.notes).filter { it.isNotBlank() }.joinToString(" • "),
++                                        debitBase = event.debitBase,
++                                        creditBase = event.creditBase
++                                    )
++                                },
++                                fromDate = from,
++                                toDate = to,
++                                customerBalance = true
++                            )
++                        }
++                    }
+                 }
+             }
+         } catch (e: Exception) {
