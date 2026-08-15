@@ -1,0 +1,61 @@
+--- a/app/build.gradle.kts	2026-08-15 03:43:03.000000000 +0000
++++ b/app/build.gradle.kts	2026-08-15 04:02:08.883535518 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 83
+-        versionName = "0.15.4.44-inventory-theme-fix"
++        versionCode = 84
++        versionName = "0.15.4.45-inventory-tabs-grid-fix"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-15 03:43:03.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-15 04:02:08.883313699 +0000
+@@ -3,7 +3,6 @@
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyRow
+-import androidx.compose.foundation.lazy.rememberLazyListState
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+@@ -82,20 +81,26 @@
+         OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
+         Spacer(Modifier.height(10.dp))
+         val inventorySections = remember { listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة") }
+-        val sectionListState = rememberLazyListState()
+-        LaunchedEffect(section) {
+-            val index = inventorySections.indexOf(section)
+-            if (index >= 0) sectionListState.animateScrollToItem(index)
+-        }
+         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+-            LazyRow(
+-                state = sectionListState,
++            Column(
+                 modifier = Modifier.fillMaxWidth(),
+-                horizontalArrangement = Arrangement.spacedBy(5.dp),
+-                contentPadding = PaddingValues(horizontal = 4.dp),
++                verticalArrangement = Arrangement.spacedBy(6.dp),
+             ) {
+-                items(inventorySections) { label ->
+-                    FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++                inventorySections.chunked(2).forEach { rowSections ->
++                    Row(
++                        modifier = Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.spacedBy(8.dp),
++                    ) {
++                        rowSections.forEach { label ->
++                            FilterChip(
++                                selected = section == label,
++                                onClick = { section = label },
++                                label = { Text(label, maxLines = 1) },
++                                modifier = Modifier.weight(1f),
++                            )
++                        }
++                        if (rowSections.size == 1) Spacer(Modifier.weight(1f))
++                    }
+                 }
+             }
+         }
