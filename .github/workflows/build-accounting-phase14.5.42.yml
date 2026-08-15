@@ -75,13 +75,23 @@ jobs:
           from pathlib import Path
           p = Path('/tmp/phase42.patch')
           s = p.read_text()
-          old = 'arrayOf(row[0], row[2], row[3], row[4].toInt(), row[1])'
-          new = 'arrayOf<Any>(row[0], row[2], row[3], row[4].toInt(), row[1])'
-          assert s.count(old) == 1
-          p.write_text(s.replace(old, new))
+          replacements = [
+              ('arrayOf(row[0], row[2], row[3], row[4].toInt(), row[1])',
+               'arrayOf<Any>(row[0], row[2], row[3], row[4].toInt(), row[1])', 1),
+              ('+import kotlin.test.Test\n+import kotlin.test.assertFailsWith',
+               '+import org.junit.Assert.assertThrows\n+import org.junit.Test', 1),
+              ('+        assertFailsWith<IllegalArgumentException> {',
+               '+        assertThrows(IllegalArgumentException::class.java) {', 3),
+              ('+import kotlin.test.Test\n+import kotlin.test.assertEquals\n+import kotlin.test.assertTrue',
+               '+import org.junit.Assert.assertEquals\n+import org.junit.Assert.assertTrue\n+import org.junit.Test', 1),
+          ]
+          for old, new, expected in replacements:
+              assert s.count(old) == expected, (old, s.count(old), expected)
+              s = s.replace(old, new)
+          p.write_text(s)
           PY
-          test "$(wc -c < /tmp/phase42.patch)" -eq 80945
-          echo '1db15d2eb06a93ae45c773d617520742b8459bc54000dbb250a5f33fd5e9fd40  /tmp/phase42.patch' | sha256sum -c -
+          test "$(wc -c < /tmp/phase42.patch)" -eq 80980
+          echo '4949f6bf3c83392deee8e1b2974fda6bd6f60e421012fd40e65c88ec395a72a7  /tmp/phase42.patch' | sha256sum -c -
 
       - name: Apply Phase 14.5.42 to validated Phase 14.5.41
         shell: bash
@@ -125,6 +135,9 @@ jobs:
           ! grep -R --line-number -E 'accountDao\(\)\.byCode\("(1200|1210|1300|1500|1590|2100|2200|2300|3100|3300|4000|4100|4200|4250|5000|6300|6400|6750|6800|6900|6950)"' app/src/main/java/com/fush/erp/domain
           ! grep -R --line-number -E 'offset\?\.code|"1300" ->|"2100" ->|"2200" ->|"2300" ->' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
           test -f app/src/test/java/com/fush/erp/domain/PostingRoleTest.kt
+          grep -q 'org.junit.Test' app/src/test/java/com/fush/erp/domain/PostingRoleTest.kt
+          grep -q 'org.junit.Assert.assertThrows' app/src/test/java/com/fush/erp/domain/ControlAccountPolicyTest.kt
+          ! grep -R --line-number 'kotlin.test' app/src/test/java/com/fush/erp/domain/ControlAccountPolicyTest.kt app/src/test/java/com/fush/erp/domain/PostingRoleTest.kt
 
       - name: Unit tests
         working-directory: work/repo
@@ -171,7 +184,7 @@ jobs:
           Branch testing versionCode retained: 77
           Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
           Accounting branch Room schema: 34 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
-          Phase 14.5.42 patch SHA-256: 1db15d2eb06a93ae45c773d617520742b8459bc54000dbb250a5f33fd5e9fd40
+          Phase 14.5.42 patch SHA-256: 4949f6bf3c83392deee8e1b2974fda6bd6f60e421012fd40e65c88ec395a72a7
           Unit Tests: PASS
           Release Build: PASS
           Room Schema 34 generation: PASS
