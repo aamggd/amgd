@@ -56,7 +56,9 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm baseline-14.5.48
-          base64 -d ../phase14_5_49_treasury_reports/patches/01_treasury_reports.patch.gz.b64 | gzip -dc > ../phase14_5_49_treasury_reports/01_treasury_reports.patch
+          cat ../phase14_5_49_treasury_reports/payload/treasury49.b64.part00 ../phase14_5_49_treasury_reports/payload/treasury49.b64.part01 > ../phase14_5_49_treasury_reports/treasury49.full.b64
+          echo 'a56f2ec6e9415b15b7ba4dc9461dd33fc36bbb850387df0fbbcd635aa78f3a7c  ../phase14_5_49_treasury_reports/treasury49.full.b64' | sha256sum -c -
+          base64 -d ../phase14_5_49_treasury_reports/treasury49.full.b64 | gzip -dc > ../phase14_5_49_treasury_reports/01_treasury_reports.patch
           echo '678411474f27eb21f87b5d086f86b8b7fe3bf0d2aec33c5ec9097c990c2899fa  ../phase14_5_49_treasury_reports/01_treasury_reports.patch' | sha256sum -c -
           git apply --check ../phase14_5_49_treasury_reports/01_treasury_reports.patch
           git apply ../phase14_5_49_treasury_reports/01_treasury_reports.patch
