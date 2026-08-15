@@ -1,0 +1,357 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -8,9 +8,12 @@
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.BuildConfig
++import com.fush.erp.ui.*
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import kotlinx.coroutines.launch
+@@ -20,7 +23,7 @@
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable
+ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+-    var page by remember { mutableStateOf("الرئيسية") }
++    var page by rememberSaveable { mutableStateOf("الرئيسية") }
+     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+     val scope = rememberCoroutineScope()
+ 
+@@ -71,59 +74,85 @@
+     ModalNavigationDrawer(
+         drawerState = drawerState,
+         drawerContent = {
+-            ModalDrawerSheet {
++            ModalDrawerSheet(
++                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++            ) {
+                 Column(
+                     modifier = Modifier
+                         .fillMaxHeight()
+                         .verticalScroll(rememberScrollState())
+                 ) {
+-                Text(
+-                    "Fush ERP",
+-                    style = MaterialTheme.typography.headlineSmall,
+-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)
+-                )
+-                HorizontalDivider()
+-                Text(
+-                    "أقسام النظام",
+-                    style = MaterialTheme.typography.titleMedium,
+-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+-                )
+-                drawerItems.forEach { (label, target) ->
++                    Column(
++                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
++                        verticalArrangement = Arrangement.spacedBy(14.dp),
++                    ) {
++                        FushBrand(compact = true)
++                        Row(
++                            modifier = Modifier.fillMaxWidth(),
++                            verticalAlignment = Alignment.CenterVertically,
++                            horizontalArrangement = Arrangement.spacedBy(10.dp),
++                        ) {
++                            FushUserAvatar(user.displayName)
++                            Column(Modifier.weight(1f)) {
++                                Text(user.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
++                                Text(
++                                    "جلسة مستخدم نشطة",
++                                    style = MaterialTheme.typography.bodySmall,
++                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
++                                )
++                            }
++                        }
++                    }
++                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                    Text(
++                        "أقسام النظام",
++                        style = MaterialTheme.typography.labelLarge,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
++                    )
++                    drawerItems.forEach { (label, target) ->
++                        NavigationDrawerItem(
++                            label = { Text(label, maxLines = 1) },
++                            icon = { NavGlyph(label.take(1)) },
++                            selected = page == target,
++                            onClick = {
++                                page = target
++                                scope.launch { drawerState.close() }
++                            },
++                            modifier = Modifier.padding(horizontal = 10.dp),
++                            shape = MaterialTheme.shapes.medium,
++                        )
++                    }
++                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
++                    Text(
++                        "البيانات الأساسية",
++                        style = MaterialTheme.typography.labelLarge,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
++                    )
+                     NavigationDrawerItem(
+-                        label = { Text(label, maxLines = 1) },
+-                        selected = page == target,
++                        label = { Text("المواد والأصناف") },
++                        icon = { NavGlyph("ص") },
++                        selected = page == "المواد والأصناف",
+                         onClick = {
+-                            page = target
++                            page = "المواد والأصناف"
+                             scope.launch { drawerState.close() }
+                         },
+-                        modifier = Modifier.padding(horizontal = 10.dp)
++                        modifier = Modifier.padding(horizontal = 10.dp),
++                        shape = MaterialTheme.shapes.medium,
+                     )
+-                }
+-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+-                Text(
+-                    "البيانات الأساسية",
+-                    style = MaterialTheme.typography.titleMedium,
+-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+-                )
+-                NavigationDrawerItem(
+-                    label = { Text("المواد والأصناف") },
+-                    selected = page == "المواد والأصناف",
+-                    onClick = {
+-                        page = "المواد والأصناف"
+-                        scope.launch { drawerState.close() }
+-                    },
+-                    modifier = Modifier.padding(horizontal = 10.dp)
+-                )
+-                NavigationDrawerItem(
+-                    label = { Text("الوحدات") },
+-                    selected = page == "الوحدات",
+-                    onClick = {
+-                        page = "الوحدات"
+-                        scope.launch { drawerState.close() }
+-                    },
+-                    modifier = Modifier.padding(horizontal = 10.dp)
+-                )
+-                Spacer(Modifier.height(12.dp))
++                    NavigationDrawerItem(
++                        label = { Text("الوحدات") },
++                        icon = { NavGlyph("و") },
++                        selected = page == "الوحدات",
++                        onClick = {
++                            page = "الوحدات"
++                            scope.launch { drawerState.close() }
++                        },
++                        modifier = Modifier.padding(horizontal = 10.dp),
++                        shape = MaterialTheme.shapes.medium,
++                    )
++                    Spacer(Modifier.height(18.dp))
+                 }
+             }
+         }
+@@ -131,32 +160,53 @@
+         Scaffold(
+             topBar = {
+                 TopAppBar(
+-                    title = { Text("Fush ERP — $page") },
++                    title = {
++                        Column {
++                            Text(page, style = MaterialTheme.typography.titleMedium, maxLines = 1)
++                            Text(
++                                "FUSH ERP",
++                                style = MaterialTheme.typography.labelSmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            )
++                        }
++                    },
+                     navigationIcon = {
+                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
+-                            Text("☰", style = MaterialTheme.typography.titleLarge)
++                            NavGlyph("≡", selected = true)
+                         }
+                     },
+                     actions = {
+-                        Text(user.displayName, style = MaterialTheme.typography.bodySmall)
++                        FushUserAvatar(user.displayName, Modifier.padding(horizontal = 4.dp))
+                         TextButton(onClick = onLogout) { Text("خروج") }
+-                    }
++                    },
++                    colors = TopAppBarDefaults.topAppBarColors(
++                        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
++                    ),
+                 )
+             },
+             bottomBar = {
+-                NavigationBar {
+-                    listOf("الرئيسية", "المبيعات", "الإنتاج", "المخزون").forEach { label ->
++                NavigationBar(
++                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++                    tonalElevation = 2.dp,
++                ) {
++                    listOf(
++                        "الرئيسية" to "ر",
++                        "المبيعات" to "م",
++                        "الإنتاج" to "إ",
++                        "المخزون" to "خ",
++                    ).forEach { (label, glyph) ->
+                         NavigationBarItem(
+                             selected = page == label,
+                             onClick = { page = label },
+-                            icon = { Text(if (page == label) "●" else "○") },
++                            icon = { NavGlyph(glyph, selected = page == label) },
+                             label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                         )
+                     }
+                     NavigationBarItem(
+                         selected = false,
+                         onClick = { scope.launch { drawerState.open() } },
+-                        icon = { Text("☰") },
++                        icon = { NavGlyph("≡") },
+                         label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                     )
+                 }
+@@ -263,8 +313,10 @@
+ 
+     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+-            Text("لوحة الإدارة التنفيذية", style = MaterialTheme.typography.headlineSmall)
+-            Text("آخر 30 يومًا + تنبيهات الحالة الحالية", style = MaterialTheme.typography.bodyMedium)
++            FushSectionHeader(
++                title = "لوحة الإدارة التنفيذية",
++                subtitle = "ملخص آخر 30 يومًا مع التنبيهات التي تحتاج قرارًا أو متابعة",
++            )
+         }
+ 
+         item {
+@@ -281,7 +333,7 @@
+         }
+ 
+         item {
+-            Text("المؤشرات الرئيسية", style = MaterialTheme.typography.titleLarge)
++            FushSectionHeader("المؤشرات الرئيسية", "أهم الأرقام المالية والتشغيلية في نظرة واحدة")
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                 ExecutiveMetric("صافي المبيعات", executive?.let { it.grossSalesBase - it.salesReturnsBase }, "ريال", Modifier.weight(1f)) { onNavigate("المبيعات") }
+                 ExecutiveMetric("صافي التحصيل", executive?.collectionsBase, "ريال", Modifier.weight(1f)) { onNavigate("التحصيلات") }
+@@ -304,7 +356,7 @@
+         }
+ 
+         item {
+-            Text("القرارات والتنبيهات", style = MaterialTheme.typography.titleLarge)
++            FushSectionHeader("القرارات والتنبيهات", "ابدأ بالحالات الحرجة ثم انتقل إلى التنبيهات التشغيلية")
+             if (alerts.isEmpty()) {
+                 Card(Modifier.fillMaxWidth()) {
+                     Text("لا توجد تنبيهات تشغيلية معلقة حاليًا.", modifier = Modifier.padding(16.dp))
+@@ -318,17 +370,27 @@
+                     containerColor = if (alert.critical) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
+                 )
+             ) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    Text(if (alert.critical) "🔴 ${alert.title}" else "⚠ ${alert.title}", style = MaterialTheme.typography.titleMedium)
+-                    Text(alert.detail, style = MaterialTheme.typography.bodyMedium)
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically,
++                    ) {
++                        Text(alert.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                        Spacer(Modifier.width(8.dp))
++                        FushStatusPill(
++                            if (alert.critical) "حرج" else "متابعة",
++                            if (alert.critical) FushStatusTone.Danger else FushStatusTone.Warning,
++                        )
++                    }
++                    Text(alert.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     TextButton(onClick = { onNavigate(alert.target) }) { Text("فتح القسم") }
+                 }
+             }
+         }
+ 
+         item {
+-            Text("نبضة النظام", style = MaterialTheme.typography.titleLarge)
+-            Text("اضغط على أي بطاقة لفتح القسم المرتبط بها.", style = MaterialTheme.typography.bodySmall)
++            FushSectionHeader("نبضة النظام", "اضغط على أي بطاقة للانتقال مباشرة إلى القسم المرتبط")
+             Spacer(Modifier.height(6.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Metric("العملاء", customerCount.toString(), Modifier.weight(1f)) { onNavigate("العملاء") }
+@@ -361,15 +423,14 @@
+             }
+         }
+ 
+-        item { Text("وحدات النظام", style = MaterialTheme.typography.titleLarge) }
++        item { FushSectionHeader("وحدات النظام", "كل وحدات FUSH ERP ومجال كل وحدة") }
+         items(modules) { module ->
+-            Card(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(16.dp)) {
+-                    Text(module.title, style = MaterialTheme.typography.titleMedium)
+-                    Text(module.subtitle, style = MaterialTheme.typography.bodyMedium)
+-                    Text(module.phase, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+-                }
+-            }
++            FushModuleCard(
++                title = module.title,
++                subtitle = module.subtitle,
++                badge = module.phase,
++                modifier = Modifier.fillMaxWidth(),
++            )
+         }
+     }
+ }
+@@ -382,13 +443,14 @@
+     modifier: Modifier = Modifier,
+     onClick: (() -> Unit)? = null
+ ) {
+-    val cardModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
+-    ElevatedCard(cardModifier) {
+-        Column(Modifier.padding(12.dp)) {
+-            Text(value?.let { java.lang.String.format(java.util.Locale.US, "%,.0f", it) } ?: "—", style = MaterialTheme.typography.titleLarge)
+-            Text("$label • $suffix", style = MaterialTheme.typography.bodySmall)
+-        }
+-    }
++    FushMetricCard(
++        label = label,
++        value = value?.let { java.lang.String.format(java.util.Locale.US, "%,.0f", it) } ?: "—",
++        helper = suffix,
++        modifier = modifier,
++        tone = FushStatusTone.Info,
++        onClick = onClick,
++    )
+ }
+ 
+ @Composable
+@@ -398,11 +460,27 @@
+     modifier: Modifier = Modifier,
+     onClick: (() -> Unit)? = null
+ ) {
+-    val cardModifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier
+-    ElevatedCard(cardModifier) {
+-        Column(Modifier.padding(12.dp)) {
+-            Text(value, style = MaterialTheme.typography.headlineSmall)
+-            Text(label, style = MaterialTheme.typography.bodySmall)
++    FushMetricCard(
++        label = label,
++        value = value,
++        modifier = modifier,
++        onClick = onClick,
++    )
++}
++
++@Composable
++private fun NavGlyph(
++    text: String,
++    selected: Boolean = false,
++) {
++    Surface(
++        modifier = Modifier.size(30.dp),
++        shape = MaterialTheme.shapes.small,
++        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
++        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
++    ) {
++        Box(contentAlignment = Alignment.Center) {
++            Text(text, style = MaterialTheme.typography.labelLarge)
+         }
+     }
+ }
