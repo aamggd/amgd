@@ -1,0 +1,133 @@
+name: Build Fush ERP Phase 14.5.45 Inventory Tabs Grid Fix
+
+on:
+  push:
+    branches: [fush/ui-inventory-tabs-grid-14.5.45]
+    paths:
+      - 'phase14_5_45.patch'
+      - '.github/workflows/build-phase14-5-45-inventory-tabs-grid-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.44 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.44-Inventory-Theme-Fix-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31862525770
+
+      - name: Restore Phase 14.5.44 and apply Phase 14.5.45
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.44-Inventory-Theme-Fix-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email build@fush.local
+          git config user.name 'FUSH Build'
+          git add -A
+          git commit -qm baseline
+          git apply --check ../phase14_5_45.patch
+          git apply ../phase14_5_45.patch
+          git diff --check
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 84' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.45-inventory-tabs-grid-fix"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          grep -q 'inventorySections.chunked(2)' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          test "$(grep -c 'rememberLazyListState' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt || true)" = "0"
+          grep -q 'FushThemeMode.DARK' app/src/main/java/com/fush/erp/ui/FushTheme.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 84' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.45-inventory-tabs-grid-fix"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase14.5.45_DOES_NOT_EXIST 2>/dev/null && exit 1 || true
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-45-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-45-output/FushERP-Phase14.5.45-Inventory-Tabs-Grid-Fix-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-45-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-45-output/lib/apksigner.jar
+          chmod +x phase14-5-45-output/apksigner
+          zip -qr phase14-5-45-output/FushERP-Mobile-Phase14.5.45-Inventory-Tabs-Grid-Fix-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.45 — Inventory Tabs Grid Fix' \
+            'Base verified source: Phase 14.5.44 Inventory Theme Fix' \
+            'Inventory section navigation changed from horizontal scrolling to a fixed two-column / three-row grid.' \
+            'All six inventory sections are visible without edge clipping.' \
+            'Theme selector from Phase 14.5.44 remains unchanged.' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 84' \
+            'Version name: 0.15.4.45-inventory-tabs-grid-fix' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-45-output/FushERP-Phase14.5.45-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.45-Inventory-Tabs-Grid-Fix-Build
+          path: phase14-5-45-output/
+          if-no-files-found: error
+          retention-days: 7
