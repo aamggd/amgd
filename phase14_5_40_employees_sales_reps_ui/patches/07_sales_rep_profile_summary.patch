@@ -1,0 +1,70 @@
+From 2d036a0bb967493a45dcdbd1c394d40d68e069bc Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:08:43 +0000
+Subject: [PATCH] sales rep profile summary
+
+---
+ .../ui/screens/SalesRepresentativeScreens.kt  | 45 ++++++++++++++-----
+ 1 file changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index 6e22371..c89fe49 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -166,20 +166,43 @@ private fun SalesRepresentativeProfile(
+     val tabs = listOf("الملف", "العملاء", "المبيعات", "العمولات", "السندات", "التدقيق")
+ 
+     Column(modifier.fillMaxSize()) {
+-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            OutlinedButton(onClick = onBack) { Text("رجوع") }
+-            Column(Modifier.weight(1f)) {
+-                Text(rep.fullNameAr, style = MaterialTheme.typography.headlineSmall)
+-                Text("${rep.code} • ${if (rep.repType == "INTERNAL") "داخلي" else "خارجي"} • ${rep.status}", style = MaterialTheme.typography.bodySmall)
++        ElevatedCard(Modifier.fillMaxWidth().padding(12.dp)) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
++                    OutlinedButton(onClick = onBack) { Text("رجوع") }
++                    Column(Modifier.weight(1f)) {
++                        Text(rep.fullNameAr, style = MaterialTheme.typography.headlineSmall)
++                        Text("${rep.code} • ${if (rep.repType == "INTERNAL") "مندوب داخلي" else "مندوب خارجي"} • ${rep.territory.ifBlank { "بدون منطقة" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    FushStatusPill(if (rep.status == "ACTIVE") "نشط" else "موقوف", if (rep.status == "ACTIVE") FushStatusTone.Success else FushStatusTone.Warning)
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    OutlinedButton(onClick = { showEdit = true }, modifier = Modifier.weight(1f)) { Text("تعديل") }
++                    OutlinedButton(onClick = { showAssignCustomer = true }, enabled = rep.status == "ACTIVE", modifier = Modifier.weight(1f)) { Text("ربط عميل") }
++                    Button(onClick = { showPayment = true }, enabled = rep.status == "ACTIVE" && due > 0.000001, modifier = Modifier.weight(1f)) { Text("صرف عمولة") }
++                }
++                message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+             }
+         }
+-        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            OutlinedButton(onClick = { showEdit = true }) { Text("تعديل") }
+-            OutlinedButton(onClick = { showAssignCustomer = true }, enabled = rep.status == "ACTIVE") { Text("ربط عميل") }
+-            Button(onClick = { showPayment = true }, enabled = rep.status == "ACTIVE" && due > 0.000001) { Text("صرف عمولة") }
++
++        Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    "العمولة المستحقة",
++                    "${repMoney(due)} ر.ي",
++                    Modifier.weight(1f),
++                    helper = "المكتسب - المعكوس - المصروف",
++                    tone = if (due > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
++                )
++                FushMetricCard("المبيعات", "${repMoney(salesBase)} ر.ي", Modifier.weight(1f), helper = "إجمالي فواتير المندوب", tone = FushStatusTone.Info)
++            }
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("التحصيلات", "${repMoney(collectionsBase)} ر.ي", Modifier.weight(1f), helper = "تحصيلات فواتير المندوب", tone = FushStatusTone.Success)
++                FushMetricCard("المرتجعات", "${repMoney(returnsBase)} ر.ي", Modifier.weight(1f), helper = "تؤثر على العمولة", tone = if (returnsBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Neutral)
++            }
+         }
+-        message?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary) }
+-        ScrollableTabRow(selectedTabIndex = tab) {
++
++        ScrollableTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 10.dp)) {
+             tabs.forEachIndexed { i, title -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) }) }
+         }
+         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+-- 
+2.47.3
