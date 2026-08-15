@@ -1,0 +1,90 @@
+         "ملخص" -> ExecutiveTab(executive)
+@@ -250,7 +353,12 @@ private fun ReportTabContent(
+         "المخزون" -> InventoryTab(inventory)
+         "الإنتاج" -> ProductionTab(production, productionMaterials, maintenance)
+         "الجودة" -> QualityTab(quality)
+-        "المالية" -> FinanceTab(pnl, trial, cash)
++        "المالية" -> FinanceTab(pnl, trial, cash, balanceSheet)
++        "الأستاذ العام" -> LedgerReportTab(accounts, ledgerAccountId, onLedgerAccountChange, ledger)
++        "كشف الأطراف" -> PartyStatementTab(
++            statementCustomers, statementSuppliers, statementPartyType, onStatementPartyTypeChange,
++            statementCustomerId, onStatementCustomerChange, statementSupplierId, onStatementSupplierChange, partyStatement
++        )
+     }
+ }
+ 
+@@ -521,7 +629,14 @@ private fun buildCurrentReportExportDocument(
+     maintenance: MaintenanceReportRow?,
+     pnl: ProfitLossReport?,
+     trial: TrialBalanceReport?,
+-    cash: CashFlowReport?
++    cash: CashFlowReport?,
++    balanceSheet: BalanceSheetReport?,
++    ledgerAccount: AccountEntity?,
++    ledger: LedgerReport?,
++    statementPartyType: String,
++    statementCustomer: CustomerEntity?,
++    statementSupplier: SupplierEntity?,
++    partyStatement: PartyStatementPeriod?
+ ): ReportExportDocument = when (tab) {
+     "ملخص" -> buildExecutiveReportExportDocument(executive, periodLabel, from, to)
+     "المبيعات" -> buildSalesReportExportDocument(customers, salesProductQuantities, provinces, commissions, periodLabel, from, to)
+@@ -529,7 +644,11 @@ private fun buildCurrentReportExportDocument(
+     "المخزون" -> buildInventoryReportExportDocument(inventory, periodLabel, from, to)
+     "الإنتاج" -> buildProductionReportExportDocument(production, productionMaterials, maintenance, periodLabel, from, to)
+     "الجودة" -> buildQualityReportExportDocument(quality, periodLabel, from, to)
+-    "المالية" -> buildFinanceReportExportDocument(pnl, trial, cash, periodLabel, from, to)
++    "المالية" -> buildFinanceReportExportDocument(pnl, trial, cash, balanceSheet, periodLabel, from, to)
++    "الأستاذ العام" -> buildLedgerReportExportDocument(ledgerAccount, ledger, periodLabel, from, to)
++    "كشف الأطراف" -> buildPartyStatementExportDocument(
++        statementPartyType, statementCustomer, statementSupplier, partyStatement, periodLabel, from, to
++    )
+     else -> ReportExportDocument(
+         title = "تقرير Fush ERP",
+         subtitle = reportPeriodSubtitle(periodLabel, from, to),
+@@ -752,6 +871,7 @@ private fun buildFinanceReportExportDocument(
+     pnl: ProfitLossReport?,
+     trial: TrialBalanceReport?,
+     cash: CashFlowReport?,
++    balanceSheet: BalanceSheetReport?,
+     periodLabel: String,
+     from: Long,
+     to: Long
+@@ -775,6 +895,14 @@ private fun buildFinanceReportExportDocument(
+         summary += "إجمالي رصيد المدين" to money(it.totalDebitBalance)
+         summary += "إجمالي رصيد الدائن" to money(it.totalCreditBalance)
+     }
++    balanceSheet?.let {
++        summary += "إجمالي الأصول" to money(it.assets)
++        summary += "إجمالي الالتزامات" to money(it.liabilities)
++        summary += "حقوق الملكية قبل ربح الفترة" to money(it.equityBeforeCurrentProfit)
++        summary += "ربح/خسارة حتى التاريخ" to money(it.currentProfit)
++        summary += "الالتزامات وحقوق الملكية" to money(it.totalLiabilitiesAndEquity)
++        summary += "فرق المركز المالي" to money(it.difference)
++    }
+     val tables = mutableListOf<ReportExportTable>()
+     pnl?.let {
+         tables += ReportExportTable(
+@@ -797,12 +925,119 @@ private fun buildFinanceReportExportDocument(
+             }
+         )
+     }
++    balanceSheet?.let { sheet ->
++        tables += ReportExportTable(
++            title = "الأصول",
++            headers = listOf("الحساب", "الرصيد"),
++            rows = sheet.assetsByAccount.map { row -> listOf(row.first, money(row.second)) }
++        )
++        tables += ReportExportTable(
++            title = "الالتزامات",
++            headers = listOf("الحساب", "الرصيد"),
++            rows = sheet.liabilitiesByAccount.map { row -> listOf(row.first, money(row.second)) }
++        )
++        tables += ReportExportTable(
++            title = "حقوق الملكية",
++            headers = listOf("الحساب", "الرصيد"),
++            rows = sheet.equityByAccount.map { row -> listOf(row.first, money(row.second)) }
++        )
++    }
+     return ReportExportDocument(
+         title = "التقرير المالي — Fush ERP",
