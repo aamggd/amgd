@@ -70,9 +70,12 @@ jobs:
             phase14_5_41_assets_maintenance_expenses_ui
           do
             echo "Applying $phase"
-            cat "../$phase/patches/"*.patch > "/tmp/$phase.patch"
-            git apply --check "/tmp/$phase.patch"
-            git apply "/tmp/$phase.patch"
+            for patch_file in ../$phase/patches/*.patch
+            do
+              echo "  -> $(basename "$patch_file")"
+              git apply --check "$patch_file"
+              git apply "$patch_file"
+            done
           done
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 80' app/build.gradle.kts
