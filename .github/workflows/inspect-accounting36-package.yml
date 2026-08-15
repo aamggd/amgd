@@ -1,0 +1,32 @@
+name: Inspect Accounting 14.5.36 Package
+on:
+  push:
+    branches: [fush/integration-all-14.5.43]
+    paths: ['.github/workflows/inspect-accounting36-package.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and inspect
+        shell: bash
+        run: |
+          set -u
+          git fetch origin fush/accounting --depth=1
+          git show origin/fush/accounting:fush_accounting/patches/phase14.5.36-operational-reversals.patch.gz.b64 > /tmp/p.b64
+          base64 -d /tmp/p.b64 > /tmp/p.gz
+          echo "b64=$(wc -c </tmp/p.b64) gz=$(wc -c </tmp/p.gz)"
+          set +e
+          gzip -dc /tmp/p.gz > /tmp/p.patch
+          rc=$?
+          set -e
+          echo "gzip_rc=$rc patch_bytes=$(wc -c </tmp/p.patch) lines=$(wc -l </tmp/p.patch)"
+          echo '--- head ---'; head -n 20 /tmp/p.patch || true
+          echo '--- diff files ---'; grep '^diff --git ' /tmp/p.patch || true
+          echo '--- tail ---'; tail -n 30 /tmp/p.patch || true
+          echo '--- phase37 gzip check ---'
+          git show origin/fush/accounting:fush_accounting/patches/phase14.5.37-fiscal-year-closing.patch.gz.b64 | base64 -d > /tmp/p37.gz
+          gzip -t /tmp/p37.gz && echo PHASE37_GZIP_OK
