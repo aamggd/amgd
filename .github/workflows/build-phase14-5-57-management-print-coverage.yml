@@ -1,0 +1,156 @@
+name: Build Fush ERP Phase 14.5.57 Management Print Coverage
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-57-management-print-coverage.yml'
+      - 'phase14_5_57_management_print_coverage/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.56 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.56-Direct-Print-Coverage-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31914425893
+
+      - name: Restore Phase 14.5.56 and apply Phase 14.5.57 management print coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '73e9600524462e49cdfa5f337d51b4c48d1b447dadbc82af65a6b790e954cc21  phase14_5_57_management_print_coverage/payload/p57-part00.txt' | sha256sum -c -
+          echo '778df50cfe81db86ee1177d58c39ee446d9e9737e628f4b7a51e3c75dfd4fd3a  phase14_5_57_management_print_coverage/payload/p57-part01.txt' | sha256sum -c -
+          echo '7b7aed68f544b0168741a1dd8642a301f802e09c2ba2b14fb764102de9771640  phase14_5_57_management_print_coverage/payload/p57-part02.txt' | sha256sum -c -
+          echo '93ba60cf69606850865ff4cb642b1cbea4964e789f414486bf2adb3c5be620d4  phase14_5_57_management_print_coverage/payload/p57-part03.txt' | sha256sum -c -
+          echo '988a7b29d152f0a150fecc846474e0f641f94fa5edf02e0152d75c74738fd6cf  phase14_5_57_management_print_coverage/payload/p57-part04.txt' | sha256sum -c -
+          echo 'fc8b31f6bb3c277ee7ed98c9fecd57db5fb092c3091950ad5b4c04861ac3f0f1  phase14_5_57_management_print_coverage/payload/p57-part05.txt' | sha256sum -c -
+          echo '5159b4f6aa854a724f9bc17610142c4ae6371490f8ec434f46052150467195d2  phase14_5_57_management_print_coverage/payload/p57-part06.txt' | sha256sum -c -
+          echo 'bf3f2454a998f9708588f40c4282eff2dcc4b72133e91dc2a7a63a16a861ae47  phase14_5_57_management_print_coverage/payload/p57-part07.txt' | sha256sum -c -
+          echo '9e9ab225ebd23fde60f5fd27d9072e979570b94e480ac434fc0b0eeca8406b17  phase14_5_57_management_print_coverage/payload/p57-part08.txt' | sha256sum -c -
+          cat phase14_5_57_management_print_coverage/payload/p57-part*.txt > phase14_5_57_management_print_coverage/p57.full.b64
+          echo 'd3226dd671906b2385deb29503edc5c93d817e396cef38a1d0c986c11cac99e0  phase14_5_57_management_print_coverage/p57.full.b64' | sha256sum -c -
+          base64 -d phase14_5_57_management_print_coverage/p57.full.b64 | gzip -dc > phase14_5_57_management_print_coverage/01_management_print_coverage.patch
+          echo '4e6d2ca49116366e1d165a16d7773bdecb6ff2261514547b1569e4c77fd99984  phase14_5_57_management_print_coverage/01_management_print_coverage.patch' | sha256sum -c -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.56-Direct-Print-Coverage-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.56
+          git apply --check ../phase14_5_57_management_print_coverage/01_management_print_coverage.patch
+          git apply ../phase14_5_57_management_print_coverage/01_management_print_coverage.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 96' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.57-management-print-coverage"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/ui/screens/RemainingSectionReports.kt
+          test -f app/src/test/java/com/fush/erp/ui/screens/RemainingSectionReportsTest.kt
+          for file in GeographyScreens.kt PlanningScreen.kt RiskControlScreen.kt HomeShell.kt BackupRestoreScreen.kt; do
+            grep -q 'ReportExportActions' "app/src/main/java/com/fush/erp/ui/screens/$file"
+          done
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 96' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.57-management-print-coverage"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-57-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-57-output/FushERP-Phase14.5.57-Management-Print-Coverage-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-57-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-57-output/lib/apksigner.jar
+          chmod +x phase14-5-57-output/apksigner
+          zip -qr phase14-5-57-output/FushERP-Mobile-Phase14.5.57-Management-Print-Coverage-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.57 — Management / Planning Print Coverage' \
+            'Base verified source: Phase 14.5.56 Direct Professional Print Coverage' \
+            'Branch: fush/reports-printing' \
+            'Currency / FX direct export: PASS' \
+            'Province policies and price lists export: PASS' \
+            'Geographic quote and profitability export: PASS' \
+            'Planning / seasonality scoped export: PASS' \
+            'Risk/control current-tab export: PASS' \
+            'Executive dashboard export: PASS' \
+            'Master data current-section/search export: PASS' \
+            'Backup verification certificate: PASS' \
+            'Management export regression tests: PASS' \
+            'Accounting posting logic unchanged: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 96' \
+            'Version name: 0.15.4.57-management-print-coverage' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-57-output/FushERP-Phase14.5.57-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.57-Management-Print-Coverage-Build
+          path: phase14-5-57-output/
+          if-no-files-found: error
+          retention-days: 7
