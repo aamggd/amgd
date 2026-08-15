@@ -97,8 +97,10 @@ jobs:
           grep -q 'abstract fun fixedAssetDao(): FixedAssetDao' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'val fixedAssetService = FixedAssetService(db)' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'لا يمكن إقفال الفترة قبل ترحيل إهلاك الأصول الثابتة' app/src/main/java/com/fush/erp/domain/AccountingService.kt
-          grep -q 'AccountingReconciliationMath.row("1500", "الأصول الثابتة"' app/src/main/java/com/fush/erp/domain/AccountingService.kt
-          grep -q 'AccountingReconciliationMath.row("1590", "مجمع الإهلاك"' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'fixedAssetsGl' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'fixedAssetsSubledger' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'accumulatedDepreciationGl' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'accumulatedDepreciationSubledger' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
           test -f app/src/test/java/com/fush/erp/domain/FixedAssetMathTest.kt
 
