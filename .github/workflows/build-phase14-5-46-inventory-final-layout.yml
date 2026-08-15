@@ -1,0 +1,185 @@
+name: Build Fush ERP Phase 14.5.46 Final Inventory Layout
+
+on:
+  push:
+    branches: [fush/ui-inventory-final-layout-14.5.46]
+    paths:
+      - 'phase14_5_46/**'
+      - '.github/workflows/build-phase14-5-46-inventory-final-layout.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-and-visual-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout independent build branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.45 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.45-Inventory-Tabs-Grid-Fix-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31863427876
+
+      - name: Restore 14.5.45 and apply 14.5.46 UI-only patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.45-Inventory-Tabs-Grid-Fix-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle .kotlin build
+          git init -q
+          git config user.email build@fush.local
+          git config user.name 'FUSH Build'
+          git add -A
+          git commit -qm baseline
+          cat ../phase14_5_46/patches/*.patch.part > ../phase14_5_46/phase14_5_46.patch
+          git apply --check ../phase14_5_46/phase14_5_46.patch
+          git apply ../phase14_5_46/phase14_5_46.patch
+          git diff --check
+
+          changed="$(git diff --name-only HEAD)"
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Ev '^(app/build.gradle.kts|app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt|app/src/androidTest/java/com/fush/erp/ui/screens/InventorySectionTabsNarrowLayoutTest.kt)$' | grep -q .; then
+            echo 'ERROR: Phase 14.5.46 touched a non-UI/non-test file.'
+            exit 1
+          fi
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 85' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.46-inventory-final-layout-fix"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          if grep -R --line-number --include='*.kt' 'fallbackToDestructiveMigration' app/src/main; then
+            echo 'ERROR: destructive Room fallback detected'
+            exit 1
+          fi
+
+          grep -q 'BoxWithConstraints(modifier.fillMaxSize())' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q 'modifier.fillMaxWidth().wrapContentHeight()' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q 'inventorySections.chunked(2)' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          grep -q '.heightIn(min = 48.dp)' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+          test "$(grep -c 'LazyVerticalGrid' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt || true)" = "0"
+          grep -Fq 'BoxWithConstraints(Modifier.fillMaxSize().padding(pad))' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'FushThemeMode.DARK' app/src/main/java/com/fush/erp/ui/FushTheme.kt
+          git status --short
+          rm -rf .git
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Prepare visual evidence output
+        shell: bash
+        run: mkdir -p phase14-5-46-output
+
+      - name: Narrow phone visual layout test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            cd FushERP_Mobile_Phase5
+            gradle --no-daemon :app:connectedDebugAndroidTest
+            adb shell run-as com.fush.erp.recovery ls -l files/
+            adb exec-out run-as com.fush.erp.recovery cat files/inventory-14.5.46-narrow-360dp.png > ../phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+            test -s ../phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 85' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.46-inventory-final-layout-fix"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -s phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Narrow-360dp.png
+
+      - name: Zipalign and package Phase 14.5.46 outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-46-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-46-output/FushERP-Phase14.5.46-Inventory-Final-Layout-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-46-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-46-output/lib/apksigner.jar
+          chmod +x phase14-5-46-output/apksigner
+          zip -qr phase14-5-46-output/FushERP-Mobile-Phase14.5.46-Inventory-Final-Layout-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          sha256sum phase14-5-46-output/FushERP-Mobile-Phase14.5.46-Inventory-Final-Layout-Source.zip > phase14-5-46-output/FushERP-Mobile-Phase14.5.46-Inventory-Final-Layout-Source.zip.sha256
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.46 — Final Inventory Layout Fix' \
+            'Base: verified Phase 14.5.45 artifact from run 31863427876' \
+            'Independent branch: fush/ui-inventory-final-layout-14.5.46' \
+            'Scope: UI/layout + Android visual test only; inventory business/data logic unchanged' \
+            'Tabs: Column -> 3 Rows -> 2 equal-weight buttons per row' \
+            'Tab container: fillMaxWidth + wrapContentHeight' \
+            'Each tab: min 48dp, text wrapping enabled' \
+            'Main inventory overview: vertically scrollable LazyColumn with safe bottom content padding' \
+            'Selected section viewport: responsive to available screen height, not a fixed dp height' \
+            'HomeShell Scaffold inner padding check: PASS' \
+            'Narrow visual fixture: 360dp x 640dp, font scale 130%, Bottom Navigation present' \
+            'Visual bounds assertions: six tabs displayed, no left/right clipping, no Bottom Navigation overlap' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 85' \
+            'Version name: 0.15.4.46-inventory-final-layout-fix' \
+            'Room schema: 27 unchanged; no migration added' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Narrow UI instrumentation test: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-46-output/FushERP-Phase14.5.46-FINAL-VERIFICATION.txt
+
+      - name: Upload Phase 14.5.46 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Inventory-Final-Layout-Build
+          path: phase14-5-46-output/
+          if-no-files-found: error
+          retention-days: 7
