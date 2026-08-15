@@ -5,12 +5,14 @@ Apply after Phase 14.5.45 in this order:
 2. `02_build_gradle.patch`
 3. `03_customer_profile_scroll.patch`
 4. `04_supplier_profile_scroll.patch`
-5. `05_party_lazy_content.patch`
-6. `06_employee_profile_scroll.patch`
-7. `07_sales_rep_profile_scroll.patch`
-8. `08_governance_scroll.patch`
-9. `09_risk_scroll.patch`
-10. `10_master_data_scroll.patch`
+5. `05_customer_ledger_lazy.patch`
+6. `06_supplier_ledger_lazy.patch`
+7. `07_party_aux_lazy.patch`
+8. `08_employee_profile_scroll.patch`
+9. `09_sales_rep_profile_scroll.patch`
+10. `10_governance_scroll.patch`
+11. `11_risk_scroll.patch`
+12. `12_master_data_scroll.patch`
 
 Highlights:
 - Customer and supplier profile identity/KPI/action/tab blocks now scroll with the selected content instead of permanently consuming phone viewport height.
@@ -25,7 +27,7 @@ Safety boundary: UI/layout only. No Room schema/entity/migration, DAO query, acc
 Branch version is 85 / `0.15.4.46-ui-scroll-profile-polish` for UI-branch identification only. Central integration owns the final integrated versionCode/versionName, migration ordering, signing and official APK release.
 
 Validation:
-- All ten patches apply sequentially over the verified Phase 14.5.45 source with `git apply --check`.
+- All twelve patches apply sequentially over the verified Phase 14.5.45 source with `git apply --check`.
 - Resulting changed files match the Phase 14.5.46 working source byte-for-byte.
 - `git diff --check` is clean and no conflict markers are present.
 - No Phase 14.5.46 changes exist under `data/` or `domain/`.
