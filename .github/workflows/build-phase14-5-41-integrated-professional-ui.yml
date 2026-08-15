@@ -73,8 +73,8 @@ jobs:
             for patch_file in ../$phase/patches/*.patch
             do
               echo "  -> $(basename "$patch_file")"
-              git apply --check "$patch_file"
-              git apply "$patch_file"
+              git apply --recount --check "$patch_file"
+              git apply --recount "$patch_file"
             done
           done
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
