@@ -5,6 +5,11 @@ on:
     branches: [fush/ui-professional-build-14.5.38]
     paths:
       - '.github/workflows/build-phase14-5-38-professional-ui.yml'
+      - 'phase14_5_34_ui_professionalization/**'
+      - 'phase14_5_35_sales_customers_ui/**'
+      - 'phase14_5_36_purchases_suppliers_ui/**'
+      - 'phase14_5_37_accounting_treasury_ui/**'
+      - 'phase14_5_38_inventory_master_data_ui/**'
   workflow_dispatch:
 
 permissions:
