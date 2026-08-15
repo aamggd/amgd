@@ -25,6 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f phase14_5_44_final_ui_handoff/README.md
+          test -f integration_ui_14_5_44/resolve_home_shell_07.py
           for n in 01_scope 02_handoff_manifest 03_build_gradle 04_shared_inline_states 05_governance_risk 06_planning_geography 07_operations_state_consistency 08_people_profile_states 09_production_purchase_states 10_sales_rep_sales_states; do
             test -f "phase14_5_44_final_ui_handoff/patches/${n}.patch"
           done
@@ -72,11 +73,21 @@ jobs:
           git add -A
           git -c user.name='FUSH UI Integration' -c user.email='ui-integration@local.invalid' commit -qm 'Verified Phase 14.5.43 UI baseline'
 
+          HOME_SHELL='app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt'
           for n in 01_scope 02_handoff_manifest 03_build_gradle 04_shared_inline_states 05_governance_risk 06_planning_geography 07_operations_state_consistency 08_people_profile_states 09_production_purchase_states 10_sales_rep_sales_states; do
             patch_file="../phase14_5_44_final_ui_handoff/patches/${n}.patch"
             echo "Applying ${n}.patch"
-            git apply --check "$patch_file"
-            git apply "$patch_file"
+            if [ "$n" = '07_operations_state_consistency' ]; then
+              # The handoff's HomeShell hunk was authored against a pre-14.5.43
+              # alert-list layout. Preserve the verified 14.5.43 structure and
+              # port only the intended UI-state substitutions deterministically.
+              git apply --check --exclude="$HOME_SHELL" "$patch_file"
+              git apply --exclude="$HOME_SHELL" "$patch_file"
+              python3 ../integration_ui_14_5_44/resolve_home_shell_07.py
+            else
+              git apply --check "$patch_file"
+              git apply "$patch_file"
+            fi
           done
 
           git add -A
@@ -101,6 +112,14 @@ jobs:
             echo "$bad"
             exit 1
           fi
+
+          # Confirm all five HomeShell UI substitutions are present without
+          # changing the 14.5.43 list/navigation structure.
+          grep -q 'FushInlineState("لا توجد تنبيهات تشغيلية معلقة حاليًا."' "$HOME_SHELL"
+          grep -q 'FushInlineState("لا توجد وحدات مطابقة للبحث.")' "$HOME_SHELL"
+          grep -q 'FushInlineState("لا توجد مخازن مطابقة للبحث.")' "$HOME_SHELL"
+          grep -q 'FushInlineState("لا توجد تحويلات وحدات مطابقة للبحث.")' "$HOME_SHELL"
+          grep -q 'FushInlineState("لا توجد أصناف مطابقة للبحث.")' "$HOME_SHELL"
 
           git -c user.name='FUSH UI Integration' -c user.email='ui-integration@local.invalid' commit -qm 'Integrate final Professional UI Phase 14.5.44'
           rm -rf .git
@@ -130,6 +149,10 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
           test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/27.json"
           test ! -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/28.json"
+          if grep -R --line-number --include='*.kt' 'fallbackToDestructiveMigration' "$ROOT/app/src/main"; then
+            echo 'ERROR: destructive Room fallback detected after build'
+            exit 1
+          fi
 
       - name: Zipalign and package integrated UI outputs
         shell: bash
@@ -151,6 +174,7 @@ jobs:
             'Integration branch: fush/integration-ui-14.5.44' \
             'Verified source base: Phase 14.5.43 Integrated Professional UI' \
             'Final handoff: phase14_5_44_final_ui_handoff (10 patches)' \
+            'HomeShell 07 compatibility: preserved 14.5.43 structure; UI state substitutions ported' \
             'Application ID: com.fush.erp.recovery' \
             'UI branch version code: 83' \
             'UI branch version name: 0.15.4.44-ui-final-consistency' \
@@ -167,5 +191,3 @@ jobs:
           path: integration-ui-output/
           if-no-files-found: error
           retention-days: 7
-
-# trigger: central-ui-integration-validation
