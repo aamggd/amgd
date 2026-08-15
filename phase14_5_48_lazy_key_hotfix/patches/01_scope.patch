@@ -1,0 +1,24 @@
+diff --git a/UI_PROFESSIONALIZATION_15_LAZY_KEY_COLLISION_HOTFIX_SCOPE.md b/UI_PROFESSIONALIZATION_15_LAZY_KEY_COLLISION_HOTFIX_SCOPE.md
+new file mode 100644
+index 0000000..8fadd12
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_15_LAZY_KEY_COLLISION_HOTFIX_SCOPE.md
+@@ -0,0 +1,18 @@
++# FUSH ERP Mobile — Phase 14.5.48 Lazy List Key Collision Hotfix
++
++## Objective
++Prevent Compose lazy-list crashes caused by duplicate item keys when multiple independent entity lists share one `LazyColumn`.
++
++## Confirmed root cause
++`ExpenseScreens.kt` emitted expense rows keyed only by `expenseId` and sales-representative contribution rows keyed only by `salesRepId` inside the same `LazyColumn`. Independent database sequences can produce the same numeric value (for example `1` and `1`). Compose requires sibling lazy items to have unique keys; the duplicate is often detected only when scrolling reaches the later item, which explains the app closing near the bottom of the page.
++
++## Fix
++Use namespaced string keys that include the entity/list role, such as `expense-<id>`, `rep-contribution-<id>`, `maintenance-work-order-<id>`, and `production-quality-check-<id>`.
++
++The same preventive namespacing is applied to other multi-list lazy workspaces reviewed in this phase: maintenance, production detail, production report, employee profile tabs, sales-representative profile tabs, governance, risk/internal control, geographic profitability, party voucher/audit list helpers, collection-detail rows without a database ID, and production material-availability rows where the same item could theoretically appear more than once.
++
++## Safety boundary
++UI/Compose identity only. No Room schema/entity/migration, DAO query, accounting posting/reversal, expense calculation, inventory quantity/costing, production/quality calculation, maintenance rule, employee compensation, commission logic, governance/risk rule, geographic profitability formula, authentication, permissions, or other domain/business service is intentionally changed.
++
++## Branch version
++87 / `0.15.4.48-ui-lazy-key-hotfix` for UI branch testing only. Central integration owns the final integrated release version.
