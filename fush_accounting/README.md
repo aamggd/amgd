@@ -17,6 +17,7 @@
 1. `patches/phase14.5.34-accounting-integrity.patch.gz.b64`
 2. `patches/phase14.5.35-accounting-periods-reconciliation.patch.gz.b64`
 3. `patches/phase14.5.36-operational-reversals.patch.gz.b64`
+4. `patches/phase14.5.37-fiscal-year-closing.patch.gz.b64`
 
 ## فك الحزمة وتطبيقها
 مثال Linux/macOS:
@@ -30,6 +31,9 @@ git apply phase14.5.35.patch
 
 base64 -d patches/phase14.5.36-operational-reversals.patch.gz.b64 | gzip -d > phase14.5.36.patch
 git apply phase14.5.36.patch
+
+base64 -d patches/phase14.5.37-fiscal-year-closing.patch.gz.b64 | gzip -d > phase14.5.37.patch
+git apply phase14.5.37.patch
 ```
 
 ## Phase 14.5.34 — Accounting Integrity
@@ -60,6 +64,15 @@ git apply phase14.5.36.patch
 - عكس دفعات الموردين وإعادة رصيد الفاتورة المستحق.
 - منع العكس المكرر والعكس داخل فترة محاسبية مقفلة.
 - إظهار مستند العكس في ملف العميل والمورد وكشف الحساب وسجل التدقيق.
+
+## Phase 14.5.37 — Fiscal Year Closing
+- Schema 30 وجدول سجل دورات الإقفال السنوي.
+- الفترة 12 لا تُقفل منفردة؛ تُقفل من الإقفال السنوي فقط.
+- الإقفال السنوي يتطلب إقفال الفترات 1–11 ونجاح المطابقات.
+- تصفير حسابات الإيرادات والمصروفات وترحيل صافي الربح/الخسارة إلى `3300 الأرباح المحتجزة`.
+- قائمة الدخل تستبعد قيد الإقفال وعكسه حتى يبقى ربح السنة التاريخي ظاهرًا بصورة صحيحة.
+- إعادة فتح السنة تفتح الفترة 12 وتعكس قيد الإقفال الأصلي بالكامل مع الاحتفاظ بسجل التدقيق.
+- منع إعادة فتح سنة أقدم إذا توجد فترات أو سنوات لاحقة مقفلة.
 
 ## ملاحظات الدمج
 عند الدمج في `fush/main` يجب الحفاظ على ترتيب المراحل. أي تعارض مع فرع الواجهات أو فرع الصلاحيات يجب حله على مستوى التكامل دون إسقاط منطق سلامة الحسابات.
