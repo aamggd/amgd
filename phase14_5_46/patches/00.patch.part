@@ -1,0 +1,90 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 4e4c34f..28e6357 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 84
+-        versionName = "0.15.4.45-inventory-tabs-grid-fix"
++        versionCode = 85
++        versionName = "0.15.4.46-inventory-final-layout-fix"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+@@ -53,10 +53,14 @@ dependencies {
+     val composeBom = platform(libs.androidx.compose.bom)
+     implementation(composeBom)
+     androidTestImplementation(composeBom)
++    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
++    androidTestImplementation("androidx.test.ext:junit:1.3.0")
++    androidTestImplementation("androidx.test:runner:1.7.0")
+     implementation(libs.androidx.compose.ui)
+     implementation(libs.androidx.compose.ui.tooling.preview)
+     implementation(libs.androidx.compose.material3)
+     debugImplementation(libs.androidx.compose.ui.tooling)
++    debugImplementation("androidx.compose.ui:ui-test-manifest")
+ 
+     testImplementation(libs.junit)
+     testImplementation(libs.androidx.room.testing)
+diff --git a/app/src/androidTest/java/com/fush/erp/ui/screens/InventorySectionTabsNarrowLayoutTest.kt b/app/src/androidTest/java/com/fush/erp/ui/screens/InventorySectionTabsNarrowLayoutTest.kt
+new file mode 100644
+index 0000000..55264cb
+--- /dev/null
++++ b/app/src/androidTest/java/com/fush/erp/ui/screens/InventorySectionTabsNarrowLayoutTest.kt
+@@ -0,0 +1,108 @@
++package com.fush.erp.ui.screens
++
++import android.graphics.Bitmap
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Spacer
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.height
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.material3.NavigationBar
++import androidx.compose.material3.NavigationBarItem
++import androidx.compose.material3.Scaffold
++import androidx.compose.material3.Text
++import androidx.compose.runtime.CompositionLocalProvider
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalDensity
++import androidx.compose.ui.platform.testTag
++import androidx.compose.ui.test.assertIsDisplayed
++import androidx.compose.ui.test.captureToImage
++import androidx.compose.ui.test.fetchSemanticsNode
++import androidx.compose.ui.test.junit4.createComposeRule
++import androidx.compose.ui.test.onNodeWithTag
++import androidx.compose.ui.test.onNodeWithText
++import androidx.compose.ui.test.performScrollTo
++import androidx.compose.ui.unit.Density
++import androidx.compose.ui.unit.dp
++import androidx.compose.ui.graphics.asAndroidBitmap
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import com.fush.erp.ui.FushTheme
++import com.fush.erp.ui.FushThemeMode
++import org.junit.Assert.assertTrue
++import org.junit.Rule
++import org.junit.Test
++import org.junit.runner.RunWith
++import java.io.File
++import java.io.FileOutputStream
++
++@RunWith(AndroidJUnit4::class)
++class InventorySectionTabsNarrowLayoutTest {
++    @get:Rule
++    val compose = createComposeRule()
++
++    @Test
++    fun allSixInventoryTabs_areVisibleAndNotClipped_aboveBottomNavigation() {
++        val labels = listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")
++
++        compose.setContent {
++            val density = LocalDensity.current
++            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 1.30f)) {
++                FushTheme(mode = FushThemeMode.LIGHT) {
++                    Box(Modifier.size(width = 360.dp, height = 640.dp).testTag("narrow-phone")) {
