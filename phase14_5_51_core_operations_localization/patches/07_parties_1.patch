@@ -1,0 +1,181 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index f856b86..3574521 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -15,9 +15,11 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.unit.dp
+ import androidx.room.withTransaction
++import com.fush.erp.R
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.ui.*
+@@ -38,6 +40,7 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+     var showAdd by remember { mutableStateOf(false) }
+     var search by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
++    val noGovernorate = stringResource(R.string.customers_no_governorate)
+ 
+     if (selected != null) {
+         CustomerProfileScreen(container, user, selected!!, onBack = { selected = null }, modifier = modifier)
+@@ -65,12 +68,12 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                 verticalAlignment = Alignment.CenterVertically,
+             ) {
+                 FushSectionHeader(
+-                    title = "العملاء",
+-                    subtitle = "ملفات العملاء والذمم والفواتير والتحصيلات في مكان واحد",
++                    title = stringResource(R.string.customers_title),
++                    subtitle = stringResource(R.string.customers_subtitle),
+                     modifier = Modifier.weight(1f),
+                 )
+                 Spacer(Modifier.width(12.dp))
+-                Button(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("عميل جديد") }
++                Button(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text(stringResource(R.string.customers_new)) }
+             }
+         }
+ 
+@@ -81,16 +84,16 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "عدد العملاء",
++                    label = stringResource(R.string.customers_count),
+                     value = customers.size.toString(),
+-                    helper = "عميل مسجل",
++                    helper = stringResource(R.string.customers_registered),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+                 FushMetricCard(
+-                    label = "إجمالي الذمم",
++                    label = stringResource(R.string.customers_total_receivables),
+                     value = partyMoney(totalOutstanding),
+-                    helper = "بالعملة الأساسية",
++                    helper = stringResource(R.string.common_base_currency),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalOutstanding > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -99,16 +102,16 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "ذمم متأخرة",
++                    label = stringResource(R.string.customers_overdue),
+                     value = partyMoney(totalOverdue),
+-                    helper = "تحتاج متابعة",
++                    helper = stringResource(R.string.customers_need_followup),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalOverdue > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
+                 )
+                 FushMetricCard(
+-                    label = "مسموح لهم بالآجل",
++                    label = stringResource(R.string.customers_credit_allowed),
+                     value = creditEnabled.toString(),
+-                    helper = "حسب السياسة الائتمانية",
++                    helper = stringResource(R.string.customers_credit_policy_helper),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+@@ -119,20 +122,20 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+             OutlinedTextField(
+                 value = search,
+                 onValueChange = { search = it },
+-                label = { Text("بحث عن العميل") },
+-                placeholder = { Text("الاسم، الكود، الهاتف، المحافظة أو العنوان") },
++                label = { Text(stringResource(R.string.customers_search)) },
++                placeholder = { Text(stringResource(R.string.customers_search_hint)) },
+                 modifier = Modifier.fillMaxWidth(),
+                 singleLine = true,
+                 shape = MaterialTheme.shapes.medium,
+-                supportingText = { Text("يعرض ${filtered.size} من ${customers.size} عميل") },
++                supportingText = { Text(stringResource(R.string.customers_showing, filtered.size, customers.size)) },
+             )
+         }
+ 
+         if (filtered.isEmpty()) {
+             item {
+                 FushEmptyState(
+-                    title = if (customers.isEmpty()) "لا يوجد عملاء بعد" else "لا توجد نتائج مطابقة",
+-                    detail = if (customers.isEmpty()) "أنشئ أول ملف عميل لتبدأ إدارة المبيعات والذمم." else "جرّب البحث باسم أو كود مختلف.",
++                    title = if (customers.isEmpty()) stringResource(R.string.sales_no_customers) else stringResource(R.string.common_no_matching_results),
++                    detail = if (customers.isEmpty()) stringResource(R.string.customers_empty_detail) else stringResource(R.string.customers_search_empty_detail),
+                 )
+             }
+         }
+@@ -163,14 +166,14 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                             Text(customer.nameAr, style = MaterialTheme.typography.titleMedium)
+                             Text(
+-                                "${customer.code} • ${customer.province.ifBlank { "بدون محافظة" }}",
++                                "${customer.code} • ${customer.province.ifBlank { noGovernorate }}",
+                                 style = MaterialTheme.typography.bodySmall,
+                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                             )
+                         }
+                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                             FushStatusPill(customer.currencyCode, FushStatusTone.Info)
+-                            FushStatusPill("تصنيف ${customer.classification}", FushStatusTone.Neutral)
++                            FushStatusPill(stringResource(R.string.customers_classification, customer.classification), FushStatusTone.Neutral)
+                         }
+                     }
+ 
+@@ -182,14 +185,14 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         verticalAlignment = Alignment.CenterVertically,
+                     ) {
+                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                            Text("الرصيد المستحق", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.customers_outstanding_balance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text(partyMoney(outstanding), style = MaterialTheme.typography.titleLarge)
+                         }
+                         FushStatusPill(
+                             when {
+-                                overdue > 0.000001 -> "متأخر ${partyMoney(overdue)}"
+-                                outstanding > 0.000001 -> "ذمة مفتوحة"
+-                                else -> "لا توجد ذمة"
++                                overdue > 0.000001 -> stringResource(R.string.customers_overdue_amount, partyMoney(overdue))
++                                outstanding > 0.000001 -> stringResource(R.string.customers_open_receivable)
++                                else -> stringResource(R.string.customers_no_receivable)
+                             },
+                             balanceTone,
+                         )
+@@ -201,11 +204,11 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         verticalAlignment = Alignment.CenterVertically,
+                     ) {
+                         Text(
+-                            if (customer.allowCredit) "آجل حتى ${customer.creditDays} يوم" else "بيع نقدي افتراضي",
++                            if (customer.allowCredit) stringResource(R.string.customers_credit_days, customer.creditDays) else stringResource(R.string.customers_cash_default),
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                         )
+-                        Text("فتح ملف العميل ←", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++                        Text(stringResource(R.string.customers_open_profile), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                     }
+                 }
+             }
+@@ -235,6 +238,7 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+     var showAdd by remember { mutableStateOf(false) }
+     var search by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
++    val noContact = stringResource(R.string.common_no_contact)
+ 
+     if (selected != null) {
+         SupplierProfileScreen(container, user, selected!!, onBack = { selected = null }, modifier = modifier)
+@@ -262,12 +266,12 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                 verticalAlignment = Alignment.CenterVertically,
+             ) {
+                 FushSectionHeader(
+-                    title = "الموردون",
+-                    subtitle = "ملفات الموردين والفواتير والدفعات والالتزامات في مكان واحد",
++                    title = stringResource(R.string.suppliers_title),
++                    subtitle = stringResource(R.string.suppliers_subtitle),
+                     modifier = Modifier.weight(1f),
+                 )
+                 Spacer(Modifier.width(12.dp))
+-                Button(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("مورد جديد") }
++                Button(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text(stringResource(R.string.suppliers_new)) }
+             }
+         }
