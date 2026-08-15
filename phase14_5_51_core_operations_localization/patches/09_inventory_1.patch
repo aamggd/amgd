@@ -1,0 +1,131 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 18dbf0c..3714399 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -9,8 +9,10 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
++import com.fush.erp.R
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.ui.*
+@@ -36,6 +38,14 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
+     val itemsList by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+     var section by remember { mutableStateOf("الأرصدة") }
++    val sectionLabels = listOf(
++        "الأرصدة" to R.string.inventory_tab_balances,
++        "تنبيهات" to R.string.inventory_tab_alerts,
++        "الجرد" to R.string.inventory_tab_counts,
++        "التحويلات" to R.string.inventory_tab_transfers,
++        "التشغيلات" to R.string.inventory_tab_lots,
++        "الحركة" to R.string.inventory_tab_movements,
++    )
+     var selectedWarehouseId by remember { mutableStateOf<Long?>(null) }
+     var selectedCategory by remember { mutableStateOf<String?>(null) }
+     var inventorySearch by remember { mutableStateOf("") }
+@@ -69,33 +79,33 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+         item(key = "inventory-overview") {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 FushSectionHeader(
+-                    title = "المخزون والمستودعات",
+-                    subtitle = "الأرصدة والجرد والتحويلات والتشغيلات والصلاحية والتنبيهات من مساحة واحدة",
++                    title = stringResource(R.string.inventory_title),
++                    subtitle = stringResource(R.string.inventory_subtitle),
+                 )
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                    FushMetricCard("مواقع رصيد", stockedLocations.toString(), Modifier.weight(1f), "صنف × مخزن", FushStatusTone.Info)
+-                    FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "تنبيه نشط", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
++                    FushMetricCard(stringResource(R.string.inventory_stock_locations), stockedLocations.toString(), Modifier.weight(1f), stringResource(R.string.inventory_item_warehouse), FushStatusTone.Info)
++                    FushMetricCard(stringResource(R.string.inventory_reorder), reorder.size.toString(), Modifier.weight(1f), stringResource(R.string.inventory_active_alert), if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                    FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة منتهية/قريبة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
+-                    FushMetricCard("المخازن النشطة", activeWarehouses.toString(), Modifier.weight(1f), "من ${warehouses.size} مخزن", FushStatusTone.Info)
++                    FushMetricCard(stringResource(R.string.inventory_expiry_30), expiry.size.toString(), Modifier.weight(1f), stringResource(R.string.inventory_expired_near_lot), if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushMetricCard(stringResource(R.string.inventory_active_warehouses), activeWarehouses.toString(), Modifier.weight(1f), stringResource(R.string.inventory_warehouse_total, warehouses.size), FushStatusTone.Info)
+                 }
+                 Spacer(Modifier.height(4.dp))
+-                FushSectionHeader("إجراءات سريعة", "ابدأ الجرد أو التحويل ثم أكمل التفاصيل قبل الترحيل")
++                FushSectionHeader(stringResource(R.string.inventory_quick_actions), stringResource(R.string.inventory_quick_actions_detail))
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty()) { Text("بدء جرد") }
+-                    Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f), enabled = warehouses.size > 1) { Text("تحويل مخزني") }
++                    Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty()) { Text(stringResource(R.string.inventory_start_count)) }
++                    Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f), enabled = warehouses.size > 1) { Text(stringResource(R.string.inventory_transfer)) }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty() && itemsList.isNotEmpty()) { Text("رصيد افتتاحي") }
+-                    OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.weight(1f)) { Text("الأصناف والوحدات") }
++                    OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty() && itemsList.isNotEmpty()) { Text(stringResource(R.string.inventory_opening_balance)) }
++                    OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.inventory_items_units)) }
+                 }
+                 OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) {
+-                    Text("ربط رصيد قديم بتشغيلة وصلاحية")
++                    Text(stringResource(R.string.inventory_link_legacy))
+                 }
+                 LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+-                    items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
+-                        FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++                    items(sectionLabels) { (sectionKey, labelRes) ->
++                        FilterChip(selected = section == sectionKey, onClick = { section = sectionKey }, label = { Text(stringResource(labelRes)) })
+                     }
+                 }
+             }
+@@ -266,30 +276,30 @@ private fun LazyListScope.inventoryBalanceItems(
+     val now = System.currentTimeMillis()
+     item(key = "inventory-balances-filters") {
+         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-            FushSectionHeader("الأرصدة الحالية", "الرصيد مفصول حسب المخزن الفعلي ونوع الصنف")
++            FushSectionHeader(stringResource(R.string.inventory_current_balances), stringResource(R.string.inventory_current_balances_detail))
+             OutlinedTextField(
+                 value = search,
+                 onValueChange = onSearchChange,
+                 modifier = Modifier.fillMaxWidth(),
+-                label = { Text("بحث في المخزون") },
+-                placeholder = { Text("اسم الصنف، الكود أو المخزن") },
++                label = { Text(stringResource(R.string.inventory_search)) },
++                placeholder = { Text(stringResource(R.string.inventory_search_hint)) },
+                 singleLine = true,
+                 shape = MaterialTheme.shapes.medium,
+-                supportingText = { Text("يعرض ${filtered.size} من ${rows.size} رصيد") },
++                supportingText = { Text(stringResource(R.string.inventory_showing, filtered.size, rows.size)) },
+             )
+-            Text("المخزن", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Text(stringResource(R.string.inventory_warehouse), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-                item { FilterChip(selected = selectedWarehouseId == null, onClick = { onWarehouseSelected(null) }, label = { Text("كل المخازن") }) }
++                item { FilterChip(selected = selectedWarehouseId == null, onClick = { onWarehouseSelected(null) }, label = { Text(stringResource(R.string.inventory_all_warehouses)) }) }
+                 items(warehouses.filter { it.isActive }) { wh ->
+                     FilterChip(selected = selectedWarehouseId == wh.id, onClick = { onWarehouseSelected(wh.id) }, label = { Text(warehouseShortName(wh)) })
+                 }
+             }
+-            Text("نوع الصنف", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            Text(stringResource(R.string.inventory_item_type), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-                item { FilterChip(selected = selectedCategory == null, onClick = { onCategorySelected(null) }, label = { Text("الكل") }) }
+-                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { onCategorySelected("FINISHED_GOOD") }, label = { Text("منتج نهائي") }) }
+-                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { onCategorySelected("RAW_MATERIAL") }, label = { Text("مواد خام") }) }
+-                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { onCategorySelected("PACKAGING") }, label = { Text("تغليف") }) }
++                item { FilterChip(selected = selectedCategory == null, onClick = { onCategorySelected(null) }, label = { Text(stringResource(R.string.inventory_all)) }) }
++                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { onCategorySelected("FINISHED_GOOD") }, label = { Text(stringResource(R.string.inventory_finished_good)) }) }
++                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { onCategorySelected("RAW_MATERIAL") }, label = { Text(stringResource(R.string.inventory_raw_material)) }) }
++                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { onCategorySelected("PACKAGING") }, label = { Text(stringResource(R.string.inventory_packaging)) }) }
+             }
+         }
+     }
+@@ -297,8 +307,8 @@ private fun LazyListScope.inventoryBalanceItems(
+     if (filtered.isEmpty()) {
+         item(key = "inventory-balances-empty") {
+             FushEmptyState(
+-                title = "لا يوجد رصيد مطابق للفلاتر الحالية",
+-                detail = "غيّر المخزن أو نوع الصنف أو عبارة البحث لعرض أرصدة أخرى.",
++                title = stringResource(R.string.inventory_no_filtered_balance),
++                detail = stringResource(R.string.inventory_no_filtered_balance_detail),
+             )
+         }
+     }
