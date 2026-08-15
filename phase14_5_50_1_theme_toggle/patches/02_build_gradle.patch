@@ -1,0 +1,15 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 03c73c7..fd94753 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 89
+-        versionName = "0.15.4.50-ui-localization-foundation"
++        versionCode = 90
++        versionName = "0.15.4.50.1-ui-theme-toggle"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
