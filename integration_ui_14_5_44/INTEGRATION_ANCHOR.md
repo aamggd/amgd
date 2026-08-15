@@ -17,6 +17,7 @@ Status: **APPROVED UI INTEGRATION ANCHOR**
 - Room schema: `27` (unchanged)
 - Source ZIP SHA-256: `c10c7ddf79c082a58213ec23202372bcea329017af312bbb6907d227d8f16ef1`
 - Aligned unsigned APK SHA-256: `80c48bcf630a870c4875b6265523503c6953bfa04d0a0ee93193488a2638f918`
+- Locally signed test APK SHA-256: `af6a2a9f97b0aee68864ae6db239f616823943c47b3d04920e8c1ab42a51d870`
 
 ## Validation
 
@@ -29,6 +30,11 @@ Status: **APPROVED UI INTEGRATION ANCHOR**
 - Release build: PASS.
 - Application identity and Room schema safety checks: PASS.
 - Zipalign: PASS.
+- Permanent signing certificate verification: PASS.
+- APK Signature Scheme v2: PASS.
+- APK Signature Scheme v3: PASS.
+- Signers: 1.
+- Signing certificate SHA-256: `22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86`.
 
 ## Central integration rule
 
