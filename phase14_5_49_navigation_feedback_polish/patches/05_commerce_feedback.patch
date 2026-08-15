@@ -1,0 +1,62 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index c98dee7..aeab2eb 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -115,10 +115,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+                 title = "المصروفات التشغيلية ومراكز التكلفة",
+                 subtitle = "تابع المصروف حسب الحساب والقسم والموظف والمندوب والطرف والمرجع، مع بقاء القيد المحاسبي هو مصدر الحقيقة."
+             )
+-            message?.let {
+-                Spacer(Modifier.height(8.dp))
+-                Text(it, color = MaterialTheme.colorScheme.primary)
+-            }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 7a3c1c9..3dddbeb 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -105,16 +105,8 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+             }
+         }
+ 
+-        message?.let { text ->
+-            item {
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.medium,
+-                ) {
+-                    Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+-                }
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+ 
+         item {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index 5a44837..f5c6401 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -110,16 +110,8 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+             }
+         }
+ 
+-        message?.let { text ->
+-            item {
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.medium,
+-                ) {
+-                    Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+-                }
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+ 
+         item {
