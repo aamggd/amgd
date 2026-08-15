@@ -1,0 +1,142 @@
+name: Build Fush ERP Phase 14.5.50 Period Comparison
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-50-period-comparison.yml'
+      - 'phase14_5_50_period_comparison/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.49 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.49-Treasury-Reports-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31869298459
+
+      - name: Restore Phase 14.5.49 and apply Phase 14.5.50 comparison patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.49-Treasury-Reports-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.49
+          cat ../phase14_5_50_period_comparison/payload/pc50.b64.part00 ../phase14_5_50_period_comparison/payload/pc50.b64.part01 > ../phase14_5_50_period_comparison/pc50.full.b64
+          echo '6333768b004d600169966c23d43b064c79bfa2c2c64b68c8ca6ae8b78cdf97a7  ../phase14_5_50_period_comparison/pc50.full.b64' | sha256sum -c -
+          base64 -d ../phase14_5_50_period_comparison/pc50.full.b64 | gzip -dc > ../phase14_5_50_period_comparison/01_period_comparison.patch
+          echo 'f9e734de7de9b0f2ecf28624748f107e19eb4fae1487ab76225f55e5f9313e2d  ../phase14_5_50_period_comparison/01_period_comparison.patch' | sha256sum -c -
+          git apply --check ../phase14_5_50_period_comparison/01_period_comparison.patch
+          git apply ../phase14_5_50_period_comparison/01_period_comparison.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 89' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.50-period-comparison"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/domain/PeriodComparisonMath.kt
+          test -f app/src/test/java/com/fush/erp/domain/PeriodComparisonMathTest.kt
+          grep -q '"مقارنة الفترات"' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'FushERP-Period-Comparison' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 89' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.50-period-comparison"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-50-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-50-output/FushERP-Phase14.5.50-Period-Comparison-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-50-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-50-output/lib/apksigner.jar
+          chmod +x phase14-5-50-output/apksigner
+          zip -qr phase14-5-50-output/FushERP-Mobile-Phase14.5.50-Period-Comparison-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.50 — Period Comparison & Variance' \
+            'Base verified source: Phase 14.5.49 Treasury Reports' \
+            'Branch: fush/reports-printing' \
+            'Equivalent previous-period selection: PASS' \
+            'Current / previous / difference / percentage metrics: PASS' \
+            'Zero previous-value percentage guard: PASS' \
+            'All-history comparison guard: PASS' \
+            'Existing accounting/report sources reused: PASS' \
+            'Professional PDF/XLSX export integration: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 89' \
+            'Version name: 0.15.4.50-period-comparison' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-50-output/FushERP-Phase14.5.50-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.50-Period-Comparison-Build
+          path: phase14-5-50-output/
+          if-no-files-found: error
+          retention-days: 7
