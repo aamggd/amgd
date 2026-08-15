@@ -12,16 +12,18 @@
 ## تنبيه دمج مهم
 المجلد `fush_accounting/patches/` يحتوي الحزم التاريخية للمراحل 14.5.34–14.5.38. هذه الحزم أصبحت **LEGACY / SUPERSEDED** ولا يجوز للمحادثة الرئيسية دمجها مباشرة. بعض الحزم القديمة أثبتت فشل CRC/صيغة عند إعادة التحقق، كما أنها مبنية على lineage أقدم من Professional UI 14.5.38.
 
-**المصدر الوحيد المعتمد للدمج الآن** هو Accounting Rebase المختبر فوق الـBaseline الرسمي 14.5.38، الناتج من Workflow:
+المسار المعتمد هو سلسلة البناء المختبرة فوق الـBaseline الرسمي:
+1. Accounting Rebase 14.5.38.
+2. Phase 14.5.39 — Foreign Currency Treasury & Revaluation.
+3. Phase 14.5.40 — Fixed Asset Accounting.
+
+### Accounting Rebase الأساسي
 - Workflow: `.github/workflows/build-accounting-rebase-14.5.38.yml`
 - Successful Run ID: `31863175468`
-- Validated head SHA: `d15ddd966599aa80ef954f0e091d64e94c48b92c`
 - Artifact: `FushERP-Accounting-Rebase-14.5.38-Validated-Build`
 - Clean patch SHA-256: `3c1984f84f0f48c90f1adf5b1683185e62520f90512689befe0bed4ce1060dd6`
 
-الـPatch الموثق مخزن على GitHub على خمس قطع داخل `fush_accounting/rebase/patch_chunks/`. الـWorkflow يعيد تجميعها ويتحقق من أحجامها وبصماتها وGZIP قبل التطبيق، ثم يطبقها على المصدر الرسمي فقط.
-
-## الوظائف المحاسبية الموجودة في الـRebase
+## الوظائف المحاسبية المعتمدة
 1. **Accounting Integrity**
    - حماية حسابات الرقابة من القيود اليدوية المباشرة.
    - تسويات العملاء والموردين مرتبطة بالفاتورة.
@@ -53,33 +55,50 @@
    - كشوف بنكية ومطابقة الحركات والـOutstanding items.
    - منع إقفال الفترة عند نقص الجرد أو وجود فرق غير مسوّى أو مطابقة بنكية غير مكتملة.
 
+6. **Foreign Currency Treasury & Revaluation — Phase 14.5.39**
+   - فصل رصيد العملة الأصلية عن قيمتها الدفترية بالعملة الأساسية.
+   - جرد ومطابقة الخزائن والبنوك بالعملة الأصلية.
+   - إعادة تقييم أرصدة العملات في نهاية الفترة دون تغيير كمية العملة الأصلية.
+   - ترحيل فروق التقييم وربطها بإقفال الفترة.
+   - Successful validation run: `31865418288`.
+
+7. **Fixed Asset Accounting — Phase 14.5.40**
+   - دفتر مالي مستقل للأصول الثابتة مع ربط اختياري بسجل الصيانة التشغيلي.
+   - اقتناء من خزينة/بنك أو كرصد افتتاحي منضبط.
+   - إهلاك خط مستقيم شهريًا، قيمة متبقية، عمر إنتاجي، وصافي قيمة دفترية.
+   - استبعاد/بيع الأصل وربح/خسارة الاستبعاد.
+   - عكس الإهلاك والاستبعاد وإلغاء الاقتناء بقيود موثقة بدل الحذف.
+   - مطابقة `1500` و`1590` مع دفتر الأصول ومنع الإقفال عند وجود إهلاك مستحق أو فرق.
+   - Successful validation run: `31868347639`.
+   - Patch SHA-256: `f3969bbeee458a99050749b0162940b3d823dc162a9d62d41a8a4d18958e4095`.
+
 ## Room Schema — أرقام الفرع مؤقتة فقط
-الـRebase المستقل يستخدم حاليًا:
+السلسلة المستقلة الحالية تستخدم:
 - `27 -> 28`: Accounting periods/reconciliation.
 - `28 -> 29`: Operational reversals.
 - `29 -> 30`: Fiscal-year closing.
 - `30 -> 31`: Treasury/bank reconciliation.
+- `31 -> 32`: Foreign-currency treasury/revaluation.
+- `32 -> 33`: Fixed-asset accounting.
 
-هذه الأرقام **BRANCH ONLY / PROVISIONAL** وليست أرقام الـSchema النهائية للمشروع الموحد.
+هذه الأرقام **BRANCH ONLY / PROVISIONAL** وليست أرقام الـSchema النهائية للمشروع الموحد. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على نفس SQL والبيانات وعدم استخدام destructive migration.
 
-إذا كان دمج المستخدمين والصلاحيات في النسخة الرئيسية يشغل `28 -> 29`، فيجب على المحادثة الرئيسية إعادة ترقيم تغييرات الحسابات اللاحقة مع الحفاظ على نفس SQL والبيانات، مثل:
-- `27 -> 28`: Accounting periods.
-- `28 -> 29`: Users/security.
-- `29 -> 30`: Operational reversals.
-- `30 -> 31`: Fiscal-year closing.
-- `31 -> 32`: Treasury/bank reconciliation.
-
-## بوابة التحقق الحالية
-Run `31863175468` نجح في:
+## بوابة التحقق الأحدث
+Phase 14.5.40 — Run `31868347639` نجح في:
 - Patch integrity / SHA-256 / GZIP verification: PASS.
-- Apply to official Phase 14.5.38 Professional UI: PASS.
-- Application ID / baseline identity check: PASS.
+- Apply to validated Phase 14.5.39 source: PASS.
+- Application ID / baseline identity guard: PASS.
 - Migration safety / no destructive migration: PASS.
+- Fixed Asset DAO/Entities/Math/Service wiring: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
-- Room Schema generation: PASS.
+- Room Schema 33 generation: PASS.
 - Zipalign: PASS.
+- Artifact upload: PASS.
 
 التوقيع الرسمي **لم يُنفذ داخل GitHub CI** لأن مفتاح التوقيع وكلمة مروره لا يجوز تخزينهما في GitHub أو المصدر أو Workflow. التوقيع النهائي يتم فقط في بوابة الإصدار بالمفتاح الدائم للمشروع.
 
-انظر أيضًا: `fush_accounting/rebase/VALIDATION_STATUS.md`.
+راجع:
+- `fush_accounting/PHASE14_5_40_SCOPE.md`
+- `fush_accounting/PHASE14_5_40_VALIDATION.md`
+- `fush_accounting/rebase/VALIDATION_STATUS.md`
