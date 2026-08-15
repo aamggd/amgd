@@ -5,132 +5,113 @@
 ## Baseline المعتمد
 - Phase 14.5.38 Professional UI — من Artifact البناء الرسمي الناجح.
 - Application ID: `com.fush.erp.recovery` — لا يتغير.
-- Baseline versionCode: `77` — مستخدم للتحقق داخل الفرع فقط، وليس رقم إصدار نهائي جديد.
+- Baseline versionCode: `77` — للتحقق داخل الفرع فقط، وليس رقم الإصدار النهائي.
 - Baseline versionName: `0.15.4.38-ui-inventory-master-data`.
 - Baseline Room Schema: `27`.
 
 ## تنبيه دمج مهم
-المجلد `fush_accounting/patches/` يحتوي الحزم التاريخية للمراحل 14.5.34–14.5.38. هذه الحزم أصبحت **LEGACY / SUPERSEDED** ولا يجوز للمحادثة الرئيسية دمجها مباشرة. بعض الحزم القديمة أثبتت فشل CRC/صيغة عند إعادة التحقق، كما أنها مبنية على lineage أقدم من Professional UI 14.5.38.
+الحزم التاريخية للمراحل 14.5.34–14.5.38 داخل `fush_accounting/patches/` أصبحت **LEGACY / SUPERSEDED** ولا يجوز دمجها مباشرة. المسار المعتمد هو سلسلة الـArtifacts والـPatches التي أعيد تأسيسها واختبارها فوق Professional UI 14.5.38.
 
-المسار المعتمد هو سلسلة البناء المختبرة فوق الـBaseline الرسمي:
-1. Accounting Rebase 14.5.38.
-2. Phase 14.5.39 — Foreign Currency Treasury & Revaluation.
-3. Phase 14.5.40 — Fixed Asset Accounting.
-4. Phase 14.5.41 — Multi-Invoice Settlement.
-5. Phase 14.5.42 — Accounting Posting Profiles & COA Safety.
-
-### Accounting Rebase الأساسي
-- Workflow: `.github/workflows/build-accounting-rebase-14.5.38.yml`
-- Successful Run ID: `31863175468`
-- Artifact: `FushERP-Accounting-Rebase-14.5.38-Validated-Build`
-- Clean patch SHA-256: `3c1984f84f0f48c90f1adf5b1683185e62520f90512689befe0bed4ce1060dd6`
+## سلسلة الحسابات المعتمدة
+1. Accounting Rebase 14.5.38 — Run `31863175468`.
+2. Phase 14.5.39 — Foreign Currency Treasury & Revaluation — Run `31865418288`.
+3. Phase 14.5.40 — Fixed Asset Accounting — Run `31868347639`.
+4. Phase 14.5.41 — Multi-Invoice Settlement — Run `31869145938`.
+5. Phase 14.5.42 — Accounting Posting Profiles & COA Safety — Run `31872176530`.
+6. Phase 14.5.43 — Accounting Idempotency & Duplicate-Posting Protection — Run `31912860098`.
 
 ## الوظائف المحاسبية المعتمدة
-1. **Accounting Integrity**
-   - حماية حسابات الرقابة من القيود اليدوية المباشرة.
-   - تسويات العملاء والموردين مرتبطة بالفاتورة.
-   - إصلاح فروق العملة لتحصيل العملاء.
-   - اختيار الخزينة/البنك الفعلي بدل الحساب النقدي الثابت.
-   - منع اختلاف عملة الخزينة عن عملة العملية.
-   - تصحيح تاريخ قيود عمولة المندوب.
 
-2. **Accounting Period Control & Reconciliation**
-   - فترات محاسبية وإقفال/إعادة فتح موثق.
-   - منع الترحيل داخل فترة مقفلة.
-   - مطابقة الأستاذ مع العملاء والموردين والمخزون وميزان المراجعة.
-   - منع الإقفال عند وجود فرق محاسبي غير مسوّى.
+### Accounting Integrity
+- حماية حسابات الرقابة من القيود اليدوية المباشرة.
+- تسويات العملاء والموردين مرتبطة بالفاتورة.
+- فروق العملة الصحيحة لتحصيلات العملاء.
+- اختيار الخزينة/البنك الفعلي بدل حساب نقدي ثابت.
+- تصحيح تاريخ قيود عمولة المندوب.
 
-3. **Operational Reversals**
-   - عكس موثق لتحصيلات العملاء ودفعات الموردين دون حذف المستند الأصلي.
-   - إعادة فتح ذمة الفاتورة عبر تخصيص عكسي.
-   - عكس القيد الأصلي بما فيه الخزينة وفروق العملة.
-   - إعادة احتساب عمولة المندوب.
+### Accounting Period Control & Reconciliation
+- فترات محاسبية وإقفال/إعادة فتح موثق.
+- منع الترحيل داخل فترة مقفلة.
+- مطابقة الأستاذ مع العملاء والموردين والمخزون وميزان المراجعة.
+- منع الإقفال عند وجود فرق غير مسوّى.
 
-4. **Fiscal Year Closing**
-   - إقفال السنة وترحيل الربح/الخسارة إلى `3300 — الأرباح المحتجزة`.
-   - إعادة فتح السنة بقيد عكسي موثق.
-   - إبقاء قائمة الدخل التاريخية صحيحة بعد الإقفال.
+### Operational Reversals
+- عكس موثق لتحصيلات العملاء ودفعات الموردين دون حذف المستند الأصلي.
+- إعادة فتح ذمة الفاتورة وعكس الخزينة وفروق العملة والعمولة عند الحاجة.
 
-5. **Treasury & Bank Reconciliation**
-   - جرد الصندوق وفروق النقدية.
-   - حساب `6950 — فروقات الصندوق` لمسار التسوية الموثق.
-   - كشوف بنكية ومطابقة الحركات والـOutstanding items.
-   - منع إقفال الفترة عند نقص الجرد أو وجود فرق غير مسوّى أو مطابقة بنكية غير مكتملة.
+### Fiscal Year Closing
+- إقفال السنة وترحيل الربح/الخسارة إلى الأرباح المحتجزة.
+- إعادة فتح السنة بقيد عكسي موثق.
+- إبقاء قائمة الدخل التاريخية صحيحة بعد الإقفال.
 
-6. **Foreign Currency Treasury & Revaluation — Phase 14.5.39**
-   - فصل رصيد العملة الأصلية عن قيمتها الدفترية بالعملة الأساسية.
-   - جرد ومطابقة الخزائن والبنوك بالعملة الأصلية.
-   - إعادة تقييم أرصدة العملات في نهاية الفترة دون تغيير كمية العملة الأصلية.
-   - ترحيل فروق التقييم وربطها بإقفال الفترة.
-   - Successful validation run: `31865418288`.
+### Treasury & Bank Reconciliation
+- جرد الصندوق وفروق النقدية.
+- كشوف ومطابقة بنكية وحركات معلقة.
+- منع الإقفال عند نقص الجرد أو وجود فرق أو مطابقة غير مكتملة.
 
-7. **Fixed Asset Accounting — Phase 14.5.40**
-   - دفتر مالي مستقل للأصول الثابتة مع ربط اختياري بسجل الصيانة التشغيلي.
-   - اقتناء من خزينة/بنك أو كرصد افتتاحي منضبط.
-   - إهلاك خط مستقيم شهريًا، قيمة متبقية، عمر إنتاجي، وصافي قيمة دفترية.
-   - استبعاد/بيع الأصل وربح/خسارة الاستبعاد.
-   - عكس الإهلاك والاستبعاد وإلغاء الاقتناء بقيود موثقة بدل الحذف.
-   - مطابقة `1500` و`1590` مع دفتر الأصول ومنع الإقفال عند وجود إهلاك مستحق أو فرق.
-   - Successful validation run: `31868347639`.
+### Phase 14.5.39 — Foreign Currency Treasury & Revaluation
+- فصل رصيد العملة الأصلية عن قيمتها الدفترية بالعملة الأساسية.
+- جرد ومطابقة العملات الأجنبية بالعملة الأصلية.
+- إعادة تقييم نهاية الفترة دون تغيير كمية العملة الأصلية.
 
-8. **Multi-Invoice Settlement — Phase 14.5.41**
-   - تحصيل عميل واحد يمكن توزيعه على عدة فواتير مفتوحة بنفس العملة.
-   - دفعة مورد واحدة يمكن توزيعها على عدة فواتير شراء مفتوحة بنفس العملة.
-   - Auto Allocation حسب الأقدم FIFO مع عدم تجاوز رصيد أي فاتورة.
-   - كل فاتورة تُسوى بسعرها التاريخي الخاص، وحركة الخزينة بسعر الحركة الحالي، مع تجميع فرق العملة المحقق.
-   - احتساب عمولة المندوب لكل تخصيص عند تحصيل العميل.
-   - الاحتفاظ بخيار تسوية فاتورة واحدة.
-   - لا توجد Migration جديدة؛ Schema يبقى `33`.
-   - Successful validation run: `31869145938`.
-   - Patch SHA-256: `069b0a847e3b42244b04b11417280058286b5581a1b9b31448e14b41ab304f0b`.
+### Phase 14.5.40 — Fixed Asset Accounting
+- دفتر مالي للأصول الثابتة.
+- اقتناء، إهلاك خط مستقيم، قيمة متبقية، استبعاد/بيع وعكس موثق.
+- مطابقة حسابات تكلفة الأصول ومجمع الإهلاك ومنع الإقفال عند وجود إهلاك مستحق.
 
-9. **Accounting Posting Profiles & COA Safety — Phase 14.5.42**
-   - استبدال الاعتماد التشغيلي على أكواد الحسابات الثابتة بأدوار محاسبية مستقرة مرتبطة بـ`accountId`.
-   - المبيعات والمشتريات والمخزون والإنتاج والعملات والأصول والعمولات والإقفال والمطابقات تستخدم `PostingRole` مركزيًا.
-   - حسابات الرقابة AR/AP/Employee/Sales Rep تبقى مرتبطة بدفاترها المساندة حتى لو تغير كود الحساب.
-   - إعدادات ترحيل داخل شاشة الحسابات لتغيير الحساب المرتبط بكل دور مع التحقق من النوع والحالة.
-   - Triggers في SQLite تمنع ربط دور بحساب غير صالح أو تعطيل/تغيير نوع/حذف حساب مستخدم في الترحيل.
-   - إزالة الاستدعاءات المباشرة لأكواد الترحيل السابقة من خدمات المجال المستهدفة.
-   - Successful validation run: `31872176530`.
-   - Patch SHA-256: `4949f6bf3c83392deee8e1b2974fda6bd6f60e421012fd40e65c88ec395a72a7`.
+### Phase 14.5.41 — Multi-Invoice Settlement
+- تحصيل عميل واحد أو دفعة مورد واحدة يمكن توزيعها على عدة فواتير بنفس العملة.
+- FIFO Auto Allocation مع عدم تجاوز رصيد أي فاتورة.
+- تسوية كل فاتورة بسعرها التاريخي وتجميع فرق العملة المحقق.
+- Schema بقي `33` دون Migration جديدة.
+
+### Phase 14.5.42 — Accounting Posting Profiles & COA Safety
+- استبدال أكواد الحسابات الثابتة بـ`PostingRole` مركزي مرتبط بـ`accountId`.
+- إعدادات ترحيل قابلة للإدارة مع تحقق نوع الحساب وحالته.
+- Triggers تمنع حذف/تعطيل/تغيير نوع حساب مستخدم في الترحيل.
+- Validation Run: `31872176530`.
+
+### Phase 14.5.43 — Accounting Idempotency & Duplicate-Posting Protection
+- إضافة `postingKey` فريد للأحداث المحاسبية الآلية ذات الهوية الثابتة.
+- إعادة تنفيذ نفس الحدث تعيد نفس القيد بدل إنشاء قيد مكرر.
+- رفض استخدام نفس المفتاح مع Payload مختلف (`POSTING_KEY_PAYLOAD_MISMATCH`).
+- حماية المبيعات والتحصيلات والمرتجعات والمشتريات ودفعات الموردين والجرد وحركات الإنتاج الأساسية والإهلاك وفروق العملة والعكس.
+- القيود اليدوية والتصحيحات المتكررة المشروعة وإعادة إقفال السنة لا تُمنع بمفتاح عام عشوائي.
+- Migration التاريخية تملأ المفاتيح فقط للأزواج الفريدة؛ التكرارات القديمة تبقى `NULL` للمراجعة ولا تُحذف.
+- Trigger يمنع تغيير هوية مصدر قيد `POSTED`.
+- Validation Run: `31912860098`.
+- Patch SHA-256: `4aeb462acf93cf177b2e8c1ec1a0d41956d3419a9bf13a540da04f2607815a52`.
 
 ## Room Schema — أرقام الفرع مؤقتة فقط
-السلسلة المستقلة الحالية تستخدم:
 - `27 -> 28`: Accounting periods/reconciliation.
 - `28 -> 29`: Operational reversals.
 - `29 -> 30`: Fiscal-year closing.
 - `30 -> 31`: Treasury/bank reconciliation.
 - `31 -> 32`: Foreign-currency treasury/revaluation.
 - `32 -> 33`: Fixed-asset accounting.
-- Phase 14.5.41: **no migration**؛ يبقى Schema `33`.
+- Phase 14.5.41: no migration؛ يبقى `33`.
 - `33 -> 34`: Posting profiles / COA safety.
+- `34 -> 35`: Accounting idempotency / postingKey protection.
 
-هذه الأرقام **BRANCH ONLY / PROVISIONAL** وليست أرقام الـSchema النهائية للمشروع الموحد. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على نفس SQL والبيانات وعدم استخدام destructive migration.
+هذه الأرقام **BRANCH ONLY / PROVISIONAL**. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على SQL والبيانات وعدم استخدام destructive migration.
 
 ## بوابة التحقق الأحدث
-Phase 14.5.42 — Run `31872176530` نجح في:
-- Patch chunk integrity / SHA-256 / GZIP verification: PASS.
-- Corrected final patch integrity: PASS.
-- Apply to validated Phase 14.5.41 source: PASS.
+Phase 14.5.43 — Run `31912860098`:
+- Patch chunk integrity / SHA-256 / GZIP: PASS.
+- Apply to validated Phase 14.5.42: PASS.
 - Application ID / baseline identity guard: PASS.
-- Schema 34 / Migration 33->34: PASS.
-- Database posting-profile guards: PASS.
+- Migration `34 -> 35`: PASS.
 - No destructive migration: PASS.
-- No former fixed posting-code lookup in domain services: PASS.
-- Role-based control-party routing: PASS.
+- SQLite posting-key duplicate/backfill/immutability smoke: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
-- Room Schema 34 generation: PASS.
+- Room Schema 35 generation: PASS.
 - Zipalign: PASS.
 - Artifact upload: PASS.
 
-التوقيع الرسمي **لم يُنفذ داخل GitHub CI** لأن مفتاح التوقيع وكلمة مروره لا يجوز تخزينهما في GitHub أو المصدر أو Workflow. التوقيع النهائي يتم فقط في بوابة الإصدار بالمفتاح الدائم للمشروع.
+التوقيع الرسمي **غير منفذ داخل GitHub CI**؛ لا يتم تخزين مفتاح التوقيع أو كلمة مروره في GitHub أو المصدر أو Workflow.
 
-راجع:
-- `fush_accounting/PHASE14_5_40_SCOPE.md`
-- `fush_accounting/PHASE14_5_40_VALIDATION.md`
-- `fush_accounting/PHASE14_5_41_SCOPE.md`
-- `fush_accounting/PHASE14_5_41_VALIDATION.md`
-- `fush_accounting/PHASE14_5_42_SCOPE.md`
-- `fush_accounting/PHASE14_5_42_VALIDATION.md`
-- `fush_accounting/rebase/VALIDATION_STATUS.md`
+## مراجع المرحلة الحالية
+- `fush_accounting/PHASE14_5_43_SCOPE.md`
+- `fush_accounting/PHASE14_5_43_VALIDATION.md`
+- `.github/workflows/build-accounting-phase14.5.43.yml`
