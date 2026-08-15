@@ -1,0 +1,31 @@
+diff --git a/UI_PROFESSIONALIZATION_18_CORE_OPERATIONS_LOCALIZATION_SCOPE.md b/UI_PROFESSIONALIZATION_18_CORE_OPERATIONS_LOCALIZATION_SCOPE.md
+new file mode 100644
+index 0000000..72b683c
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_18_CORE_OPERATIONS_LOCALIZATION_SCOPE.md
+@@ -0,0 +1,25 @@
++# Phase 14.5.51 — Core Operational Localization I
++
++## Objective
++Extend the Phase 14.5.50 localization foundation into the highest-frequency operational workspaces while preserving all existing navigation keys, persisted codes, accounting/inventory behavior and service contracts.
++
++## Localized in this slice
++- Sales main workspace: title, KPIs, credit-policy surface, invoice search/list states, payment/collection presentation and primary actions.
++- Purchases main workspace: title, KPIs, supplier-aging action, invoice search/list states and primary actions.
++- Customer and supplier directories: titles, KPIs, search/empty states, balance/credit summaries and profile-entry actions.
++- Accounting shell: tab labels plus accounting workspace heading.
++- Journal main workspace: KPIs, search, table headings and empty states.
++- Treasury main workspace: KPIs, quick actions, account list states and cash/bank presentation.
++- Inventory main workspace: heading, KPIs, quick actions, section chips, balance filters/search and alert surfaces.
++
++## Resource model
++- English/default strings remain in `values/strings.xml`.
++- Arabic strings remain in `values-ar/strings.xml`.
++- Resource key sets and format placeholders must remain identical.
++- Internal Arabic section/navigation keys that are already behavioral contracts remain unchanged; only their visible labels are localized.
++
++## Safety boundary
++No intended changes to Room entities/schema/migrations, DAO queries, accounting posting/reversal, sales/purchase calculations, inventory quantities/costing, customer/supplier balances, production logic, compensation/commissions, permissions/authentication, backup/restore or other domain/business logic.
++
++## Deferred
++Deep operational dialogs and secondary tabs that still contain direct Kotlin text are intentionally deferred to later localization slices. This phase does not claim 100% whole-app translation.
