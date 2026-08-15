@@ -64,6 +64,58 @@ jobs:
           cd FushERP_Mobile_Phase5
           rm -rf .git app/build .gradle build
           git init -q
+
+          cat > /tmp/normalize_patch.py <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          src = Path(sys.argv[1])
+          dst = Path(sys.argv[2])
+          lines = src.read_text(encoding='utf-8').splitlines()
+          out = []
+          i = 0
+          hunk_re = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$')
+          version_re = re.compile(r'^\d+\.\d+\.\d+$')
+
+          while i < len(lines):
+              line = lines[i]
+              match = hunk_re.match(line)
+              if not match:
+                  if line == '-- ' or version_re.fullmatch(line):
+                      i += 1
+                      continue
+                  out.append(line)
+                  i += 1
+                  continue
+
+              old_start = int(match.group(1))
+              new_start = int(match.group(2))
+              suffix = match.group(3)
+              i += 1
+              hunk = []
+              while i < len(lines):
+                  current = lines[i]
+                  if current.startswith('@@ ') or current.startswith('diff --git '):
+                      break
+                  if current.startswith((' ', '+', '-', '\\')):
+                      hunk.append(current)
+                      i += 1
+                      continue
+                  # Ignore malformed trailers/blank garbage after a hunk.
+                  if current == '' or current == '-- ' or version_re.fullmatch(current):
+                      i += 1
+                      continue
+                  break
+
+              old_count = sum(1 for row in hunk if row.startswith((' ', '-')))
+              new_count = sum(1 for row in hunk if row.startswith((' ', '+')))
+              out.append(f'@@ -{old_start},{old_count} +{new_start},{new_count} @@{suffix}')
+              out.extend(hunk)
+
+          dst.write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+
           for phase in \
             phase14_5_39_production_quality_ui \
             phase14_5_40_employees_sales_reps_ui \
@@ -73,10 +125,13 @@ jobs:
             for patch_file in ../$phase/patches/*.patch
             do
               echo "  -> $(basename "$patch_file")"
-              git apply --recount --check "$patch_file"
-              git apply --recount "$patch_file"
+              fixed="/tmp/${phase}_$(basename "$patch_file")"
+              python3 /tmp/normalize_patch.py "$patch_file" "$fixed"
+              git apply --check "$fixed"
+              git apply "$fixed"
             done
           done
+
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 80' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.41-ui-assets-maintenance-expenses"' app/build.gradle.kts
