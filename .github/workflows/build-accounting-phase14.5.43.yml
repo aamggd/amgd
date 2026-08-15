@@ -1,0 +1,243 @@
+name: Validate FUSH Accounting Phase 14.5.43 Idempotency
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.43.yml'
+      - 'fush_accounting/rebase/phase14.5.43_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase43-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.42 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.42-Posting-Profiles-COA-Safety-Validated-Build
+          path: phase42-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31872176530
+
+      - name: Reconstruct and verify Phase 14.5.43 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.43_chunks"
+          for n in 00 01 02; do test "$(wc -c < "$CH/part${n}.b64")" -eq 3000; done
+          test "$(wc -c < "$CH/part03.b64")" -eq 2892
+          echo '6d1375a5a075407f8c8574877feea11141e03c3904d20c9ef2a14098c9c4e548  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '89e5a4c71c7cbd82ba1e0d26e168ba7616ac998869a9a9d980b001fc8c83f6e8  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '72f476c867000d8d20579ed582a7326b7202fa15cd4840a50e5c1af147a2cb6c  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '9317a82f3ae902a97a20aac89adc4a37845949304488cda8a1174f1e03a0c6fc  part03.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 > /tmp/phase43.patch.gz.b64
+          test "$(wc -c < /tmp/phase43.patch.gz.b64)" -eq 11892
+          echo 'b07cb8b8fc1c8008fe547057cc673776c4904e314340f472204f09ede3d194f6  /tmp/phase43.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase43.patch.gz.b64 > /tmp/phase43.patch.gz
+          test "$(wc -c < /tmp/phase43.patch.gz)" -eq 8917
+          echo '1c79808d128a2e635c535ab63030221884540bf0570ec8466c4d25ffd0c28d9e  /tmp/phase43.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase43.patch.gz
+          gzip -dc /tmp/phase43.patch.gz > /tmp/phase43.patch
+          test "$(wc -c < /tmp/phase43.patch)" -eq 51268
+          echo '4aeb462acf93cf177b2e8c1ec1a0d41956d3419a9bf13a540da04f2607815a52  /tmp/phase43.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.43 to validated Phase 14.5.42
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/phase42-artifact/FushERP-Mobile-Phase14.5.42-Posting-Profiles-COA-Safety-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase43 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated Phase14.5.42 baseline'
+          git apply --check /tmp/phase43.patch
+          git apply /tmp/phase43.patch
+          git diff --check
+
+      - name: Verify identity, schema and idempotency wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_34_35' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'postingKey' app/src/main/java/com/fush/erp/data/entity/Entities.kt
+          grep -q 'Index(value = \["postingKey"\], unique = true)' app/src/main/java/com/fush/erp/data/entity/Entities.kt
+          grep -q 'insertEntryIgnore' app/src/main/java/com/fush/erp/data/dao/Daos.kt
+          grep -q 'byPostingKey' app/src/main/java/com/fush/erp/data/dao/Daos.kt
+          test -f app/src/main/java/com/fush/erp/domain/JournalPostingGuard.kt
+          test -f app/src/test/java/com/fush/erp/domain/PostingKeyTest.kt
+          grep -q 'postEntryOnce' app/src/main/java/com/fush/erp/domain/JournalPostingGuard.kt
+          grep -q 'POSTING_KEY_PAYLOAD_MISMATCH' app/src/main/java/com/fush/erp/domain/JournalPostingGuard.kt
+          grep -q 'trg_journal_posting_identity_immutable' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'index_journal_entries_postingKey' app/src/main/java/com/fush/erp/data/Migrations.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+
+      - name: SQLite posting-key migration smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          db = sqlite3.connect(":memory:")
+          db.execute("""
+          CREATE TABLE journal_entries(
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            entryNo TEXT NOT NULL,
+            entryDate INTEGER NOT NULL,
+            sourceType TEXT,
+            sourceId TEXT,
+            description TEXT NOT NULL,
+            currencyCode TEXT NOT NULL,
+            exchangeRate REAL NOT NULL,
+            status TEXT NOT NULL,
+            createdBy TEXT NOT NULL,
+            createdAt INTEGER NOT NULL
+          )""")
+          rows = [
+            ("J1",1,"SALE","1","sale1","YER_NEW",1.0,"POSTED","u",1),
+            ("J2",1,"PURCHASE","2","p2","YER_NEW",1.0,"POSTED","u",1),
+            ("J3",1,"SALE","dup","d1","YER_NEW",1.0,"POSTED","u",1),
+            ("J4",1,"SALE","dup","d2","YER_NEW",1.0,"POSTED","u",1),
+          ]
+          db.executemany("""INSERT INTO journal_entries(entryNo,entryDate,sourceType,sourceId,description,currencyCode,exchangeRate,status,createdBy,createdAt)
+                            VALUES(?,?,?,?,?,?,?,?,?,?)""", rows)
+          db.execute("ALTER TABLE journal_entries ADD COLUMN postingKey TEXT")
+          stable = ["SALE","PURCHASE"]
+          qmarks = ",".join("?" for _ in stable)
+          db.execute(f"""
+            UPDATE journal_entries
+               SET postingKey = UPPER(TRIM(sourceType)) || ':' || TRIM(sourceId)
+             WHERE sourceType IN ({qmarks})
+               AND sourceId IS NOT NULL AND TRIM(sourceId) <> ''
+               AND 1 = (
+                 SELECT COUNT(*)
+                   FROM journal_entries j2
+                  WHERE j2.sourceType = journal_entries.sourceType
+                    AND j2.sourceId = journal_entries.sourceId
+               )
+          """, stable)
+          db.execute("CREATE UNIQUE INDEX index_journal_entries_postingKey ON journal_entries(postingKey)")
+          db.execute("""
+          CREATE TRIGGER trg_journal_posting_identity_immutable
+          BEFORE UPDATE OF sourceType, sourceId, postingKey ON journal_entries
+          WHEN OLD.status = 'POSTED'
+          BEGIN
+            SELECT RAISE(ABORT, 'POSTED_JOURNAL_IDENTITY_IMMUTABLE');
+          END
+          """)
+          assert db.execute("SELECT postingKey FROM journal_entries WHERE entryNo='J1'").fetchone()[0] == "SALE:1"
+          assert db.execute("SELECT postingKey FROM journal_entries WHERE entryNo='J2'").fetchone()[0] == "PURCHASE:2"
+          assert db.execute("SELECT COUNT(*) FROM journal_entries WHERE sourceId='dup' AND postingKey IS NULL").fetchone()[0] == 2
+          try:
+              db.execute("""INSERT INTO journal_entries(entryNo,entryDate,sourceType,sourceId,description,currencyCode,exchangeRate,status,createdBy,createdAt,postingKey)
+                            VALUES('J5',1,'SALE','x','x','YER_NEW',1,'POSTED','u',1,'SALE:1')""")
+              raise AssertionError("duplicate postingKey was accepted")
+          except sqlite3.IntegrityError:
+              pass
+          try:
+              db.execute("UPDATE journal_entries SET sourceId='changed' WHERE entryNo='J1'")
+              raise AssertionError("posted identity update was accepted")
+          except sqlite3.IntegrityError:
+              pass
+          print("PHASE14_5_43_SQLITE_IDEMPOTENCY_OK")
+          PY
+
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase43-unit-test.log"
+
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.43-Unit-Test-Diagnostics
+          path: phase43-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
+          mkdir -p "$ROOT/phase43-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk "$ROOT/phase43-output/FushERP-Accounting-Phase14.5.43-Idempotency-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/phase43-output/FushERP-Accounting-Phase14.5.43-Idempotency-aligned-unsigned.apk"
+          cp /tmp/phase43.patch "$ROOT/phase43-output/FushERP-Phase14.5.43-Accounting-Idempotency.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase43-output/FushERP-Mobile-Phase14.5.43-Accounting-Idempotency-Source.zip" repo
+          sha256sum "$ROOT/phase43-output/"* > "$ROOT/phase43-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase43-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.43 validation
+          Base: validated Accounting Phase 14.5.42 Posting Profiles & COA Safety
+          Base validation run: 31872176530
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 35 (PROVISIONAL / BRANCH ONLY; integration must renumber after other branch migrations)
+          Phase 14.5.43 patch SHA-256: 4aeb462acf93cf177b2e8c1ec1a0d41956d3419a9bf13a540da04f2607815a52
+          SQLite posting-key migration smoke: PASS
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 35 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_43_ACCOUNTING_IDEMPOTENCY_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.43-Idempotency-Validated-Build
+          path: phase43-output/
+          if-no-files-found: error
+          retention-days: 7
