@@ -67,10 +67,17 @@ jobs:
         working-directory: FushERP_Mobile_Phase5
         run: git apply ../users-permissions.patch
 
-      - name: Verify security/database targets
+      - name: Guard current app version and inspect Room migration
+        shell: bash
         run: |
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 28' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json || true
+          set -euo pipefail
+          code=$(sed -nE 's/.*versionCode = ([0-9]+).*/\1/p' FushERP_Mobile_Phase5/app/build.gradle.kts | head -1)
+          echo "versionCode after permissions patch: $code"
+          test -n "$code"
+          test "$code" -ge 74
+          echo '--- Room version/migration references ---'
+          grep -RniE 'FUSH_DB_SCHEMA_VERSION|@Database|Migration\(27,[[:space:]]*28\)|MIGRATION_27_28|version[[:space:]]*=[[:space:]]*28' \
+            FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp 2>/dev/null | head -120 || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -87,3 +94,12 @@ jobs:
       - name: Release build
         working-directory: FushERP_Mobile_Phase5
         run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema 28 generated
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/debug/app-debug.apk
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          echo 'Schema 28 and both APK build outputs are present.'
