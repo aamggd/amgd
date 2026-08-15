@@ -68,8 +68,8 @@ jobs:
               while j < len(lines) and not lines[j].startswith('@@ ') and not lines[j].startswith('diff --git '):
                   s=lines[j]
                   if s.startswith(' '): old+=1; new+=1
-                  elif s.startswith('-') and not s.startswith('---'): old+=1
-                  elif s.startswith('+') and not s.startswith('+++'): new+=1
+                  elif s.startswith('-'): old+=1
+                  elif s.startswith('+'): new+=1
                   elif s.startswith('\\ No newline'): pass
                   j+=1
               nl='\n' if lines[i].endswith('\n') else ''
@@ -84,11 +84,16 @@ jobs:
           do
             echo "=== $phase ==="
             for p in ../$phase/patches/*.patch; do
-              fixed="/tmp/${phase}-$(basename "$p")"
-              python /tmp/fix_patch.py "$p" "$fixed"
               echo "Applying $(basename "$p")"
-              git apply --check "$fixed"
-              git apply "$fixed"
+              if git apply --check "$p"; then
+                git apply "$p"
+              else
+                fixed="/tmp/${phase}-$(basename "$p")"
+                echo "Original patch rejected; normalizing hunk counts only: $(basename "$p")"
+                python /tmp/fix_patch.py "$p" "$fixed"
+                git apply --check "$fixed"
+                git apply "$fixed"
+              fi
             done
           done
           grep -q 'versionCode = 80' app/build.gradle.kts
