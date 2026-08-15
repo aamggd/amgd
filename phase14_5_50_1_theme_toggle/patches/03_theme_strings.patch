@@ -1,0 +1,28 @@
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+index 4065dcc..07be2fb 100644
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -201,4 +201,9 @@
+     <string name="alert_open_changes_detail">%1$d طلب تغيير لم يغلق</string>
+     <string name="alert_open_control_exceptions">استثناءات رقابية مفتوحة</string>
+     <string name="alert_open_control_exceptions_detail">%1$d استثناء يحتاج متابعة</string>
++    <string name="theme_dark">داكن</string>
++    <string name="theme_light">فاتح</string>
++    <string name="theme_switch_to_dark">التبديل إلى الوضع الداكن</string>
++    <string name="theme_switch_to_light">التبديل إلى الوضع الفاتح</string>
++
+ </resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 4354278..d544db4 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -201,4 +201,9 @@
+     <string name="alert_open_changes_detail">%1$d change request(s) are still open</string>
+     <string name="alert_open_control_exceptions">Open control exceptions</string>
+     <string name="alert_open_control_exceptions_detail">%1$d exception(s) need follow-up</string>
++    <string name="theme_dark">Dark</string>
++    <string name="theme_light">Light</string>
++    <string name="theme_switch_to_dark">Switch to dark mode</string>
++    <string name="theme_switch_to_light">Switch to light mode</string>
++
+ </resources>
