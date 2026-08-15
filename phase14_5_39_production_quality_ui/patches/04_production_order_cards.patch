@@ -1,0 +1,47 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index eb1442e..15e934f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -372,22 +471,31 @@ private fun ProductionOrderCard(
+     onDelete: () -> Unit,
+     onAction: () -> Unit
+ ) {
++    val terminal = order.status in setOf("CLOSED", "REJECTED", "CANCELLED")
+     ElevatedCard(Modifier.fillMaxWidth()) {
+-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-            Text(order.orderNo, style = MaterialTheme.typography.titleMedium)
+-            Text("${order.productName} • المخطط ${formatProductionQty(order.plannedOutputQtyBase)} عبوة")
+-            Text("الحالة: ${statusAr(order.status)}")
+-            order.batchNo?.let { Text("الدفعة: $it") }
+-            OutlinedButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) {
+-                Text("بيان الإنتاج التفصيلي")
++        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                Column(Modifier.weight(1f)) {
++                    Text(order.orderNo, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
++                    Text(order.productName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++                FushStatusPill(statusAr(order.status), productionStatusTone(order.status))
++            }
++            DetailLine("تاريخ التخطيط", formatProductionDate(order.plannedDate))
++            DetailLine("الإنتاج المخطط", "${formatProductionQty(order.plannedOutputQtyBase)} عبوة")
++            order.batchNo?.let { DetailLine("رقم الدفعة", it) }
++            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium) {
++                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
++                    Text("المرحلة الحالية", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    Text(productionStageLabel(order.status), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
++                }
+             }
+-            if (order.status !in setOf("CLOSED", "REJECTED", "CANCELLED")) {
++            OutlinedButton(onClick = onDetails, modifier = Modifier.fillMaxWidth()) { Text("بيان الإنتاج والتكلفة والتتبع") }
++            if (!terminal) {
+                 Button(onClick = onAction, modifier = Modifier.fillMaxWidth()) { Text(nextActionAr(order.status)) }
+             }
+             if (order.status in setOf("PLANNED", "MATERIALS_RESERVED")) {
+-                TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+-                    Text("حذف أمر الإنتاج", color = MaterialTheme.colorScheme.error)
+-                }
++                TextButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) { Text("حذف أمر الإنتاج", color = MaterialTheme.colorScheme.error) }
+             }
+         }
+     }
