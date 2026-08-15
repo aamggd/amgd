@@ -69,16 +69,14 @@ jobs:
           for pkg in "${packages[@]}"; do
             [ -d "$GITHUB_WORKSPACE/$pkg/patches" ] || continue
             while IFS= read -r patch; do
-              # This older parallel layout is not part of the baseline used to create
-              # 14.5.51; the 14.5.51 inventory patches confirm the LazyRow baseline.
               if [[ "$patch" == *"phase14_5_46_scroll_profile_polish/patches/13_inventory_final_layout.patch" ]]; then
                 echo "Skipping obsolete parallel inventory layout $patch"
                 continue
               fi
               if grep -Eq 'app/src/main/java/com/fush/erp/ui/screens/(SalesScreens|PurchaseScreens|PartyScreens|AccountingScreens|AdvancedInventoryScreens)\.kt|app/src/main/res/values(-ar)?/strings\.xml' "$patch"; then
                 echo "Applying $patch"
-                git apply --check "${includes[@]}" "$patch"
-                git apply "${includes[@]}" "$patch"
+                git apply --recount --check "${includes[@]}" "$patch"
+                git apply --recount "${includes[@]}" "$patch"
               fi
             done < <(find "$GITHUB_WORKSPACE/$pkg/patches" -maxdepth 1 -type f -name '*.patch' | sort)
           done
