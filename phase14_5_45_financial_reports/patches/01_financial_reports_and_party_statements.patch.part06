@@ -1,0 +1,90 @@
++        }
++        if (!balanceSheet?.equityByAccount.isNullOrEmpty()) {
++            item { SectionTitle("تفصيل حقوق الملكية") }
++            items(balanceSheet?.equityByAccount ?: emptyList()) { row -> ReportCard(row.first, "حقوق ملكية", listOf("الرصيد" to money(row.second))) }
++        }
+     }
+ }
+ 
++@Composable
++private fun LedgerReportTab(
++    accounts: List<AccountEntity>,
++    selectedAccountId: Long?,
++    onSelectedAccountChange: (Long) -> Unit,
++    report: LedgerReport?
++) {
++    val postingAccounts = accounts.filter { it.isPosting }
++    val selected = postingAccounts.firstOrNull { it.id == selectedAccountId }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("دفتر الأستاذ العام", "حركة الحساب المختار مع الرصيد الافتتاحي والجاري والختامي للفترة.")
++            Spacer(Modifier.height(8.dp))
++            ReportSelectionMenu(
++                label = "الحساب",
++                selectedText = selected?.let { "${it.code} — ${it.nameAr}" } ?: "اختر حساب ترحيل",
++                options = postingAccounts.map { it.id to "${it.code} — ${it.nameAr}" },
++                onSelect = onSelectedAccountChange
++            )
++        }
++        report?.let { ledger ->
++            item {
++                MetricGrid(listOf(
++                    "الرصيد الافتتاحي" to reportBalanceLabel(ledger.openingBalance),
++                    "إجمالي المدين" to money(ledger.lines.sumOf { it.debit }),
++                    "إجمالي الدائن" to money(ledger.lines.sumOf { it.credit }),
++                    "الرصيد الختامي" to reportBalanceLabel(ledger.closingBalance)
++                ))
++            }
++            if (ledger.lines.isEmpty()) {
++                item { Text("لا توجد حركات على الحساب خلال الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            }
++            items(ledger.lines) { line ->
++                ReportCard(
++                    "${fmtDate(line.entryDate)} — ${line.entryNo}",
++                    line.sourceType,
++                    listOf(
++                        "البيان" to line.description,
++                        "مدين" to money(line.debit),
++                        "دائن" to money(line.credit),
++                        "الرصيد" to reportBalanceLabel(line.runningBalance)
++                    )
++                )
++            }
++        }
++    }
++}
++
++@Composable
++private fun PartyStatementTab(
++    customers: List<CustomerEntity>,
++    suppliers: List<SupplierEntity>,
++    partyType: String,
++    onPartyTypeChange: (String) -> Unit,
++    customerId: Long?,
++    onCustomerChange: (Long) -> Unit,
++    supplierId: Long?,
++    onSupplierChange: (Long) -> Unit,
++    report: PartyStatementPeriod?
++) {
++    val customer = customers.firstOrNull { it.id == customerId }
++    val supplier = suppliers.firstOrNull { it.id == supplierId }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("كشف حساب الأطراف", "كشف زمني موحد للعميل أو المورد مع الرصيد الافتتاحي والرصيد بعد كل حركة.")
++            Spacer(Modifier.height(8.dp))
++            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FilterChip(selected = partyType == "CUSTOMER", onClick = { onPartyTypeChange("CUSTOMER") }, label = { Text("عميل") })
++                FilterChip(selected = partyType == "SUPPLIER", onClick = { onPartyTypeChange("SUPPLIER") }, label = { Text("مورد") })
++            }
++            Spacer(Modifier.height(6.dp))
++            if (partyType == "SUPPLIER") {
++                ReportSelectionMenu(
++                    label = "المورد",
++                    selectedText = supplier?.let { "${it.code} — ${it.nameAr}" } ?: "اختر المورد",
++                    options = suppliers.map { it.id to "${it.code} — ${it.nameAr}" },
++                    onSelect = onSupplierChange
++                )
++            } else {
++                ReportSelectionMenu(
++                    label = "العميل",
++                    selectedText = customer?.let { "${it.code} — ${it.nameAr}" } ?: "اختر العميل",
