@@ -1,0 +1,105 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -213,23 +226,23 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                             tonalElevation = 2.dp,
+                         ) {
+                             listOf(
+-                                "الرئيسية" to Icons.Filled.Home,
+-                                "المبيعات" to Icons.Filled.ShoppingCart,
+-                                "الإنتاج" to Icons.Filled.Build,
+-                                "المخزون" to Icons.Filled.List,
+-                            ).forEach { (label, icon) ->
++                                Triple("الرئيسية", Icons.Filled.Home, R.string.nav_home),
++                                Triple("المبيعات", Icons.Filled.ShoppingCart, R.string.nav_sales),
++                                Triple("الإنتاج", Icons.Filled.Build, R.string.nav_production),
++                                Triple("المخزون", Icons.Filled.List, R.string.nav_inventory),
++                            ).forEach { (target, icon, labelRes) ->
+                                 NavigationBarItem(
+-                                    selected = page == label,
+-                                    onClick = { page = label },
+-                                    icon = { NavIcon(icon, selected = page == label) },
+-                                    label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
++                                    selected = page == target,
++                                    onClick = { page = target },
++                                    icon = { NavIcon(icon, selected = page == target) },
++                                    label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                                 )
+                             }
+                             NavigationBarItem(
+                                 selected = false,
+                                 onClick = { scope.launch { drawerState.open() } },
+                                 icon = { NavIcon(Icons.Filled.Menu) },
+-                                label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
++                                label = { Text(stringResource(R.string.common_menu), style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+                             )
+                         }
+                     }
+@@ -284,17 +297,17 @@ private fun FushPrimaryNavigationRail(
+     ) {
+         Spacer(Modifier.height(8.dp))
+         listOf(
+-            Triple("الرئيسية", Icons.Filled.Home, "الرئيسية"),
+-            Triple("المبيعات", Icons.Filled.ShoppingCart, "المبيعات"),
+-            Triple("الإنتاج", Icons.Filled.Build, "الإنتاج"),
+-            Triple("المخزون", Icons.Filled.List, "المخزون"),
+-            Triple("التقارير", Icons.Filled.List, "التقارير")
+-        ).forEach { (label, icon, target) ->
++            Triple("الرئيسية", Icons.Filled.Home, R.string.nav_home),
++            Triple("المبيعات", Icons.Filled.ShoppingCart, R.string.nav_sales),
++            Triple("الإنتاج", Icons.Filled.Build, R.string.nav_production),
++            Triple("المخزون", Icons.Filled.List, R.string.nav_inventory),
++            Triple("التقارير", Icons.Filled.List, R.string.nav_reports)
++        ).forEach { (target, icon, labelRes) ->
+             NavigationRailItem(
+                 selected = page == target,
+                 onClick = { onNavigate(target) },
+                 icon = { NavIcon(icon, selected = page == target) },
+-                label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
++                label = { Text(stringResource(labelRes), style = MaterialTheme.typography.labelSmall, maxLines = 1) },
+                 alwaysShowLabel = true
+             )
+         }
+@@ -303,7 +316,7 @@ private fun FushPrimaryNavigationRail(
+             selected = false,
+             onClick = onOpenMenu,
+             icon = { NavIcon(Icons.Filled.Menu) },
+-            label = { Text("القائمة", style = MaterialTheme.typography.labelSmall) },
++            label = { Text(stringResource(R.string.common_menu), style = MaterialTheme.typography.labelSmall) },
+             alwaysShowLabel = true
+         )
+         Spacer(Modifier.height(8.dp))
+@@ -593,6 +612,32 @@ private fun NavIcon(
+     }
+ }
+ 
++@StringRes
++private fun destinationTitleRes(target: String): Int = when (target) {
++    "الرئيسية" -> R.string.nav_home
++    "المبيعات" -> R.string.nav_sales
++    "العملاء" -> R.string.nav_customers
++    "التحصيلات" -> R.string.nav_collections
++    "الإنتاج" -> R.string.nav_production_quality
++    "تقارير الإنتاج" -> R.string.nav_production_reports
++    "التخطيط" -> R.string.nav_planning_seasonality
++    "النسخ الاحتياطي" -> R.string.nav_backup_restore
++    "المخزون" -> R.string.nav_inventory_warehouses
++    "المشتريات" -> R.string.nav_purchases
++    "الموردون" -> R.string.nav_suppliers
++    "الحسابات" -> R.string.nav_accounting_treasury
++    "العملات" -> R.string.nav_currencies_governorates
++    "الموظفون" -> R.string.nav_employees
++    "مناديب المبيعات" -> R.string.nav_sales_reps
++    "الصيانة" -> R.string.nav_maintenance_safety
++    "الحوكمة" -> R.string.nav_governance_audit
++    "التقارير" -> R.string.nav_comprehensive_reports
++    "المخاطر" -> R.string.nav_risks_controls
++    "المواد والأصناف" -> R.string.nav_items
++    "الوحدات" -> R.string.nav_units
++    else -> R.string.brand_name
++}
++
+ private fun destinationIcon(target: String): ImageVector = when (target) {
+     "الرئيسية" -> Icons.Filled.Home
+     "المبيعات", "المشتريات" -> Icons.Filled.ShoppingCart
