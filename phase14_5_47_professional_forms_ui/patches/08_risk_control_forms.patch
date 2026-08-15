@@ -107,3 +107,4 @@ index 5abd4dc..8ef1d58 100644
 +        FushIntegerField(likelihood,{likelihood=it},"الاحتمال المتبقي 1–5", modifier = Modifier.fillMaxWidth()); FushIntegerField(impact,{impact=it},"الأثر المتبقي 1–5", modifier = Modifier.fillMaxWidth()); score?.let{Text("الدرجة المتبقية: $it/25 — ${riskBandAr(it)}")}; FushCodeSelectionField("الحالة", status, listOf("OPEN","MITIGATING","ACCEPTED","CLOSED"), ::riskStatusAr, modifier = Modifier.fillMaxWidth()) { status = it }; OutlinedTextField(mitigation,{mitigation=it},label={Text("خطة المعالجة")})
      }},confirmButton={Button(enabled=l in 1..5&&i in 1..5,onClick={onSave(l!!,i!!,status.trim().uppercase(),mitigation)}){Text("تحديث")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
  }
+ 
