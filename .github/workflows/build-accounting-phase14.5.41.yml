@@ -1,0 +1,172 @@
+name: Validate FUSH Accounting Phase 14.5.41 Multi-Invoice Settlement
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.41.yml'
+      - 'fush_accounting/rebase/phase14.5.41_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase41-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.40 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.40-Fixed-Assets-Validated-Build
+          path: phase40-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31868347639
+
+      - name: Reconstruct and verify Phase 14.5.41 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          CH="$ROOT/fush_accounting/rebase/phase14.5.41_chunks"
+          for n in 00 01 02 03; do test "$(wc -c < "$CH/part${n}.b64")" -eq 2000; done
+          test "$(wc -c < "$CH/part04.b64")" -eq 1320
+          echo 'ff6495a3c9649ff108cc5ba7a7a7ab3112d16b8868cf5b7368f907692cf7e07e  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '4e1fda55e05a9e69afc0af5b0148210ac546cf228d6ea948989594484795bc96  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo '5273bba7450d6214d688c9a5d041690585f7a12d90123f5bf47acab3f2b2a40f  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '812bfdc177e263a13b54d2e48960a420ef571a536cb925b49c2edae0cf907e7a  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo '5ba0d68515b54551ba92b8991c5deeadd23fc4f504d08296b927a78606b92652  part04.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 > /tmp/phase41.patch.gz.b64
+          test "$(wc -c < /tmp/phase41.patch.gz.b64)" -eq 9320
+          echo 'fb8057b5ffbe194bf6f2247025992c6560b78f5f26571c2dc21799d989c16088  /tmp/phase41.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase41.patch.gz.b64 > /tmp/phase41.patch.gz
+          test "$(wc -c < /tmp/phase41.patch.gz)" -eq 6990
+          echo '1f1987967fc69557389a67ef50a1b0b932ee51326f6ff7efb7116e97760e4117  /tmp/phase41.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase41.patch.gz
+          gzip -dc /tmp/phase41.patch.gz > /tmp/phase41.patch
+          test "$(wc -c < /tmp/phase41.patch)" -eq 43289
+          echo '069b0a847e3b42244b04b11417280058286b5581a1b9b31448e14b41ab304f0b  /tmp/phase41.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.41 to validated Phase 14.5.40
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work"
+          cd "$ROOT/work"
+          unzip -q "$ROOT/phase40-artifact/FushERP-Mobile-Phase14.5.40-Fixed-Asset-Accounting-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase41 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A
+          git commit -qm 'validated Phase14.5.40 baseline'
+          git apply --check /tmp/phase41.patch
+          git apply /tmp/phase41.patch
+          git diff --check
+
+      - name: Verify identity, unchanged schema and settlement wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 33' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -q 'MIGRATION_33_34' app/src/main/java/com/fush/erp/data/Migrations.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          test -f app/src/main/java/com/fush/erp/domain/SettlementAllocationMath.kt
+          grep -q 'object SettlementAllocationMath' app/src/main/java/com/fush/erp/domain/SettlementAllocationMath.kt
+          grep -q 'postReceiptAutoAllocate' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'postSupplierPaymentAutoAllocate' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -q 'autoAllocate' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          test -f app/src/test/java/com/fush/erp/domain/SettlementAllocationMathTest.kt
+          grep -q 'class SettlementAllocationMathTest' app/src/test/java/com/fush/erp/domain/SettlementAllocationMathTest.kt
+
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase41-unit-test.log"
+
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.41-Unit-Test-Diagnostics
+          path: phase41-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/33.json
+          grep -q '"version": 33' app/schemas/com.fush.erp.data.FushDatabase/33.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          mkdir -p "$ROOT/phase41-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            "$ROOT/phase41-output/FushERP-Accounting-Phase14.5.41-Multi-Invoice-Settlement-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 \
+            "$ROOT/phase41-output/FushERP-Accounting-Phase14.5.41-Multi-Invoice-Settlement-aligned-unsigned.apk"
+          cp /tmp/phase41.patch "$ROOT/phase41-output/FushERP-Phase14.5.41-Multi-Invoice-Settlement.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$ROOT/phase41-output/FushERP-Mobile-Phase14.5.41-Multi-Invoice-Settlement-Source.zip" repo
+          cd "$ROOT/phase41-output"
+          sha256sum FushERP-Accounting-Phase14.5.41-Multi-Invoice-Settlement-aligned-unsigned.apk \
+                    FushERP-Mobile-Phase14.5.41-Multi-Invoice-Settlement-Source.zip \
+                    FushERP-Phase14.5.41-Multi-Invoice-Settlement.patch > SHA256SUMS.txt
+          cat > BUILD-REPORT.txt <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.41 validation
+          Base: validated Accounting Phase 14.5.40 Fixed Asset Accounting
+          Base validation run: 31868347639
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 33 (UNCHANGED; no migration in Phase 14.5.41)
+          Phase 14.5.41 patch SHA-256: 069b0a847e3b42244b04b11417280058286b5581a1b9b31448e14b41ab304f0b
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema remains 33: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_41_MULTI_INVOICE_SETTLEMENT_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.41-Multi-Invoice-Settlement-Validated-Build
+          path: phase41-output/
+          if-no-files-found: error
+          retention-days: 7
