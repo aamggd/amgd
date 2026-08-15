@@ -44,17 +44,17 @@ jobs:
           repository: aamggd/amgd
           run-id: 31870536927
 
-      - name: Restore Phase 14.5.51 and apply Phase 14.5.52 audit patch
+      - name: Restore Phase 14.5.51 and apply corrected Phase 14.5.52 audit patch
         shell: bash
         run: |
           set -euo pipefail
-          echo 'b406c356773d5ea6c21d9fe5805f1cd1e02bf7de212d22cd5cdddcf12bf38d5d  phase14_5_52_audit_reporting/payload/a52-part00.txt' | sha256sum -c -
-          echo '2da8ef80c3df8163f43e878e76b03bc5d83de2ba0ced484cf1498479a03272df  phase14_5_52_audit_reporting/payload/a52-part01.txt' | sha256sum -c -
-          echo 'e5737b66e3faa2c919cc49d205eefe56c22ee2c1ad3832164458a660abc05d07  phase14_5_52_audit_reporting/payload/a52-part02.txt' | sha256sum -c -
-          cat phase14_5_52_audit_reporting/payload/a52-part00.txt phase14_5_52_audit_reporting/payload/a52-part01.txt phase14_5_52_audit_reporting/payload/a52-part02.txt > phase14_5_52_audit_reporting/a52.full.b64
-          echo '5e16cb9b237c1114cd75c6d768cca145978367383b67c04bdcbce2d4636080e8  phase14_5_52_audit_reporting/a52.full.b64' | sha256sum -c -
-          base64 -d phase14_5_52_audit_reporting/a52.full.b64 | gzip -dc > phase14_5_52_audit_reporting/01_audit_reporting.patch
-          echo 'ad83d7f696d37ca6471bd5f171bfc7228b490f65b536fb1ef88630e714911766  phase14_5_52_audit_reporting/01_audit_reporting.patch' | sha256sum -c -
+          echo 'ad3bb3350e6cb65860ec608b700a1aba6ca382b4b84176a003d9c22cef45ace0  phase14_5_52_audit_reporting/payload_v2/a52-v2-part00.txt' | sha256sum -c -
+          echo '7385089b04c73c43b933fe7ec19955b0617a1d45366effd99310751ccd5f2ee5  phase14_5_52_audit_reporting/payload_v2/a52-v2-part01.txt' | sha256sum -c -
+          echo 'afac947d1fae4a8912f96ed40716a72b4fc629a5844ac840c88ba95f49fba642  phase14_5_52_audit_reporting/payload_v2/a52-v2-part02.txt' | sha256sum -c -
+          cat phase14_5_52_audit_reporting/payload_v2/a52-v2-part00.txt phase14_5_52_audit_reporting/payload_v2/a52-v2-part01.txt phase14_5_52_audit_reporting/payload_v2/a52-v2-part02.txt > phase14_5_52_audit_reporting/a52-v2.full.b64
+          echo '626f96e1711854a790b12d7dce3afb4a58a8a06056e79d090917d7b34118ac90  phase14_5_52_audit_reporting/a52-v2.full.b64' | sha256sum -c -
+          base64 -d phase14_5_52_audit_reporting/a52-v2.full.b64 | gzip -dc > phase14_5_52_audit_reporting/01_audit_reporting_v2.patch
+          echo '49aa5e39b7b7daf89d1514aff30e186c73a08379ad8a83e9e7a9dec0aa992fde  phase14_5_52_audit_reporting/01_audit_reporting_v2.patch' | sha256sum -c -
           unzip -q previous-build/FushERP-Mobile-Phase14.5.51-Inventory-Analytics-Source.zip
           cd FushERP_Mobile_Phase5
           rm -rf .git app/build .gradle build .kotlin
@@ -63,8 +63,8 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm baseline-14.5.51
-          git apply --check ../phase14_5_52_audit_reporting/01_audit_reporting.patch
-          git apply ../phase14_5_52_audit_reporting/01_audit_reporting.patch
+          git apply --check ../phase14_5_52_audit_reporting/01_audit_reporting_v2.patch
+          git apply ../phase14_5_52_audit_reporting/01_audit_reporting_v2.patch
           git diff --check HEAD
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 91' app/build.gradle.kts
@@ -75,6 +75,7 @@ jobs:
           test -f app/src/main/java/com/fush/erp/domain/AuditReportMath.kt
           test -f app/src/test/java/com/fush/erp/domain/AuditReportMathTest.kt
           grep -q 'suspend fun auditReport' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
+          grep -q 'ae.action AS actionCode' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
           grep -q 'LEFT JOIN users u ON u.id = ae.userId' app/src/main/java/com/fush/erp/data/dao/GovernanceDao.kt
           grep -q 'سجل التدقيق' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
           rm -rf .git
@@ -123,6 +124,7 @@ jobs:
             'Base verified source: Phase 14.5.51 Inventory Analytics' \
             'Branch: fush/reports-printing' \
             'Audit period query with user join: PASS' \
+            'Reserved SQL alias corrected without schema change: PASS' \
             'User/action/entity/search filters: PASS' \
             'Filtered PDF/XLSX export: PASS' \
             'Old/new value visibility: PASS' \
