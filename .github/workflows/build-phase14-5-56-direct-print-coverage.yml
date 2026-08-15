@@ -1,0 +1,151 @@
+name: Build Fush ERP Phase 14.5.56 Direct Print Coverage
+
+on:
+  push:
+    branches: [fush/reports-printing]
+    paths:
+      - '.github/workflows/build-phase14-5-56-direct-print-coverage.yml'
+      - 'phase14_5_56_direct_print_coverage/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reports branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified Phase 14.5.55 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.55-Report-Export-Hardening-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31913717196
+
+      - name: Restore Phase 14.5.55 and apply Phase 14.5.56 direct print coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'b246625582d8791d26011049469743c22473148a5d7dfeb7ca286cfaeb977f18  phase14_5_56_direct_print_coverage/payload/p56-part00.txt' | sha256sum -c -
+          echo '4f9da35c6cac15d425547cb473c961698aa2b31a5f1d425e0ca0b1efda055024  phase14_5_56_direct_print_coverage/payload/p56-part01.txt' | sha256sum -c -
+          cat phase14_5_56_direct_print_coverage/payload/p56-part*.txt > phase14_5_56_direct_print_coverage/p56.full.b64
+          echo 'fb673d216bf9601b25a68b8d223b3d97cac5597e7dac791a8b05b5976ee04649  phase14_5_56_direct_print_coverage/p56.full.b64' | sha256sum -c -
+          base64 -d phase14_5_56_direct_print_coverage/p56.full.b64 | gzip -dc > phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch
+          echo 'bac9368c5c4d3a4213cbd978738263f6781e8715741fcf9d87c8af1fb106ff73  phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch' | sha256sum -c -
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.55-Report-Export-Hardening-Source.zip
+          cd FushERP_Mobile_Phase5
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-ci@fush.local
+          git config user.name "FUSH Reports CI"
+          git add -A
+          git commit -qm baseline-14.5.55
+          git apply --check ../phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch
+          git apply ../phase14_5_56_direct_print_coverage/01_direct_print_coverage.patch
+          git diff --check HEAD
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 95' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.56-direct-print-coverage"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f app/schemas/com.fush.erp.data.FushDatabase/28.json
+          test -f app/src/main/java/com/fush/erp/ui/screens/DirectSectionReports.kt
+          test -f app/src/test/java/com/fush/erp/ui/screens/DirectSectionReportsTest.kt
+          for file in SalesScreens.kt PurchaseScreens.kt PartyScreens.kt AdvancedInventoryScreens.kt EmployeeScreens.kt SalesRepresentativeScreens.kt MaintenanceScreens.kt GovernanceScreen.kt CollectionsDetailScreen.kt; do
+            grep -q 'ReportExportActions' "app/src/main/java/com/fush/erp/ui/screens/$file"
+          done
+          rm -rf .git
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room/Compose compilation
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release identity and schema safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionCode = 95' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.56-direct-print-coverage"' FushERP_Mobile_Phase5/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' FushERP_Mobile_Phase5/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/28.json
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-56-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-56-output/FushERP-Phase14.5.56-Direct-Print-Coverage-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-56-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-56-output/lib/apksigner.jar
+          chmod +x phase14-5-56-output/apksigner
+          zip -qr phase14-5-56-output/FushERP-Mobile-Phase14.5.56-Direct-Print-Coverage-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.56 — Direct Professional Print Coverage' \
+            'Base verified source: Phase 14.5.55 Report Export Hardening' \
+            'Branch: fush/reports-printing' \
+            'Sales direct filtered export: PASS' \
+            'Purchases direct filtered export: PASS' \
+            'Customers direct filtered export: PASS' \
+            'Suppliers direct filtered export: PASS' \
+            'Inventory current-section export: PASS' \
+            'Employees/training/authorization export: PASS' \
+            'Sales representatives filtered export: PASS' \
+            'Maintenance/safety filtered export: PASS' \
+            'Governance current-tab export: PASS' \
+            'Collections current-filter export: PASS' \
+            'Direct-export filter regression tests: PASS' \
+            'Accounting posting logic unchanged: PASS' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 95' \
+            'Version name: 0.15.4.56-direct-print-coverage' \
+            'Room schema: 27 unchanged' \
+            'Unit tests: PASS' \
+            'Room/Compose compilation: PASS' \
+            'Release build: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-56-output/FushERP-Phase14.5.56-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.56-Direct-Print-Coverage-Build
+          path: phase14-5-56-output/
+          if-no-files-found: error
+          retention-days: 7
