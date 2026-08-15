@@ -77,6 +77,7 @@ jobs:
             done
           done
           grep -q 'versionCode = 81' app/build.gradle.kts
+          grep -q '0.15.4.42-ui-reports-adaptive' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 27' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           git add -A && git commit -qm 'Apply UI 39-42'
 
@@ -98,8 +99,24 @@ jobs:
           part=next(p for p in parts if p.startswith('diff --git ') and f' b/{target}' in p.splitlines()[0])
           pathlib.Path('/tmp/party34.patch').write_text(part)
           PY
-          patch -p1 --forward --fuzz=3 < /tmp/party34.patch
-          git add -A && git commit -qm 'Rebase accounting integrity'
+          patch -p1 --forward --fuzz=3 < /tmp/party34.patch || true
+          rm -f app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt.rej
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt')
+          s=p.read_text()
+          old='''                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }\n                OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }'''
+          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }\n                OutlinedButton(\n                    onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." },\n                    modifier = Modifier.weight(1f),\n                    shape = MaterialTheme.shapes.medium,\n                ) { Text("صرف للعميل") }'''
+          if old not in s: raise SystemExit('customer button block not found')
+          s=s.replace(old,new,1)
+          old='''                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }\n                OutlinedButton(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }'''
+          new='''                Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("دفع فاتورة") }\n                OutlinedButton(\n                    onClick = { message = "قبض مبلغ من المورد يجب أن يتم من مرتجع المشتريات مع اختيار استرداد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." },\n                    modifier = Modifier.weight(1f),\n                    shape = MaterialTheme.shapes.medium,\n                ) { Text("قبض من المورد") }'''
+          if old not in s: raise SystemExit('supplier button block not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          grep -q 'تحصيل فاتورة' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          grep -q 'دفع فاتورة' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          git add -A && git commit -qm 'Rebase accounting integrity onto professional party UI'
 
           if git apply --check --verbose --exclude=app/build.gradle.kts /tmp/accounting35.patch; then
             git apply --exclude=app/build.gradle.kts /tmp/accounting35.patch
