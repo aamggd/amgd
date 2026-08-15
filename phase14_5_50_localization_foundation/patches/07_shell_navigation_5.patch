@@ -1,0 +1,13 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -791,7 +836,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+         Spacer(Modifier.height(8.dp))
+         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+             FilterChip(selected = section == "المواد والأصناف", onClick = { section = "المواد والأصناف"; search = "" }, label = { Text("المواد") }, modifier = Modifier.weight(1f))
+-            FilterChip(selected = section == "الوحدات", onClick = { section = "الوحدات"; search = "" }, label = { Text("الوحدات") }, modifier = Modifier.weight(1f))
++            FilterChip(selected = section == "الوحدات", onClick = { section = "الوحدات"; search = "" }, label = { Text(stringResource(R.string.nav_units)) }, modifier = Modifier.weight(1f))
+             FilterChip(selected = section == "المخازن", onClick = { section = "المخازن"; search = "" }, label = { Text("المخازن") }, modifier = Modifier.weight(1f))
+             FilterChip(selected = section == "التحويلات", onClick = { section = "التحويلات"; search = "" }, label = { Text("التحويلات") }, modifier = Modifier.weight(1f))
+         }
