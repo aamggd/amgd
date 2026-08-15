@@ -8,7 +8,9 @@ Apply after Phase 14.5.43 in this order:
 5. `05_governance_risk.patch`
 6. `06_planning_geography.patch`
 7. `07_operations_state_consistency.patch`
-8. `08_people_commercial_state_consistency.patch`
+8. `08_people_profile_states.patch`
+9. `09_production_purchase_states.patch`
+10. `10_sales_rep_sales_states.patch`
 
 Highlights:
 - Final consistency pass across secondary workspaces and nested no-data/warning/success states.
