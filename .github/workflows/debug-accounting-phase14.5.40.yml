@@ -1,0 +1,76 @@
+name: Debug Accounting Phase 14.5.40 Unit Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/debug-accounting-phase14.5.40.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  debug-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: phase39-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865418288
+      - name: Prepare Phase 14.5.40 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          CH="$GITHUB_WORKSPACE/fush_accounting/rebase/phase14.5.40_chunks_v3"
+          cat "$CH"/part00.b64 "$CH"/part01.b64 "$CH"/part02.b64 "$CH"/part03.b64 "$CH"/part04.b64 "$CH"/part05.b64 | base64 --decode | gzip -dc > /tmp/phase40.patch
+          echo 'd3046bd31e811548567c1cf1f2af35bf47f7c49e9b7c5f75c23ffdba7af107ac  /tmp/phase40.patch' | sha256sum -c -
+          mkdir work
+          cd work
+          unzip -q "$GITHUB_WORKSPACE/phase39-artifact/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip"
+          cd repo
+          git init -q
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm base
+          git apply --check /tmp/phase40.patch
+          git apply /tmp/phase40.patch
+      - name: Capture unit-test diagnostics
+        id: tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace --info 2>&1 | tee "$GITHUB_WORKSPACE/phase40-unit-test.log"
+          rc=${PIPESTATUS[0]}
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.40-Unit-Test-Diagnostics
+          path: phase40-unit-test.log
+          if-no-files-found: error
+          retention-days: 2
+      - name: Preserve failure status
+        if: steps.tests.outputs.rc != '0'
+        shell: bash
+        run: exit 1
