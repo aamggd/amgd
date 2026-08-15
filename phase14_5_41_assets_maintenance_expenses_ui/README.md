@@ -3,8 +3,11 @@
 Apply after Phase 14.5.40 in this order:
 1. `01_scope.patch`
 2. `02_build_gradle.patch`
-3. `03_maintenance_workspace.patch`
-4. `04_expense_dashboard.patch`
+3. `03_maintenance_dashboard_assets.patch`
+4. `04_maintenance_workorders_risk.patch`
+5. `05_maintenance_helpers.patch`
+6. `06_expense_dashboard_filters.patch`
+7. `07_expense_movements_contribution.patch`
 
 This phase professionalizes the operational asset/maintenance/safety workspace and the operating-expense dashboard only.
 
