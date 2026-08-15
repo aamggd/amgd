@@ -1,0 +1,18 @@
+--- a/app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
++++ b/app/src/main/java/com/fush/erp/backup/DatabaseEncryptionManager.kt
+@@ -165,12 +165,13 @@
+             replacementInstalled = true
+             require(validateEncrypted(dbFile, key) == sourceSchema) { "فشل التحقق بعد استبدال قاعدة البيانات" }
+             // The rollback copy contains plaintext and must not remain after a successful migration.
+-            safetyDir.deleteRecursively()
++            // Remove the whole root as well, otherwise an empty plaintext-safety directory survives forever.
++            cleanupStalePlaintextSafety(context)
+         } catch (t: Throwable) {
+             val rollbackError = if (replacementInstalled) {
+                 runCatching { RestoreFileSafety.restoreDatabaseSet(safetyDir, dbFile) }.exceptionOrNull()
+             } else null
+-            if (rollbackError == null) safetyDir.deleteRecursively()
++            if (rollbackError == null) cleanupStalePlaintextSafety(context)
+             val suffix = rollbackError?.let { " | فشل الرجوع؛ نسخة الأمان محفوظة في ${safetyDir.path}: ${it.message}" }.orEmpty()
+             throw IllegalStateException("فشل تشفير قاعدة البيانات مع الحفاظ على النسخة الأصلية: ${t.message}$suffix", t)
+         } finally {
