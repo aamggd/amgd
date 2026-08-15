@@ -1,0 +1,157 @@
+name: Build Fush ERP Phase 14.5.32 Production Employee Compensation Link
+
+on:
+  push:
+    branches: [agent/phase14-5-24-party-subledger-vouchers]
+    paths:
+      - '.github/workflows/build-phase14-5-32-production-employee-compensation.yml'
+      - 'phase14_5_32_patch.gz.b64'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download successful Phase 14.5.31 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.31-Sales-Rep-History-Link-Build
+          path: previous-build
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31851566916
+
+      - name: Restore Phase 14.5.31 and apply Phase 14.5.32
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q previous-build/FushERP-Mobile-Phase14.5.31-Sales-Rep-History-Link-Source.zip
+          base64 -d phase14_5_32_patch.gz.b64 | gunzip > /tmp/phase14_5_32.patch
+          cd FushERP_Mobile_Phase5
+          patch --dry-run -p2 < /tmp/phase14_5_32.patch
+          patch -p2 < /tmp/phase14_5_32.patch
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 71' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.32-production-employee-compensation-link"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 26' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'observeProductionCompensations' app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
+          grep -q 'observeProductionLaborPayments' app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
+          grep -q 'موظف الإنتاج الذي يستحق أجور/عمولة هذه الدفعة' app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'استحقاقات الإنتاج' app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+          grep -q 'عمولة/أجر موظف الإنتاج لهذه الدفعة' app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: FushERP_Mobile_Phase5
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package and unchanged Room schema 26
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=FushERP_Mobile_Phase5/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml
+          test -f "$MANIFEST"
+          grep -q 'package="com.fush.erp.recovery"' "$MANIFEST"
+          SCHEMA=FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/26.json
+          test -f "$SCHEMA"
+          test ! -f FushERP_Mobile_Phase5/app/schemas/com.fush.erp.data.FushDatabase/27.json
+
+      - name: Production employee compensation SQL smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import sqlite3
+          c=sqlite3.connect(':memory:')
+          c.executescript('''
+          CREATE TABLE employees(id INTEGER PRIMARY KEY, fullNameAr TEXT, status TEXT);
+          CREATE TABLE production_orders(id INTEGER PRIMARY KEY, orderNo TEXT, plannedDate INTEGER, status TEXT, directLaborCostBase REAL);
+          CREATE TABLE production_operator_assignments(id INTEGER PRIMARY KEY, orderId INTEGER UNIQUE, employeeId INTEGER);
+          CREATE TABLE journal_entries(id INTEGER PRIMARY KEY, sourceType TEXT, sourceId TEXT, status TEXT);
+          CREATE TABLE accounts(id INTEGER PRIMARY KEY, code TEXT);
+          CREATE TABLE party_vouchers(id INTEGER PRIMARY KEY, employeeId INTEGER, offsetAccountId INTEGER, voucherType TEXT, status TEXT, amountBase REAL);
+          INSERT INTO employees VALUES(1,'محمد الاسلمي','ACTIVE'),(2,'موظف آخر','ACTIVE');
+          INSERT INTO production_orders VALUES(10,'PROD-001',100,'CLOSED',30000),(11,'PROD-002',110,'PLANNED',25000),(12,'PROD-003',120,'CLOSED',15000);
+          INSERT INTO production_operator_assignments VALUES(1,10,1),(2,11,1),(3,12,2);
+          INSERT INTO journal_entries VALUES(100,'PRODUCTION_LABOR','PROD-001','POSTED'),(101,'PRODUCTION_LABOR','PROD-003','POSTED');
+          INSERT INTO accounts VALUES(220,'2200');
+          INSERT INTO party_vouchers VALUES(200,1,220,'PAYMENT','POSTED',10000),(201,1,220,'PAYMENT','REVERSED',5000),(202,2,220,'PAYMENT','POSTED',7000);
+          ''')
+          employee_id=1
+          rows=c.execute('''
+            SELECT po.id, po.orderNo, po.directLaborCostBase,
+                   CASE WHEN EXISTS (SELECT 1 FROM journal_entries je WHERE je.sourceType='PRODUCTION_LABOR' AND je.sourceId=po.orderNo AND je.status='POSTED') THEN 1 ELSE 0 END
+            FROM production_operator_assignments pa JOIN production_orders po ON po.id=pa.orderId
+            WHERE pa.employeeId=? ORDER BY po.plannedDate DESC
+          ''',(employee_id,)).fetchall()
+          assert rows==[(11,'PROD-002',25000.0,0),(10,'PROD-001',30000.0,1)],rows
+          accrued=sum(r[2] for r in rows if r[3])
+          paid=c.execute('''SELECT COALESCE(SUM(pv.amountBase),0) FROM party_vouchers pv JOIN accounts a ON a.id=pv.offsetAccountId WHERE pv.employeeId=? AND a.code='2200' AND pv.voucherType='PAYMENT' AND pv.status='POSTED' ''',(employee_id,)).fetchone()[0]
+          assert accrued==30000 and paid==10000 and accrued-paid==20000,(accrued,paid)
+          print('Production employee compensation SQL smoke test PASS')
+          PY
+
+      - name: Zipalign and package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p phase14-5-32-output/lib
+          UNSIGNED=FushERP_Mobile_Phase5/app/build/outputs/apk/release/app-release-unsigned.apk
+          ALIGNED=phase14-5-32-output/FushERP-Phase14.5.32-Production-Employee-Compensation-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" phase14-5-32-output/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" phase14-5-32-output/lib/apksigner.jar
+          chmod +x phase14-5-32-output/apksigner
+          zip -qr phase14-5-32-output/FushERP-Mobile-Phase14.5.32-Production-Employee-Compensation-Source.zip FushERP_Mobile_Phase5
+          sha256sum "$ALIGNED" > "$ALIGNED.sha256"
+          printf '%s\n' \
+            'Fush ERP Phase 14.5.32 — Production Employee Compensation Link' \
+            'Package: com.fush.erp.recovery' \
+            'Version code: 71' \
+            'Room schema remains 26; no database migration required.' \
+            'Every new production order requires a production employee.' \
+            'The selected production employee is stored by stable employee ID using production_operator_assignments.' \
+            'Direct labor/production commission is accrued to account 2200 for the selected employee when batch result is posted.' \
+            'Employee profile has a Production tab showing orders, accrued compensation, paid amount, and outstanding amount.' \
+            'Payments are counted only from POSTED employee payment vouchers against account 2200; reversed vouchers are excluded.' \
+            'Existing orders that already have employee assignments appear automatically.' \
+            'Unit tests: PASS' \
+            'Release build: PASS' \
+            'Production compensation SQL smoke test: PASS' \
+            'Zipalign: PASS' \
+            > phase14-5-32-output/FushERP-Phase14.5.32-BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.32-Production-Employee-Compensation-Build
+          path: phase14-5-32-output/
+          if-no-files-found: error
+          retention-days: 7
