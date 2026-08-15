@@ -19,6 +19,7 @@
 4. Phase 14.5.41 — Multi-Invoice Settlement — Run `31869145938`.
 5. Phase 14.5.42 — Accounting Posting Profiles & COA Safety — Run `31872176530`.
 6. Phase 14.5.43 — Accounting Idempotency & Duplicate-Posting Protection — Run `31912860098`.
+7. Phase 14.5.44 — Professional Financial Statements & Cash Flow — Run `31914408158`.
 
 ## الوظائف المحاسبية المعتمدة
 
@@ -76,11 +77,23 @@
 - إعادة تنفيذ نفس الحدث تعيد نفس القيد بدل إنشاء قيد مكرر.
 - رفض استخدام نفس المفتاح مع Payload مختلف (`POSTING_KEY_PAYLOAD_MISMATCH`).
 - حماية المبيعات والتحصيلات والمرتجعات والمشتريات ودفعات الموردين والجرد وحركات الإنتاج الأساسية والإهلاك وفروق العملة والعكس.
-- القيود اليدوية والتصحيحات المتكررة المشروعة وإعادة إقفال السنة لا تُمنع بمفتاح عام عشوائي.
 - Migration التاريخية تملأ المفاتيح فقط للأزواج الفريدة؛ التكرارات القديمة تبقى `NULL` للمراجعة ولا تُحذف.
 - Trigger يمنع تغيير هوية مصدر قيد `POSTED`.
 - Validation Run: `31912860098`.
 - Patch SHA-256: `4aeb462acf93cf177b2e8c1ec1a0d41956d3419a9bf13a540da04f2607815a52`.
+
+### Phase 14.5.44 — Professional Financial Statements & Cash Flow
+- قائمة دخل احترافية مقارنة: إجمالي المبيعات، المرتجعات، صافي الإيراد، تكلفة المبيعات، مجمل الربح، المصروفات التشغيلية، الربح التشغيلي، الإيرادات/المصروفات الأخرى وصافي الربح.
+- قائمة مركز مالي مصنفة مع إظهار مجمع الإهلاك كحساب مقابل للأصل، وفصل البنود غير المصنفة بدل تخمينها.
+- قائمة تدفقات نقدية مصنفة بالطريقة المباشرة إلى تشغيلية/استثمارية/تمويلية.
+- استبعاد التحويلات الداخلية بين الخزائن من التدفق النقدي الحقيقي.
+- فصل أثر إعادة تقييم العملة عن المقبوضات والمدفوعات وإظهاره كـ«أثر تغير أسعار الصرف على النقد».
+- مقارنة تلقائية مع الفترة السابقة المماثلة.
+- الخزائن غير النشطة تبقى ضمن القوائم التاريخية.
+- تحديث شاشة الحسابات وتقرير Finance ومخرجات الطباعة/PDF بالقوائم الجديدة.
+- لا توجد Migration جديدة؛ Schema يبقى `35`.
+- Validation Run: `31914408158`.
+- Patch SHA-256: `74deb3e42b51f73bdec431645c9271e85e3d5717643e35dfd94b605124b6e238`.
 
 ## Room Schema — أرقام الفرع مؤقتة فقط
 - `27 -> 28`: Accounting periods/reconciliation.
@@ -92,17 +105,18 @@
 - Phase 14.5.41: no migration؛ يبقى `33`.
 - `33 -> 34`: Posting profiles / COA safety.
 - `34 -> 35`: Accounting idempotency / postingKey protection.
+- Phase 14.5.44: **no migration**؛ يبقى Schema `35`.
 
 هذه الأرقام **BRANCH ONLY / PROVISIONAL**. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على SQL والبيانات وعدم استخدام destructive migration.
 
 ## بوابة التحقق الأحدث
-Phase 14.5.43 — Run `31912860098`:
+Phase 14.5.44 — Run `31914408158`:
 - Patch chunk integrity / SHA-256 / GZIP: PASS.
-- Apply to validated Phase 14.5.42: PASS.
+- Apply to validated Phase 14.5.43: PASS.
 - Application ID / baseline identity guard: PASS.
-- Migration `34 -> 35`: PASS.
+- Schema remains `35` / no Migration `35 -> 36`: PASS.
 - No destructive migration: PASS.
-- SQLite posting-key duplicate/backfill/immutability smoke: PASS.
+- Professional financial statement wiring: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
 - Room Schema 35 generation: PASS.
@@ -112,6 +126,6 @@ Phase 14.5.43 — Run `31912860098`:
 التوقيع الرسمي **غير منفذ داخل GitHub CI**؛ لا يتم تخزين مفتاح التوقيع أو كلمة مروره في GitHub أو المصدر أو Workflow.
 
 ## مراجع المرحلة الحالية
-- `fush_accounting/PHASE14_5_43_SCOPE.md`
-- `fush_accounting/PHASE14_5_43_VALIDATION.md`
-- `.github/workflows/build-accounting-phase14.5.43.yml`
+- `fush_accounting/PHASE14_5_44_SCOPE.md`
+- `fush_accounting/PHASE14_5_44_VALIDATION.md`
+- `.github/workflows/build-accounting-phase14.5.44.yml`
