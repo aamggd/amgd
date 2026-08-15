@@ -1,0 +1,90 @@
++                    options = customers.map { it.id to "${it.code} — ${it.nameAr}" },
++                    onSelect = onCustomerChange
++                )
++            }
++        }
++        report?.let { statement ->
++            item {
++                MetricGrid(listOf(
++                    "الرصيد الافتتاحي" to partyBalanceLabel(statement.openingBalance, partyType),
++                    "إجمالي المدين" to money(statement.totalDebit),
++                    "إجمالي الدائن" to money(statement.totalCredit),
++                    "الرصيد الختامي" to partyBalanceLabel(statement.closingBalance, partyType)
++                ))
++            }
++            if (statement.lines.isEmpty()) {
++                item { Text("لا توجد حركات للطرف خلال الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            }
++            items(statement.lines) { line ->
++                ReportCard(
++                    "${fmtDate(line.eventDate)} — ${line.referenceNo}",
++                    partyEventTypeAr(line.eventType),
++                    listOf(
++                        "البيان" to line.description.ifBlank { "—" },
++                        "مدين" to money(line.debitBase),
++                        "دائن" to money(line.creditBase),
++                        "الرصيد" to partyBalanceLabel(line.runningBalance, partyType)
++                    )
++                )
++            }
++        }
++    }
++}
++
++@Composable
++private fun ReportSelectionMenu(
++    label: String,
++    selectedText: String,
++    options: List<Pair<Long, String>>,
++    onSelect: (Long) -> Unit
++) {
++    var expanded by remember { mutableStateOf(false) }
++    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
++        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++        Box {
++            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
++                Text(selectedText, modifier = Modifier.fillMaxWidth())
++            }
++            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
++                options.forEach { (id, text) ->
++                    DropdownMenuItem(
++                        text = { Text(text) },
++                        onClick = {
++                            onSelect(id)
++                            expanded = false
++                        }
++                    )
++                }
++            }
++        }
++    }
++}
++
++private fun reportBalanceLabel(value: Double): String = when {
++    value > 0.000001 -> "${money(value)} مدين"
++    value < -0.000001 -> "${money(-value)} دائن"
++    else -> money(0.0)
++}
++
++private fun partyBalanceLabel(value: Double, partyType: String): String = when {
++    value > 0.000001 && partyType == "SUPPLIER" -> "${money(value)} مستحق للمورد"
++    value > 0.000001 -> "${money(value)} على العميل"
++    value < -0.000001 && partyType == "SUPPLIER" -> "${money(-value)} لصالح المنشأة"
++    value < -0.000001 -> "${money(-value)} لصالح العميل"
++    else -> money(0.0)
++}
++
++private fun partyEventTypeAr(type: String): String = when (type) {
++    "INVOICE" -> "فاتورة"
++    "RECEIPT" -> "تحصيل"
++    "SALES_RETURN" -> "مرتجع مبيعات"
++    "CASH_REFUND" -> "رد نقدي للعميل"
++    "RETURN" -> "مرتجع مشتريات"
++    "PAYMENT" -> "دفعة مورد"
++    "VOUCHER_PAYMENT" -> "سند صرف"
++    "VOUCHER_RECEIPT" -> "سند قبض"
++    "VOUCHER_REVERSAL" -> "عكس سند"
++    else -> type
++}
++
+ @Composable private fun MetricGrid(metrics: List<Pair<String,String>>) {
