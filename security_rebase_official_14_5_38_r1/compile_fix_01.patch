@@ -1,0 +1,55 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt b/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
+index 1768820..910121b 100644
+--- a/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
++++ b/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt
+@@ -193,7 +193,7 @@ class AdvancedInventoryService(private val db: FushDatabase) {
+         changedBy: Long,
+         reason: String = ""
+     ) = db.withTransaction {
+-        db.requireUserPermission(userId, SecurityPermissions.INVENTORY_ADJUST)
++        db.requireUserPermission(changedBy, SecurityPermissions.INVENTORY_ADJUST)
+         require(quantityBase > InventoryMath.EPS && quantityBase.isFinite()) { "الكمية المراد ربطها يجب أن تكون أكبر من صفر" }
+         val item = requireNotNull(db.itemDao().byId(itemId)) { "الصنف غير موجود" }
+         require(item.isActive) { "الصنف غير نشط" }
+@@ -278,7 +278,7 @@ class AdvancedInventoryService(private val db: FushDatabase) {
+         reason: String,
+         changedBy: Long
+     ) = db.withTransaction {
+-        db.requireUserPermission(userId, SecurityPermissions.INVENTORY_ADJUST)
++        db.requireUserPermission(changedBy, SecurityPermissions.INVENTORY_ADJUST)
+         require(status in setOf("ACCEPTED", "QUARANTINE", "BLOCKED", "RETURNED")) { "حالة التشغيلة غير صالحة" }
+         val key = InventoryMath.lotKey(lotNo)
+         val expKey = InventoryMath.expiryKey(expiryDate)
+@@ -305,7 +305,7 @@ class AdvancedInventoryService(private val db: FushDatabase) {
+         reorderLevel: Double,
+         updatedBy: Long
+     ): Long = db.withTransaction {
+-        db.requireUserPermission(userId, SecurityPermissions.INVENTORY_ADJUST)
++        db.requireUserPermission(updatedBy, SecurityPermissions.INVENTORY_ADJUST)
+         val normalizedLevel = WarehouseReorderMath.validateLevel(reorderLevel)
+         require(db.warehouseDao().allActive().any { it.id == warehouseId }) { "المخزن غير موجود أو غير نشط" }
+         requireNotNull(db.itemDao().byId(itemId)) { "الصنف غير موجود" }
+diff --git a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+index 882e739..1bc2142 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -62,11 +62,14 @@ fun FushErpApp(container: AppContainer) {
+                 }
+             }
+             needsInitialAdmin -> {
+-                InitialAdminSetupScreen(container) { created ->
+-                    user = created
+-                    mfaSetupUserId = created.id
+-                    needsInitialAdmin = false
+-                }
++                InitialAdminSetupScreen(
++                    container = container,
++                    onCreated = { created ->
++                        user = created
++                        mfaSetupUserId = created.id
++                        needsInitialAdmin = false
++                    }
++                )
+             }
+             mfaSetupUserId != null -> {
+                 MfaSetupScreen(
