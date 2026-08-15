@@ -1,0 +1,12 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+index 0407b34..58ad380 100644
+--- a/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
++++ b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+@@ -18,6 +18,7 @@ fun FushDateField(
+         placeholder = { Text(FUSH_DATE_PATTERN) },
+         singleLine = true,
+         enabled = enabled,
++        readOnly = true,
+         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Date),
+         trailingIcon = {
+             TextButton(
