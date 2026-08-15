@@ -38,6 +38,8 @@ jobs:
           python ../../security_rebase_official_14_5_38_r1/apply_patch.py
           git apply --check ../../security_rebase_official_14_5_38_r1/security_rebase.patch
           git apply ../../security_rebase_official_14_5_38_r1/security_rebase.patch
+          git apply --check ../../security_rebase_official_14_5_38_r1/compile_fix_01.patch
+          git apply ../../security_rebase_official_14_5_38_r1/compile_fix_01.patch
           git diff --check
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'versionCode = 77' app/build.gradle.kts
