@@ -1,0 +1,38 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 34074b6..4bb0553 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -720,7 +720,13 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+         }
+     }
+ 
+-    Column(modifier.fillMaxSize().padding(12.dp)) {
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(12.dp),
++        verticalArrangement = Arrangement.spacedBy(10.dp),
++    ) {
++        item {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         FushSectionHeader(
+             title = "الأصناف والوحدات والمخازن",
+             subtitle = "إدارة البيانات الأساسية وحالات التفعيل وتحويلات الوحدات",
+@@ -782,7 +788,9 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+         }
+         Spacer(Modifier.height(7.dp))
+ 
+-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++
++            }
++        }
+             when (section) {
+                 "الوحدات" -> {
+                     item { FushSectionHeader("الوحدات", "${filteredUnits.size} من ${units.size} وحدة") }
+@@ -881,7 +889,6 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+                     }
+                 }
+             }
+-        }
+     }
+ 
+     if (showItem) {
