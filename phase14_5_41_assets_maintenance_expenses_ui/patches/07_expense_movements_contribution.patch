@@ -1,0 +1,80 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index fe1006f..52c0330 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -198,33 +198,57 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+                 }
+             }
+         }
+-        item { Text("الحركات (${filtered.size})", style = MaterialTheme.typography.titleMedium) }
++        item { FushSectionHeader("حركات المصروف", "${filtered.size} حركة مطابقة للفلاتر الحالية.") }
++        if (filtered.isEmpty()) {
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Text("لا توجد حركات مصروف مطابقة للفلاتر الحالية.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++            }
++        }
+         items(filtered, key = { it.expenseId }) { row ->
+-            Card(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text("${row.voucherNo} — ${row.expenseAccountCode} ${row.expenseAccountName}", style = MaterialTheme.typography.titleSmall)
+-                    Text("${expenseDate(row.voucherDate)} | ${expenseMoney(row.amountBase)} | ${row.paymentMethod}")
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text(row.voucherNo, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.expenseAccountCode} — ${row.expenseAccountName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        Text(expenseMoney(row.amountBase), style = MaterialTheme.typography.titleLarge)
++                    }
++                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
++                        FushStatusPill(row.costCenterName, FushStatusTone.Info)
++                        FushStatusPill(row.paymentMethod, FushStatusTone.Neutral)
++                        if (row.attachmentCount > 0) FushStatusPill("${row.attachmentCount} مرفق", FushStatusTone.Success)
++                    }
+                     Text(row.description)
+-                    Text("مركز التكلفة: ${row.costCenterName}" + row.employeeName.takeIf { it.isNotBlank() }?.let { " | الموظف: $it" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
++                    Text("${expenseDate(row.voucherDate)} • ${row.currencyCode} ${expenseMoney(row.amountOriginal)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    row.employeeName.takeIf { it.isNotBlank() }?.let { Text("الموظف: $it", style = MaterialTheme.typography.bodySmall) }
+                     row.salesRepName.takeIf { it.isNotBlank() }?.let { Text("مندوب المبيعات: $it", style = MaterialTheme.typography.bodySmall) }
+                     row.organizationUnit.takeIf { it.isNotBlank() }?.let { Text("الفرع/المنشأة: $it", style = MaterialTheme.typography.bodySmall) }
+                     val parties = listOf(row.customerName, row.supplierName, row.itemName).filter { it.isNotBlank() }
+                     if (parties.isNotEmpty()) Text("الربط: ${parties.joinToString(" • ")}", style = MaterialTheme.typography.bodySmall)
+-                    if (row.referenceType != "NONE") Text("المرجع: ${expenseReferenceName(row.referenceType)} — ${row.referenceNo} ${row.referenceLabel}", style = MaterialTheme.typography.bodySmall)
+-                    if (row.attachmentCount > 0) Text("المرفقات: ${row.attachmentCount}", style = MaterialTheme.typography.bodySmall)
++                    if (row.referenceType != "NONE") {
++                        Text("المرجع: ${expenseReferenceName(row.referenceType)} — ${row.referenceNo} ${row.referenceLabel}", style = MaterialTheme.typography.bodySmall)
++                    }
+                 }
+             }
+         }
+-        item { Text("مساهمة مندوبي المبيعات", style = MaterialTheme.typography.titleMedium) }
+-        if (repContribution.isEmpty()) item { Text("لا توجد بيانات مندوبي مبيعات.", style = MaterialTheme.typography.bodySmall) }
+-        items(repContribution, key = { it.salesRepId }) { r ->
+-            Card(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text(r.salesRepName, style = MaterialTheme.typography.titleSmall)
+-                    Text("صافي المبيعات: ${expenseMoney(r.netSalesBase)}")
+-                    Text("صافي تكلفة البضاعة: ${expenseMoney(r.netCogsBase)}")
+-                    Text("المصروفات المباشرة: ${expenseMoney(r.directExpensesBase)}")
+-                    Text("صافي المساهمة: ${expenseMoney(r.netContributionBase)}", style = MaterialTheme.typography.titleSmall)
++        item { FushSectionHeader("مساهمة مندوبي المبيعات", "صافي المساهمة = صافي المبيعات − صافي تكلفة البضاعة − المصروفات المباشرة.") }
++        if (repContribution.isEmpty()) item { Text("لا توجد بيانات مندوبي مبيعات.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        items(repContribution, key = { it.salesRepId }) { row ->
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text(row.salesRepName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                        FushStatusPill(
++                            expenseMoney(row.netContributionBase),
++                            if (row.netContributionBase >= 0) FushStatusTone.Success else FushStatusTone.Danger
++                        )
++                    }
++                    Text("صافي المبيعات: ${expenseMoney(row.netSalesBase)}", style = MaterialTheme.typography.bodyMedium)
++                    Text("صافي تكلفة البضاعة: ${expenseMoney(row.netCogsBase)}", style = MaterialTheme.typography.bodySmall)
++                    Text("المصروفات المباشرة: ${expenseMoney(row.directExpensesBase)}", style = MaterialTheme.typography.bodySmall)
+                 }
+             }
+         }
