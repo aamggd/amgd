@@ -55,12 +55,16 @@ jobs:
             while IFS= read -r p; do
               echo "  $p"
               git --git-dir="$GITHUB_WORKSPACE/.git" show "refs/remotes/origin/ui-redesign:$p" > /tmp/ui.patch
-              git apply --check /tmp/ui.patch
-              git apply /tmp/ui.patch
+              if git apply --check /tmp/ui.patch; then
+                git apply /tmp/ui.patch
+              else
+                echo "Direct apply failed; trying 3-way for $p"
+                git apply --3way /tmp/ui.patch
+              fi
+              git diff --check
+              git add -A
+              git commit -qm "apply $p"
             done < <(git --git-dir="$GITHUB_WORKSPACE/.git" ls-tree -r --name-only refs/remotes/origin/ui-redesign "$phase/patches" | grep '\.patch$' | sort -V)
-            git diff --check
-            git add -A
-            git commit -qm "$phase"
           }
           apply_remote_phase phase14_5_48_lazy_key_hotfix
           apply_remote_phase phase14_5_49_navigation_feedback_polish
@@ -68,8 +72,7 @@ jobs:
 
           grep -q 'versionCode = 89' app/build.gradle.kts
           grep -q 'versionName = "0.15.4.50-ui-localization-foundation"' app/build.gradle.kts
-          ! find app/src/main/java/com/fush/erp/data app/src/main/java/com/fush/erp/domain -type f -newer app/build.gradle.kts -print -quit | grep -q . || true
-          git diff --check HEAD^
+          git diff --check
           echo "UI50_TREE=$(git write-tree)" | tee "$GITHUB_WORKSPACE/ui50-tree.txt"
 
       - name: Package UI50 source snapshot
