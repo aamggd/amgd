@@ -1,0 +1,37 @@
+name: Inspect Users Permissions Conflicting Hunks
+on:
+  push:
+    branches: ['fush/integration-users-permissions-check']
+    paths: ['.github/workflows/inspect-users-permissions-conflicts.yml']
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct and show conflicting file patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64,gzip,pathlib,re
+          p=pathlib.Path('phase14_5_34_users_permissions')
+          raw=gzip.decompress(base64.b64decode(''.join(x.read_text().strip() for x in sorted(p.glob('patch_*.b64'))))).decode('utf-8')
+          targets=[
+            'app/build.gradle.kts',
+            'app/src/main/java/com/fush/erp/ui/FushErpApp.kt',
+            'app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt',
+            'app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt',
+          ]
+          parts=re.split(r'(?=^diff --git )', raw, flags=re.M)
+          for target in targets:
+              print('\n===== '+target+' =====')
+              found=False
+              for part in parts:
+                  if part.startswith('diff --git ') and (' b/'+target+'\n' in part.split('\n',1)[0]+'\n' or (' b/'+target) in part.split('\n',1)[0]):
+                      print(part)
+                      found=True
+                      break
+              if not found:
+                  print('NOT FOUND')
+          PY
