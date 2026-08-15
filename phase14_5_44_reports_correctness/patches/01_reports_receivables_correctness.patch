@@ -1,0 +1,238 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 6f7981d..f0fcdc1 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 82
+-        versionName = "0.15.4.43-ui-accessibility-polish"
++        versionCode = 83
++        versionName = "0.15.4.44-reports-correctness"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt b/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
+index 00d5fb9..8e96bff 100644
+--- a/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
+@@ -7,6 +7,59 @@ import com.fush.erp.data.entity.*
+ @Dao
+ interface ReportDao {
+     @Query("""
++        WITH customer_balances AS (
++            SELECT c.id AS customerId,
++                   MAX(0.0,
++                       COALESCE((SELECT SUM(si.totalBase)
++                                 FROM sales_invoices si
++                                 WHERE si.customerId=c.id AND si.status='POSTED'
++                                   AND si.paymentType='CREDIT' AND si.invoiceDate <= :to),0)
++                       - COALESCE((SELECT SUM(sr.totalBase)
++                                   FROM sales_returns sr
++                                   JOIN sales_invoices srx ON srx.id=sr.salesInvoiceId
++                                   WHERE sr.customerId=c.id AND sr.status='POSTED'
++                                     AND sr.settlementType='CUSTOMER_CREDIT'
++                                     AND srx.paymentType='CREDIT' AND sr.returnDate <= :to),0)
++                       - COALESCE((SELECT SUM(cra.amountBase)
++                                   FROM customer_receipt_allocations cra
++                                   JOIN customer_receipts cr ON cr.id=cra.receiptId
++                                   JOIN sales_invoices six ON six.id=cra.invoiceId
++                                   WHERE six.customerId=c.id AND six.paymentType='CREDIT'
++                                     AND cr.receiptDate <= :to),0)
++                       + COALESCE((SELECT SUM(CASE
++                                   WHEN pv.voucherType='PAYMENT' THEN pv.amountBase
++                                   WHEN pv.voucherType='RECEIPT' THEN -pv.amountBase
++                                   ELSE 0 END)
++                                   FROM party_vouchers pv
++                                   WHERE pv.customerId=c.id AND pv.status='POSTED'
++                                     AND pv.partyType='CUSTOMER' AND pv.voucherDate <= :to),0)
++                   ) AS outstandingBase,
++                   MAX(0.0,
++                       COALESCE((SELECT SUM(MAX(0.0,
++                           si2.totalBase
++                           - COALESCE((SELECT SUM(sr2.totalBase)
++                                       FROM sales_returns sr2
++                                       WHERE sr2.salesInvoiceId=si2.id AND sr2.status='POSTED'
++                                         AND sr2.settlementType='CUSTOMER_CREDIT' AND sr2.returnDate <= :to),0)
++                           - COALESCE((SELECT SUM(cra2.amountBase)
++                                       FROM customer_receipt_allocations cra2
++                                       JOIN customer_receipts cr2 ON cr2.id=cra2.receiptId
++                                       WHERE cra2.invoiceId=si2.id AND cr2.receiptDate <= :to),0)
++                       ))
++                       FROM sales_invoices si2
++                       WHERE si2.customerId=c.id AND si2.status='POSTED'
++                         AND si2.paymentType='CREDIT' AND si2.invoiceDate <= :to
++                         AND si2.dueDate IS NOT NULL AND si2.dueDate < :to),0)
++                       - MAX(0.0,
++                           COALESCE((SELECT SUM(pv2.amountBase)
++                               FROM party_vouchers pv2
++                               WHERE pv2.customerId=c.id AND pv2.status='POSTED'
++                                 AND pv2.partyType='CUSTOMER' AND pv2.voucherType='RECEIPT'
++                                 AND pv2.voucherDate <= :to),0)
++                       )
++                   ) AS overdueBase
++            FROM customers c
++        )
+         SELECT
+           COALESCE((SELECT SUM(totalBase) FROM sales_invoices WHERE status='POSTED' AND invoiceDate BETWEEN :from AND :to),0) AS grossSalesBase,
+           COALESCE((SELECT SUM(totalBase) FROM sales_returns WHERE status='POSTED' AND returnDate BETWEEN :from AND :to),0) AS salesReturnsBase,
+@@ -22,25 +75,8 @@ interface ReportDao {
+           COALESCE((SELECT SUM(totalBase) FROM purchase_invoices WHERE status='POSTED' AND invoiceDate BETWEEN :from AND :to),0) AS grossPurchasesBase,
+           COALESCE((SELECT SUM(totalBase) FROM purchase_returns WHERE status='POSTED' AND returnDate BETWEEN :from AND :to),0) AS purchaseReturnsBase,
+           COALESCE((SELECT SUM(quantityBase * unitCostBase) FROM stock_movements WHERE movementDate <= :to),0) AS inventoryValueBase,
+-          COALESCE((SELECT SUM(MAX(0,
+-              si.totalBase
+-              - COALESCE((SELECT SUM(sr.totalBase) FROM sales_returns sr
+-                           WHERE sr.salesInvoiceId=si.id AND sr.status='POSTED' AND sr.settlementType='CUSTOMER_CREDIT' AND sr.returnDate <= :to),0)
+-              - COALESCE((SELECT SUM(cra.amountBase) FROM customer_receipt_allocations cra
+-                           JOIN customer_receipts cr ON cr.id=cra.receiptId
+-                           WHERE cra.invoiceId=si.id AND cr.receiptDate <= :to),0)
+-          )) FROM sales_invoices si
+-             WHERE si.status='POSTED' AND si.paymentType='CREDIT' AND si.invoiceDate <= :to),0) AS receivablesBase,
+-          COALESCE((SELECT SUM(MAX(0,
+-              si.totalBase
+-              - COALESCE((SELECT SUM(sr.totalBase) FROM sales_returns sr
+-                           WHERE sr.salesInvoiceId=si.id AND sr.status='POSTED' AND sr.settlementType='CUSTOMER_CREDIT' AND sr.returnDate <= :to),0)
+-              - COALESCE((SELECT SUM(cra.amountBase) FROM customer_receipt_allocations cra
+-                           JOIN customer_receipts cr ON cr.id=cra.receiptId
+-                           WHERE cra.invoiceId=si.id AND cr.receiptDate <= :to),0)
+-          )) FROM sales_invoices si
+-             WHERE si.status='POSTED' AND si.paymentType='CREDIT'
+-               AND si.invoiceDate <= :to AND si.dueDate IS NOT NULL AND si.dueDate < :to),0) AS overdueBase,
++          COALESCE((SELECT SUM(outstandingBase) FROM customer_balances),0) AS receivablesBase,
++          COALESCE((SELECT SUM(overdueBase) FROM customer_balances),0) AS overdueBase,
+           COALESCE((SELECT COUNT(*) FROM production_orders WHERE plannedDate BETWEEN :from AND :to),0) AS productionOrders,
+           COALESCE((SELECT SUM(pb.acceptedQtyBase) FROM production_batches pb WHERE pb.manufactureDate BETWEEN :from AND :to),0) AS acceptedQtyBase,
+           COALESCE((SELECT SUM(pb.acceptedQtyBase)
+@@ -157,6 +193,35 @@ interface ReportDao {
+             SELECT customerId FROM party_vouchers
+              WHERE customerId IS NOT NULL AND status='POSTED' AND partyType='CUSTOMER'
+                AND voucherType IN ('RECEIPT','PAYMENT') AND voucherDate BETWEEN :from AND :to
++        ),
++        customer_balances AS (
++            SELECT c0.id AS customerId,
++                   MAX(0.0,
++                       COALESCE((SELECT SUM(si0.totalBase)
++                                 FROM sales_invoices si0
++                                 WHERE si0.customerId=c0.id AND si0.status='POSTED'
++                                   AND si0.paymentType='CREDIT' AND si0.invoiceDate <= :to),0)
++                       - COALESCE((SELECT SUM(sr0.totalBase)
++                                   FROM sales_returns sr0
++                                   JOIN sales_invoices srx0 ON srx0.id=sr0.salesInvoiceId
++                                   WHERE sr0.customerId=c0.id AND sr0.status='POSTED'
++                                     AND sr0.settlementType='CUSTOMER_CREDIT'
++                                     AND srx0.paymentType='CREDIT' AND sr0.returnDate <= :to),0)
++                       - COALESCE((SELECT SUM(cra0.amountBase)
++                                   FROM customer_receipt_allocations cra0
++                                   JOIN customer_receipts cr0 ON cr0.id=cra0.receiptId
++                                   JOIN sales_invoices six0 ON six0.id=cra0.invoiceId
++                                   WHERE six0.customerId=c0.id AND six0.paymentType='CREDIT'
++                                     AND cr0.receiptDate <= :to),0)
++                       + COALESCE((SELECT SUM(CASE
++                                   WHEN pv0.voucherType='PAYMENT' THEN pv0.amountBase
++                                   WHEN pv0.voucherType='RECEIPT' THEN -pv0.amountBase
++                                   ELSE 0 END)
++                                   FROM party_vouchers pv0
++                                   WHERE pv0.customerId=c0.id AND pv0.status='POSTED'
++                                     AND pv0.partyType='CUSTOMER' AND pv0.voucherDate <= :to),0)
++                   ) AS outstandingBase
++            FROM customers c0
+         )
+         SELECT c.id AS customerId, c.nameAr AS customerName, c.province AS province,
+                COALESCE((SELECT COUNT(*) FROM sales_invoices si
+@@ -176,28 +241,11 @@ interface ReportDao {
+                 - COALESCE((SELECT SUM(pvp.amountBase) FROM party_vouchers pvp
+                              WHERE pvp.customerId=c.id AND pvp.status='POSTED' AND pvp.partyType='CUSTOMER'
+                                AND pvp.voucherType='PAYMENT' AND pvp.voucherDate BETWEEN :from AND :to),0)) AS collectionsBase,
+-               COALESCE((SELECT SUM(MAX(0,
+-                    si2.totalBase
+-                    - COALESCE((SELECT SUM(sr2.totalBase) FROM sales_returns sr2
+-                                 WHERE sr2.salesInvoiceId=si2.id AND sr2.status='POSTED' AND sr2.settlementType='CUSTOMER_CREDIT' AND sr2.returnDate <= :to),0)
+-                    - COALESCE((SELECT SUM(cra2.amountBase) FROM customer_receipt_allocations cra2
+-                                 JOIN customer_receipts cr2 ON cr2.id=cra2.receiptId
+-                                 WHERE cra2.invoiceId=si2.id AND cr2.receiptDate <= :to),0)
+-               )) FROM sales_invoices si2
+-                   WHERE si2.customerId=c.id AND si2.status='POSTED'
+-                     AND si2.paymentType='CREDIT' AND si2.invoiceDate <= :to),0) AS outstandingBase
++               COALESCE(cb.outstandingBase,0) AS outstandingBase
+         FROM customers c
++        LEFT JOIN customer_balances cb ON cb.customerId=c.id
+         WHERE c.id IN (SELECT customerId FROM period_activity)
+-           OR EXISTS (
+-               SELECT 1 FROM sales_invoices sio
+-               WHERE sio.customerId=c.id AND sio.status='POSTED' AND sio.paymentType='CREDIT' AND sio.invoiceDate <= :to
+-                 AND (sio.totalBase
+-                      - COALESCE((SELECT SUM(sro.totalBase) FROM sales_returns sro
+-                                   WHERE sro.salesInvoiceId=sio.id AND sro.status='POSTED' AND sro.settlementType='CUSTOMER_CREDIT' AND sro.returnDate <= :to),0)
+-                      - COALESCE((SELECT SUM(crao.amountBase) FROM customer_receipt_allocations crao
+-                                   JOIN customer_receipts cro ON cro.id=crao.receiptId
+-                                   WHERE crao.invoiceId=sio.id AND cro.receiptDate <= :to),0)) > 0.000001
+-           )
++           OR COALESCE(cb.outstandingBase,0) > 0.000001
+         ORDER BY grossSalesBase DESC, outstandingBase DESC, c.nameAr
+     """)
+     suspend fun customerSales(from: Long, to: Long): List<CustomerSalesReportRow>
+diff --git a/app/src/main/java/com/fush/erp/domain/ReportMath.kt b/app/src/main/java/com/fush/erp/domain/ReportMath.kt
+index f041259..72cd382 100644
+--- a/app/src/main/java/com/fush/erp/domain/ReportMath.kt
++++ b/app/src/main/java/com/fush/erp/domain/ReportMath.kt
+@@ -9,6 +9,20 @@ object ReportMath {
+ 
+     fun net(gross: Double, returns: Double): Double = gross - returns
+ 
++    fun customerOutstandingBase(
++        creditInvoices: Double,
++        customerCreditReturns: Double,
++        allocatedReceipts: Double,
++        partyReceipts: Double,
++        partyPayments: Double
++    ): Double = (creditInvoices - customerCreditReturns - allocatedReceipts - partyReceipts + partyPayments)
++        .coerceAtLeast(0.0)
++
++    fun overdueAfterUnallocatedReceipts(
++        overdueAfterAllocatedReceipts: Double,
++        partyReceipts: Double
++    ): Double = (overdueAfterAllocatedReceipts - partyReceipts).coerceAtLeast(0.0)
++
+     fun unitCost(totalCost: Double, acceptedQty: Double): Double =
+         if (acceptedQty <= 0.0 || !totalCost.isFinite()) 0.0 else totalCost / acceptedQty
+ 
+diff --git a/app/src/test/java/com/fush/erp/domain/ReportMathTest.kt b/app/src/test/java/com/fush/erp/domain/ReportMathTest.kt
+index 5d4a03d..4ad81fe 100644
+--- a/app/src/test/java/com/fush/erp/domain/ReportMathTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/ReportMathTest.kt
+@@ -20,4 +20,33 @@ class ReportMathTest {
+         assertEquals(200, ReportMath.productVolumeMl("FG-000001", "fush 200ml"))
+         assertEquals(null, ReportMath.productVolumeMl("PK-BOTTLE-60", "عبوة"))
+     }
++
++    @Test fun customer_outstanding_includes_linked_party_vouchers() {
++        assertEquals(0.0, ReportMath.customerOutstandingBase(
++            creditInvoices = 100_000.0,
++            customerCreditReturns = 0.0,
++            allocatedReceipts = 0.0,
++            partyReceipts = 100_000.0,
++            partyPayments = 0.0
++        ), 0.0001)
++
++        assertEquals(40_000.0, ReportMath.customerOutstandingBase(
++            creditInvoices = 100_000.0,
++            customerCreditReturns = 10_000.0,
++            allocatedReceipts = 30_000.0,
++            partyReceipts = 25_000.0,
++            partyPayments = 5_000.0
++        ), 0.0001)
++    }
++
++    @Test fun unallocated_customer_receipt_reduces_overdue_oldest_first_without_aging_payments() {
++        assertEquals(0.0, ReportMath.overdueAfterUnallocatedReceipts(
++            overdueAfterAllocatedReceipts = 100_000.0,
++            partyReceipts = 100_000.0
++        ), 0.0001)
++        assertEquals(60_000.0, ReportMath.overdueAfterUnallocatedReceipts(
++            overdueAfterAllocatedReceipts = 100_000.0,
++            partyReceipts = 40_000.0
++        ), 0.0001)
++    }
+ }
