@@ -79,6 +79,7 @@ object BackupRestoreManager {
 
             val now = System.currentTimeMillis()
             val dbHash = BackupArchiveCodec.sha256(snapshot)
+            val backupKey = BackupEncryptionKeyProvider.getOrCreate()
             BackupArchiveCodec.writeArchive(
                 snapshot,
                 archive,
@@ -89,7 +90,8 @@ object BackupRestoreManager {
                     schemaVersion = actualSchema,
                     createdAt = now,
                     databaseSha256 = dbHash
-                )
+                ),
+                backupKey
             )
             val archiveSize = archive.length()
             val displayName = archive.name.substringBeforeLast('-') + ".fushbackup"
@@ -109,7 +111,7 @@ object BackupRestoreManager {
         val candidate = File(stageDir, "candidate-${System.nanoTime()}.db")
         try {
             val manifest = context.contentResolver.openInputStream(uri)?.use {
-                BackupArchiveCodec.extractAndVerify(it, candidate)
+                BackupArchiveCodec.extractAndVerify(it, candidate, BackupEncryptionKeyProvider.getOrCreate())
             } ?: error("تعذر فتح ملف النسخة الاحتياطية")
             require(isCompatibleBackupPackage(manifest.packageId)) { "هذه النسخة لا تخص تطبيق Fush ERP الحالي" }
             require(manifest.schemaVersion in 1..CURRENT_SCHEMA_VERSION) {
@@ -130,7 +132,7 @@ object BackupRestoreManager {
         val pending = File(pendingDir, PENDING_DB)
         try {
             val manifest = context.contentResolver.openInputStream(inspection.sourceUri)?.use {
-                BackupArchiveCodec.extractAndVerify(it, temp)
+                BackupArchiveCodec.extractAndVerify(it, temp, BackupEncryptionKeyProvider.getOrCreate())
             } ?: error("تعذر إعادة فتح ملف النسخة الاحتياطية")
             require(isCompatibleBackupPackage(manifest.packageId)) { "هذه النسخة لا تخص Fush ERP" }
             require(manifest.schemaVersion == inspection.schemaVersion) { "تغير إصدار النسخة المحددة أثناء عملية الاستعادة" }
