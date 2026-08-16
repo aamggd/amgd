@@ -1,0 +1,117 @@
+# FUSH ERP Mobile — Central Integration Registry
+
+Branch: `fush/integration-current`
+
+Phase: `P0 — Central Integration Registry`
+
+Control status: **ACTIVE / BRANCH ONLY**
+
+> This registry is the control ledger for incremental integration. It does not promote or merge anything to `fush/main` by itself.
+
+## 1. Central Baseline
+
+The branch plan originally recorded Phase 14.5.54 as a central candidate pending the main conversation's adoption decision. The latest main-control state available to this integration branch identifies Phase **14.5.54 Printing Integrated** as the current accepted Central Baseline. If the main conversation publishes a newer Central Baseline, P1 and later work must be re-established on that newer baseline before any handoff is integrated.
+
+| Field | Pinned value |
+|---|---|
+| Baseline | Phase 14.5.54 Printing Integrated |
+| Source/integration branch | `fush/integration-printing-14.5.54` |
+| Branch record commit used to establish `fush/integration-current` | `5095ba46a676fd6a8e048f2325c433a1f336d05d` |
+| Validated build workflow commit | `36ac48935ecc9d71c899481b0901a1c69b7354be` |
+| Workflow run | `31909754750` |
+| Artifact | `FushERP-Phase14.5.54-Printing-Integrated-Build` |
+| Artifact ID | `9253417429` |
+| Artifact digest | `sha256:bdcfd84e2a869589f79a2ce054340202e4467ff1fade1bc191b74235b1216b54` |
+| Final integrated source tree | `1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff` |
+| Application ID | `com.fush.erp.recovery` |
+| Room schema at baseline | `34` |
+| Destructive migration | **Not present** |
+| Unit tests | **PASS** |
+| Release build | **PASS** |
+| Zipalign | **PASS** |
+
+`versionCode = 93` and `versionName = 0.15.4.54-printing-integrated` are recorded only as identifiers of the already validated baseline artifact. They are **not** declared by this branch as the final version for any future integrated release.
+
+## 2. Immediate Baseline Lineage / Handoff SHAs
+
+| Sequence | Source | Pinned SHA / identity | Result |
+|---|---|---|---|
+| 1 | Validated Central Phase 14.5.52 | workflow commit `4d02eecdc22ce1ee67652532683c64cb79c51396`; final source tree `a350a09957e1591dbecb270533d25314aa422a27` | Inherited by 14.5.53 |
+| 2 | UI handoff into 14.5.53 | `657f8db9508551dde3d7143c34ee38f3f48aab08` | Integrated and validated |
+| 3 | Users/permissions handoff into 14.5.53 | `0ed4877c17d14c6ede05ed3c288cd5d55ca2a7f3` | Integrated and validated |
+| 4 | Phase 14.5.53 UI + Security integration | workflow commit `58dbba04ecd6cd1aa10d60059c1c1f950d101476`; source tree `a0e6f339cd604510c3019dd628561a152a44dcaf` | Base for 14.5.54 |
+| 5 | Reports/printing handoff into 14.5.54 | `fush/reports-printing@419c2264b6b69f03d20c3b57cb93cfd99a50fde1` | Integrated and validated |
+| 6 | Phase 14.5.54 Printing Integrated | workflow commit `36ac48935ecc9d71c899481b0901a1c69b7354be`; final source tree `1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff` | Current Central Baseline |
+
+### Consolidated inherited scope from validated 14.5.52
+
+The 14.5.52 build record identifies these integrated areas: Accounting 14.5.40–14.5.41, Reports/Printing 14.5.47–14.5.51, Professional UI 14.5.48–14.5.50, with existing users/permissions security retained. The old 14.5.52 record is kept as a validated consolidated source-tree identity; this registry does not invent individual historical handoff commit SHAs that are not explicitly pinned by its build record.
+
+## 3. Room / Migration Registry — Initial State
+
+This section is authoritative for integration numbering only when new handoffs are accepted into this branch.
+
+| Schema transition | Origin | Integration status |
+|---|---|---|
+| `32 -> 33` | Existing Security migration | Registered / inherited |
+| `33 -> 34` | Central Fixed Assets migration | Registered / inherited |
+
+Current baseline schema: `34`.
+
+No Room schema change is introduced by P0. No migration number is allocated by P0.
+
+For future handoffs, any branch-local migration/schema number is treated as **BRANCH ONLY / PROVISIONAL** until this registry assigns the final integration sequence.
+
+## 4. Integration Queue
+
+No specialized branch is merged in P0. P1 starts with **one branch / one phase only** after dependency review and after confirming that the main conversation has not published a newer Central Baseline.
+
+| Order | Branch | Handoff SHA | Dependency review | Room delta | Status |
+|---|---|---|---|---|---|
+| — | — | — | — | — | `PENDING P1` |
+
+## 5. P0 Validation Gate
+
+P0 changes integration-control documentation only; it does not modify Android application source, Room schema, accounting logic, inventory logic, production logic, or signing configuration.
+
+The exact pinned Phase 14.5.54 application source tree was already validated by workflow run `31909754750` with:
+
+- Unit tests: **PASS**
+- Release build: **PASS**
+- Application ID: `com.fush.erp.recovery`
+- Room schema: `34`
+- Destructive migration fallback: **not present**
+- Zipalign: **PASS**
+
+Because P0 does not modify the application source tree, these source-level gates remain the pinned baseline verification for this phase. Any application-code integration in P1 or later must run the full gate again after applying exactly one handoff.
+
+## 6. Signing Control
+
+The existing 14.5.54 validation record reports the official certificate SHA-256 as:
+
+`22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86`
+
+No keystore, certificate private key, or password is stored or added by this registry. P0 performs no signing.
+
+## 7. P0 Impact Statement
+
+- Business Logic changed: **No**
+- Room Schema changed: **No**
+- Migration added: **No**
+- Accounting affected: **No**
+- Inventory affected: **No**
+- Production affected: **No**
+- Expense logic affected: **No**
+- Application ID changed: **No**
+- Signing material changed: **No**
+
+## 8. Rules for P1+
+
+1. Confirm the latest main-adopted Central Baseline before every integration phase.
+2. Integrate only one specialized branch phase at a time.
+3. Pin the exact handoff commit SHA before applying it.
+4. Record included and excluded files/changes.
+5. Resolve Room migration numbering here; never accept branch-local final numbering blindly.
+6. Run Unit, integration, migration (when applicable), accounting sanity, inventory sanity, regression, release build, and install/upgrade gates as applicable.
+7. Do not merge directly to `fush/main`.
+8. Do not sign in a public workflow and do not store signing secrets in GitHub.
