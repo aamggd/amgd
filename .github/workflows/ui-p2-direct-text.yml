@@ -1,0 +1,180 @@
+name: UI P2 Direct Text Localization
+
+on:
+  push:
+    branches: [fush/ui-professional-redesign-p2]
+    paths:
+      - 'ui_p2/tools/localize_direct_text.py'
+      - '.github/workflows/ui-p2-direct-text.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  BASE_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  APP_ID: 'com.fush.erp.recovery'
+
+jobs:
+  localize-direct-text:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout P2 work branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/ui-professional-redesign-p2
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Guard exact requested Central baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_CENTRAL_HEAD" HEAD
+          test "$(git rev-parse "$BASE_CENTRAL_HEAD:central_source")" = "$BASE_SOURCE_TREE"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
+
+      - name: Record protected-tree hashes before P2
+        shell: bash
+        run: |
+          set -euo pipefail
+          find central_source/app/src/main/java/com/fush/erp/data central_source/app/src/main/java/com/fush/erp/domain central_source/app/schemas -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/protected-before.sha256
+          sha256sum central_source/app/build.gradle.kts > /tmp/build-before.sha256
+
+      - name: Generate direct Text localization resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ui_p2/tools/localize_direct_text.py
+
+      - name: Validate generated resources and placeholders
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, xml.etree.ElementTree as ET
+          en=Path('central_source/app/src/main/res/values/p2_direct_text.xml')
+          ar=Path('central_source/app/src/main/res/values-ar/p2_direct_text.xml')
+          assert en.is_file() and ar.is_file()
+          er=ET.parse(en).getroot(); arroot=ET.parse(ar).getroot()
+          em={x.attrib['name']: ''.join(x.itertext()) for x in er.findall('string')}
+          am={x.attrib['name']: ''.join(x.itertext()) for x in arroot.findall('string')}
+          assert em.keys()==am.keys(), (len(em),len(am),sorted(em.keys()-am.keys())[:10],sorted(am.keys()-em.keys())[:10])
+          pat=re.compile(r'%\d+\$[sdfoxegc]')
+          for k in em:
+              ep=sorted(pat.findall(em[k])); ap=sorted(pat.findall(am[k]))
+              assert ep==ap, (k,ep,ap,em[k],am[k])
+          assert len(em)>0
+          print('P2_RESOURCE_PAIRS',len(em))
+          PY
+
+      - name: Stage and enforce P2-only changed-file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A central_source ui_p2/generated
+          git diff --cached --check
+          git diff --cached --name-only > /tmp/changed.txt
+          cat /tmp/changed.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          bad=[]
+          for p in Path('/tmp/changed.txt').read_text().splitlines():
+              ok=(
+                p.startswith('central_source/app/src/main/java/com/fush/erp/ui/') and p.endswith('.kt')
+              ) or p in {
+                'central_source/app/src/main/res/values/p2_direct_text.xml',
+                'central_source/app/src/main/res/values-ar/p2_direct_text.xml',
+              } or p.startswith('ui_p2/generated/')
+              if not ok: bad.append(p)
+          assert not bad, f'Unexpected P2 changed files: {bad}'
+          PY
+          sha256sum -c /tmp/protected-before.sha256
+          sha256sum -c /tmp/build-before.sha256
+          ! git diff --cached --name-only | grep -E '^central_source/app/src/main/java/com/fush/erp/(data|domain)/|^central_source/app/schemas/|^central_source/app/build.gradle.kts$'
+
+      - name: Unit tests
+        working-directory: central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Release guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=central_source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='com.fush.erp.recovery'"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          sha256sum "$APK" | tee ui_p2/generated/release-apk.sha256
+
+      - name: Measure remaining hard-coded UI candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ui_p2/tools/extract_localization.py > ui_p2/generated/post_direct_inventory.log
+          cp ui_p2/extract/summary.json ui_p2/generated/post_direct_summary.json
+          git add -A ui_p2/generated
+          git diff --cached --check
+
+      - name: Commit validated P2 direct localization to work branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH UI P2 CI'
+          git config user.email 'ui-p2-ci@fush.local'
+          git add -A central_source ui_p2/generated
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit.'
+          else
+            git commit -m 'UI P2: localize direct Text literals on Central baseline'
+            git push origin HEAD:fush/ui-professional-redesign-p2
+          fi
+
+      - name: Upload P2 direct localization evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-UI-P2-Direct-Localization-Validation
+          path: |
+            ui_p2/generated/direct_text_report.json
+            ui_p2/generated/post_direct_summary.json
+            ui_p2/generated/post_direct_inventory.log
+            ui_p2/generated/release-apk.sha256
+            central_source/app/src/main/res/values/p2_direct_text.xml
+            central_source/app/src/main/res/values-ar/p2_direct_text.xml
+          if-no-files-found: error
