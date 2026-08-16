@@ -1,0 +1,110 @@
+name: Performance P0 Runtime Kit
+
+on:
+  push:
+    branches: [fush/performance-stability]
+    paths:
+      - '.github/workflows/performance-p0-runtime-kit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-runtime-kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/performance-stability
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android runtime packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "emulator" \
+            "system-images;android-30;default;x86_64"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Validate exact Central baseline source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = '7bd587742fe5a0ad0b2358ac52daec97bd351fe4' || {
+            echo "Branch contains P0 tooling commit(s); validating that Central source is unchanged from the pinned baseline"
+            git diff --exit-code 7bd587742fe5a0ad0b2358ac52daec97bd351fe4 -- central_source
+          }
+          grep -q 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' central_source/app/src/main
+
+      - name: Full unit tests
+        working-directory: central_source
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
+      - name: Release build
+        working-directory: central_source
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Release safety checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=central_source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | tee p0-apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery'" p0-apk-badging.txt
+          test -s central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q '"version": 34' central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' central_source/app/src/main
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          sha256sum "$APK" > p0-latest-unsigned-apk.sha256
+
+      - name: Assemble local emulator kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          KIT=p0-runtime-kit
+          mkdir -p "$KIT/sdk" "$KIT/app" "$KIT/meta"
+          cp -a "$ANDROID_HOME/platform-tools" "$KIT/sdk/"
+          cp -a "$ANDROID_HOME/emulator" "$KIT/sdk/"
+          mkdir -p "$KIT/sdk/system-images/android-30/default"
+          cp -a "$ANDROID_HOME/system-images/android-30/default/x86_64" "$KIT/sdk/system-images/android-30/default/"
+          cp -a "$ANDROID_HOME/cmdline-tools" "$KIT/sdk/"
+          cp -a "$ANDROID_HOME/licenses" "$KIT/sdk/" || true
+          cp central_source/app/build/outputs/apk/release/app-release-unsigned.apk "$KIT/app/FushERP-P0-latest-central-unsigned.apk"
+          cp central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json "$KIT/meta/room-schema-34.json"
+          cp p0-apk-badging.txt "$KIT/meta/"
+          cp p0-latest-unsigned-apk.sha256 "$KIT/meta/"
+          printf '%s\n' '7bd587742fe5a0ad0b2358ac52daec97bd351fe4' > "$KIT/meta/central-baseline-commit.txt"
+          git -C central_source init -q
+          git -C central_source add -A
+          git -C central_source write-tree > "$KIT/meta/central-source-tree.txt"
+          tar -C "$KIT" -czf FushERP-Performance-P0-Runtime-Kit.tar.gz .
+          sha256sum FushERP-Performance-P0-Runtime-Kit.tar.gz > FushERP-Performance-P0-Runtime-Kit.tar.gz.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Performance-P0-Runtime-Kit
+          path: |
+            FushERP-Performance-P0-Runtime-Kit.tar.gz
+            FushERP-Performance-P0-Runtime-Kit.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 2
