@@ -69,14 +69,19 @@ jobs:
           git apply --check ../ui-p1.patch
           git apply ../ui-p1.patch
           git diff --check
-          test "$(git diff --name-only | wc -l)" -eq 6
-          git diff --name-only | grep -qx 'UI_PLAN_P1_UNIFIED_DESIGN_SYSTEM_SCOPE.md'
-          git diff --name-only | grep -qx 'app/src/main/java/com/fush/erp/ui/FushDesignSystem.kt'
-          git diff --name-only | grep -qx 'app/src/main/java/com/fush/erp/ui/FushTheme.kt'
-          git diff --name-only | grep -qx 'app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt'
-          git diff --name-only | grep -qx 'app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt'
-          git diff --name-only | grep -qx 'app/src/test/java/com/fush/erp/ui/FushDesignSystemContractTest.kt'
           git add -A
+          git diff --cached --name-only | sort | tee ../ui-p1-changed-files.txt
+          cat > ../ui-p1-expected-files.txt <<'EOF'
+          UI_PLAN_P1_UNIFIED_DESIGN_SYSTEM_SCOPE.md
+          app/src/main/java/com/fush/erp/ui/FushDesignSystem.kt
+          app/src/main/java/com/fush/erp/ui/FushTheme.kt
+          app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+          app/src/test/java/com/fush/erp/ui/FushDesignSystemContractTest.kt
+          EOF
+          sed -i 's/^          //' ../ui-p1-expected-files.txt
+          sort -o ../ui-p1-expected-files.txt ../ui-p1-expected-files.txt
+          diff -u ../ui-p1-expected-files.txt ../ui-p1-changed-files.txt
           git commit -qm "Integrate UI Professional Redesign P1"
           echo "ui_p1_source_tree=$(git write-tree)" | tee ../ui-p1-source-tree.txt
 
