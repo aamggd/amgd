@@ -128,7 +128,7 @@ must_replace(
     '                    FushSectionHeader("إجراء جديد", "سند المصروف يربط الحساب بالخزينة والأبعاد التشغيلية دون إضافة حسابات فرعية غير ضرورية.")\n                    Button(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("تسجيل مصروف جديد") }',
     '                    FushSectionHeader("إجراء جديد", "أنشئ مسودة مصروف، ثم أرسلها للاعتماد قبل السماح بالدفع والترحيل المحاسبي.")\n                    Button(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("إنشاء مسودة مصروف") }',
 )
-workflow_ui = r'''        item { FushSectionHeader("دورة اعتماد المصروفات", "حالة الاعتماد مستقلة عن حالة الدفع، ولا ينشأ القيد المحاسبي إلا بعد الاعتماد ثم الدفع.") }
+workflow_ui = '''        item { FushSectionHeader("دورة اعتماد المصروفات", "حالة الاعتماد مستقلة عن حالة الدفع، ولا ينشأ القيد المحاسبي إلا بعد الاعتماد ثم الدفع.") }
         if (workflowRequests.isEmpty()) {
             item {
                 ElevatedCard(Modifier.fillMaxWidth()) {
@@ -140,7 +140,7 @@ workflow_ui = r'''        item { FushSectionHeader("دورة اعتماد الم
             val lifecycle = ExpenseLifecyclePolicy.lifecycleLabel(request.approvalStatus, request.paymentStatus)
             val tone = when (lifecycle) {
                 ExpenseLifecyclePolicy.PAID -> FushStatusTone.Success
-                ExpenseLifecyclePolicy.REJECTED -> FushStatusTone.Danger
+                ExpenseLifecyclePolicy.REJECTED -> FushStatusTone.Warning
                 ExpenseLifecyclePolicy.APPROVED -> FushStatusTone.Info
                 ExpenseLifecyclePolicy.SUBMITTED -> FushStatusTone.Warning
                 else -> FushStatusTone.Neutral
@@ -221,7 +221,7 @@ must_replace(
 must_replace(screens, '        title = { Text("مصروف جديد") },', '        title = { Text("مسودة مصروف جديدة") },')
 must_replace(screens, '            ) { Text("ترحيل المصروف") }', '            ) { Text("حفظ المسودة") }')
 
-reject_dialog = r'''
+reject_dialog = '''
     rejectTarget?.let { target ->
         AlertDialog(
             onDismissRequest = { rejectTarget = null; rejectReason = "" },
