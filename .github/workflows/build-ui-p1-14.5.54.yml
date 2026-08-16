@@ -1,0 +1,161 @@
+name: Build UI P1 Unified Design System 14.5.54
+
+on:
+  push:
+    branches: [fush/ui-professional-redesign]
+    paths:
+      - '.github/workflows/build-ui-p1-14.5.54.yml'
+      - 'phase14_5_54_ui_plan_p1_unified_design_system/payload/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout UI branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact validated Central 14.5.54 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore baseline and apply P1 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=$(find artifacts/base54 -type f -name 'FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip' -print -quit)
+          test -n "$ZIP"
+          test -s "$ZIP"
+          echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  '"$ZIP" | sha256sum -c -
+
+          mkdir -p sources/base54 final-repo validation
+          unzip -q "$ZIP" -d sources/base54
+          BASE=$(find sources/base54 -mindepth 1 -maxdepth 1 -type d -print -quit)
+          test -n "$BASE"
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" final-repo/
+
+          PAYLOAD=phase14_5_54_ui_plan_p1_unified_design_system/payload/p1.patch.gz.b64
+          test -s "$PAYLOAD"
+          echo '5447855bb849e90daa5f4d4d2d23d3a76d0721bd0dedc2869cd6ac2ee43800bd  '"$PAYLOAD" | sha256sum -c -
+          base64 -d "$PAYLOAD" | gzip -dc > validation/p1.patch
+          echo '946e1f848bbd579b4cdf0d2b174b71609c3eecd0f5c52bab8badc600eba5c38c  validation/p1.patch' | sha256sum -c -
+
+          cd final-repo
+          git init -q
+          git config user.email ui-p1@fush.local
+          git config user.name 'FUSH UI P1'
+          git add -A
+          git commit -qm baseline-14.5.54
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+
+          git apply --check ../validation/p1.patch
+          git apply ../validation/p1.patch
+          git diff --check
+
+          git diff --name-only | sort > ../validation/changed-files.txt
+          cat > ../validation/expected-files.txt <<'EOF'
+          UI_PLAN_P1_UNIFIED_DESIGN_SYSTEM_SCOPE.md
+          app/src/main/java/com/fush/erp/ui/FushDesignSystem.kt
+          app/src/main/java/com/fush/erp/ui/FushTheme.kt
+          app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+          app/src/test/java/com/fush/erp/ui/FushDesignSystemContractTest.kt
+          EOF
+          sed -i 's/^          //' ../validation/expected-files.txt
+          sort -o ../validation/expected-files.txt ../validation/expected-files.txt
+          diff -u ../validation/expected-files.txt ../validation/changed-files.txt
+
+          ! git diff --name-only | grep -E '^app/src/main/java/com/fush/erp/(data|domain)/'
+          ! git diff --name-only | grep -E '^app/src/main/java/com/fush/erp/ui/screens/'
+          ! git diff --name-only | grep -E '^app/schemas/'
+          ! git diff --name-only | grep -E '^app/build.gradle.kts$'
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          test -f app/src/main/java/com/fush/erp/ui/FushDesignSystem.kt
+          test -f app/src/test/java/com/fush/erp/ui/FushDesignSystemContractTest.kt
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Release guards and validation report
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$APK"
+          cd ..
+          sha256sum final-repo/app/build/outputs/apk/release/app-release-unsigned.apk > validation/release-apk.sha256
+          {
+            echo 'P1 Unified Design System validation: PASS'
+            echo 'Baseline: Central 14.5.54 Printing Integrated'
+            echo 'Baseline source SHA-256: 8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1'
+            echo 'P1 patch SHA-256: 946e1f848bbd579b4cdf0d2b174b71609c3eecd0f5c52bab8badc600eba5c38c'
+            echo 'Application ID: com.fush.erp.recovery'
+            echo 'Room schema: 34 unchanged'
+            echo 'Unit tests: PASS'
+            echo 'assembleRelease: PASS'
+            echo 'zipalign check: PASS'
+            echo 'P2: NOT STARTED'
+          } > validation/RESULT.txt
+
+      - name: Upload P1 validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-UI-P1-14.5.54-Validation
+          path: |
+            validation/RESULT.txt
+            validation/changed-files.txt
+            validation/release-apk.sha256
+            validation/p1.patch
+          if-no-files-found: error
