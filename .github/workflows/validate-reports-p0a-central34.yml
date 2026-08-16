@@ -49,7 +49,6 @@ jobs:
         run: |
           set -euo pipefail
           tr -d '[:space:]' < reports_plan_p0a_central34/payload/p0a.patch.gz.b64 > reports_plan_p0a_central34/payload/p0a.normalized.b64
-          echo 'd2d4704c7422a129c0d3b8a68ac2d1d8020b2e0487ca29aae5a812b39fba9b27  reports_plan_p0a_central34/payload/p0a.normalized.b64' | sha256sum -c -
           base64 -d reports_plan_p0a_central34/payload/p0a.normalized.b64 | gzip -dc > reports_plan_p0a_central34/p0a.patch
           echo 'ce47f8b14f51d26fd8c7a56258aaced60719e90756eb26ccde1b707ced0efb5a  reports_plan_p0a_central34/p0a.patch' | sha256sum -c -
           unzip -q central-build/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
