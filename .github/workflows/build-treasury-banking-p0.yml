@@ -1,0 +1,118 @@
+name: Validate FUSH Treasury Banking P0
+
+on:
+  push:
+    branches: [fush/treasury-banking]
+    paths:
+      - 'phase_treasury_banking_p0/**'
+      - '.github/workflows/build-treasury-banking-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-treasury-banking-p0:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout treasury branch
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact central Phase 14.5.54 baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore central source and apply P0
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          mkdir -p source decoded
+          unzip -q "$ZIP" -d source
+          ROOT=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$ROOT"
+          cd "$ROOT"
+          git init -q
+          git config user.email validation@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm baseline-14.5.54
+          test "$(git write-tree)" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+          base64 -d "$GITHUB_WORKSPACE/phase_treasury_banking_p0/payload.patch.gz.b64" | gzip -dc > "$GITHUB_WORKSPACE/decoded/treasury-banking-p0.patch"
+          echo 'e00c126b5f13c549c4ea85a158020c7b1f5881aa3a978a2a2c9af3b23f172b98  '"$GITHUB_WORKSPACE"'/decoded/treasury-banking-p0.patch' | sha256sum -c -
+          git am "$GITHUB_WORKSPACE/decoded/treasury-banking-p0.patch"
+          test "$(git write-tree)" = 'bd9bf24296c226f470db8e9a668bd123d33301ce'
+          git diff HEAD^ --check
+
+      - name: Unit tests
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Safety and regression assertions
+        shell: bash
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-printing-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          for code in CUSTOMER_RECEIPT SUPPLIER_PAYMENT EXPENSE_PAYMENT EMPLOYEE_PAYMENT TRANSFER ADJUSTMENT; do
+            grep -q "$code" app/src/main/java/com/fush/erp/domain/TreasuryMovementType.kt
+          done
+          cat > /tmp/expected-files <<'EOF'
+          app/src/main/java/com/fush/erp/data/dao/ReportDao.kt
+          app/src/main/java/com/fush/erp/domain/AccountingReportMath.kt
+          app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          app/src/main/java/com/fush/erp/domain/TreasuryMovementType.kt
+          app/src/test/java/com/fush/erp/domain/AccountingReportMathTest.kt
+          app/src/test/java/com/fush/erp/domain/TreasuryMovementTypePolicyTest.kt
+          EOF
+          git diff HEAD^ --name-only | sort > /tmp/actual-files
+          diff -u /tmp/expected-files /tmp/actual-files
+          ! git diff HEAD^ --name-only | grep -q 'FushDatabase.kt'
+          ! git diff HEAD^ --name-only | grep -q 'Migrations.kt'
+          ! git diff HEAD^ --name-only | grep -q 'app/schemas/'
+
+      - name: Upload validation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Treasury-Banking-P0-Validation
+          path: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
