@@ -11,6 +11,19 @@ import java.util.Locale
 import java.util.UUID
 
 class InventoryService(private val db: FushDatabase) {
+    /**
+     * Recomputes an inventory balance from the stock ledger for a historical cutoff.
+     * No cached/stored quantity is consulted or mutated.
+     */
+    suspend fun balanceAt(warehouseId: Long, itemId: Long, asOf: Long): Double {
+        require(asOf >= 0L) { "تاريخ رصيد المخزون غير صالح" }
+        require(db.warehouseDao().allActive().any { it.id == warehouseId }) { "المخزن غير موجود" }
+        require(db.itemDao().allActive().any { it.id == itemId }) { "الصنف غير موجود" }
+        val result = db.stockDao().balanceAt(warehouseId, itemId, asOf)
+        require(result.isFinite()) { "رصيد المخزون المحسوب غير صالح" }
+        return if (kotlin.math.abs(result) <= StockLedgerInvariant.EPS) 0.0 else result
+    }
+
     suspend fun postOpeningStock(
         warehouseId: Long,
         itemId: Long,

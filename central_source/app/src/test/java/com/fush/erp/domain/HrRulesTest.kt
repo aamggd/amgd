@@ -22,4 +22,17 @@ class HrRulesTest {
         assertFalse(HrRules.trainingIsValid("FAIL", true, true, 500L, null, 1_000L))
         assertFalse(HrRules.authorizationIsValid("REVOKED", 500L, null, 1_000L))
     }
+
+    @Test fun employee_identity_can_be_assigned_or_changed_before_financial_movement() {
+        assertTrue(HrRules.employeeIdentityChangeAllowed(null, 10L, false))
+        assertTrue(HrRules.employeeIdentityChangeAllowed(10L, 11L, false))
+    }
+
+    @Test fun same_employee_identity_remains_valid_after_financial_movement() {
+        assertTrue(HrRules.employeeIdentityChangeAllowed(10L, 10L, true))
+    }
+
+    @Test fun employee_identity_cannot_move_to_another_employee_after_financial_movement() {
+        assertFalse(HrRules.employeeIdentityChangeAllowed(10L, 11L, true))
+    }
 }

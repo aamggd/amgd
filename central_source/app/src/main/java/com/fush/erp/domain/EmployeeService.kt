@@ -198,9 +198,13 @@ class EmployeeService(private val db: FushDatabase) {
         require(employee.status == "ACTIVE") { "موظف الإنتاج غير نشط" }
         order.primaryAssetId?.let { assetId -> assertEmployeeCanOperateAsset(employeeId, assetId) }
         val current = db.employeeDao().operatorAssignment(orderId)
+        val laborAccrued = db.journalDao().bySource("PRODUCTION_LABOR", order.orderNo) != null
+        require(HrRules.employeeIdentityChangeAllowed(current?.employeeId, employeeId, laborAccrued)) {
+            "لا يمكن تغيير موظف الإنتاج بعد ترحيل استحقاق الأجور؛ يجب عكس/تسوية الحركة المالية أولاً مع الحفاظ على employeeId التاريخي"
+        }
         if (current == null) {
             db.employeeDao().insertOperatorAssignment(ProductionOperatorAssignmentEntity(orderId = orderId, employeeId = employeeId, assignedBy = assignedBy))
-        } else {
+        } else if (current.employeeId != employeeId) {
             db.employeeDao().updateOperatorAssignment(current.copy(employeeId = employeeId, assignedBy = assignedBy, assignedAt = System.currentTimeMillis()))
         }
         audit(assignedBy, "ASSIGN", "PRODUCTION_OPERATOR", orderId.toString(), current?.employeeId?.toString() ?: "", employeeId.toString(), "تعيين موظف إنتاج/مشغل وربط استحقاق الأجور بأمر الإنتاج")

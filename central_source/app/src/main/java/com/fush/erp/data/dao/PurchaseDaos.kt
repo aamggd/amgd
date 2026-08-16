@@ -341,6 +341,14 @@ interface StockDao {
     @Query("SELECT COALESCE(SUM(quantityBase), 0) FROM stock_movements WHERE warehouseId = :warehouseId AND itemId = :itemId")
     suspend fun balance(warehouseId: Long, itemId: Long): Double
 
+    /** Canonical historical ledger balance: sum of persisted movements up to and including asOf. */
+    @Query("""
+        SELECT COALESCE(SUM(quantityBase), 0)
+        FROM stock_movements
+        WHERE warehouseId = :warehouseId AND itemId = :itemId AND movementDate <= :asOf
+    """)
+    suspend fun balanceAt(warehouseId: Long, itemId: Long, asOf: Long): Double
+
     @Query("SELECT COALESCE(SUM(ABS(balance)), 0) FROM (SELECT SUM(quantityBase) AS balance FROM stock_movements WHERE warehouseId = :warehouseId GROUP BY itemId)")
     suspend fun absoluteWarehouseBalance(warehouseId: Long): Double
 

@@ -129,6 +129,7 @@ data class EquipmentAuthorizationSummary(
 )
 
 data class EmployeeProductionCompensationRow(
+    val employeeId: Long,
     val orderId: Long,
     val orderNo: String,
     val plannedDate: Long,
