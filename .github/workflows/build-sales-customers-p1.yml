@@ -15,7 +15,7 @@ permissions:
 env:
   CENTRAL_SHA: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
   CENTRAL_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
-  PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+  PATCH_BLOB_SHA1: 'f38b1c8ecd056c032ae093c6f472be3c2ea3146a'
 
 jobs:
   validate-p1:
@@ -56,6 +56,8 @@ jobs:
           set -euo pipefail
           git cat-file -e "${CENTRAL_SHA}^{commit}"
           test "$(git rev-parse ${CENTRAL_SHA})" = "${CENTRAL_SHA}"
+          test "$(git hash-object sales_customers_p1/customer_identity_p1.patch)" = "${PATCH_BLOB_SHA1}"
+          echo "PATCH_SHA256=$(sha256sum sales_customers_p1/customer_identity_p1.patch | awk '{print $1}')"
           rm -rf work-source central-p1-export
           mkdir central-p1-export
           git archive "${CENTRAL_SHA}" central_source | tar -x -C central-p1-export
@@ -73,9 +75,6 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
-          cd "$GITHUB_WORKSPACE"
-          echo "${PATCH_SHA256}  sales_customers_p1/customer_identity_p1.patch" | sha256sum -c -
-          cd work-source
           git apply --check "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
           git apply "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
           git diff --check
