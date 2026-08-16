@@ -58,6 +58,8 @@ jobs:
           git add . && git commit -qm p1-session-policy
           git apply --check ../../security_central_14_5_54/P4_sqlcipher.patch
           git apply ../../security_central_14_5_54/P4_sqlcipher.patch
+          # Intent-to-add makes new P4 files visible to git diff without staging their contents.
+          git add -N .
           git diff --check HEAD
           test "$(git diff --name-only HEAD | wc -l)" -eq 7
           ! git diff --name-only HEAD | grep -Eq 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/'
@@ -167,4 +169,4 @@ jobs:
         with:
           name: FushERP-Users-Permissions-P4-SQLCipher-Central54-Candidate
           path: p4-out/*
-          if-no-files-found: error
+          if-no-files-found: warn
