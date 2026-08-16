@@ -1,0 +1,264 @@
+name: Central Integrate Sales Customers P1
+
+on:
+  push:
+    branches: [fush/sales-p1-central-integration-run]
+    paths:
+      - '.github/workflows/central-integrate-sales-customers-p1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CENTRAL_BASE_HEAD: 'ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48'
+  CENTRAL_BASE_TREE: 'af291928524bafffea73c07439008a5236813289'
+  SOURCE_HANDOFF_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
+  PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+  PATCH_BLOB: '8b5372494baf1e5943de24fa10b7e0a400c85928'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+
+jobs:
+  integrate-sales-customers-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact current Central branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Guard exact evolved Central and exact Sales handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CENTRAL_BASE_HEAD"
+          test "$(git rev-parse HEAD:central_source)" = "$CENTRAL_BASE_TREE"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'TreasuryPartyRequirementPolicy.requireValidSelection' central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -Fq 'SupplierProfileMath.build' central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+
+          git fetch --no-tags origin '+refs/heads/fush/sales-customers:refs/remotes/origin/fush/sales-customers'
+          test "$(git rev-parse refs/remotes/origin/fush/sales-customers)" = "$SOURCE_HANDOFF_SHA"
+          test "$(git rev-parse "$SOURCE_HANDOFF_SHA:sales_customers_p1/customer_identity_p1.patch")" = "$PATCH_BLOB"
+          git show "$SOURCE_HANDOFF_SHA:sales_customers_p1/customer_identity_p1.patch" > /tmp/customer_identity_p1.patch
+          echo "$PATCH_SHA256  /tmp/customer_identity_p1.patch" | sha256sum -c -
+
+      - name: Apply exact Sales P1 functional patch on Central 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name 'FUSH Central Integration'
+          git config user.email 'central-integration@fush.local'
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_BASE_TREE"
+          git commit -qm 'Central before Sales Customers P1'
+
+          git apply --check --recount /tmp/customer_identity_p1.patch
+          git apply --recount /tmp/customer_identity_p1.patch
+          git add -A
+          git diff --cached --check
+
+          cat > /tmp/expected-sales-files <<'EOF'
+          app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+          app/src/main/java/com/fush/erp/domain/SalesService.kt
+          app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt
+          EOF
+          sort /tmp/expected-sales-files -o /tmp/expected-sales-files
+          git diff --cached --name-only | sort > /tmp/actual-sales-files
+          diff -u /tmp/expected-sales-files /tmp/actual-sales-files
+
+          # Sales P1 functional assertions.
+          grep -Fq 'object CustomerMovementIdentity' app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+          grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'CustomerMovementIdentity.requireId(original.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'CustomerMovementIdentity.requireId(invoice.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+
+          # Wave 1 coexistence assertions: Treasury, Accounting P1, Purchases remain present.
+          grep -Fq 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'SupplierProfileMath.build' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+
+          # Sales P1 must not mutate Room/data schema or unrelated Wave 1 files.
+          test -z "$(git diff --cached --name-only | grep -E '^(app/src/main/java/com/fush/erp/data/|app/schemas/|app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt)' || true)"
+          RESULT_TREE=$(git write-tree)
+          echo "$RESULT_TREE" | tee /tmp/sales-result-tree.txt
+
+      - name: Targeted Sales and Customer identity tests
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.CustomerMovementIdentityTest \
+            --tests com.fush.erp.domain.CustomerArMathTest
+
+      - name: Accounting P1 regression
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.AccountingP1IntegrityPolicyTest \
+            --tests com.fush.erp.domain.AccountingValidatorTest
+
+      - name: Treasury party identity regression
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.TreasuryPartyRequirementPolicyTest \
+            --tests com.fush.erp.domain.ControlAccountPolicyTest \
+            --tests com.fush.erp.domain.TreasuryMovementTypePolicyTest
+
+      - name: Purchases Suppliers regression
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.SupplierProfileMathTest \
+            --tests com.fush.erp.domain.SupplierMovementIdentityTest \
+            --tests com.fush.erp.domain.SupplierApMathTest \
+            --tests com.fush.erp.domain.AgingReportMathTest
+
+      - name: Full Unit Tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: assembleRelease
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Application ID, Room 35, migration chain, preservation and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          DB='app/src/main/java/com/fush/erp/data/FushDatabase.kt'
+          MIG='app/src/main/java/com/fush/erp/data/Migrations.kt'
+          SEC='app/src/main/java/com/fush/erp/data/SecurityMigrations.kt'
+          CON='app/src/main/java/com/fush/erp/data/AppContainer.kt'
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+
+          test -s "$APK"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          BADGING="$(${ANDROID_HOME}/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -Fq "name='com.fush.erp.recovery'"
+
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
+
+          for i in $(seq 1 31); do
+            j=$((i+1))
+            grep -Fq "MIGRATION_${i}_${j}" "$MIG"
+            grep -Fq "MIGRATION_${i}_${j}" "$CON"
+          done
+          grep -Fq 'MIGRATION_32_33_SECURITY = object : Migration(32, 33)' "$SEC"
+          grep -Fq 'MIGRATION_32_33_SECURITY' "$CON"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS = object : Migration(33, 34)' "$MIG"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS' "$CON"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$MIG"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$CON"
+
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          ! grep -R -nE 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' "$MIG" | grep -A999 'MIGRATION_34_35_ACCOUNTING_P1' || true
+
+          # Data/schema preservation: Sales P1 introduced no Room/schema changes.
+          test -z "$(git diff HEAD -- app/src/main/java/com/fush/erp/data/FushDatabase.kt app/src/main/java/com/fush/erp/data/Migrations.kt app/src/main/java/com/fush/erp/data/SecurityMigrations.kt app/schemas || true)"
+
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK"
+
+      - name: Create actual Sales P1 integration commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULT_TREE=$(cat /tmp/sales-result-tree.txt)
+          rm -rf central_source
+          cp -a work-source central_source
+          rm -rf central_source/.git central_source/.gradle central_source/.kotlin central_source/app/build central_source/build
+
+          git config user.name 'FUSH Central Integration'
+          git config user.email 'central-integration@fush.local'
+          git add central_source
+          test "$(git write-tree | tr -d '\n')" != ''
+
+          # Ensure no concurrent Central movement occurred before integration push.
+          git fetch --no-tags origin '+refs/heads/fush/integration-current:refs/remotes/origin/fush/integration-current'
+          test "$(git rev-parse refs/remotes/origin/fush/integration-current)" = "$CENTRAL_BASE_HEAD"
+
+          git commit -m 'Central integration: Sales Customers P1 customer identity'
+          INTEGRATION_SHA=$(git rev-parse HEAD)
+          echo "$INTEGRATION_SHA" | tee /tmp/sales-integration-sha.txt
+          git push origin HEAD:refs/heads/fush/integration-current
+
+          # Verify central_source tree in committed repository equals validated work-source tree.
+          test "$(git rev-parse HEAD:central_source)" = "$RESULT_TREE"
+
+      - name: Record Sales P1 integration result
+        shell: bash
+        run: |
+          set -euo pipefail
+          INTEGRATION_SHA=$(cat /tmp/sales-integration-sha.txt)
+          RESULT_TREE=$(cat /tmp/sales-result-tree.txt)
+          mkdir -p central_integration_records
+          cat > central_integration_records/wave1-sales-customers-p1.md <<EOF
+          # Central Integration — Sales / Customers P1 Customer Movement Identity
+          Source Handoff SHA: ${SOURCE_HANDOFF_SHA}
+          Patch SHA-256: ${PATCH_SHA256}
+          Integration Commit SHA: ${INTEGRATION_SHA}
+          Previous Central HEAD: ${CENTRAL_BASE_HEAD}
+          Central source tree after integration: ${RESULT_TREE}
+          Application ID: ${EXPECTED_APP_ID}
+          Room schema: ${EXPECTED_SCHEMA}
+          Migration: none (MIGRATION_34_35_ACCOUNTING_P1 preserved)
+          Targeted Sales/Customer identity tests: PASS
+          Accounting P1 regression: PASS
+          Treasury party-identity regression: PASS
+          Purchases/Suppliers regression: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          Application ID verification: PASS
+          Room 35 + migration chain through 34 -> 35: PASS
+          Data/schema preservation: PASS
+          Destructive migration/reset guards: PASS
+          zipalign: PASS
+          Conflict resolution: AccountingService overlap with Treasury P1 applied cleanly; both TreasuryPartyRequirementPolicy and CustomerMovementIdentity guards preserved.
+          Result: SUCCESS
+          EOF
+          git add central_integration_records/wave1-sales-customers-p1.md
+          git commit -m 'Central record: Sales Customers P1 integration'
+          git push origin HEAD:refs/heads/fush/integration-current
+          echo "FINAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "INTEGRATION_SHA=${INTEGRATION_SHA}" >> "$GITHUB_STEP_SUMMARY"
+          echo "CENTRAL_SOURCE_TREE=${RESULT_TREE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "ROOM_SCHEMA=35" >> "$GITHUB_STEP_SUMMARY"
+          echo "SALES_CUSTOMERS_P1_INTEGRATION_SUCCESS" >> "$GITHUB_STEP_SUMMARY"
