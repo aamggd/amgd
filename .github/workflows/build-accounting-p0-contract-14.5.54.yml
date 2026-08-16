@@ -57,8 +57,8 @@ jobs:
           git config user.name 'FUSH Accounting P0 CI'
           git config user.email 'fush-accounting-p0@example.invalid'
           git add -A && git commit -qm 'accepted Central 14.5.54 baseline'
-          git apply --check ../../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
-          git apply ../../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
+          git apply --check ../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
+          git apply ../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
           git diff --check
 
       - name: Identity Room and scope guards
