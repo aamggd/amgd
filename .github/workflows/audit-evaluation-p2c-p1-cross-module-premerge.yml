@@ -137,6 +137,7 @@ jobs:
 
           cat > /tmp/p2c-expected-files <<'EOF'
           app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          app/src/main/java/com/fush/erp/domain/AccountingService.kt
           app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           app/src/main/java/com/fush/erp/domain/SalesService.kt
           app/src/main/java/com/fush/erp/domain/SupplierProfileMath.kt
