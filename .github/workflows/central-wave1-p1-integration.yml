@@ -1,0 +1,502 @@
+name: Central Wave 1 P1 Integration
+
+on:
+  push:
+    branches: [fush/wave1-central-integration-run]
+    paths:
+      - '.github/workflows/central-wave1-p1-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  START_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  START_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  APP_ID: 'com.fush.erp.recovery'
+  ACCOUNTING_HANDOFF: '7510ff3dc03d28ebf751ebe32624e36ef175b9a7'
+  ACCOUNTING_PATCH_SHA256: '6ef030b26c2ae27ca181bb7b78ddebf9de1ea1e5d0a4ae14e6dbf5c0c88b85ec'
+  TREASURY_HANDOFF: '7a1f1aec9f0315a23b62205aa5e4b049449203cc'
+  TREASURY_PATCH_SHA256: 'bc31448a56946982d7c07e1bdb70c3ff5b426a38bbd2a7a6ebbb239f6edc47c6'
+  PURCHASES_HANDOFF: 'b6a154a908898a25fcb40bd55dddfedce596c643'
+  PURCHASES_PATCH_BLOB: '6dd1066ef1b8e7c2e0fe25b0ec97d0357f7ee921'
+
+jobs:
+  accounting-p1:
+    name: Integrate Accounting P1 Journal Integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    outputs:
+      commit: ${{ steps.result.outputs.commit }}
+      tree: ${{ steps.result.outputs.tree }}
+    steps:
+      - name: Checkout exact Central branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Guard exact Central start and exact Accounting handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$START_CENTRAL_HEAD"
+          test "$(git rev-parse HEAD:central_source)" = "$START_SOURCE_TREE"
+          test "$(git ls-remote origin refs/heads/fush/accounting | cut -f1)" = "$ACCOUNTING_HANDOFF"
+          git fetch --no-tags origin "$ACCOUNTING_HANDOFF"
+          git show "$ACCOUNTING_HANDOFF:fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch" > /tmp/accounting-p1.patch
+          git show "$ACCOUNTING_HANDOFF:fush_accounting/handoffs/P1_journal_integrity/sqlite_p1_smoke.py" > /tmp/accounting-p1-smoke.py
+          echo "$ACCOUNTING_PATCH_SHA256  /tmp/accounting-p1.patch" | sha256sum -c -
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+
+      - name: Apply exact Accounting P1 patch on clean Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source
+          rsync -a --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' central_source/ work-source/
+          cd work-source
+          git init -q
+          git config user.name central-wave1-ci
+          git config user.email central-wave1-ci@users.noreply.github.com
+          git add -A
+          test "$(git write-tree)" = "$START_SOURCE_TREE"
+          git commit -qm 'Central 34 before Accounting P1'
+          git apply --check /tmp/accounting-p1.patch
+          git apply /tmp/accounting-p1.patch
+          git add -A
+          git diff --cached --check
+          printf '%s\n' \
+            'app/src/main/java/com/fush/erp/data/AppContainer.kt' \
+            'app/src/main/java/com/fush/erp/data/FushDatabase.kt' \
+            'app/src/main/java/com/fush/erp/data/Migrations.kt' \
+            'app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt' \
+            'app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt' | sort > /tmp/accounting-expected
+          git diff --cached --name-only | sort > /tmp/accounting-actual
+          diff -u /tmp/accounting-expected /tmp/accounting-actual
+
+      - name: Accounting contract and migration data-preservation regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 /tmp/accounting-p1-smoke.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('work-source')
+          contract=(root/'app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt').read_text()
+          migration=(root/'app/src/main/java/com/fush/erp/data/Migrations.kt').read_text()
+          stable=set()
+          for line in contract.splitlines():
+              if 'AccountingEventSpec(' in line and 'AccountingReplayPolicy.STABLE_SOURCE' in line:
+                  m=re.search(r'AccountingEventSpec\("([A-Z0-9_]+)"', line)
+                  if m: stable.add(m.group(1))
+          block=migration.split('val MIGRATION_34_35_ACCOUNTING_P1',1)[1]
+          migration_stable=set(re.findall(r"'([A-Z][A-Z0-9_]+)'", block.split('""".trimIndent()',1)[0]))
+          assert stable == migration_stable, (stable, migration_stable)
+          assert len(stable) == 13
+          print('ACCOUNTING_P1_STABLE_SOURCE_REGRESSION_OK')
+          PY
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' work-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' work-source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' work-source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' work-source/app/src/main work-source/app/build.gradle.kts
+          p1_block="$(sed -n '/MIGRATION_34_35_ACCOUNTING_P1/,$p' work-source/app/src/main/java/com/fush/erp/data/Migrations.kt)"
+          ! grep -E 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' <<<"$p1_block"
+
+      - name: Accounting targeted domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.AccountingP1IntegrityPolicyTest --tests com.fush.erp.domain.AccountingIntegrationContractTest
+
+      - name: Accounting Full Unit Tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Accounting assembleRelease
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Accounting release safety, migration chain, App ID, zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=work-source
+          APK="$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='com.fush.erp.recovery'"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          grep -Fq '"version": 35' "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          for i in $(seq 1 31); do j=$((i+1)); grep -Fq "MIGRATION_${i}_${j}" "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"; grep -Fq "MIGRATION_${i}_${j}" "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"; done
+          grep -Fq 'MIGRATION_32_33_SECURITY' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -Fq 'Migration(32, 33)' "$ROOT/app/src/main/java/com/fush/erp/data/SecurityMigrations.kt"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -Fq 'Migration(33, 34)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -Fq 'Migration(34, 35)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' "$ROOT/app/src/main" "$ROOT/app/build.gradle.kts"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -P 16 4 "$APK" /tmp/accounting-p1-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 /tmp/accounting-p1-aligned.apk
+
+      - name: Commit Accounting P1 to integration-current
+        id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH Central Integration'
+          git config user.email 'central-integration@fush.local'
+          rsync -a --delete --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' work-source/ central_source/
+          git add central_source
+          ROOT_TREE=$(git write-tree)
+          SOURCE_TREE=$(git rev-parse "$ROOT_TREE:central_source")
+          mkdir -p central_integration_records
+          cat > central_integration_records/wave1-accounting-p1.md <<EOF
+          # Central Integration — Accounting P1 Journal Integrity
+          Handoff SHA: $ACCOUNTING_HANDOFF
+          Patch SHA-256: $ACCOUNTING_PATCH_SHA256
+          Previous Central HEAD: $START_CENTRAL_HEAD
+          Central source tree after integration: $SOURCE_TREE
+          Application ID: com.fush.erp.recovery
+          Room schema: 35
+          Migration: MIGRATION_34_35_ACCOUNTING_P1 (34 -> 35), centrally allocated
+          Targeted/domain regression: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          Data-preservation SQLite smoke: PASS
+          Destructive migration/reset guards: PASS
+          zipalign: PASS
+          Result: SUCCESS
+          EOF
+          git add central_integration_records/wave1-accounting-p1.md
+          git diff --cached --check
+          git commit -m 'Central integration: Accounting P1 journal integrity'
+          git push origin HEAD:fush/integration-current
+          COMMIT=$(git rev-parse HEAD)
+          test "$(git rev-parse HEAD:central_source)" = "$SOURCE_TREE"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "tree=$SOURCE_TREE" >> "$GITHUB_OUTPUT"
+
+  treasury-p1:
+    name: Integrate Treasury Banking P1
+    needs: accounting-p1
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    outputs:
+      commit: ${{ steps.result.outputs.commit }}
+      tree: ${{ steps.result.outputs.tree }}
+    steps:
+      - name: Checkout evolved Central branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Guard Accounting-integrated Central and exact Treasury handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.accounting-p1.outputs.commit }}"
+          test "$(git rev-parse HEAD:central_source)" = "${{ needs.accounting-p1.outputs.tree }}"
+          test "$(git ls-remote origin refs/heads/fush/treasury-banking | cut -f1)" = "$TREASURY_HANDOFF"
+          git fetch --no-tags origin "$TREASURY_HANDOFF"
+          git show "$TREASURY_HANDOFF:phase_treasury_banking_p1/treasury-banking-p1.patch" > /tmp/treasury-p1.patch
+          echo "$TREASURY_PATCH_SHA256  /tmp/treasury-p1.patch" | sha256sum -c -
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+
+      - name: Apply only Treasury P1 on Central 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source
+          rsync -a --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' central_source/ work-source/
+          cd work-source
+          git init -q
+          git config user.name central-wave1-ci
+          git config user.email central-wave1-ci@users.noreply.github.com
+          git add -A && git commit -qm 'Central 35 before Treasury P1'
+          DB_HASH=$(sha256sum app/src/main/java/com/fush/erp/data/FushDatabase.kt | cut -d' ' -f1)
+          MIG_HASH=$(sha256sum app/src/main/java/com/fush/erp/data/Migrations.kt | cut -d' ' -f1)
+          SCHEMA_HASH=$(sha256sum app/schemas/com.fush.erp.data.FushDatabase/35.json | cut -d' ' -f1)
+          git apply --check /tmp/treasury-p1.patch
+          git apply /tmp/treasury-p1.patch
+          git add -A
+          git diff --cached --check
+          printf '%s\n' \
+            'app/src/main/java/com/fush/erp/domain/AccountingService.kt' \
+            'app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt' \
+            'app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt' | sort > /tmp/treasury-expected
+          git diff --cached --name-only | sort > /tmp/treasury-actual
+          diff -u /tmp/treasury-expected /tmp/treasury-actual
+          test "$(sha256sum app/src/main/java/com/fush/erp/data/FushDatabase.kt | cut -d' ' -f1)" = "$DB_HASH"
+          test "$(sha256sum app/src/main/java/com/fush/erp/data/Migrations.kt | cut -d' ' -f1)" = "$MIG_HASH"
+          test "$(sha256sum app/schemas/com.fush.erp.data.FushDatabase/35.json | cut -d' ' -f1)" = "$SCHEMA_HASH"
+
+      - name: Treasury targeted/domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.TreasuryPartyRequirementPolicyTest --tests com.fush.erp.domain.ControlAccountPolicyTest --tests com.fush.erp.domain.TreasuryMovementTypePolicyTest
+
+      - name: Treasury Full Unit Tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Treasury assembleRelease
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Treasury evolved-Central safety and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=work-source
+          APK="$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='com.fush.erp.recovery'"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -Fq 'Migration(34, 35)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' "$ROOT/app/src/main" "$ROOT/app/build.gradle.kts"
+          grep -Fq 'val tradeControlAccountCodes: Set<String> = setOf("1300", "2100")' "$ROOT/app/src/main/java/com/fush/erp/domain/ControlAccountPolicy.kt"
+          grep -Fq 'ControlAccountPolicy.requireGenericVoucherAllowed(offset.code)' "$ROOT/app/src/main/java/com/fush/erp/domain/AccountingService.kt"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -P 16 4 "$APK" /tmp/treasury-p1-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 /tmp/treasury-p1-aligned.apk
+
+      - name: Commit Treasury P1 to integration-current
+        id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH Central Integration'
+          git config user.email 'central-integration@fush.local'
+          rsync -a --delete --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' work-source/ central_source/
+          git add central_source
+          ROOT_TREE=$(git write-tree)
+          SOURCE_TREE=$(git rev-parse "$ROOT_TREE:central_source")
+          cat > central_integration_records/wave1-treasury-banking-p1.md <<EOF
+          # Central Integration — Treasury / Banking P1
+          Handoff SHA: $TREASURY_HANDOFF
+          Patch SHA-256: $TREASURY_PATCH_SHA256
+          Previous Central HEAD: ${{ needs.accounting-p1.outputs.commit }}
+          Central source tree after integration: $SOURCE_TREE
+          Application ID: com.fush.erp.recovery
+          Room schema: 35
+          Migration: none (Accounting 34 -> 35 preserved)
+          Targeted/domain regression: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          Data/schema preservation: PASS
+          Destructive migration/reset guards: PASS
+          zipalign: PASS
+          Result: SUCCESS
+          EOF
+          git add central_integration_records/wave1-treasury-banking-p1.md
+          git diff --cached --check
+          git commit -m 'Central integration: Treasury Banking P1 party identity'
+          git push origin HEAD:fush/integration-current
+          COMMIT=$(git rev-parse HEAD)
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "tree=$SOURCE_TREE" >> "$GITHUB_OUTPUT"
+
+  purchases-p1:
+    name: Integrate Purchases Suppliers P1
+    needs: [accounting-p1, treasury-p1]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    outputs:
+      commit: ${{ steps.result.outputs.commit }}
+      tree: ${{ steps.result.outputs.tree }}
+      patch_sha256: ${{ steps.patch.outputs.sha256 }}
+    steps:
+      - name: Checkout evolved Central branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Guard Treasury-integrated Central and exact Purchases handoff
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ needs.treasury-p1.outputs.commit }}"
+          test "$(git rev-parse HEAD:central_source)" = "${{ needs.treasury-p1.outputs.tree }}"
+          test "$(git ls-remote origin refs/heads/fush/purchases-suppliers | cut -f1)" = "$PURCHASES_HANDOFF"
+          git fetch --no-tags origin "$PURCHASES_HANDOFF"
+          git show "$PURCHASES_HANDOFF:purchases_suppliers_p1/phase_p1.patch" > /tmp/purchases-p1.patch
+          test "$(git hash-object /tmp/purchases-p1.patch)" = "$PURCHASES_PATCH_BLOB"
+          PATCH_SHA256=$(sha256sum /tmp/purchases-p1.patch | cut -d' ' -f1)
+          echo "Purchases patch SHA-256: $PATCH_SHA256"
+          echo "sha256=$PATCH_SHA256" >> "$GITHUB_OUTPUT"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+
+      - name: Apply only Purchases Suppliers P1 on Central 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source
+          rsync -a --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' central_source/ work-source/
+          cd work-source
+          git init -q
+          git config user.name central-wave1-ci
+          git config user.email central-wave1-ci@users.noreply.github.com
+          git add -A && git commit -qm 'Central 35 before Purchases Suppliers P1'
+          DB_HASH=$(sha256sum app/src/main/java/com/fush/erp/data/FushDatabase.kt | cut -d' ' -f1)
+          MIG_HASH=$(sha256sum app/src/main/java/com/fush/erp/data/Migrations.kt | cut -d' ' -f1)
+          SCHEMA_HASH=$(sha256sum app/schemas/com.fush.erp.data.FushDatabase/35.json | cut -d' ' -f1)
+          git apply --check --recount /tmp/purchases-p1.patch
+          git apply --recount /tmp/purchases-p1.patch
+          git add -A
+          git diff --cached --check
+          printf '%s\n' \
+            'app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt' \
+            'app/src/main/java/com/fush/erp/domain/SupplierProfileMath.kt' \
+            'app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt' \
+            'app/src/test/java/com/fush/erp/domain/SupplierProfileMathTest.kt' | sort > /tmp/purchases-expected
+          git diff --cached --name-only | sort > /tmp/purchases-actual
+          diff -u /tmp/purchases-expected /tmp/purchases-actual
+          test "$(sha256sum app/src/main/java/com/fush/erp/data/FushDatabase.kt | cut -d' ' -f1)" = "$DB_HASH"
+          test "$(sha256sum app/src/main/java/com/fush/erp/data/Migrations.kt | cut -d' ' -f1)" = "$MIG_HASH"
+          test "$(sha256sum app/schemas/com.fush.erp.data.FushDatabase/35.json | cut -d' ' -f1)" = "$SCHEMA_HASH"
+
+      - name: Purchases targeted/domain regression
+        working-directory: work-source
+        shell: bash
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.SupplierProfileMathTest \
+            --tests com.fush.erp.domain.SupplierMovementIdentityTest \
+            --tests com.fush.erp.domain.PartyStatementMathTest \
+            --tests com.fush.erp.domain.SupplierApMathTest \
+            --tests com.fush.erp.domain.AgingReportMathTest
+
+      - name: Purchases Full Unit Tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Purchases assembleRelease
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Purchases evolved-Central safety and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=work-source
+          APK="$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='com.fush.erp.recovery'"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -Fq 'Migration(34, 35)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' "$ROOT/app/src/main" "$ROOT/app/build.gradle.kts"
+          grep -Fq 'supplierVoucherAdjustmentAt' "$ROOT/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt"
+          grep -Fq 'SupplierProfileMath.build' "$ROOT/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -P 16 4 "$APK" /tmp/purchases-p1-aligned.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 /tmp/purchases-p1-aligned.apk
+
+      - name: Commit Purchases Suppliers P1 to integration-current
+        id: result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH Central Integration'
+          git config user.email 'central-integration@fush.local'
+          rsync -a --delete --exclude='.git/' --exclude='.gradle/' --exclude='.kotlin/' --exclude='build/' --exclude='app/build/' work-source/ central_source/
+          git add central_source
+          ROOT_TREE=$(git write-tree)
+          SOURCE_TREE=$(git rev-parse "$ROOT_TREE:central_source")
+          cat > central_integration_records/wave1-purchases-suppliers-p1.md <<EOF
+          # Central Integration — Purchases / Suppliers P1
+          Handoff SHA: $PURCHASES_HANDOFF
+          Exact patch blob: $PURCHASES_PATCH_BLOB
+          Patch SHA-256: ${{ steps.patch.outputs.sha256 }}
+          Previous Central HEAD: ${{ needs.treasury-p1.outputs.commit }}
+          Central source tree after integration: $SOURCE_TREE
+          Application ID: com.fush.erp.recovery
+          Room schema: 35
+          Migration: none (Accounting 34 -> 35 preserved)
+          Targeted/domain regression: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          Data/schema preservation: PASS
+          Destructive migration/reset guards: PASS
+          zipalign: PASS
+          Result: SUCCESS
+          EOF
+          git add central_integration_records/wave1-purchases-suppliers-p1.md
+          git diff --cached --check
+          git commit -m 'Central integration: Purchases Suppliers P1 integrity'
+          git push origin HEAD:fush/integration-current
+          COMMIT=$(git rev-parse HEAD)
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "tree=$SOURCE_TREE" >> "$GITHUB_OUTPUT"
+
+      - name: Final Wave 1 invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.result.outputs.commit }}"
+          test "$(git rev-parse HEAD:central_source)" = "${{ steps.result.outputs.tree }}"
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
