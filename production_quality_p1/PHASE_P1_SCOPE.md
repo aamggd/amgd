@@ -33,6 +33,6 @@ Accounting:
 - Existing material-issue journal posting remains unchanged. No accounting rules are modified.
 
 Exact patch SHA-256:
-`6efe1a09dc54fa1732285646f27963e73814e71d57480384066e6976ffa43fcb`
+`fe62719a8b1d44b133145ef552329a6c3c9c7d3fa93fa619289170f2b0abae8a`
 
 Final handoff is intentionally withheld until the current Central wave finishes and the same exact patch is revalidated over the newest Central HEAD.

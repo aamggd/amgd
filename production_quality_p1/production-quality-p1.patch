@@ -2,7 +2,7 @@ diff --git a/app/src/main/java/com/fush/erp/domain/ProductionIssueLotAllocator.k
 new file mode 100644
 --- /dev/null
 +++ b/app/src/main/java/com/fush/erp/domain/ProductionIssueLotAllocator.kt
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +package com.fush.erp.domain
 +
 +import kotlin.math.abs
@@ -82,7 +82,7 @@ new file mode 100644
 diff --git a/app/src/main/java/com/fush/erp/domain/ProductionService.kt b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
 --- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
 +++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
-@@ -303,31 +303,23 @@ class ProductionService(private val db: FushDatabase) {
+@@ -303,59 +303,53 @@ class ProductionService(private val db: FushDatabase) {
              val item = requireNotNull(db.itemDao().byId(material.itemId)) { "الصنف رقم ${material.itemId} غير موجود" }
              val lots = AdvancedInventoryService(db).usableLots(order.rawWarehouseId, material.itemId)
                  .filter { it.quantityBase > 1e-9 }
@@ -180,7 +180,7 @@ diff --git a/app/src/test/java/com/fush/erp/domain/ProductionIssueLotAllocatorTe
 new file mode 100644
 --- /dev/null
 +++ b/app/src/test/java/com/fush/erp/domain/ProductionIssueLotAllocatorTest.kt
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,95 @@
 +package com.fush.erp.domain
 +
 +import org.junit.Assert.assertEquals

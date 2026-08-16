@@ -18,7 +18,7 @@ jobs:
     env:
       CENTRAL_HEAD: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
       CENTRAL_TREE: 7733c6570357eb813f7e05e5093752ea26788749
-      PATCH_SHA256: 6efe1a09dc54fa1732285646f27963e73814e71d57480384066e6976ffa43fcb
+      PATCH_SHA256: fe62719a8b1d44b133145ef552329a6c3c9c7d3fa93fa619289170f2b0abae8a
     steps:
       - name: Checkout production-quality branch
         uses: actions/checkout@v4
