@@ -99,12 +99,41 @@ jobs:
           git -C central_source write-tree > "$KIT/meta/central-source-tree.txt"
           tar -C "$KIT" -czf FushERP-Performance-P0-Runtime-Kit.tar.gz .
           sha256sum FushERP-Performance-P0-Runtime-Kit.tar.gz > FushERP-Performance-P0-Runtime-Kit.tar.gz.sha256
+          split -b 340M -d -a 1 FushERP-Performance-P0-Runtime-Kit.tar.gz FushERP-Performance-P0-Runtime-Kit.part.
+          test -f FushERP-Performance-P0-Runtime-Kit.part.0
+          test -f FushERP-Performance-P0-Runtime-Kit.part.1
+          test -f FushERP-Performance-P0-Runtime-Kit.part.2
+          test -f FushERP-Performance-P0-Runtime-Kit.part.3
+          test ! -f FushERP-Performance-P0-Runtime-Kit.part.4
+          sha256sum FushERP-Performance-P0-Runtime-Kit.part.* > FushERP-Performance-P0-Runtime-Kit.parts.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Performance-P0-Runtime-Kit
+          name: FushERP-Performance-P0-Runtime-Kit-Part0
           path: |
-            FushERP-Performance-P0-Runtime-Kit.tar.gz
+            FushERP-Performance-P0-Runtime-Kit.part.0
             FushERP-Performance-P0-Runtime-Kit.tar.gz.sha256
+            FushERP-Performance-P0-Runtime-Kit.parts.sha256
+          if-no-files-found: error
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Performance-P0-Runtime-Kit-Part1
+          path: FushERP-Performance-P0-Runtime-Kit.part.1
+          if-no-files-found: error
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Performance-P0-Runtime-Kit-Part2
+          path: FushERP-Performance-P0-Runtime-Kit.part.2
+          if-no-files-found: error
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Performance-P0-Runtime-Kit-Part3
+          path: FushERP-Performance-P0-Runtime-Kit.part.3
           if-no-files-found: error
           retention-days: 2
