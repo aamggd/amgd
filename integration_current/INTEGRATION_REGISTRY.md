@@ -120,3 +120,9 @@ No keystore, certificate private key, or password is stored or added by this reg
 6. Run Unit, integration, migration (when applicable), accounting sanity, inventory sanity, regression, release build, and install/upgrade gates as applicable.
 7. Do not merge directly to `fush/main`.
 8. Do not sign in a public workflow and do not store signing secrets in GitHub.
+
+## 9. P0 Closure Cycle — ordered acceptance
+
+| Order | Branch | Phase | Handoff SHA | Patch identity | Room delta | Fresh cumulative validation | Status |
+|---|---|---|---|---|---|---|---|
+| 1 | `fush/ui-professional-redesign` | P0 Audit / UI inventory | `19ed5ade8863aea1d7cf4e38986afab64f66aae7` | No application patch; audit implementation `d67077387a02ebef692027d44a133134843d96b9` | None — stays `34` | PASS run `31920927855`: UI resource parity + full Unit + Release + App ID + Room/no-destructive + Zipalign | **INTEGRATED / P0 CLOSED** |
