@@ -1,0 +1,64 @@
+diff --git a/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt b/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+index 1b6c065..b6b57ec 100644
+--- a/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+@@ -16,8 +16,8 @@ interface RecipeDao {
+     @Insert(onConflict = OnConflictStrategy.ABORT)
+     suspend fun insertComponents(rows: List<RecipeComponentEntity>)
+ 
+-    @Update
+-    suspend fun updateRecipe(row: RecipeEntity)
++    @Query("UPDATE recipes SET status = :status WHERE id = :recipeId")
++    suspend fun updateRecipeStatus(recipeId: Long, status: String): Int
+ 
+     @Query("SELECT COALESCE(MAX(versionNo), 0) FROM recipes WHERE code = :code")
+     suspend fun maxVersion(code: String): Int
+diff --git a/app/src/main/java/com/fush/erp/domain/ProductionService.kt b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+index 04e5d17..8186e87 100644
+--- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+@@ -165,7 +165,10 @@ class ProductionService(private val db: FushDatabase) {
+             val qty = componentQuantities[component.itemId] ?: component.quantityBase
+             require(qty > 0.0 && qty.isFinite()) { "كمية مكون الوصفة غير صالحة" }
+         }
+-        if (source.status == "ACTIVE") db.recipeDao().updateRecipe(source.copy(status = "SUPERSEDED"))
++        if (source.status == "ACTIVE") {
++            val updated = db.recipeDao().updateRecipeStatus(source.id, "SUPERSEDED")
++            check(updated == 1) { "تعذر تجميد إصدار الوصفة السابق" }
++        }
+         val newVersion = db.recipeDao().maxVersion(source.code) + 1
+         val newId = db.recipeDao().insertRecipe(
+             source.copy(
+@@ -236,18 +239,21 @@ class ProductionService(private val db: FushDatabase) {
+         db.employeeDao().insertOperatorAssignment(
+             ProductionOperatorAssignmentEntity(orderId = orderId, employeeId = productionEmployeeId, assignedBy = createdBy)
+         )
+-        db.productionDao().insertMaterials(
+-            components.map { component ->
+-                ProductionMaterialEntity(
+-                    orderId = orderId,
+-                    recipeComponentId = component.id,
+-                    itemId = component.itemId,
+-                    standardQtyBase = ProductionMath.fixedBatchComponentQuantity(
+-                        componentQty = component.quantityBase,
+-                        plannedOutputQty = plannedOutputQtyBase
+-                    )
++        val frozenMaterials = components.map { component ->
++            ProductionMaterialEntity(
++                orderId = orderId,
++                recipeComponentId = component.id,
++                itemId = component.itemId,
++                standardQtyBase = ProductionMath.fixedBatchComponentQuantity(
++                    componentQty = component.quantityBase,
++                    plannedOutputQty = plannedOutputQtyBase
+                 )
+-            }
++            )
++        }
++        db.productionDao().insertMaterials(frozenMaterials)
++        ProductionMath.validateBomIntegrity(
++            recipeComponents = components.map { ProductionBomLink(it.id, it.itemId) },
++            orderMaterials = frozenMaterials.map { ProductionBomLink(it.recipeComponentId, it.itemId) }
+         )
+         orderId
+     }
