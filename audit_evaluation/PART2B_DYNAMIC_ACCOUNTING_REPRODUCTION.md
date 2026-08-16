@@ -12,7 +12,7 @@ Audited baseline: **Phase 14.5.54 Printing Integrated**
 - Workflow run: `31919065033`
 - Audit workflow head: `85640a9859609f8418cc715ae925910f83503e4e`
 
-Status: **TARGETED DYNAMIC REPRODUCTION PASS; FULL UNIT PASS; RELEASE GATE PENDING AT INITIAL RECORD**
+Status: **COMPLETE / DYNAMIC REPRODUCTION PASS / FULL UNIT PASS / RELEASE PASS / INVARIANTS PASS**
 
 This file is audit evidence only. The workflow restores and verifies the exact validated 14.5.54 source tree before injecting a temporary test harness inside the CI workspace. The test harness is not copied into the production source artifact and does not repair any finding.
 
@@ -24,7 +24,7 @@ The targeted test step completed successfully and therefore reproduced the curre
 2. `AE-ACC-010` — unpaid CREDIT purchase can be fully returned as `CASH_REFUND` while the supplier payable remains open.
 3. Closed-period purchase scenario — a purchase dated inside a `CLOSED` accounting period is accepted and its operational journal is posted.
 
-The complete baseline unit-test suite with the audit harness also completed successfully. `assembleRelease` and final invariant verification are intentionally separate gates and must complete before this phase is handed off as Done.
+The complete baseline unit-test suite with the audit harness, `assembleRelease`, and the final Application ID / Room / destructive-migration invariants all completed successfully in workflow run `31919065033`.
 
 ---
 
@@ -66,17 +66,20 @@ The complete baseline unit-test suite with the audit harness also completed succ
   - No Room destructive migration is introduced to implement the control.
 - **Retest:** Audit branch must rerun representative owner-branch posting scenarios after the fix is integrated. Build PASS alone cannot close the finding.
 
-## Part 2B current test gate
+## Part 2B test gate — final
 
-At the initial record point for run `31919065033`:
+Workflow run `31919065033` completed with conclusion **SUCCESS**.
 
 - Exact Central 14.5.54 source-tree verification: **PASS**.
 - Targeted dynamic accounting reproduction tests: **PASS**.
 - Complete unit-test suite with audit harness: **PASS**.
-- Release `assembleRelease`: **IN PROGRESS / not yet declared**.
-- Final Application ID / Room / destructive-migration invariant check: **PENDING**.
+- Release `assembleRelease`: **PASS**.
+- Final release APK presence check: **PASS**.
+- Application ID `com.fush.erp.recovery`: **PASS**.
+- Room schema remains `34`: **PASS**.
+- `fallbackToDestructiveMigration` absence check: **PASS**.
 
-This record must be updated after the workflow completes before Part 2B is delivered to `fush/integration-current`.
+A successful audit workflow means the reproduction harness and safety gates succeeded; it does **not** mean `AE-ACC-009`, `AE-ACC-010`, or `AE-ACC-011` are fixed. They remain open until owner-branch fixes are integrated and independently retested.
 
 ## Impact introduced by audit branch
 
