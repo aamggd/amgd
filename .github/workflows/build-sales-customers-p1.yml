@@ -1,0 +1,155 @@
+name: Build Sales Customers P1 Customer Identity
+
+on:
+  push:
+    branches: [fush/sales-customers]
+    paths:
+      - 'sales_customers_p1/**'
+      - '.github/workflows/build-sales-customers-p1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CENTRAL_SHA: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  CENTRAL_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout handoff branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/sales-customers
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Restore exact current Central source and apply P1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${CENTRAL_SHA}^{commit}"
+          test "$(git rev-parse ${CENTRAL_SHA})" = "${CENTRAL_SHA}"
+          rm -rf work-source central-p1-export
+          mkdir central-p1-export
+          git archive "${CENTRAL_SHA}" central_source | tar -x -C central-p1-export
+          mv central-p1-export/central_source work-source
+          cd work-source
+          git init -q
+          git config user.name sales-customers-p1-ci
+          git config user.email sales-customers-p1-ci@users.noreply.github.com
+          git add -A
+          BASE_TREE=$(git write-tree)
+          echo "BASE_TREE=${BASE_TREE}"
+          test "${BASE_TREE}" = "${CENTRAL_TREE}"
+          git commit -qm "Exact Central before Sales Customers P1"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          cd "$GITHUB_WORKSPACE"
+          echo "${PATCH_SHA256}  sales_customers_p1/customer_identity_p1.patch" | sha256sum -c -
+          cd work-source
+          git apply --check "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
+          git apply "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
+          git diff --check
+
+      - name: P1 exact scope and identity regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          git add -A
+          mapfile -t FILES < <(git diff --cached --name-only | sort)
+          EXPECTED=(
+            "app/src/main/java/com/fush/erp/domain/AccountingService.kt"
+            "app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt"
+            "app/src/main/java/com/fush/erp/domain/SalesService.kt"
+            "app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt"
+          )
+          mapfile -t EXPECTED_SORTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
+          test "${#FILES[@]}" -eq "${#EXPECTED_SORTED[@]}"
+          for i in "${!FILES[@]}"; do test "${FILES[$i]}" = "${EXPECTED_SORTED[$i]}"; done
+          test -f app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+          grep -q 'object CustomerMovementIdentity' app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+          grep -q 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'CustomerMovementIdentity.requireId(customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'CustomerMovementIdentity.requireId(original.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'CustomerMovementIdentity.requireId(invoice.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'val customerId: Long' app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! git diff --cached --name-only | grep -Eq 'app/src/main/java/com/fush/erp/data/(entity|Migrations|SecurityMigrations)|app/schemas/'
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Customer identity unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.CustomerMovementIdentityTest
+
+      - name: Full unit regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Release and safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Package branch handoff artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          cp work-source/app/build/outputs/apk/release/app-release-unsigned.apk output/FushERP-Sales-Customers-P1-Customer-Identity-unsigned.apk
+          cp sales_customers_p1/customer_identity_p1.patch output/customer_identity_p1.patch
+          cp sales_customers_p1/README.md output/README.md
+          sha256sum output/* > output/SHA256SUMS.txt
+
+      - name: Upload P1 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Sales-Customers-P1-Customer-Identity
+          path: output/*
+          if-no-files-found: error
