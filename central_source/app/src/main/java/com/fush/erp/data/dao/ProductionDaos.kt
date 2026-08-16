@@ -16,8 +16,8 @@ interface RecipeDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertComponents(rows: List<RecipeComponentEntity>)
 
-    @Update
-    suspend fun updateRecipe(row: RecipeEntity)
+    @Query("UPDATE recipes SET status = :status WHERE id = :recipeId")
+    suspend fun updateRecipeStatus(recipeId: Long, status: String): Int
 
     @Query("SELECT COALESCE(MAX(versionNo), 0) FROM recipes WHERE code = :code")
     suspend fun maxVersion(code: String): Int

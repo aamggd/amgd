@@ -165,7 +165,10 @@ class ProductionService(private val db: FushDatabase) {
             val qty = componentQuantities[component.itemId] ?: component.quantityBase
             require(qty > 0.0 && qty.isFinite()) { "كمية مكون الوصفة غير صالحة" }
         }
-        if (source.status == "ACTIVE") db.recipeDao().updateRecipe(source.copy(status = "SUPERSEDED"))
+        if (source.status == "ACTIVE") {
+            val updated = db.recipeDao().updateRecipeStatus(source.id, "SUPERSEDED")
+            check(updated == 1) { "تعذر تجميد إصدار الوصفة السابق" }
+        }
         val newVersion = db.recipeDao().maxVersion(source.code) + 1
         val newId = db.recipeDao().insertRecipe(
             source.copy(
@@ -236,18 +239,21 @@ class ProductionService(private val db: FushDatabase) {
         db.employeeDao().insertOperatorAssignment(
             ProductionOperatorAssignmentEntity(orderId = orderId, employeeId = productionEmployeeId, assignedBy = createdBy)
         )
-        db.productionDao().insertMaterials(
-            components.map { component ->
-                ProductionMaterialEntity(
-                    orderId = orderId,
-                    recipeComponentId = component.id,
-                    itemId = component.itemId,
-                    standardQtyBase = ProductionMath.fixedBatchComponentQuantity(
-                        componentQty = component.quantityBase,
-                        plannedOutputQty = plannedOutputQtyBase
-                    )
+        val frozenMaterials = components.map { component ->
+            ProductionMaterialEntity(
+                orderId = orderId,
+                recipeComponentId = component.id,
+                itemId = component.itemId,
+                standardQtyBase = ProductionMath.fixedBatchComponentQuantity(
+                    componentQty = component.quantityBase,
+                    plannedOutputQty = plannedOutputQtyBase
                 )
-            }
+            )
+        }
+        db.productionDao().insertMaterials(frozenMaterials)
+        ProductionMath.validateBomIntegrity(
+            recipeComponents = components.map { ProductionBomLink(it.id, it.itemId) },
+            orderMaterials = frozenMaterials.map { ProductionBomLink(it.recipeComponentId, it.itemId) }
         )
         orderId
     }
