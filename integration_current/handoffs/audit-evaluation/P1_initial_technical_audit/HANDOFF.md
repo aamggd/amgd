@@ -13,7 +13,7 @@ Handoff type: **AUDIT / DOCUMENTATION ONLY — NO APPLICATION CODE**
 - Central Baseline: Phase 14.5.54 Printing Integrated
 - Central source/integration branch: `fush/integration-printing-14.5.54`
 - Central branch record commit: `5095ba46a676fd6a8e048f2325c433a1f336d05d`
-- Validated workflow commit: `36ac48935ecc6cd1aa10d60059c1c1f950d101476` is not used here; authoritative validated 14.5.54 workflow commit is `36ac48935ecc9d71c899481b0901a1c69b7354be`
+- Validated workflow commit: `36ac48935ecc9d71c899481b0901a1c69b7354be`
 - Final integrated source tree: `1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff`
 - Application ID: `com.fush.erp.recovery`
 - Room schema: `34`
