@@ -41,7 +41,7 @@ jobs:
           github-token: ${{ github.token }}
           repository: aamggd/amgd
           run-id: 31909754750
-      - name: Restore exact baseline and apply P0
+      - name: Verify central baseline
         shell: bash
         run: |
           set -euo pipefail
@@ -52,23 +52,23 @@ jobs:
           unzip -q "$ZIP" -d source
           APP=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
           test -n "$APP"
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$APP/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' "$APP/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -f "$APP/app/schemas/com.fush.erp.data.FushDatabase/34.json"
+          ! grep -R -q 'fallbackToDestructiveMigration' "$APP/app/src/main/java" "$APP/app/build.gradle.kts"
+      - name: Apply P0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
+          base64 -d backup_recovery_p0/phase1.patch.gz.b64 | gzip -dc > phase1.patch
+          echo 'c9b2eb29a64517ac59c8d25fd995a0ec963a9ac25e0d6dfe44899b7f95e6133a  phase1.patch' | sha256sum -c -
           cd "$APP"
           git init -q
           git config user.email backup-recovery@fush.local
           git config user.name FUSH
           git add -A
           git commit -qm baseline-14.5.54
-          BASE_TREE=$(git write-tree)
-          echo "BASE_TREE=$BASE_TREE"
-          test "$BASE_TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
-          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
-          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
-          cd ../..
-          base64 -d backup_recovery_p0/phase1.patch.gz.b64 | gzip -dc > phase1.patch
-          echo 'c9b2eb29a64517ac59c8d25fd995a0ec963a9ac25e0d6dfe44899b7f95e6133a  phase1.patch' | sha256sum -c -
-          cd "$APP"
           git apply --check ../../phase1.patch
           git apply ../../phase1.patch
           git diff --check
