@@ -1,0 +1,197 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/AccountingService.kt b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+index 02838d0..b634581 100644
+--- a/app/src/main/java/com/fush/erp/domain/AccountingService.kt
++++ b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+@@ -6,6 +6,15 @@
+     }
+ 
+     private suspend fun resolvePartyLink(offset: AccountEntity, request: VoucherRequest): PartyLink {
++        TreasuryPartyRequirementPolicy.requireValidSelection(
++            accountCode = offset.code,
++            selection = TreasuryPartySelection(
++                customerId = request.customerId,
++                supplierId = request.supplierId,
++                employeeId = request.employeeId,
++                salesRepId = request.salesRepId
++            )
++        )
+         return when (offset.code) {
+             "1300" -> {
+                 require(request.supplierId == null && request.employeeId == null && request.salesRepId == null) { "حساب العملاء يقبل عميلاً فقط" }
+diff --git a/app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt b/app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+new file mode 100644
+index 0000000..5aa03d7
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+@@ -0,0 +1,64 @@
++package com.fush.erp.domain
++
++/**
++ * P1 treasury rule: when the selected posting account is a party control/payable account,
++ * the matching party identity is mandatory and other party identities must not be supplied.
++ *
++ * Entity existence/active-state checks stay in [AccountingService]; this policy is deliberately
++ * pure so the account-to-party contract can be regression-tested without Room.
++ */
++enum class TreasuryPartyRequirement {
++    NONE,
++    CUSTOMER,
++    SUPPLIER,
++    EMPLOYEE,
++    SALES_REP
++}
++
++data class TreasuryPartySelection(
++    val customerId: Long? = null,
++    val supplierId: Long? = null,
++    val employeeId: Long? = null,
++    val salesRepId: Long? = null
++)
++
++object TreasuryPartyRequirementPolicy {
++    fun requirementForAccount(accountCode: String): TreasuryPartyRequirement = when (accountCode.trim()) {
++        "1300" -> TreasuryPartyRequirement.CUSTOMER
++        "2100" -> TreasuryPartyRequirement.SUPPLIER
++        "2200" -> TreasuryPartyRequirement.EMPLOYEE
++        "2300" -> TreasuryPartyRequirement.SALES_REP
++        else -> TreasuryPartyRequirement.NONE
++    }
++
++    fun requireValidSelection(
++        accountCode: String,
++        selection: TreasuryPartySelection
++    ): TreasuryPartyRequirement {
++        val requirement = requirementForAccount(accountCode)
++        val customerOnly = selection.customerId != null &&
++            selection.supplierId == null && selection.employeeId == null && selection.salesRepId == null
++        val supplierOnly = selection.supplierId != null &&
++            selection.customerId == null && selection.employeeId == null && selection.salesRepId == null
++        val employeeOnly = selection.employeeId != null &&
++            selection.customerId == null && selection.supplierId == null && selection.salesRepId == null
++        val salesRepOnly = selection.salesRepId != null &&
++            selection.customerId == null && selection.supplierId == null && selection.employeeId == null
++        val noParty = selection.customerId == null && selection.supplierId == null &&
++            selection.employeeId == null && selection.salesRepId == null
++
++        when (requirement) {
++            TreasuryPartyRequirement.CUSTOMER ->
++                require(customerOnly) { "حساب العملاء يتطلب تحديد عميل واحد فقط" }
++            TreasuryPartyRequirement.SUPPLIER ->
++                require(supplierOnly) { "حساب الموردين يتطلب تحديد مورد واحد فقط" }
++            TreasuryPartyRequirement.EMPLOYEE ->
++                require(employeeOnly) { "حساب مستحقات الموظفين يتطلب تحديد موظف واحد فقط" }
++            TreasuryPartyRequirement.SALES_REP ->
++                require(salesRepOnly) { "حساب عمولات البيع يتطلب تحديد مندوب مبيعات واحد فقط" }
++            TreasuryPartyRequirement.NONE ->
++                require(noParty) { "لا يمكن ربط طرف بحساب عام غير مخصص للأطراف" }
++        }
++        return requirement
++    }
++}
+diff --git a/app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt b/app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt
+new file mode 100644
+index 0000000..6ad14aa
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt
+@@ -0,0 +1,101 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class TreasuryPartyRequirementPolicyTest {
++    @Test
++    fun `P1 maps protected party accounts to their required party identity`() {
++        assertEquals(TreasuryPartyRequirement.CUSTOMER, TreasuryPartyRequirementPolicy.requirementForAccount("1300"))
++        assertEquals(TreasuryPartyRequirement.SUPPLIER, TreasuryPartyRequirementPolicy.requirementForAccount("2100"))
++        assertEquals(TreasuryPartyRequirement.EMPLOYEE, TreasuryPartyRequirementPolicy.requirementForAccount("2200"))
++        assertEquals(TreasuryPartyRequirement.SALES_REP, TreasuryPartyRequirementPolicy.requirementForAccount("2300"))
++        assertEquals(TreasuryPartyRequirement.NONE, TreasuryPartyRequirementPolicy.requirementForAccount("6100"))
++    }
++
++    @Test
++    fun `customer control account requires exactly a customer`() {
++        assertEquals(
++            TreasuryPartyRequirement.CUSTOMER,
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "1300",
++                TreasuryPartySelection(customerId = 11L)
++            )
++        )
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection("1300", TreasuryPartySelection())
++        }
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "1300",
++                TreasuryPartySelection(customerId = 11L, supplierId = 22L)
++            )
++        }
++    }
++
++    @Test
++    fun `supplier control account requires exactly a supplier`() {
++        assertEquals(
++            TreasuryPartyRequirement.SUPPLIER,
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "2100",
++                TreasuryPartySelection(supplierId = 22L)
++            )
++        )
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection("2100", TreasuryPartySelection())
++        }
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "2100",
++                TreasuryPartySelection(supplierId = 22L, employeeId = 33L)
++            )
++        }
++    }
++
++    @Test
++    fun `employee payable account requires exactly an employee`() {
++        assertEquals(
++            TreasuryPartyRequirement.EMPLOYEE,
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "2200",
++                TreasuryPartySelection(employeeId = 33L)
++            )
++        )
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection("2200", TreasuryPartySelection())
++        }
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "2200",
++                TreasuryPartySelection(employeeId = 33L, customerId = 11L)
++            )
++        }
++    }
++
++    @Test
++    fun `sales rep payable remains protected by the inherited party contract`() {
++        assertEquals(
++            TreasuryPartyRequirement.SALES_REP,
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "2300",
++                TreasuryPartySelection(salesRepId = 44L)
++            )
++        )
++    }
++
++    @Test
++    fun `general account rejects orphan party linkage`() {
++        assertEquals(
++            TreasuryPartyRequirement.NONE,
++            TreasuryPartyRequirementPolicy.requireValidSelection("6100", TreasuryPartySelection())
++        )
++        assertThrows(IllegalArgumentException::class.java) {
++            TreasuryPartyRequirementPolicy.requireValidSelection(
++                "6100",
++                TreasuryPartySelection(customerId = 11L)
++            )
++        }
++    }
++}
