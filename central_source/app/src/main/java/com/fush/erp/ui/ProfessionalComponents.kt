@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,7 +35,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -46,10 +47,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.fush.erp.R
-
-enum class FushStatusTone { Neutral, Info, Success, Warning, Danger }
 
 val LocalFushSnackbar = staticCompositionLocalOf<((String) -> Unit)?> { null }
 
@@ -74,21 +72,21 @@ fun FushBrand(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(FushSpacing.md),
     ) {
         Surface(
-            modifier = Modifier.size(if (compact) 40.dp else 52.dp),
+            modifier = Modifier.size(if (compact) FushDimensions.brandCompactSize else FushDimensions.brandSize),
             shape = MaterialTheme.shapes.medium,
-            tonalElevation = 1.dp,
-            shadowElevation = 1.dp,
+            tonalElevation = FushElevation.subtle,
+            shadowElevation = FushElevation.subtle,
         ) {
             Image(
                 painter = painterResource(R.drawable.ic_fush_logo),
                 contentDescription = null,
-                modifier = Modifier.padding(if (compact) 7.dp else 9.dp),
+                modifier = Modifier.padding(FushSpacing.sm),
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(FushSpacing.xxs)) {
             Text(
                 stringResource(R.string.brand_name),
                 style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
@@ -111,7 +109,7 @@ fun FushUserAvatar(name: String, modifier: Modifier = Modifier) {
     val userDescription = stringResource(R.string.user_content_description, name)
     Box(
         modifier = modifier
-            .size(38.dp)
+            .size(FushDimensions.avatarSize)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.primaryContainer)
             .clearAndSetSemantics { contentDescription = userDescription },
@@ -131,7 +129,7 @@ fun FushSectionHeader(
     subtitle: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(FushSpacing.xs)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.semantics { heading() })
         subtitle?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -145,20 +143,14 @@ fun FushStatusPill(
     tone: FushStatusTone = FushStatusTone.Neutral,
     modifier: Modifier = Modifier,
 ) {
-    val colors = when (tone) {
-        FushStatusTone.Neutral -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
-        FushStatusTone.Info -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-        FushStatusTone.Success -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
-        FushStatusTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
-        FushStatusTone.Danger -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-    }
+    val colors = fushToneColors(tone)
     Surface(
         modifier = modifier.clearAndSetSemantics { contentDescription = text },
-        color = colors.first,
-        contentColor = colors.second,
+        color = colors.container,
+        contentColor = colors.content,
         shape = CircleShape,
     ) {
-        Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+        Text(text, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = FushSpacing.md, vertical = FushSpacing.xs))
     }
 }
 
@@ -174,7 +166,7 @@ fun FushMetricCard(
     val openLabel = stringResource(R.string.open_item_content_description, label)
     val interactive = if (onClick != null) {
         modifier
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .sizeIn(minWidth = FushDimensions.minTouchTarget, minHeight = FushDimensions.minTouchTarget)
             .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
     } else {
@@ -183,22 +175,16 @@ fun FushMetricCard(
     ElevatedCard(
         modifier = interactive,
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = FushElevation.subtle),
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(FushSpacing.lg), verticalArrangement = Arrangement.spacedBy(FushSpacing.sm)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (tone != FushStatusTone.Neutral) {
-                    val dot = when (tone) {
-                        FushStatusTone.Info -> MaterialTheme.colorScheme.primary
-                        FushStatusTone.Success -> MaterialTheme.colorScheme.secondary
-                        FushStatusTone.Warning -> MaterialTheme.colorScheme.tertiary
-                        FushStatusTone.Danger -> MaterialTheme.colorScheme.error
-                        else -> Color.Transparent
-                    }
+                    val dot = fushToneColors(tone).accent
                     Box(
                         Modifier
-                            .size(8.dp)
+                            .size(FushSpacing.sm)
                             .clip(CircleShape)
                             .background(dot)
                             .clearAndSetSemantics {},
@@ -224,7 +210,7 @@ fun FushModuleCard(
     val openLabel = stringResource(R.string.open_item_content_description, title)
     val interactive = if (onClick != null) {
         modifier
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .sizeIn(minWidth = FushDimensions.minTouchTarget, minHeight = FushDimensions.minTouchTarget)
             .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
     } else {
@@ -233,13 +219,13 @@ fun FushModuleCard(
     ElevatedCard(
         modifier = interactive,
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = FushElevation.subtle),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(FushSpacing.lg), verticalArrangement = Arrangement.spacedBy(FushSpacing.sm)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 if (!badge.isNullOrBlank()) {
-                    Spacer(Modifier.size(10.dp))
+                    Spacer(Modifier.size(FushSpacing.md))
                     FushStatusPill(badge, FushStatusTone.Info)
                 }
             }
@@ -268,7 +254,7 @@ fun FushSystemState(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
         ) {
-            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.padding(FushSpacing.xxl), verticalArrangement = Arrangement.spacedBy(FushSpacing.md)) {
                 FushBrand(compact = true)
                 if (loading) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -295,20 +281,7 @@ private fun FushContentStateCard(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
-    val containerColor = when (tone) {
-        FushStatusTone.Danger -> MaterialTheme.colorScheme.errorContainer
-        FushStatusTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer
-        FushStatusTone.Info -> MaterialTheme.colorScheme.primaryContainer
-        FushStatusTone.Success -> MaterialTheme.colorScheme.secondaryContainer
-        FushStatusTone.Neutral -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val contentColor = when (tone) {
-        FushStatusTone.Danger -> MaterialTheme.colorScheme.onErrorContainer
-        FushStatusTone.Warning -> MaterialTheme.colorScheme.onTertiaryContainer
-        FushStatusTone.Info -> MaterialTheme.colorScheme.onPrimaryContainer
-        FushStatusTone.Success -> MaterialTheme.colorScheme.onSecondaryContainer
-        FushStatusTone.Neutral -> MaterialTheme.colorScheme.onSurface
-    }
+    val colors = fushToneColors(tone)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -316,18 +289,15 @@ private fun FushContentStateCard(
                 liveRegion = if (tone == FushStatusTone.Danger) LiveRegionMode.Assertive else LiveRegionMode.Polite
             },
         shape = MaterialTheme.shapes.large,
-        color = containerColor,
-        contentColor = contentColor,
+        color = colors.container,
+        contentColor = colors.content,
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(FushSpacing.lg), verticalArrangement = Arrangement.spacedBy(FushSpacing.md)) {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
             Text(detail, style = MaterialTheme.typography.bodyMedium)
             if (actionLabel != null && onAction != null) {
-                Button(
-                    onClick = onAction,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text(actionLabel) }
+                FushPrimaryButton(onClick = onAction) { Text(actionLabel) }
             }
         }
     }
@@ -377,29 +347,16 @@ fun FushInlineState(
     modifier: Modifier = Modifier,
     tone: FushStatusTone = FushStatusTone.Neutral,
 ) {
-    val containerColor = when (tone) {
-        FushStatusTone.Danger -> MaterialTheme.colorScheme.errorContainer
-        FushStatusTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer
-        FushStatusTone.Info -> MaterialTheme.colorScheme.primaryContainer
-        FushStatusTone.Success -> MaterialTheme.colorScheme.secondaryContainer
-        FushStatusTone.Neutral -> MaterialTheme.colorScheme.surfaceContainer
-    }
-    val contentColor = when (tone) {
-        FushStatusTone.Danger -> MaterialTheme.colorScheme.onErrorContainer
-        FushStatusTone.Warning -> MaterialTheme.colorScheme.onTertiaryContainer
-        FushStatusTone.Info -> MaterialTheme.colorScheme.onPrimaryContainer
-        FushStatusTone.Success -> MaterialTheme.colorScheme.onSecondaryContainer
-        FushStatusTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    val colors = fushToneColors(tone)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .semantics { liveRegion = if (tone == FushStatusTone.Danger) LiveRegionMode.Assertive else LiveRegionMode.Polite },
         shape = MaterialTheme.shapes.medium,
-        color = containerColor,
-        contentColor = contentColor,
+        color = colors.container,
+        contentColor = colors.content,
     ) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = FushSpacing.lg, vertical = FushSpacing.md))
     }
 }
 
@@ -418,9 +375,9 @@ fun FushDialogForm(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = 520.dp)
+            .heightIn(max = FushDimensions.dialogFormMaxHeight)
             .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(FushSpacing.sm),
         content = content,
     )
 }
@@ -449,6 +406,70 @@ fun FushOperationMessage(
 }
 
 @Composable
+fun FushPrimaryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = FushDimensions.minTouchTarget),
+        content = content,
+    )
+}
+
+@Composable
+fun FushSecondaryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = FushDimensions.minTouchTarget),
+        content = content,
+    )
+}
+
+@Composable
+fun FushDestructiveButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = FushDimensions.minTouchTarget),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.error,
+            contentColor = MaterialTheme.colorScheme.onError,
+        ),
+        content = content,
+    )
+}
+
+@Composable
+fun FushTextAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = FushDimensions.minTouchTarget),
+        content = content,
+    )
+}
+
+@Composable
 fun FushConfirmDialog(
     title: String,
     detail: String,
@@ -462,19 +483,14 @@ fun FushConfirmDialog(
         title = { Text(title, modifier = Modifier.semantics { heading() }) },
         text = { Text(detail) },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                modifier = Modifier.heightIn(min = 48.dp),
-                colors = if (destructive) {
-                    ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError,
-                    )
-                } else ButtonDefaults.buttonColors(),
-            ) { Text(confirmLabel) }
+            if (destructive) {
+                FushDestructiveButton(onClick = onConfirm) { Text(confirmLabel) }
+            } else {
+                FushPrimaryButton(onClick = onConfirm) { Text(confirmLabel) }
+            }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.common_cancel)) }
+            FushTextAction(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

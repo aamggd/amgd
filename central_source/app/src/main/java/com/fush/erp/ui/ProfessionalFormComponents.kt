@@ -9,10 +9,9 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.unit.dp
 import com.fush.erp.R
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -68,13 +66,13 @@ fun FushDateField(
         singleLine = true,
         enabled = enabled,
         trailingIcon = {
-            TextButton(
+            FushTextAction(
                 onClick = { showPicker = true },
                 enabled = enabled,
-                modifier = Modifier.heightIn(min = 48.dp),
             ) { Text(stringResource(R.string.date_picker_choose)) }
         },
-        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = FushDimensions.fieldMinHeight),
     )
 
     if (showPicker) {
@@ -83,36 +81,56 @@ fun FushDateField(
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
             confirmButton = {
-                TextButton(
+                FushTextAction(
                     onClick = {
                         pickerState.selectedDateMillis?.let { onValueChange(formatDatePickerMillis(it)) }
                         showPicker = false
                     },
                     enabled = pickerState.selectedDateMillis != null,
-                    modifier = Modifier.heightIn(min = 48.dp),
                 ) { Text(stringResource(R.string.date_picker_apply)) }
             },
             dismissButton = {
                 Row {
                     if (optional && value.isNotBlank()) {
-                        TextButton(
+                        FushTextAction(
                             onClick = {
                                 onValueChange("")
                                 showPicker = false
                             },
-                            modifier = Modifier.heightIn(min = 48.dp),
                         ) { Text(stringResource(R.string.date_picker_clear)) }
                     }
-                    TextButton(
-                        onClick = { showPicker = false },
-                        modifier = Modifier.heightIn(min = 48.dp),
-                    ) { Text(stringResource(R.string.common_cancel)) }
+                    FushTextAction(onClick = { showPicker = false }) {
+                        Text(stringResource(R.string.common_cancel))
+                    }
                 }
             },
         ) {
             DatePicker(state = pickerState)
         }
     }
+}
+
+/** Standard text input using the shared FUSH field geometry. */
+@Composable
+fun FushTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    singleLine: Boolean = true,
+    isError: Boolean = false,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        enabled = enabled,
+        singleLine = singleLine,
+        isError = isError,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = FushDimensions.fieldMinHeight),
+    )
 }
 
 /** Requests a decimal-capable IME without changing the value accepted by existing validation logic. */
@@ -133,7 +151,8 @@ fun FushDecimalField(
         enabled = enabled,
         isError = isError,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = FushDimensions.fieldMinHeight),
     )
 }
 
@@ -155,7 +174,8 @@ fun FushIntegerField(
         enabled = enabled,
         isError = isError,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = FushDimensions.fieldMinHeight),
     )
 }
 
@@ -175,7 +195,8 @@ fun FushPhoneField(
         singleLine = true,
         enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-        modifier = modifier,
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier.heightIn(min = FushDimensions.fieldMinHeight),
     )
 }
 
@@ -192,10 +213,10 @@ fun FushCodeSelectionField(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
-        OutlinedButton(
+        FushSecondaryButton(
             onClick = { expanded = true },
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text("$label: ${optionLabel(current)}", modifier = Modifier.weight(1f))
         }
