@@ -1,0 +1,271 @@
+diff --git a/app/src/main/java/com/fush/erp/data/AppContainer.kt b/app/src/main/java/com/fush/erp/data/AppContainer.kt
+index d38c69e..a1c85f7 100644
+--- a/app/src/main/java/com/fush/erp/data/AppContainer.kt
++++ b/app/src/main/java/com/fush/erp/data/AppContainer.kt
+@@ -29,7 +29,7 @@ class AppContainer(context: Context) {
+         context.applicationContext,
+         FushDatabase::class.java,
+         "fush_erp.db"
+-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33_SECURITY, MIGRATION_33_34_FIXED_ASSETS).build()
++    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33_SECURITY, MIGRATION_33_34_FIXED_ASSETS, MIGRATION_34_35_ACCOUNTING_P1).build()
+ 
+     val purchaseService = PurchaseService(db)
+     val inventoryService = InventoryService(db)
+diff --git a/app/src/main/java/com/fush/erp/data/FushDatabase.kt b/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+index be76a79..cba5fb2 100644
+--- a/app/src/main/java/com/fush/erp/data/FushDatabase.kt
++++ b/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
+ import com.fush.erp.data.dao.*
+ import com.fush.erp.data.entity.*
+ 
+-const val FUSH_DB_SCHEMA_VERSION = 34
++const val FUSH_DB_SCHEMA_VERSION = 35
+ 
+ @Database(
+     entities = [
+diff --git a/app/src/main/java/com/fush/erp/data/Migrations.kt b/app/src/main/java/com/fush/erp/data/Migrations.kt
+index 2faf971..9db3ca8 100644
+--- a/app/src/main/java/com/fush/erp/data/Migrations.kt
++++ b/app/src/main/java/com/fush/erp/data/Migrations.kt
+@@ -2239,3 +2239,127 @@ val MIGRATION_33_34_FIXED_ASSETS = object : Migration(33, 34) {
+         db.execSQL("CREATE INDEX IF NOT EXISTS index_fixed_asset_disposals_treasuryAccountId ON fixed_asset_disposals(treasuryAccountId)")
+     }
+ }
++
++// Accounting P1 (branch-local/provisional numbering):
++// Protect posted journals from destructive mutation and prevent a second POSTED journal for the
++// exact same operational source only when P0 proved sourceType + sourceId is a stable event identity.
++// Historical rows are preserved as-is; this migration creates guards only and never deletes data.
++val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35) {
++    override fun migrate(db: SupportSQLiteDatabase) {
++        val stableSourcesSql = """
++            'CASH_COUNT_ADJUSTMENT',
++            'FX_REVALUATION',
++            'SALE',
++            'CUSTOMER_RECEIPT',
++            'SALES_RETURN',
++            'PURCHASE',
++            'PURCHASE_RETURN',
++            'SUPPLIER_PAYMENT',
++            'INVENTORY_COUNT',
++            'PRODUCTION_ISSUE',
++            'PRODUCTION_LABOR',
++            'PRODUCTION_RECEIPT',
++            'PRODUCTION_REJECT'
++        """.trimIndent()
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_journal_stable_source_id_required_insert
++            BEFORE INSERT ON journal_entries
++            WHEN NEW.status = 'POSTED'
++              AND NEW.sourceType IN ($stableSourcesSql)
++              AND (NEW.sourceId IS NULL OR TRIM(NEW.sourceId) = '')
++            BEGIN
++                SELECT RAISE(ABORT, 'ACCOUNTING_STABLE_SOURCE_ID_REQUIRED');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_journal_no_duplicate_stable_source_insert
++            BEFORE INSERT ON journal_entries
++            WHEN NEW.status = 'POSTED'
++              AND NEW.sourceType IN ($stableSourcesSql)
++              AND NEW.sourceId IS NOT NULL
++              AND TRIM(NEW.sourceId) <> ''
++              AND EXISTS (
++                  SELECT 1 FROM journal_entries existing
++                  WHERE existing.status = 'POSTED'
++                    AND existing.sourceType = NEW.sourceType
++                    AND existing.sourceId = NEW.sourceId
++              )
++            BEGIN
++                SELECT RAISE(ABORT, 'DUPLICATE_ACCOUNTING_POSTING');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_journal_no_duplicate_stable_source_update
++            BEFORE UPDATE OF status, sourceType, sourceId ON journal_entries
++            WHEN OLD.status <> 'POSTED'
++              AND NEW.status = 'POSTED'
++              AND NEW.sourceType IN ($stableSourcesSql)
++              AND NEW.sourceId IS NOT NULL
++              AND TRIM(NEW.sourceId) <> ''
++              AND EXISTS (
++                  SELECT 1 FROM journal_entries existing
++                  WHERE existing.id <> NEW.id
++                    AND existing.status = 'POSTED'
++                    AND existing.sourceType = NEW.sourceType
++                    AND existing.sourceId = NEW.sourceId
++              )
++            BEGIN
++                SELECT RAISE(ABORT, 'DUPLICATE_ACCOUNTING_POSTING');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_no_update
++            BEFORE UPDATE ON journal_entries
++            WHEN OLD.status = 'POSTED'
++            BEGIN
++                SELECT RAISE(ABORT, 'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_no_delete
++            BEFORE DELETE ON journal_entries
++            WHEN OLD.status = 'POSTED'
++            BEGIN
++                SELECT RAISE(ABORT, 'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_journal_line_sanity_insert
++            BEFORE INSERT ON journal_lines
++            WHEN NEW.debit < 0 OR NEW.credit < 0 OR (NEW.debit > 0 AND NEW.credit > 0)
++            BEGIN
++                SELECT RAISE(ABORT, 'INVALID_JOURNAL_LINE');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_line_no_update
++            BEFORE UPDATE ON journal_lines
++            WHEN EXISTS (
++                SELECT 1 FROM journal_entries je
++                WHERE je.id = OLD.entryId AND je.status = 'POSTED'
++            )
++            BEGIN
++                SELECT RAISE(ABORT, 'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL');
++            END
++        """.trimIndent())
++
++        db.execSQL("""
++            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_line_no_delete
++            BEFORE DELETE ON journal_lines
++            WHEN EXISTS (
++                SELECT 1 FROM journal_entries je
++                WHERE je.id = OLD.entryId AND je.status = 'POSTED'
++            )
++            BEGIN
++                SELECT RAISE(ABORT, 'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL');
++            END
++        """.trimIndent())
++    }
++}
+diff --git a/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt b/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt
+new file mode 100644
+index 0000000..fe173a3
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt
+@@ -0,0 +1,24 @@
++package com.fush.erp.domain
++
++/**
++ * Executable P1 view of the P0 contract.
++ *
++ * Only source identities classified STABLE_SOURCE are eligible for DB-level duplicate-posting
++ * protection. Manual/repeatable/state-guarded events must not be falsely collapsed into one event.
++ */
++object AccountingP1IntegrityPolicy {
++    val duplicateProtectedSourceTypes: Set<String> by lazy {
++        AccountingIntegrationContract
++            .p1StableKeyCandidates()
++            .map { it.sourceType }
++            .toSet()
++    }
++
++    fun isDuplicateProtected(sourceType: String): Boolean =
++        sourceType.trim().uppercase() in duplicateProtectedSourceTypes
++
++    fun stableEventKeyOrNull(sourceType: String, sourceId: String?): String? =
++        if (isDuplicateProtected(sourceType) && !sourceId.isNullOrBlank())
++            AccountingIntegrationContract.canonicalEventKey(sourceType, sourceId)
++        else null
++}
+diff --git a/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt b/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt
+new file mode 100644
+index 0000000..38fcc2f
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt
+@@ -0,0 +1,77 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertThrows
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AccountingP1IntegrityPolicyTest {
++    @Test
++    fun duplicateProtectionMatchesOnlyP0StableSources() {
++        val expected = setOf(
++            "CASH_COUNT_ADJUSTMENT",
++            "FX_REVALUATION",
++            "SALE",
++            "CUSTOMER_RECEIPT",
++            "SALES_RETURN",
++            "PURCHASE",
++            "PURCHASE_RETURN",
++            "SUPPLIER_PAYMENT",
++            "INVENTORY_COUNT",
++            "PRODUCTION_ISSUE",
++            "PRODUCTION_LABOR",
++            "PRODUCTION_RECEIPT",
++            "PRODUCTION_REJECT"
++        )
++        assertEquals(expected, AccountingP1IntegrityPolicy.duplicateProtectedSourceTypes)
++    }
++
++    @Test
++    fun repeatableOrManualEventsAreNotFalselyDeduplicated() {
++        assertFalse(AccountingP1IntegrityPolicy.isDuplicateProtected("MANUAL"))
++        assertFalse(AccountingP1IntegrityPolicy.isDuplicateProtected("REVERSAL"))
++        assertFalse(AccountingP1IntegrityPolicy.isDuplicateProtected("SALES_COMMISSION"))
++        assertFalse(AccountingP1IntegrityPolicy.isDuplicateProtected("PROD_COST_CORR"))
++        assertFalse(AccountingP1IntegrityPolicy.isDuplicateProtected("TREASURY_EXPENSE"))
++    }
++
++    @Test
++    fun stableEventKeyIsNormalizedAndRequiresIdentity() {
++        assertEquals(
++            "SALE:42",
++            AccountingP1IntegrityPolicy.stableEventKeyOrNull(" sale ", " 42 ")
++        )
++        assertNull(AccountingP1IntegrityPolicy.stableEventKeyOrNull("SALE", "  "))
++        assertNull(AccountingP1IntegrityPolicy.stableEventKeyOrNull("MANUAL", "42"))
++    }
++
++    @Test
++    fun doubleEntryValidatorStillRejectsImbalance() {
++        AccountingValidator.validate(
++            listOf(
++                DraftJournalLine(1, 250.0, 0.0),
++                DraftJournalLine(2, 0.0, 250.0)
++            )
++        )
++        assertThrows(IllegalArgumentException::class.java) {
++            AccountingValidator.validate(
++                listOf(
++                    DraftJournalLine(1, 250.0, 0.0),
++                    DraftJournalLine(2, 0.0, 249.0)
++                )
++            )
++        }
++    }
++
++    @Test
++    fun stableAutomaticEventsHaveAReversalPath() {
++        AccountingIntegrationContract.p1StableKeyCandidates().forEach { spec ->
++            assertTrue(
++                "${spec.sourceType} must have a reversal path",
++                spec.reversalPolicy != AccountingReversalPolicy.NONE
++            )
++        }
++    }
++}
