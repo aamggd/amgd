@@ -14,7 +14,7 @@ diff --git a/app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt b
 new file mode 100644
 --- /dev/null
 +++ b/app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,16 @@
 +package com.fush.erp.domain
 +
 +/**
