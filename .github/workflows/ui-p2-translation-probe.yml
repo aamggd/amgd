@@ -1,0 +1,37 @@
+name: UI P2 Translation Probe
+
+on:
+  push:
+    branches: [fush/ui-professional-redesign-p2]
+    paths: ['.github/workflows/ui-p2-translation-probe.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe translation endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          samples=['المحاسبة والخزينة','مرتجع مبيعات','رصيد المخزون','الموظفون','سبب الإلغاء']
+          out=[]
+          for s in samples:
+              q=urllib.parse.urlencode({'client':'gtx','sl':'ar','tl':'en','dt':'t','q':s})
+              with urllib.request.urlopen('https://translate.googleapis.com/translate_a/single?'+q, timeout=20) as r:
+                  data=json.load(r)
+              out.append({'ar':s,'en':''.join(x[0] for x in data[0] if x and x[0])})
+          open('ui_p2_translation_probe.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2))
+          print(json.dumps(out,ensure_ascii=False))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-p2-translation-probe
+          path: ui_p2_translation_probe.json
