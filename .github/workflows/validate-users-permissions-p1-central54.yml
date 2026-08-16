@@ -1,0 +1,100 @@
+name: Validate Users Permissions P1 on Central 14.5.54
+
+on:
+  push:
+    branches: [fush/users-permissions]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout security branch
+        uses: actions/checkout@v4
+
+      - name: Download current Central Baseline 14.5.54
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir baseline-artifact source security-p1-out
+          gh run download 31909754750 --repo "$GITHUB_REPOSITORY" --name FushERP-Phase14.5.54-Printing-Integrated-Build --dir baseline-artifact
+          test -f baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip' | sha256sum -c -
+          unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip -d source
+
+      - name: Reconstruct and apply P1 patch
+        run: |
+          set -euo pipefail
+          echo 'dd8d26290ccc43766b56dc66f327ebc26a8bc87cc6cfb2faf5b6e87cd1eb4901  security_central_14_5_54/P1_session_policy.patch.gz.b64' | sha256sum -c -
+          base64 -d security_central_14_5_54/P1_session_policy.patch.gz.b64 | gzip -dc > security_central_14_5_54/P1_session_policy.patch
+          echo '6058262a40acfea0e5b516ede92b0e4dd657e1b746a227fcc7ead8ff9e087957  security_central_14_5_54/P1_session_policy.patch' | sha256sum -c -
+          cd source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          rm -rf app/build .gradle .kotlin
+          git init -q
+          git config user.name security-ci
+          git config user.email security-ci@users.noreply.github.com
+          git add . && git commit -qm baseline-14.5.54
+          git apply --check ../../security_central_14_5_54/P1_session_policy.patch
+          git apply ../../security_central_14_5_54/P1_session_policy.patch
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 5
+          ! git diff --name-only | grep -q 'FushDatabase.kt'
+          ! git diff --name-only | grep -q 'Migrations.kt'
+          ! git diff --name-only | grep -q 'SecurityMigrations.kt'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'automaticLogoutEnabled: Boolean = true' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'ADMIN_IDLE_MINUTES = 3L' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'ADMIN_ABSOLUTE_MINUTES = 240L' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run full unit tests
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../../security-p1-out/unit-tests.log
+
+      - name: Build release
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease 2>&1 | tee ../../security-p1-out/release-build.log
+
+      - name: Package P1 validation
+        run: |
+          set -euo pipefail
+          cd source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../security-p1-out/FushERP-P1-Session-Policy-Central54-release-unsigned.apk
+          sha256sum ../../security-p1-out/FushERP-P1-Session-Policy-Central54-release-unsigned.apk > ../../security-p1-out/FushERP-P1-Session-Policy-Central54-release-unsigned.apk.sha256
+          cp ../../security_central_14_5_54/P1_session_policy.patch ../../security-p1-out/P1_session_policy.patch
+          sha256sum ../../security-p1-out/P1_session_policy.patch > ../../security-p1-out/P1_session_policy.patch.sha256
+
+      - name: Upload P1 validation outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Users-Permissions-P1-Central54
+          path: security-p1-out/*
+          if-no-files-found: error
