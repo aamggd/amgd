@@ -14,7 +14,7 @@ permissions:
 env:
   CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
   INPUT_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
-  PATCH_SHA256: '20d169eba7743e8b2786aadee05443fe03a9a802d2de1ff7bec0e7d27c893bd7'
+  PATCH_SHA256: 'bc31448a56946982d7c07e1bdb70c3ff5b426a38bbd2a7a6ebbb239f6edc47c6'
 
 jobs:
   validate-treasury-banking-p1:
