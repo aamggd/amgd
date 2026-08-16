@@ -88,6 +88,7 @@ jobs:
 
           git apply --check ../validation/p1.patch
           git apply ../validation/p1.patch
+          git add -N .
           git diff --check
 
           git diff --name-only | sort > ../validation/changed-files.txt
