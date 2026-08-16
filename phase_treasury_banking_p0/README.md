@@ -23,13 +23,13 @@ Implements only the movement-type classification required by the treasury/bankin
 - `TRANSFER`
 - `ADJUSTMENT`
 
-The classification is separated from UI voucher labels so a generic payment voucher is not automatically treated as an expense.
+The classification is separated from UI voucher labels so a generic payment voucher is not automatically treated as an expense. P0 intentionally does not add the P1 party-mandatory/party-validity rules; unmatched legacy voucher/party combinations remain postable and classify as `ADJUSTMENT` rather than being rejected by this phase.
 
 ## Functional source patch
 
-- Local reconstructed-source commit: `525983576b79de4f3ffa4c1640eb4d51aa17aae4`
-- Resulting source tree: `bd9bf24296c226f470db8e9a668bd123d33301ce`
-- Patch SHA-256: `e00c126b5f13c549c4ea85a158020c7b1f5881aa3a978a2a2c9af3b23f172b98`
+- Local reconstructed-source commit: `610e5f5e9b3eca50b1e810ef1071305e7bede2e7`
+- Resulting source tree: `e904951e4c7fe279cf619fcabe18c8b347d46de7`
+- Patch SHA-256: `f0471f24fca05c1babdbb888975cd37cae8bac5c7640c28329a8575e528b1e2e`
 - Stored payload: `payload.patch.gz.b64`
 
 Changed application files after applying the payload to the exact baseline:
@@ -46,7 +46,7 @@ Changed application files after applying the payload to the exact baseline:
 - Existing historical `TREASURY_*` source names remain recognized.
 - New canonical source names are reversible where the historical equivalents were reversible.
 - Internal-transfer detection accepts both historical `TREASURY_TRANSFER` and canonical `TRANSFER`.
-- P0 does not change account debit/credit construction, balances, inventory, production, or expense posting formulas beyond selecting a canonical movement source classification.
+- P0 does not change debit/credit construction, account balances, party requirements, inventory, production, or expense posting formulas beyond selecting a canonical movement source classification.
 
 ## Room / migration
 
