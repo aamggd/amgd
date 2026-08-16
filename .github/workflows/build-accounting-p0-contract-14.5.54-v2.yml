@@ -1,0 +1,169 @@
+name: Validate Accounting P0 Contract on Central 14.5.54 v2
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-p0-contract-14.5.54-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  accounting-p0:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download accepted Central 14.5.54
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: central54-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Apply exact P0 handoff to exact Central baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  central54-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip' | sha256sum -c -
+          echo 'c16ae280137aa3dc8777011e36d93af00e2ed0c34f9178ddcc0c99dc9fbc100c  fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch' | sha256sum -c -
+          mkdir work
+          cd work
+          unzip -q ../central54-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          cd FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          git init -q
+          git config user.name 'FUSH Accounting P0 CI'
+          git config user.email 'fush-accounting-p0@example.invalid'
+          git add -A && git commit -qm 'accepted Central 14.5.54 baseline'
+          git apply --check ../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
+          git apply ../../fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch
+          git add -N .
+          git diff --check
+
+      - name: Baseline identity Room and scope guards
+        working-directory: work/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+          changed="$(git diff --name-only HEAD)"
+          printf '%s\n' "$changed"
+          test "$(printf '%s\n' "$changed" | sed '/^$/d' | wc -l)" -eq 3
+          grep -qx 'ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.md' <<<"$changed"
+          grep -qx 'app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt' <<<"$changed"
+          grep -qx 'app/src/test/java/com/fush/erp/domain/AccountingIntegrationContractTest.kt' <<<"$changed"
+          ! grep -q '^app/src/main/java/com/fush/erp/data/' <<<"$changed"
+
+      - name: Contract integration regression
+        working-directory: work/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('app/src/main/java/com/fush/erp/domain')
+          c=(root/'AccountingIntegrationContract.kt').read_text()
+          registered=set(re.findall(r'AccountingEventSpec\("([A-Z0-9_]+)"', c))
+          actual=set()
+          for n in ['AccountingService.kt','SalesService.kt','PurchaseService.kt','InventoryService.kt','AdvancedInventoryService.kt','ProductionService.kt','FixedAssetService.kt']:
+              actual.update(re.findall(r'sourceType\s*=\s*"([A-Z0-9_]+)"', (root/n).read_text()))
+          actual |= {'TREASURY_RECEIPT','TREASURY_PAYMENT','TREASURY_EXPENSE','TREASURY_INCOME'}
+          actual |= {'FIXED_ASSET_ACQUISITION_REVERSAL','FIXED_ASSET_DEPRECIATION_REVERSAL','FIXED_ASSET_DISPOSAL_REVERSAL'}
+          missing=sorted(actual-registered)
+          if missing: raise SystemExit('UNREGISTERED:'+','.join(missing))
+          for d in ['ACCOUNTING','TREASURY','SALES','PURCHASES','INVENTORY','PRODUCTION','FIXED_ASSETS']:
+              if f'AccountingEventDomain.{d}' not in c: raise SystemExit('MISSING_DOMAIN:'+d)
+          gaps=len(re.findall(r'AccountingReplayPolicy.NEEDS_STABLE_EVENT_ID', c))-1
+          print(f'ACCOUNTING_P0_SOURCE_CONTRACT_OK registered={len(registered)} actual={len(actual)} gaps={gaps}')
+          PY
+
+      - name: Unit tests
+        working-directory: work/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/accounting-p0-unit.log"
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Accounting-P0-14.5.54-v2-Diagnostics
+          path: accounting-p0-unit.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Package validated P0 handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          SRC="$ROOT/work/FushERP_Mobile_Phase14_5_54_Printing_Integrated"
+          OUT="$ROOT/accounting-p0-output"
+          mkdir -p "$OUT"
+          test -f "$SRC/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$SRC/app/schemas/com.fush.erp.data.FushDatabase/34.json"
+          grep -q '"version": 34' "$SRC/app/schemas/com.fush.erp.data.FushDatabase/34.json"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$SRC/app/build/outputs/apk/release/app-release-unsigned.apk" "$OUT/FushERP-Accounting-P0-on-14.5.54-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$OUT/FushERP-Accounting-P0-on-14.5.54-aligned-unsigned.apk"
+          cp fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch "$OUT/"
+          cp fush_accounting/ACCOUNTING_P0_14_5_54_SCOPE.md "$OUT/"
+          cd "$SRC"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work"
+          zip -qr "$OUT/FushERP-Mobile-Accounting-P0-on-14.5.54-Source.zip" FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          sha256sum "$OUT"/* > "$OUT/SHA256SUMS.txt"
+          cat > "$OUT/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting P0 Integration Contract
+          Central baseline: Phase 14.5.54 Printing Integrated
+          Central baseline validation run: 31909754750
+          Application ID: com.fush.erp.recovery
+          Room schema: 34 unchanged
+          Migration: NONE
+          Patch SHA-256: c16ae280137aa3dc8777011e36d93af00e2ed0c34f9178ddcc0c99dc9fbc100c
+          Changed application files: 3 additions only
+          Posting amounts changed: NO
+          Inventory quantities changed: NO
+          Production quantities changed: NO
+          Contract source regression: PASS
+          Unit tests: PASS
+          Release build: PASS
+          No destructive migration: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED
+          ACCOUNTING_P0_14_5_54_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-P0-14.5.54-Validated-Handoff
+          path: accounting-p0-output/
+          if-no-files-found: error
+          retention-days: 7
