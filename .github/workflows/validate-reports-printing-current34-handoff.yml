@@ -1,0 +1,356 @@
+name: Validate Reports Printing Current Central34 Handoff
+
+on:
+  push:
+    branches: [fush/reports-printing-central34-handoff]
+    paths:
+      - '.github/workflows/validate-reports-printing-current34-handoff.yml'
+      - 'reports_printing_current34_handoff/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout exact handoff branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download historical Reports references only
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-Accounting-Printing-Build
+          path: refs/p53
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31908733997
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.55-Report-Export-Hardening-Build
+          path: refs/p55
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31913717196
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.57-Management-Print-Coverage-Build
+          path: refs/p57
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915147268
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.58-Nonblocking-Export-Build
+          path: refs/p58
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915869146
+
+      - name: Selectively transplant Reports Printing onto exact current Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git merge-base HEAD 2cb8da801fc54aec8c1f0d6a83588f097ca85117)" = "2cb8da801fc54aec8c1f0d6a83588f097ca85117"
+          test -d central_source
+          grep -q 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q 'MIGRATION_32_33_SECURITY' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'MIGRATION_33_34_FIXED_ASSETS' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -Rqs 'fallbackToDestructiveMigration' central_source/app/src/main
+
+          extract_ref() {
+            local phase="$1" out="$2"
+            local src
+            src="$(find "refs/$phase" -maxdepth 1 -type f -name '*Source.zip' | head -1)"
+            test -n "$src"
+            mkdir -p "$out"
+            unzip -q "$src" -d "$out"
+            find "$out" -maxdepth 1 -type d -name 'FushERP_Mobile_*' | head -1
+          }
+          P53="$(extract_ref p53 /tmp/ref53)"
+          P55="$(extract_ref p55 /tmp/ref55)"
+          P57="$(extract_ref p57 /tmp/ref57)"
+          P58="$(extract_ref p58 /tmp/ref58)"
+
+          # Prove the current Central exporter is the exact functional pre-hardening base,
+          # and current ExportActions is the exact pre-14.5.58 base. This avoids guessing.
+          test "$(git hash-object central_source/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt)" = "$(git hash-object "$P53/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt")"
+          test "$(git hash-object central_source/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt)" = "$(git hash-object "$P57/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt")"
+
+          cd central_source
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-current34@fush.local
+          git config user.name "FUSH Reports Current34"
+          git add -A
+          git commit -qm current-central-2cb8da8-room34
+          BASE_SHA="$(git rev-parse HEAD)"
+          echo "$BASE_SHA" > /tmp/central_base_sha
+
+          make_repo() {
+            local src="$1" out="$2"
+            rm -rf "$out"
+            mkdir -p "$out"
+            cp -a "$src/." "$out/"
+            cd "$out"
+            rm -rf .git app/build .gradle build .kotlin
+            git init -q
+            git config user.email refs@fush.local
+            git config user.name "FUSH Historical Reference"
+            git add -A
+            git commit -qm reference-base
+          }
+
+          # Delta 1: PDF long-text/dynamic-layout + professional PDF/XLSX hardening.
+          make_repo "$P53" /tmp/gen1
+          cd /tmp/gen1
+          mkdir -p app/src/main/java/com/fush/erp/ui/export app/src/test/java/com/fush/erp/ui/export
+          cp "$P55/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P55/app/src/main/java/com/fush/erp/ui/export/ReportExportLayout.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P55/app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P55/app/src/test/java/com/fush/erp/ui/export/ReportExportLayoutTest.kt" app/src/test/java/com/fush/erp/ui/export/
+          cp "$P55/app/src/test/java/com/fush/erp/ui/export/ReportSpreadsheetExportTest.kt" app/src/test/java/com/fush/erp/ui/export/
+          cp "$P55/app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt" app/src/test/java/com/fush/erp/ui/export/
+          git add -A
+          git diff --cached --binary --full-index HEAD > /tmp/01-export-hardening.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          git apply --check /tmp/01-export-hardening.patch
+          git apply --index /tmp/01-export-hardening.patch
+          git commit -qm reports-export-hardening
+
+          # Delta 2: direct print/export coverage. Apply historical hunks by 3-way merge
+          # so newer Central UI/security/master-data changes are preserved.
+          make_repo "$P55" /tmp/gen2
+          cd /tmp/gen2
+          SCREEN_FILES=(AdvancedInventoryScreens.kt BackupRestoreScreen.kt CollectionsDetailScreen.kt EmployeeScreens.kt GeographyScreens.kt GovernanceScreen.kt HomeShell.kt MaintenanceScreens.kt PartyScreens.kt PlanningScreen.kt PurchaseScreens.kt RiskControlScreen.kt SalesRepresentativeScreens.kt SalesScreens.kt DirectSectionReports.kt RemainingSectionReports.kt)
+          for f in "${SCREEN_FILES[@]}"; do
+            if [ -f "$P57/app/src/main/java/com/fush/erp/ui/screens/$f" ]; then
+              cp "$P57/app/src/main/java/com/fush/erp/ui/screens/$f" "app/src/main/java/com/fush/erp/ui/screens/$f"
+            fi
+          done
+          mkdir -p app/src/test/java/com/fush/erp/ui/screens
+          for f in DirectSectionReportsTest.kt RemainingSectionReportsTest.kt; do
+            if [ -f "$P57/app/src/test/java/com/fush/erp/ui/screens/$f" ]; then
+              cp "$P57/app/src/test/java/com/fush/erp/ui/screens/$f" "app/src/test/java/com/fush/erp/ui/screens/$f"
+            fi
+          done
+          git add -A
+          git diff --cached --binary --full-index HEAD > /tmp/02-direct-print-coverage.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          # Seed old base blobs only for 3-way merge; no old file is copied into Central.
+          for f in "${SCREEN_FILES[@]}"; do
+            if [ -f "$P55/app/src/main/java/com/fush/erp/ui/screens/$f" ]; then
+              git hash-object -w "$P55/app/src/main/java/com/fush/erp/ui/screens/$f" >/dev/null
+            fi
+          done
+          git apply --3way --index /tmp/02-direct-print-coverage.patch
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo 'Unresolved current-Central screen conflicts:' >&2
+            git diff --name-only --diff-filter=U >&2
+            exit 1
+          fi
+          git commit -qm reports-direct-print-coverage
+
+          # Delta 3: select only non-blocking report export/print UX from historical 14.5.58.
+          make_repo "$P57" /tmp/gen3
+          cd /tmp/gen3
+          cp "$P58/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P58/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P58/app/src/test/java/com/fush/erp/ui/export/ReportSpreadsheetExportTest.kt" app/src/test/java/com/fush/erp/ui/export/
+          git add -A
+          git diff --cached --binary --full-index HEAD > /tmp/03-nonblocking-export.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          git apply --check /tmp/03-nonblocking-export.patch
+          git apply --index /tmp/03-nonblocking-export.patch
+          git commit -qm reports-nonblocking-export
+
+          # Test-only Android Print Framework harness. It does not alter runtime/schema/version.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          s = p.read_text()
+          needle = '    testImplementation(libs.androidx.room.testing)\n'
+          extra = '''    testImplementation(libs.androidx.room.testing)\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core-ktx:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")\n'''
+          if 'androidx.test:runner:1.6.2' not in s:
+              if needle not in s:
+                  raise SystemExit('test dependency anchor missing')
+              s = s.replace(needle, extra)
+              p.write_text(s)
+          PY
+          mkdir -p app/src/androidTest/java/com/fush/erp/ui/export
+          cat > app/src/androidTest/java/com/fush/erp/ui/export/ReportPrintFrameworkSmokeTest.kt <<'KOTLIN'
+          package com.fush.erp.ui.export
+
+          import android.content.Context
+          import android.print.PrintManager
+          import android.os.SystemClock
+          import androidx.test.core.app.ActivityScenario
+          import androidx.test.ext.junit.runners.AndroidJUnit4
+          import androidx.test.platform.app.InstrumentationRegistry
+          import com.fush.erp.MainActivity
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import org.junit.runner.RunWith
+
+          @RunWith(AndroidJUnit4::class)
+          class ReportPrintFrameworkSmokeTest {
+              @Test
+              fun generatedReportIsAcceptedByAndroidPrintFramework() {
+                  val doc = ReportExportDocument(
+                      title = "اختبار طباعة Fush ERP",
+                      subtitle = "Arabic RTL + English + 123,456.78 ر.ي",
+                      summary = listOf("الحالة" to "Print Framework Smoke"),
+                      tables = listOf(
+                          ReportExportTable(
+                              title = "قيود اختبارية",
+                              headers = listOf("التاريخ", "رقم القيد", "البيان"),
+                              rows = listOf(
+                                  listOf(
+                                      "2026-08-17",
+                                      "RV-20260817-VERY-LONG-REFERENCE-WITHOUT-SPACES-1234567890",
+                                      "بيان عربي طويل لاختبار الالتفاف وعدم تداخل النص مع العمود المجاور English 12345"
+                                  )
+                              )
+                          )
+                      )
+                  )
+                  val bytes = ReportExportSupport.buildPdfBytesForAction(doc)
+                  assertTrue(bytes.size > 100)
+                  assertTrue(String(bytes.copyOfRange(0, 4), Charsets.US_ASCII) == "%PDF")
+
+                  val scenario = ActivityScenario.launch(MainActivity::class.java)
+                  scenario.onActivity { activity ->
+                      val pm = activity.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                      val label = "FUSH-REPORT-PRINT-SMOKE"
+                      ReportExportSupport.printPreparedPdf(activity, doc, label, bytes)
+                      SystemClock.sleep(1200)
+                      assertTrue(pm.printJobs.any { it.info.label == label })
+                  }
+                  InstrumentationRegistry.getInstrumentation().uiAutomation.pressBack()
+                  scenario.close()
+              }
+          }
+          KOTLIN
+          git add app/build.gradle.kts app/src/androidTest
+          git commit -qm reports-print-framework-smoke-test
+
+          # Final exact patch is generated against current Central HEAD content only.
+          git diff --binary "$BASE_SHA"..HEAD > "$GITHUB_WORKSPACE/reports_printing_current34_handoff/HANDOFF.patch"
+          git diff --name-only "$BASE_SHA"..HEAD > "$GITHUB_WORKSPACE/reports_printing_current34_handoff/CHANGED_FILES.txt"
+          git diff --check "$BASE_SHA"..HEAD
+
+          # Strict safety: no Room/migration/domain transaction file may change.
+          ! git diff --name-only "$BASE_SHA"..HEAD | grep -E '^app/src/main/java/com/fush/erp/data/(FushDatabase|AppContainer)\.kt$'
+          ! git diff --name-only "$BASE_SHA"..HEAD | grep -E '^app/src/main/java/com/fush/erp/data/(entity|migration|Migrations)'
+          ! git diff --name-only "$BASE_SHA"..HEAD | grep -E '^app/src/main/java/com/fush/erp/domain/'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -Rqs 'fallbackToDestructiveMigration' app/src/main
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Unit tests and Room Compose compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd central_source
+          gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd central_source
+          gradle --no-daemon :app:assembleRelease
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -Rqs 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Install emulator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64"
+          echo no | avdmanager create avd -f -n fush_reports_print -k "system-images;android-35;google_apis;x86_64" --device "pixel_6"
+
+      - name: Android Print Framework emulator smoke
+        shell: bash
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          nohup emulator -avd fush_reports_print -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none > /tmp/emulator.log 2>&1 &
+          adb wait-for-device
+          timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")" = "1" ]; do sleep 3; done'
+          adb shell input keyevent 82 || true
+          cd central_source
+          gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.ui.export.ReportPrintFrameworkSmokeTest
+          adb shell dumpsys print > ../reports_printing_current34_handoff/PRINT_DUMPSYS.txt || true
+
+      - name: Package verified handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports-handoff-output
+          cp reports_printing_current34_handoff/HANDOFF.patch reports-handoff-output/
+          cp reports_printing_current34_handoff/CHANGED_FILES.txt reports-handoff-output/
+          cp reports_printing_current34_handoff/PRINT_DUMPSYS.txt reports-handoff-output/ 2>/dev/null || true
+          cp reports_printing_current34_handoff/README.md reports-handoff-output/HANDOFF.md
+          cp central_source/app/build/outputs/apk/release/app-release-unsigned.apk reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-input-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-input-unsigned.apk reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk
+          rm reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-input-unsigned.apk
+          sha256sum reports-handoff-output/HANDOFF.patch reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk > reports-handoff-output/SHA256SUMS.txt
+          printf '%s\n' \
+            'FUSH Reports/Printing — Current Central Room34 Handoff' \
+            'Base Central HEAD: 2cb8da801fc54aec8c1f0d6a83588f097ca85117' \
+            'Base Central source tree: 7733c6570357eb813f7e05e5093752ea26788749' \
+            'Application ID: com.fush.erp.recovery' \
+            'Room schema: 34 unchanged' \
+            'Migrations: unchanged' \
+            'Destructive migration: absent' \
+            'Historical Phase 14.5.58 full merge: NOT USED' \
+            'Selective PDF/XLSX layout hardening: PASS' \
+            'Selective direct print coverage transplant: PASS' \
+            'Selective non-blocking export UX transplant: PASS' \
+            'Full JVM unit tests: PASS' \
+            'Release build: PASS' \
+            'Android Print Framework emulator smoke: PASS' \
+            'Zipalign: PASS' \
+            'Ready for handoff review; DO NOT integrate until approved.' \
+            > reports-handoff-output/BUILD-REPORT.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Reports-Printing-Current34-Handoff
+          path: reports-handoff-output/
+          if-no-files-found: error
+          retention-days: 7
