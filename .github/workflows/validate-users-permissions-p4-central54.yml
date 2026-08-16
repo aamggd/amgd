@@ -1,0 +1,170 @@
+name: Validate Users Permissions P4 SQLCipher on Central 14.5.54
+
+on:
+  push:
+    branches: [fush/users-permissions]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout security branch
+        uses: actions/checkout@v4
+
+      - name: Download exact Central Baseline 14.5.54
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir baseline-artifact source p4-out
+          gh run download 31909754750 --repo "$GITHUB_REPOSITORY" --name FushERP-Phase14.5.54-Printing-Integrated-Build --dir baseline-artifact
+          test -f baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip' | sha256sum -c -
+          unzip -q baseline-artifact/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip -d source
+          cp -a source/FushERP_Mobile_Phase14_5_54_Printing_Integrated baseline-plain
+
+      - name: Reconstruct P1 and P4 patches with SHA validation
+        run: |
+          set -euo pipefail
+          echo 'dd8d26290ccc43766b56dc66f327ebc26a8bc87cc6cfb2faf5b6e87cd1eb4901  security_central_14_5_54/P1_session_policy.patch.gz.b64' | sha256sum -c -
+          base64 -d security_central_14_5_54/P1_session_policy.patch.gz.b64 | gzip -dc > security_central_14_5_54/P1_session_policy.patch
+          echo '6058262a40acfea0e5b516ede92b0e4dd657e1b746a227fcc7ead8ff9e087957  security_central_14_5_54/P1_session_policy.patch' | sha256sum -c -
+
+          echo '0d2c3defbc75167faf8070f6e924a040980ed9ed90e859a740a3955756ba7492  security_central_14_5_54/P4_sqlcipher_parts/part_00.b64' | sha256sum -c -
+          echo '1ab44f8e7af7ab86c325907ee2f0a453b8fe348cb0c4e103d013e62ba46e21e5  security_central_14_5_54/P4_sqlcipher_parts/part_01.b64' | sha256sum -c -
+          echo '62c2cbdf6b8713213682c3e5308a4109dc93b8628ba63b6ebaef9256679db6ea  security_central_14_5_54/P4_sqlcipher_parts/part_02.b64' | sha256sum -c -
+          cat security_central_14_5_54/P4_sqlcipher_parts/part_*.b64 > security_central_14_5_54/P4_sqlcipher.combined.b64
+          echo 'f9e1aed8eea5c10b051a6a68a426d3f9cc659ee0b3daa736ab2cee59110b6ea5  security_central_14_5_54/P4_sqlcipher.combined.b64' | sha256sum -c -
+          base64 -d security_central_14_5_54/P4_sqlcipher.combined.b64 | gzip -dc > security_central_14_5_54/P4_sqlcipher.patch
+          echo 'aa2ee3674ac476e00d22fb84595d49d79bf48bd5e43c1b9a9a8bf2acb4caca8e  security_central_14_5_54/P4_sqlcipher.patch' | sha256sum -c -
+
+      - name: Apply P1 then P4 selectively to Central source
+        run: |
+          set -euo pipefail
+          cd source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          rm -rf app/build .gradle .kotlin
+          git init -q
+          git config user.name security-ci
+          git config user.email security-ci@users.noreply.github.com
+          git add . && git commit -qm baseline-14.5.54
+          git apply --check ../../security_central_14_5_54/P1_session_policy.patch
+          git apply ../../security_central_14_5_54/P1_session_policy.patch
+          git add . && git commit -qm p1-session-policy
+          git apply --check ../../security_central_14_5_54/P4_sqlcipher.patch
+          git apply ../../security_central_14_5_54/P4_sqlcipher.patch
+          git diff --check HEAD
+          test "$(git diff --name-only HEAD | wc -l)" -eq 7
+          ! git diff --name-only HEAD | grep -Eq 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'net.zetetic:sqlcipher-android:4.17.0@aar' app/build.gradle.kts
+          grep -q 'SupportOpenHelperFactory' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/DatabaseKeyManager.kt
+          grep -q 'PRAGMA user_version = 34' app/src/androidTest/java/com/fush/erp/backup/DatabaseEncryptionInstrumentedTest.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -z "$(find . -name '*.p12' -print -quit)"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install emulator image
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Build plaintext Central baseline debug APK for physical-device upgrade test
+        working-directory: baseline-plain
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../p4-out/baseline-debug-build.log
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../p4-out/FushERP-14.5.54-Plaintext-Baseline-debug.apk
+
+      - name: Run full Unit tests on P1 plus P4
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../../p4-out/unit-tests.log
+
+      - name: Build P4 release
+        working-directory: source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease :app:assembleDebug 2>&1 | tee ../../p4-out/release-build.log
+
+      - name: Boot emulator and run actual plaintext to SQLCipher upgrade test
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod 666 /dev/kvm || true
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo no | avdmanager create avd --force --name fush-security-p4 --package "system-images;android-35;google_apis;x86_64" --device "pixel_6" --path "$ANDROID_AVD_HOME/fush-security-p4.avd"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | tee p4-out/avd-list.log
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -qx 'fush-security-p4'
+          nohup "$ANDROID_HOME/emulator/emulator" -avd fush-security-p4 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > p4-out/emulator.log 2>&1 &
+          EMU_PID=$!
+          device_seen=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then cat p4-out/emulator.log; exit 1; fi
+            if adb devices | grep -q '^emulator-'; then device_seen=1; break; fi
+            sleep 2
+          done
+          test "$device_seen" = "1"
+          timeout 60s adb wait-for-device
+          booted=""
+          for i in $(seq 1 90); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then cat p4-out/emulator.log; exit 1; fi
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            [ "$booted" = "1" ] && break
+            sleep 2
+          done
+          test "$booted" = "1"
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          cd source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          timeout 900s gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest 2>&1 | tee ../../p4-out/instrumented-encryption.log
+
+      - name: Package P4 outputs and verify native SQLCipher
+        run: |
+          set -euo pipefail
+          cd source/FushERP_Mobile_Phase14_5_54_Printing_Integrated
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/release/app-release-unsigned.apk | grep -q 'lib/arm64-v8a/libsqlcipher.so'
+          unzip -l app/build/outputs/apk/release/app-release-unsigned.apk | grep -q 'lib/x86_64/libsqlcipher.so'
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../p4-out/FushERP-P4-SQLCipher-Central54-release-unsigned.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../../p4-out/FushERP-P4-SQLCipher-Central54-debug.apk
+          cp ../../security_central_14_5_54/P4_sqlcipher.patch ../../p4-out/P4_sqlcipher.patch
+          cd ../../p4-out
+          sha256sum *.apk P4_sqlcipher.patch > SHA256SUMS.txt
+
+      - name: Upload P4 candidate outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Users-Permissions-P4-SQLCipher-Central54-Candidate
+          path: p4-out/*
+          if-no-files-found: error
