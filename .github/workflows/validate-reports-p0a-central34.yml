@@ -48,9 +48,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '[:space:]' < reports_plan_p0a_central34/payload/p0a.patch.gz.b64 > reports_plan_p0a_central34/payload/p0a.normalized.b64
-          base64 -d reports_plan_p0a_central34/payload/p0a.normalized.b64 | gzip -dc > reports_plan_p0a_central34/p0a.patch
-          echo 'ce47f8b14f51d26fd8c7a56258aaced60719e90756eb26ccde1b707ced0efb5a  reports_plan_p0a_central34/p0a.patch' | sha256sum -c -
+          PATCH="reports_plan_p0a_central34/payload/p0a.patch"
+          echo 'ce47f8b14f51d26fd8c7a56258aaced60719e90756eb26ccde1b707ced0efb5a  reports_plan_p0a_central34/payload/p0a.patch' | sha256sum -c -
           unzip -q central-build/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
           ROOT="$(find . -maxdepth 1 -type d -name 'FushERP_Mobile_*' | head -1)"
           test -n "$ROOT"
@@ -61,8 +60,8 @@ jobs:
           git config user.name "FUSH Reports CI"
           git add -A
           git commit -qm central-14.5.54-schema34
-          git apply --check ../reports_plan_p0a_central34/p0a.patch
-          git apply ../reports_plan_p0a_central34/p0a.patch
+          git apply --check "../$PATCH"
+          git apply "../$PATCH"
           git add -A
           git diff --cached --check HEAD
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
@@ -75,7 +74,6 @@ jobs:
           test -f app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt
           grep -q 'ReportTextLayout.wrap' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
           grep -q 'canvas.clipRect' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
-          # This handoff must not alter central version identifiers or DB files.
           git diff --cached --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt'
           git diff --cached --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt'
           git diff --cached --name-only HEAD | grep -Fx 'app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt'
@@ -122,7 +120,7 @@ jobs:
           ALIGNED="reports-p0a-output/FushERP-Reports-P0A-Central34-aligned-unsigned.apk"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$UNSIGNED" "$ALIGNED"
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ALIGNED"
-          cp reports_plan_p0a_central34/p0a.patch reports-p0a-output/reports-p0a-central34.patch
+          cp reports_plan_p0a_central34/payload/p0a.patch reports-p0a-output/reports-p0a-central34.patch
           cp reports_plan_p0a_central34/README.md reports-p0a-output/HANDOFF.md
           sha256sum "$ALIGNED" reports-p0a-output/reports-p0a-central34.patch > reports-p0a-output/SHA256SUMS.txt
           printf '%s\n' \
