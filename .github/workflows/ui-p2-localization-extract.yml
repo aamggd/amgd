@@ -1,0 +1,43 @@
+name: UI P2 Localization Inventory
+
+on:
+  push:
+    branches: [fush/ui-professional-redesign-p2]
+    paths:
+      - 'ui_p2/tools/extract_localization.py'
+      - '.github/workflows/ui-p2-localization-extract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BASE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  BASE_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Guard exact P2 baseline ancestry and source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASE_CENTRAL_HEAD" HEAD
+          test "$(git rev-parse "$BASE_CENTRAL_HEAD:central_source")" = "$BASE_SOURCE_TREE"
+          test "$(git rev-parse "$BASE_CENTRAL_HEAD^{tree}:central_source")" = "$BASE_SOURCE_TREE" || true
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
+      - name: Extract P2 localization candidates
+        run: python3 ui_p2/tools/extract_localization.py
+      - name: Upload inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-UI-P2-Localization-Inventory
+          path: ui_p2/extract
+          if-no-files-found: error
