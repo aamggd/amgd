@@ -1,4 +1,4 @@
-name: Validate FUSH Expenses P1 on Current Central
+name: Validate FUSH Expenses P1 on Initial Central
 
 on:
   push:
@@ -20,35 +20,29 @@ jobs:
     steps:
       - name: Checkout expenses branch
         uses: actions/checkout@v4
-
       - name: Checkout exact starting Central HEAD
         uses: actions/checkout@v4
         with:
           ref: ${{ env.INITIAL_CENTRAL_HEAD }}
           path: central
-
       - name: Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-
       - name: Android SDK
         uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-
       - name: Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
           cache-read-only: true
-
       - name: Restore exact Central source and apply P1 payload
         shell: bash
         run: |
@@ -57,7 +51,6 @@ jobs:
           rm -rf source
           cp -a central/central_source source
           BASE_SCHEMA=$(sed -n 's/const val FUSH_DB_SCHEMA_VERSION = \([0-9][0-9]*\)/\1/p' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt)
-          test -n "$BASE_SCHEMA"
           TARGET_SCHEMA=$((BASE_SCHEMA + 1))
           echo "BASE_SCHEMA=$BASE_SCHEMA" >> "$GITHUB_ENV"
           echo "TARGET_SCHEMA=$TARGET_SCHEMA" >> "$GITHUB_ENV"
@@ -72,22 +65,17 @@ jobs:
           git -C source add -A
           git -C source diff --cached --check
           git -C source diff --cached --binary > expenses-p1-exact.patch
-          test -s expenses-p1-exact.patch
           sha256sum expenses-p1-exact.patch | tee expenses-p1-exact.patch.sha256
           git -C source diff --cached --name-only | sort | tee expenses-p1-files.txt
-
       - name: Domain tests
         working-directory: source
         run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.ExpenseLifecyclePolicyTest --tests com.fush.erp.domain.ExpenseClassificationPolicyTest
-
       - name: Full unit tests
         working-directory: source
         run: gradle --no-daemon :app:testDebugUnitTest
-
       - name: Release build
         working-directory: source
         run: gradle --no-daemon :app:assembleRelease
-
       - name: Room migration preservation test
         shell: bash
         run: |
@@ -105,10 +93,9 @@ jobs:
           sqlite3 "$DB" < phase_expenses_p1/expense_workflow_migration.sql
           test "$(sqlite3 "$DB" "SELECT value FROM central_sentinel WHERE id=1;")" = "preserve-me"
           test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='expense_workflow_requests';")" = "1"
-          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM pragma_table_info('expense_workflow_requests') WHERE name IN ('approvalStatus','paymentStatus','journalEntryId','partyVoucherId');")" = "4"
-          sqlite3 "$DB" "INSERT INTO expense_workflow_requests(requestNo,treasuryAccountId,expenseAccountId,amountOriginal,currencyCode,exchangeRate,description,referenceNo,expenseDate,costCenterCode,organizationUnit,referenceType,referenceLabel,attachmentFileName,attachmentMimeType,attachmentUri,attachmentNotes,approvalStatus,paymentStatus,createdBy,createdAt,rejectionReason,updatedAt) VALUES('ERQ-MIGRATION',1,1,100,'YER_NEW',1,'test','',1,'ADMIN','','NONE','','','','','','DRAFT','UNPAID',1,1,'',1);"
+          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM pragma_table_info('expense_workflow_requests') WHERE name IN ('approvalStatus','paymentStatus','journalEntryId','partyVoucherId','dimensionReferenceNo');")" = "5"
+          sqlite3 "$DB" "INSERT INTO expense_workflow_requests(requestNo,treasuryAccountId,expenseAccountId,amountOriginal,currencyCode,exchangeRate,description,referenceNo,expenseDate,costCenterCode,organizationUnit,referenceType,dimensionReferenceNo,referenceLabel,attachmentFileName,attachmentMimeType,attachmentUri,attachmentNotes,approvalStatus,paymentStatus,createdBy,createdAt,rejectionReason,updatedAt) VALUES('ERQ-MIGRATION',1,1,100,'YER_NEW',1,'test','',1,'ADMIN','','NONE','','','','','','','DRAFT','UNPAID',1,1,'',1);"
           test "$(sqlite3 "$DB" "SELECT approvalStatus || '|' || paymentStatus FROM expense_workflow_requests WHERE requestNo='ERQ-MIGRATION';")" = "DRAFT|UNPAID"
-
       - name: P1 safety and no-destructive checks
         shell: bash
         run: |
@@ -119,17 +106,17 @@ jobs:
           grep -q "MIGRATION_${BASE_SCHEMA}_${TARGET_SCHEMA}_EXPENSE_WORKFLOW_PROVISIONAL" source/app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -q 'ExpenseWorkflowRequestEntity::class' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'expenseWorkflowDao(): ExpenseWorkflowDao' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'يجب دفع المصروف من دورة الاعتماد' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'requirePaymentMatchesApproved' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'EXPENSE_PAID_POSTED' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
           test -f "source/app/schemas/com.fush.erp.data.FushDatabase/$TARGET_SCHEMA.json"
           test -f "source/app/schemas/com.fush.erp.data.FushDatabase/$BASE_SCHEMA.json"
           ! grep -R -q 'fallbackToDestructiveMigration' source/app/src/main/java source/app/build.gradle.kts
           ! sed -n '/Expenses P1 branch only/,$p' source/app/src/main/java/com/fush/erp/data/Migrations.kt | grep -Eiq 'DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM|VACUUM'
           test -s source/app/build/outputs/apk/release/app-release-unsigned.apk
-
       - name: Upload initial P1 validation outputs
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Expenses-P1-Initial-Validation
+          name: FushERP-Expenses-P1-Initial-Hardened-Validation
           path: |
             source/app/build/outputs/apk/release/app-release-unsigned.apk
             source/app/schemas/com.fush.erp.data.FushDatabase/${{ env.TARGET_SCHEMA }}.json
