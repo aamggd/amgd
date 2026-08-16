@@ -78,8 +78,8 @@ jobs:
           git commit -qm 'Central baseline 2cb8da8'
           test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
 
-          git apply --check ../purchases_suppliers_p1/phase_p1.patch
-          git apply ../purchases_suppliers_p1/phase_p1.patch
+          git apply --check --recount ../purchases_suppliers_p1/phase_p1.patch
+          git apply --recount ../purchases_suppliers_p1/phase_p1.patch
           git add -A
           git diff --cached --check
 
