@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS expense_workflow_requests (
     organizationUnit TEXT NOT NULL,
     referenceType TEXT NOT NULL,
     referenceId INTEGER,
+    dimensionReferenceNo TEXT NOT NULL,
     referenceLabel TEXT NOT NULL,
     customerId INTEGER,
     supplierId INTEGER,
