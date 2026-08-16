@@ -43,30 +43,56 @@ class SecurityPolicyTest {
         assertEquals(now + 60L * 60_000L, decision.lockedUntil)
     }
     @Test
-    fun automaticSessionLogoutIsDisabledByDefault() {
+    fun automaticSessionLogoutIsEnabledByDefault() {
         val settings = SessionTimeoutSettings()
-        assertFalse(settings.automaticLogoutEnabled)
-        assertFalse(
-            SessionPolicy.shouldExpire(
-                settings = settings,
-                sessionStartedAt = 0L,
-                lastActivityAt = 0L,
-                now = 10L * 24L * 60L * 60_000L
-            )
-        )
+        assertTrue(settings.automaticLogoutEnabled)
+        assertEquals(5L, settings.idleTimeoutMinutes)
+        assertEquals(480L, settings.maxSessionMinutes)
     }
 
     @Test
-    fun customSessionTimeoutCanBeEnabled() {
+    fun persistedDisableCannotWeakenSessionPolicy() {
+        val settings = SessionTimeoutSettings(
+            automaticLogoutEnabled = false,
+            idleTimeoutMinutes = 30L,
+            maxSessionMinutes = 1_000L
+        )
+        val effective = SessionPolicy.effective(settings, "ACCOUNTANT")
+        assertTrue(effective.automaticLogoutEnabled)
+        assertEquals(5L, effective.idleTimeoutMinutes)
+        assertEquals(480L, effective.maxSessionMinutes)
+    }
+
+    @Test
+    fun adminSessionUsesStricterIdleAndAbsoluteCaps() {
         val settings = SessionTimeoutSettings(
             automaticLogoutEnabled = true,
             idleTimeoutMinutes = 30L,
-            maxSessionMinutes = 480L
+            maxSessionMinutes = 1_000L
         )
-        assertFalse(SessionPolicy.shouldExpire(settings, 0L, 29L * 60_000L, 30L * 60_000L - 1L))
-        assertTrue(SessionPolicy.shouldExpire(settings, 0L, 0L, 30L * 60_000L))
-        assertTrue(SessionPolicy.shouldExpire(settings, 0L, 479L * 60_000L, 480L * 60_000L))
+        val effective = SessionPolicy.effective(settings, "ADMIN")
+        assertEquals(3L, effective.idleTimeoutMinutes)
+        assertEquals(240L, effective.maxSessionMinutes)
+        assertFalse(SessionPolicy.shouldExpire(settings, "ADMIN", 0L, 0L, 3L * 60_000L - 1L))
+        assertTrue(SessionPolicy.shouldExpire(settings, "ADMIN", 0L, 0L, 3L * 60_000L))
+        assertTrue(SessionPolicy.shouldExpire(settings, "ADMIN", 0L, 239L * 60_000L, 240L * 60_000L))
     }
+
+    @Test
+    fun administratorCanOnlyTightenTimeouts() {
+        val settings = SessionTimeoutSettings(
+            automaticLogoutEnabled = true,
+            idleTimeoutMinutes = 2L,
+            maxSessionMinutes = 120L
+        )
+        val normal = SessionPolicy.effective(settings, "ACCOUNTANT")
+        val admin = SessionPolicy.effective(settings, "ADMIN")
+        assertEquals(2L, normal.idleTimeoutMinutes)
+        assertEquals(120L, normal.maxSessionMinutes)
+        assertEquals(2L, admin.idleTimeoutMinutes)
+        assertEquals(120L, admin.maxSessionMinutes)
+    }
+
     @Test
     fun criticalReauthenticationWindowIsFiveMinutes() {
         val verifiedAt = 10_000L

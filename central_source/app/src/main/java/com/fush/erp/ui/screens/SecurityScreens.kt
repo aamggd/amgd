@@ -565,7 +565,7 @@ private fun RolesTab(
 @Composable
 private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, canManage: Boolean) {
     val initial = remember { container.sessionSettings.current() }
-    var automaticLogoutEnabled by remember { mutableStateOf(initial.automaticLogoutEnabled) }
+    val automaticLogoutEnabled = true
     var idleMinutes by remember { mutableStateOf(initial.idleTimeoutMinutes.toString()) }
     var maxSessionMinutes by remember { mutableStateOf(initial.maxSessionMinutes.toString()) }
     var sessionMessage by remember { mutableStateOf<String?>(null) }
@@ -584,23 +584,22 @@ private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, 
                         Column(Modifier.weight(1f)) {
                             Text("الإغلاق التلقائي للجلسة", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                if (automaticLogoutEnabled) "مفعّل — سيتم تطبيق المدد المحددة أدناه"
-                                else "متوقف — لن تُغلق الجلسة بسبب مرور الوقت أو الخمول",
+                                "مفعّل إلزاميًا — يمكن فقط تشديد المدد دون تجاوز حدود السياسة",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
                         Switch(
-                            checked = automaticLogoutEnabled,
-                            enabled = canManage,
-                            onCheckedChange = { automaticLogoutEnabled = it }
+                            checked = true,
+                            enabled = false,
+                            onCheckedChange = null
                         )
                     }
                     OutlinedTextField(
                         value = idleMinutes,
                         onValueChange = { idleMinutes = it.filter(Char::isDigit).take(5) },
                         label = { Text("الإغلاق بعد الخمول — بالدقائق") },
-                        supportingText = { Text("مثال: 30 دقيقة") },
-                        enabled = canManage && automaticLogoutEnabled,
+                        supportingText = { Text("الحد الأقصى: 5 دقائق للمستخدم العادي و3 دقائق للمدير؛ القيم الأقل مسموحة") },
+                        enabled = canManage,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -608,8 +607,8 @@ private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, 
                         value = maxSessionMinutes,
                         onValueChange = { maxSessionMinutes = it.filter(Char::isDigit).take(5) },
                         label = { Text("الحد الأقصى لمدة الجلسة — بالدقائق") },
-                        supportingText = { Text("مثال: 480 دقيقة = 8 ساعات") },
-                        enabled = canManage && automaticLogoutEnabled,
+                        supportingText = { Text("الحد المطلق: 480 دقيقة للمستخدم العادي و240 دقيقة للمدير؛ القيم الأقل مسموحة") },
+                        enabled = canManage,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -618,16 +617,16 @@ private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, 
                             onClick = {
                                 val idle = idleMinutes.toLongOrNull()
                                 val maximum = maxSessionMinutes.toLongOrNull()
-                                if (automaticLogoutEnabled && (idle == null || maximum == null ||
+                                if (idle == null || maximum == null ||
                                         idle !in SessionPolicy.MIN_TIMEOUT_MINUTES..SessionPolicy.MAX_TIMEOUT_MINUTES ||
-                                        maximum !in SessionPolicy.MIN_TIMEOUT_MINUTES..SessionPolicy.MAX_TIMEOUT_MINUTES)) {
+                                        maximum !in SessionPolicy.MIN_TIMEOUT_MINUTES..SessionPolicy.MAX_TIMEOUT_MINUTES) {
                                     sessionMessage = "أدخل مدة صحيحة بين 1 و${SessionPolicy.MAX_TIMEOUT_MINUTES} دقيقة"
                                 } else {
                                     val old = container.sessionSettings.current()
                                     val updated = SessionTimeoutSettings(
                                         automaticLogoutEnabled = automaticLogoutEnabled,
                                         idleTimeoutMinutes = idle ?: SessionPolicy.DEFAULT_IDLE_MINUTES,
-                                        maxSessionMinutes = maximum ?: SessionPolicy.DEFAULT_MAX_SESSION_MINUTES
+                                        maxSessionMinutes = maximum ?: SessionPolicy.DEFAULT_ABSOLUTE_MINUTES
                                     )
                                     container.sessionSettings.save(updated)
                                     scope.launch {
@@ -639,7 +638,7 @@ private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, 
                                             )
                                         }
                                     }
-                                    sessionMessage = if (automaticLogoutEnabled) "تم حفظ مدة الجلسة" else "تم تعطيل الإغلاق التلقائي للجلسة"
+                                    sessionMessage = "تم حفظ سياسة الجلسة الآمنة"
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -652,7 +651,7 @@ private fun SecurityPolicyTab(container: AppContainer, currentUser: UserEntity, 
         item { PolicyCard("كلمات المرور", "${PasswordPolicy.MIN_LENGTH} حرفًا على الأقل، حرف كبير وصغير ورقم ورمز خاص، ومنع إعادة استخدام آخر ${PasswordPolicy.HISTORY_COUNT} كلمات مرور، وتغيير إلزامي بعد ${PasswordPolicy.MAX_AGE_DAYS} يومًا.") }
         item { PolicyCard("الحسابات الجديدة", "كلمة المرور الأولية مؤقتة ويجب تغييرها عند أول دخول.") }
         item { PolicyCard("محاولات الدخول", "بعد 5 محاولات فاشلة: قفل 15 دقيقة. عند تكرار القفل: 60 دقيقة.") }
-        item { PolicyCard("الجلسات", "الإغلاق الزمني قابل للتحكم يدويًا من الإعداد أعلاه، والافتراضي هو عدم الإغلاق التلقائي. يبقى تعطيل المستخدم أو تغيير دوره/كلمة مروره أو تسجيل دخول جديد سببًا فوريًا لإنهاء الجلسة القديمة.") }
+        item { PolicyCard("الجلسات", "الإغلاق الزمني إلزامي. الخمول بحد أقصى 5 دقائق للمستخدم العادي و3 دقائق للمدير، والمدة المطلقة بحد أقصى 8 ساعات للمستخدم العادي و4 ساعات للمدير. يمكن للإدارة تشديد القيم فقط. تعطيل المستخدم أو تغيير دوره/كلمة مروره أو تسجيل دخول جديد ينهي الجلسة القديمة فورًا.") }
         item { PolicyCard("MFA للحسابات الحساسة", "التحقق الثنائي إلزامي للمدير ولأي دور يملك إدارة المستخدمين/الأدوار أو استعادة النسخ الاحتياطية. تتوفر 10 رموز استرداد أحادية الاستخدام.") }
         item { PolicyCard("إعادة التحقق للعمليات الحساسة", "إدارة المستخدمين والأدوار واستعادة النسخ الاحتياطية تتطلب كلمة المرور الحالية + MFA حديثًا. صلاحية إعادة التحقق ${com.fush.erp.domain.ReauthenticationPolicy.WINDOW_MINUTES} دقائق فقط ثم يجب التحقق من جديد.") }
         item { PolicyCard("تغيير الدور أو كلمة المرور", "يتم إبطال الجلسة الحالية فور تغيير الدور أو إعادة ضبط كلمة المرور، كما أن تسجيل دخول جديد يبطل الجلسة السابقة.") }
