@@ -194,7 +194,8 @@ class SalesService(private val db: FushDatabase) {
         db.requireUserPermission(request.createdBy, SecurityPermissions.SALES_POST)
         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع البيع غير صالح" }
         SalesMath.validateExchangeRate(request.exchangeRate)
-        val customer = requireNotNull(db.customerDao().byId(request.customerId)) { "العميل غير موجود" }
+        val customerId = CustomerMovementIdentity.requireId(request.customerId)
+        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
         val salesRep = (request.salesRepId ?: customer.salesRepId)?.let { id ->
             requireNotNull(db.salesRepresentativeDao().byId(id)) { "مندوب المبيعات غير موجود" }.also {
                 require(it.status == "ACTIVE") { "مندوب المبيعات غير نشط" }
@@ -340,7 +341,8 @@ class SalesService(private val db: FushDatabase) {
         receiptDate: Long = System.currentTimeMillis(),
         treasuryAccountId: Long? = null
     ): MultiReceiptResult = db.withTransaction {
-        val open = db.salesDao().openInvoiceSummaries(customerId)
+        val validatedCustomerId = CustomerMovementIdentity.requireId(customerId)
+        val open = db.salesDao().openInvoiceSummaries(validatedCustomerId)
             .filter { it.currencyCode == currencyCode }
         val plan = SettlementAllocationMath.allocateOldest(
             amountOriginal,
@@ -350,7 +352,7 @@ class SalesService(private val db: FushDatabase) {
             }
         )
         postReceiptAllocationsInternal(
-            customerId = customerId,
+            customerId = validatedCustomerId,
             allocations = plan.allocations.map { ReceiptAllocationRequest(it.invoiceId, it.amountOriginal) },
             currencyCode = currencyCode,
             exchangeRate = exchangeRate,
@@ -390,7 +392,8 @@ class SalesService(private val db: FushDatabase) {
         SalesMath.validateExchangeRate(exchangeRate)
         require(allocations.isNotEmpty()) { "يجب تحديد فاتورة واحدة على الأقل للتحصيل" }
         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس التحصيل" }
-        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
+        val validatedCustomerId = CustomerMovementIdentity.requireId(customerId)
+        val customer = requireNotNull(db.customerDao().byId(validatedCustomerId)) { "العميل غير موجود" }
         val treasury = resolveTreasury(treasuryAccountId, currencyCode)
 
         data class Prepared(val invoice: SalesInvoiceEntity, val request: ReceiptAllocationRequest, val split: CustomerArMath.ReceiptSplit)
@@ -467,13 +470,19 @@ class SalesService(private val db: FushDatabase) {
         require(reason.trim().isNotBlank()) { "سبب عكس التحصيل مطلوب" }
         AccountingService(db).requirePostingPeriodOpen(reversalDate)
         val original = requireNotNull(db.salesDao().receiptById(receiptId)) { "التحصيل غير موجود" }
+        val customerId = CustomerMovementIdentity.requireId(original.customerId)
         require(original.reversalOfReceiptId == null) { "لا يمكن عكس مستند عكس" }
         require(reversalDate >= original.receiptDate) { "تاريخ العكس لا يمكن أن يسبق تاريخ التحصيل" }
         require(db.salesDao().reversalForReceipt(original.id) == null) { "تم عكس هذا التحصيل مسبقاً" }
         val allocations = db.salesDao().receiptAllocations(original.id)
         require(allocations.isNotEmpty()) { "التحصيل لا يحتوي تخصيصاً لفاتورة" }
         val invoices = allocations.map { allocation ->
-            requireNotNull(db.salesDao().invoiceById(allocation.invoiceId)) { "فاتورة التحصيل غير موجودة" }
+            requireNotNull(db.salesDao().invoiceById(allocation.invoiceId)) { "فاتورة التحصيل غير موجودة" }.also { invoice ->
+                val invoiceCustomerId = CustomerMovementIdentity.requireId(invoice.customerId)
+                require(invoiceCustomerId == customerId) {
+                    "فاتورة التحصيل لا تخص العميل المرتبط بالتحصيل"
+                }
+            }
         }
         require(invoices.all { it.paymentType == "CREDIT" }) {
             "التحصيل النقدي التلقائي لفاتورة نقدية يعكس من عملية البيع الأصلية، وليس كتحصيل مستقل"
@@ -487,7 +496,7 @@ class SalesService(private val db: FushDatabase) {
         val reversalId = db.salesDao().insertReceipt(
             CustomerReceiptEntity(
                 receiptNo = reversalNo,
-                customerId = original.customerId,
+                customerId = customerId,
                 receiptDate = reversalDate,
                 currencyCode = original.currencyCode,
                 exchangeRate = original.exchangeRate,
@@ -557,7 +566,8 @@ class SalesService(private val db: FushDatabase) {
         require(reason.isNotBlank()) { "سبب المرتجع مطلوب" }
         val line = requireNotNull(db.salesDao().lineById(salesLineId)) { "سطر البيع غير موجود" }
         val invoice = requireNotNull(db.salesDao().invoiceById(line.invoiceId)) { "فاتورة البيع غير موجودة" }
-        val customer = requireNotNull(db.customerDao().byId(invoice.customerId)) { "العميل غير موجود" }
+        val customerId = CustomerMovementIdentity.requireId(invoice.customerId)
+        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
         val refundTreasury = if (settlementType == "CASH_REFUND") resolveTreasury(treasuryAccountId, invoice.currencyCode) else null
         val alreadyReturned = db.salesDao().returnedQuantityForLine(line.id)
         SalesMath.validateReturn(quantity, line.quantity, alreadyReturned)

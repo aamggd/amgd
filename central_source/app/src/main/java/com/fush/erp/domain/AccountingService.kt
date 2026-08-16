@@ -1529,7 +1529,7 @@ class AccountingService(private val db: FushDatabase) {
         return when (offset.code) {
             "1300" -> {
                 require(request.supplierId == null && request.employeeId == null && request.salesRepId == null) { "حساب العملاء يقبل عميلاً فقط" }
-                val id = requireNotNull(request.customerId) { "يجب تحديد العميل عند استخدام حساب العملاء" }
+                val id = CustomerMovementIdentity.requireId(request.customerId)
                 val customer = requireNotNull(db.customerDao().byId(id)) { "العميل المحدد غير موجود" }
                 require(customer.isActive) { "العميل المحدد غير نشط" }
                 PartyLink("CUSTOMER", customer.nameAr, customerId = customer.id)
