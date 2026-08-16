@@ -57,7 +57,8 @@ jobs:
           ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
           test -s "$ZIP"
           echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip' | sha256sum -c -
-          base64 -d sales_customers_phase1/phase1_p0.patch.xz.b64 | xz -dc > /tmp/phase1_p0.patch
+          cat sales_customers_phase1/patch_chunks/00 sales_customers_phase1/patch_chunks/01 sales_customers_phase1/patch_chunks/02 | base64 -d | xz -dc > /tmp/phase1_p0.patch
+          echo '360b2a77e397ca1cedf67f4d72813e67b959af69946608fd70b58728fdd975ba  /tmp/phase1_p0.patch' | sha256sum -c -
           mkdir -p work
           unzip -q "$ZIP" -d work
           SRC=$(find work -mindepth 1 -maxdepth 1 -type d | head -1)
