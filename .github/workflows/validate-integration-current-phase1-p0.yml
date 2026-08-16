@@ -1,0 +1,122 @@
+name: Validate FUSH Integration Current Phase 1 P0
+
+on:
+  push:
+    branches: [fush/integration-current-phase1-p0]
+    paths:
+      - 'integration_current/PHASE1_REGISTRY.md'
+      - '.github/workflows/validate-integration-current-phase1-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-phase1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout handoff branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact validated Phase 14.5.54 baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore and fingerprint exact baseline source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          mkdir -p restored final-repo
+          unzip -q "$ZIP" -d restored
+          BASE=$(find restored -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.gradle' \
+            --exclude='.kotlin' \
+            --exclude='build' \
+            --exclude='app/build' \
+            "$BASE/" final-repo/
+
+          cd final-repo
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+          git add -A
+          TREE=$(git write-tree)
+          echo "BASELINE_SOURCE_TREE=$TREE"
+          test "$TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -s app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q '"version": 34' app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' app/src/main/java app/build.gradle.kts
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Validate release package and schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=final-repo/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery'" apk-badging.txt
+          test -s final-repo/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' final-repo/app/src/main/java final-repo/app/build.gradle.kts
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 "$APK"
+
+      - name: Verify Phase 1 did not alter application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE_COMMIT=5095ba46a676fd6a8e048f2325c433a1f336d05d
+          test -s integration_current/PHASE1_REGISTRY.md
+          git cat-file -e "$BASELINE_COMMIT^{commit}"
+          git diff --exit-code "$BASELINE_COMMIT"..HEAD -- app
+
+          if git diff --name-only "$BASELINE_COMMIT"..HEAD | grep -E '(^|/)(keystore|.*\.jks$|.*\.keystore$|.*\.p12$|.*\.pfx$)'; then
+            echo 'Signing material detected in Phase 1 diff.' >&2
+            exit 1
+          fi
