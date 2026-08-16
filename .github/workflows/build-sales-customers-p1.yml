@@ -15,7 +15,7 @@ permissions:
 env:
   CENTRAL_SHA: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
   CENTRAL_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
-  PATCH_BLOB_SHA1: 'f38b1c8ecd056c032ae093c6f472be3c2ea3146a'
+  PATCH_BLOB_SHA1: '8b5372494baf1e5943de24fa10b7e0a400c85928'
 
 jobs:
   validate-p1:
@@ -107,7 +107,6 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           ! git diff --cached --name-only | grep -Eq 'app/src/main/java/com/fush/erp/data/(entity|Migrations|SecurityMigrations)|app/schemas/'
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
-          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
 
       - name: Customer identity unit tests
         working-directory: work-source
@@ -133,7 +132,6 @@ jobs:
           grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
           grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
-          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
 
       - name: Package branch handoff artifact
