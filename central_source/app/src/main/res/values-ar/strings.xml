@@ -444,4 +444,9 @@
     <string name="language_arabic">العربية</string>
     <string name="language_english">الإنجليزية</string>
     <string name="preferences_theme">المظهر</string>
+    <string name="customers_profile_sales_boundary_title">ملف العميل للمتابعة والعرض</string>
+    <string name="customers_profile_sales_boundary_detail">إنشاء الفواتير والتحصيلات والمرتجعات وتصحيح التحصيل يتم من صفحة المبيعات. يعرض هذا الملف الحركات المرتبطة بالعميل دون إنشاء عملية بيع من داخله.</string>
+    <string name="customers_open_sales_operations">فتح عمليات المبيعات</string>
+    <string name="sales_customer_collection">تحصيل عميل</string>
+    <string name="sales_reverse_collection">عكس التحصيل</string>
 </resources>

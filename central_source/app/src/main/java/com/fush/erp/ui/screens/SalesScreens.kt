@@ -9,7 +9,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -38,7 +37,6 @@ private data class SalesLineUi(
 @Composable
 fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val customers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
     val salesReps by container.db.salesRepresentativeDao().observeActive().collectAsState(initial = emptyList())
     val invoices by container.db.salesDao().observeSummaries().collectAsState(initial = emptyList())
@@ -47,26 +45,15 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = 
     val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
     val receivables by container.db.salesDao().observeReceivables(System.currentTimeMillis()).collectAsState(initial = emptyList())
-    var showCustomer by remember { mutableStateOf(false) }
     var showSale by remember { mutableStateOf(false) }
-    var editCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+    var showCustomerSettlement by remember { mutableStateOf(false) }
     var collectInvoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
     var returnInvoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
     var detailInvoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
-    var statementCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
-    var customerSearch by remember { mutableStateOf("") }
     var invoiceSearch by remember { mutableStateOf("") }
     var message by remember { mutableStateOf<String?>(null) }
     val cashLabel = stringResource(R.string.common_cash)
     val creditLabel = stringResource(R.string.common_credit)
-    val filteredCustomers = remember(customers, customerSearch) {
-        val q = customerSearch.trim().lowercase(Locale.ROOT)
-        if (q.isBlank()) customers else customers.filter { customer ->
-            listOf(customer.nameAr, customer.nameEn, customer.code, customer.phone, customer.province, customer.address)
-                .any { it.lowercase(Locale.ROOT).contains(q) }
-        }
-    }
-
     val filteredInvoices = remember(invoices, invoiceSearch, cashLabel, creditLabel) {
         val q = invoiceSearch.trim().lowercase(Locale.ROOT)
         if (q.isBlank()) invoices else invoices.filter { invoice ->
@@ -99,11 +86,18 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = 
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(12.dp))
-                Button(
-                    onClick = { showSale = true },
-                    enabled = customers.isNotEmpty(),
-                    shape = MaterialTheme.shapes.medium,
-                ) { Text(stringResource(R.string.sales_new_invoice)) }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Button(
+                        onClick = { showSale = true },
+                        enabled = customers.isNotEmpty(),
+                        shape = MaterialTheme.shapes.medium,
+                    ) { Text(stringResource(R.string.sales_new_invoice)) }
+                    OutlinedButton(
+                        onClick = { showCustomerSettlement = true },
+                        enabled = customers.isNotEmpty(),
+                        shape = MaterialTheme.shapes.medium,
+                    ) { Text(stringResource(R.string.sales_customer_collection)) }
+                }
             }
         }
 
@@ -281,56 +275,6 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = 
         }
     }
 
-    statementCustomer?.let { customer ->
-        CustomerAccountStatementDialog(container = container, customer = customer, onDismiss = { statementCustomer = null })
-    }
-
-    if (showCustomer) {
-        AddCustomerDialog(currencies, onDismiss = { showCustomer = false }) { name, phone, province, channel, currency, limit, days, allowCredit, rep ->
-            scope.launch {
-                try {
-                    val customer = container.salesService.createCustomer(name, phone, province, channel, currency.code, limit, days, allowCredit, rep, user.id)
-                    message = context.getString(R.string.sales_customer_created, customer.code)
-                    showCustomer = false
-                } catch (e: Exception) { message = e.message ?: context.getString(R.string.sales_customer_create_failed) }
-            }
-        }
-    }
-
-    editCustomer?.let { customer ->
-        EditCustomerDialog(
-            customer = customer,
-            currencies = currencies,
-            outstandingBase = receivables.firstOrNull { it.customerId == customer.id }?.outstandingBase ?: 0.0,
-            onDismiss = { editCustomer = null }
-        ) { nameAr, nameEn, phone, address, province, channel, classification, currency, limit, days, allowCredit, rep ->
-            scope.launch {
-                try {
-                    val updated = container.salesService.updateCustomer(
-                        customerId = customer.id,
-                        nameAr = nameAr,
-                        nameEn = nameEn,
-                        phone = phone,
-                        address = address,
-                        province = province,
-                        channel = channel,
-                        classification = classification,
-                        currencyCode = currency.code,
-                        creditLimitBase = limit,
-                        creditDays = days,
-                        allowCredit = allowCredit,
-                        salesRepName = rep,
-                        updatedBy = user.id
-                    )
-                    message = context.getString(R.string.sales_customer_updated, updated.nameAr)
-                    editCustomer = null
-                } catch (e: Exception) {
-                    message = e.message ?: context.getString(R.string.sales_customer_update_failed)
-                }
-            }
-        }
-    }
-
     if (showSale) {
         SalesInvoiceDialog(
             container = container,
@@ -353,11 +297,26 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = 
     detailInvoice?.let { invoice ->
         SalesInvoiceDetailDialog(
             container = container,
+            user = user,
             invoiceSummary = invoice,
             itemsList = itemsList,
             units = units,
             warehouses = warehouses,
+            onMessage = { message = it },
             onDismiss = { detailInvoice = null }
+        )
+    }
+
+    if (showCustomerSettlement) {
+        CustomerCollectionDialog(
+            container = container,
+            user = user,
+            customers = customers,
+            onDismiss = { showCustomerSettlement = false },
+            onDone = {
+                message = it
+                showCustomerSettlement = false
+            },
         )
     }
 
@@ -379,19 +338,23 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = 
 @Composable
 private fun SalesInvoiceDetailDialog(
     container: AppContainer,
+    user: UserEntity,
     invoiceSummary: SalesInvoiceSummary,
     itemsList: List<ItemEntity>,
     units: List<UnitEntity>,
     warehouses: List<WarehouseEntity>,
+    onMessage: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var receiptRefresh by remember { mutableIntStateOf(0) }
+    var reverseReceipt by remember { mutableStateOf<CustomerReceiptEntity?>(null) }
     val invoice by produceState<SalesInvoiceEntity?>(initialValue = null, key1 = invoiceSummary.id) {
         value = container.db.salesDao().invoiceById(invoiceSummary.id)
     }
     val saleLines by produceState(initialValue = emptyList<SalesLineEntity>(), key1 = invoiceSummary.id) {
         value = container.db.salesDao().linesForInvoice(invoiceSummary.id)
     }
-    val receipts by produceState(initialValue = emptyList<CustomerReceiptEntity>(), key1 = invoiceSummary.id) {
+    val receipts by produceState(initialValue = emptyList<CustomerReceiptEntity>(), key1 = invoiceSummary.id, key2 = receiptRefresh) {
         value = container.db.salesDao().receiptsForInvoice(invoiceSummary.id)
     }
     val returns by produceState(initialValue = emptyList<SalesReturnEntity>(), key1 = invoiceSummary.id) {
@@ -494,8 +457,20 @@ private fun SalesInvoiceDetailDialog(
                     if (receipts.isNotEmpty()) {
                         HorizontalDivider()
                         Text("التحصيلات", style = MaterialTheme.typography.titleMedium)
+                        val reversedReceiptIds = receipts.mapNotNull { it.reversalOfReceiptId }.toSet()
                         receipts.forEach { receipt ->
-                            Text("${receipt.receiptNo} • ${salesDate(receipt.receiptDate)} • ${salesMoney(receipt.amountOriginal)} ${receipt.currencyCode} (${salesMoney(receipt.amountBase)} أساسي)")
+                            val isReversal = receipt.reversalOfReceiptId != null
+                            val isReversedOriginal = receipt.id in reversedReceiptIds
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("${receipt.receiptNo} • ${salesDate(receipt.receiptDate)} • ${salesMoney(receipt.amountOriginal)} ${receipt.currencyCode} (${salesMoney(receipt.amountBase)} أساسي)")
+                                FushStatusPill(
+                                    when { isReversal -> "مستند عكس"; isReversedOriginal -> "معكوس"; else -> "مرحل" },
+                                    if (isReversal || isReversedOriginal) FushStatusTone.Warning else FushStatusTone.Success,
+                                )
+                                if (!isReversal && !isReversedOriginal) {
+                                    OutlinedButton(onClick = { reverseReceipt = receipt }) { Text(stringResource(R.string.sales_reverse_collection)) }
+                                }
+                            }
                         }
                     }
 
@@ -514,181 +489,19 @@ private fun SalesInvoiceDetailDialog(
             }
         }
     }
-}
-
-@Composable
-private fun EditCustomerDialog(
-    customer: CustomerEntity,
-    currencies: List<CurrencyEntity>,
-    outstandingBase: Double,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, String, String, CurrencyEntity, Double, Int, Boolean, String) -> Unit
-) {
-    var nameAr by remember(customer.id) { mutableStateOf(customer.nameAr) }
-    var nameEn by remember(customer.id) { mutableStateOf(customer.nameEn) }
-    var phone by remember(customer.id) { mutableStateOf(customer.phone) }
-    var address by remember(customer.id) { mutableStateOf(customer.address) }
-    var province by remember(customer.id) { mutableStateOf(customer.province) }
-    var channel by remember(customer.id) { mutableStateOf(customer.channel) }
-    var classification by remember(customer.id) { mutableStateOf(customer.classification) }
-    var currency by remember(customer.id, currencies) { mutableStateOf(currencies.firstOrNull { it.code == customer.currencyCode } ?: currencies.firstOrNull()) }
-    var allowCredit by remember(customer.id) { mutableStateOf(customer.allowCredit) }
-    var limitText by remember(customer.id) { mutableStateOf(customer.creditLimitBase.toString()) }
-    var daysText by remember(customer.id) { mutableStateOf((if (customer.creditDays > 0) customer.creditDays else 30).toString()) }
-    var rep by remember(customer.id) { mutableStateOf(customer.salesRepName) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
-            Column(
-                Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("تعديل بيانات العميل", style = MaterialTheme.typography.headlineSmall)
-                Text("الكود: ${customer.code} — يبقى ثابتاً", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                if (outstandingBase > 0.0) {
-                    Text("الرصيد الحالي على العميل: ${salesMoney(outstandingBase)} ريال أساسي. يمكن خفض السقف، لكن النظام سيمنع أي بيع آجل جديد يتجاوز السقف.", style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedTextField(nameAr, { nameAr = it }, label = { Text("اسم العميل بالعربي") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(nameEn, { nameEn = it }, label = { Text("اسم العميل بالإنجليزي - اختياري") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                FushPhoneField(phone, { phone = it }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(address, { address = it }, label = { Text("العنوان") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(province, { province = it }, label = { Text("المحافظة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                SalesStringSelectionField("قناة البيع", channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
-                SalesStringSelectionField("تصنيف العميل", classification, listOf("A", "B", "C"), { it }) { classification = it }
-                SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = allowCredit, onCheckedChange = { allowCredit = it })
-                    Text("السماح بالبيع الآجل")
-                }
-                if (allowCredit) {
-                    FushDecimalField(limitText, { limitText = it }, "سقف الآجل بالريال الأساسي", modifier = Modifier.fillMaxWidth())
-                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - من 1 إلى 30 يوماً", modifier = Modifier.fillMaxWidth())
-                } else {
-                    Text("سيتم إيقاف إنشاء فواتير آجلة جديدة لهذا العميل، ولن تتأثر الديون السابقة.", style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedTextField(rep, { rep = it }, label = { Text("اسم المندوب/الموزع للعمولة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    TextButton(onClick = onDismiss) { Text("إلغاء") }
-                    Button(
-                        enabled = nameAr.isNotBlank() && province.isNotBlank() && currency != null && limitText.toDoubleOrNull() != null && daysText.toIntOrNull() != null,
-                        onClick = {
-                            onSave(
-                                nameAr, nameEn, phone, address, province, channel, classification, currency!!,
-                                limitText.toDouble(), daysText.toInt(), allowCredit, rep
-                            )
-                        }
-                    ) { Text("حفظ التعديل") }
-                }
-            }
-        }
+    reverseReceipt?.let { receipt ->
+        ReverseSalesReceiptDialog(
+            container = container,
+            user = user,
+            receipt = receipt,
+            onDismiss = { reverseReceipt = null },
+            onDone = { text ->
+                reverseReceipt = null
+                receiptRefresh += 1
+                onMessage(text)
+            },
+        )
     }
-}
-
-@Composable
-private fun CustomerAccountStatementDialog(
-    container: AppContainer,
-    customer: CustomerEntity,
-    onDismiss: () -> Unit
-) {
-    val events by produceState(initialValue = emptyList<CustomerLedgerEventRow>(), key1 = customer.id) {
-        value = container.db.salesDao().customerLedgerEvents(customer.id)
-    }
-    val running = remember(events) {
-        var balance = 0.0
-        events.map { event ->
-            balance += event.debitBase - event.creditBase
-            event to balance
-        }
-    }
-    val totalDebit = remember(events) { events.sumOf { it.debitBase } }
-    val totalCredit = remember(events) { events.sumOf { it.creditBase } }
-    val closing = running.lastOrNull()?.second ?: 0.0
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.95f)) {
-            Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("كشف حساب العميل", style = MaterialTheme.typography.headlineSmall)
-                Text("${customer.nameAr} • ${customer.code}")
-                Text("${customer.province} • ${salesChannelLabel(customer.channel)} • ${customer.currencyCode}", style = MaterialTheme.typography.bodySmall)
-                HorizontalDivider()
-                Text("إجمالي المدين: ${salesMoney(totalDebit)} ريال", style = MaterialTheme.typography.titleSmall)
-                Text("إجمالي الدائن: ${salesMoney(totalCredit)} ريال", style = MaterialTheme.typography.titleSmall)
-                Text(if (closing >= 0.0) "الرصيد المستحق على العميل: ${salesMoney(closing)} ريال" else "رصيد لصالح العميل: ${salesMoney(-closing)} ريال", style = MaterialTheme.typography.titleMedium, color = if (closing > 0.000001) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
-                HorizontalDivider()
-                Text("الحركة التفصيلية", style = MaterialTheme.typography.titleMedium)
-                if (running.isEmpty()) FushInlineState("لا توجد حركات على حساب هذا العميل.")
-                running.forEach { (event, balance) ->
-                    val type = when (event.eventType) {
-                        "INVOICE" -> "فاتورة بيع"
-                        "RECEIPT" -> "تحصيل"
-                        "SALES_RETURN" -> "مرتجع مبيعات"
-                        "CASH_REFUND" -> "رد نقدي للعميل"
-                        else -> event.eventType
-                    }
-                    ElevatedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("${salesDate(event.eventDate)} • $type • ${event.referenceNo}", style = MaterialTheme.typography.titleSmall)
-                            if (event.invoiceNo.isNotBlank()) Text("الفاتورة: ${event.invoiceNo}")
-                            Text("المبلغ الأصلي: ${salesMoney(kotlin.math.abs(event.amountOriginal))} ${event.currencyCode}")
-                            Text("مدين: ${salesMoney(event.debitBase)} • دائن: ${salesMoney(event.creditBase)}")
-                            Text(if (balance >= 0.0) "الرصيد بعد الحركة: ${salesMoney(balance)} على العميل" else "الرصيد بعد الحركة: ${salesMoney(-balance)} لصالح العميل", style = MaterialTheme.typography.bodySmall)
-                            if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Button(onClick = onDismiss) { Text("إغلاق") } }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AddCustomerDialog(
-    currencies: List<CurrencyEntity>,
-    onDismiss: () -> Unit,
-    onSave: (String, String, String, String, CurrencyEntity, Double, Int, Boolean, String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var province by remember { mutableStateOf("تعز") }
-    var channel by remember { mutableStateOf("RETAIL") }
-    var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
-    var allowCredit by remember { mutableStateOf(false) }
-    var limitText by remember { mutableStateOf("408000") }
-    var daysText by remember { mutableStateOf("30") }
-    var rep by remember { mutableStateOf("") }
-    LaunchedEffect(currencies) { if (currency == null) currency = currencies.firstOrNull { it.code == "YER_NEW" } ?: currencies.firstOrNull() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("إضافة عميل") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("كود العميل: ينشئه النظام تلقائياً عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                OutlinedTextField(name, { name = it }, label = { Text("اسم العميل") }, singleLine = true)
-                OutlinedTextField(phone, { phone = it }, label = { Text("الهاتف") }, singleLine = true)
-                OutlinedTextField(province, { province = it }, label = { Text("المحافظة") }, singleLine = true)
-                SalesStringSelectionField("قناة البيع", channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
-                SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = allowCredit, onCheckedChange = { allowCredit = it })
-                    Text("السماح بالبيع الآجل")
-                }
-                if (allowCredit) {
-                    FushDecimalField(limitText, { limitText = it }, "السقف الائتماني بالريال الأساسي", modifier = Modifier.fillMaxWidth())
-                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - بحد أقصى 30", modifier = Modifier.fillMaxWidth())
-                }
-                OutlinedTextField(rep, { rep = it }, label = { Text("اسم المندوب/الموزع للعمولة") }, singleLine = true)
-            }
-        },
-        confirmButton = {
-            Button(
-                enabled = name.isNotBlank() && province.isNotBlank() && currency != null && limitText.toDoubleOrNull() != null && daysText.toIntOrNull() != null,
-                onClick = { onSave(name, phone, province, channel, currency!!, limitText.toDouble(), daysText.toInt(), allowCredit, rep) }
-            ) { Text("حفظ") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
-    )
 }
 
 @Composable
@@ -898,6 +711,171 @@ private fun SalesInvoiceDialog(
 }
 
 @Composable
+private fun CustomerCollectionDialog(
+    container: AppContainer,
+    user: UserEntity,
+    customers: List<CustomerEntity>,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val treasuries by container.db.accountingDao().observeTreasuryBalances().collectAsState(initial = emptyList())
+    var customer by remember { mutableStateOf<CustomerEntity?>(customers.firstOrNull()) }
+    val invoices by produceState(initialValue = emptyList<SalesInvoiceSummary>(), key1 = customer?.id) {
+        value = customer?.let { container.db.salesDao().openInvoiceSummaries(it.id) }.orEmpty()
+    }
+    var invoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
+    var treasury by remember { mutableStateOf<TreasuryBalanceRow?>(null) }
+    var rate by remember { mutableStateOf("1") }
+    var amount by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var autoAllocate by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(invoices) {
+        if (invoice == null || invoices.none { it.id == invoice?.id }) invoice = invoices.firstOrNull()
+        if (invoices.size <= 1) autoAllocate = false
+    }
+    LaunchedEffect(invoice?.id, treasuries, autoAllocate, invoices) {
+        invoice?.let { inv ->
+            val options = treasuries.filter { it.currencyCode == inv.currencyCode }
+            if (treasury?.id !in options.map { it.id }) treasury = options.firstOrNull()
+            val historicalRate = if (inv.totalOriginal > 0.0) inv.totalBase / inv.totalOriginal else 1.0
+            if (rate.toDoubleOrNull() == null || rate == "1") rate = historicalRate.toString()
+            val relevant = invoices.filter { it.currencyCode == inv.currencyCode }
+            val totalOriginalOpen = relevant.sumOf { row ->
+                val rowRate = if (row.totalOriginal > 0.0) row.totalBase / row.totalOriginal else 1.0
+                if (rowRate > 0.0) row.outstandingBase / rowRate else 0.0
+            }
+            amount = if (autoAllocate) totalOriginalOpen.toString()
+            else if (historicalRate > 0.0) (inv.outstandingBase / historicalRate).toString() else ""
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text(stringResource(R.string.sales_customer_collection)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                SalesSelectionField("العميل", customer?.let { "${it.code} — ${it.nameAr}" } ?: "اختر", customers, { "${it.code} — ${it.nameAr}" }) {
+                    customer = it
+                    invoice = null
+                    error = null
+                }
+                if (invoices.isEmpty()) {
+                    Text("لا توجد فواتير آجلة مفتوحة لهذا العميل.")
+                } else {
+                    SalesSelectionField("عملة / فاتورة مرجعية", invoice?.let { "${it.invoiceNo} • ${it.currencyCode}" } ?: "اختر", invoices, { "${it.invoiceNo} • ${it.currencyCode} • متبقي ${salesMoney(it.outstandingBase)}" }) { invoice = it; error = null }
+                    val sameCurrency = invoices.filter { it.currencyCode == invoice?.currencyCode }
+                    if (sameCurrency.size > 1) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = autoAllocate, onCheckedChange = { autoAllocate = it })
+                            Text("توزيع تلقائي على أقدم الفواتير المفتوحة بنفس العملة")
+                        }
+                    }
+                    val options = treasuries.filter { it.currencyCode == invoice?.currencyCode }
+                    SalesSelectionField("الخزينة / البنك", treasury?.nameAr ?: "اختر", options, { "${it.nameAr} • ${it.currencyCode}" }) { treasury = it }
+                    FushDecimalField(rate, { rate = it }, "سعر الصرف الحالي للتحصيل", modifier = Modifier.fillMaxWidth())
+                    FushDecimalField(amount, { amount = it }, "المبلغ بعملة الفاتورة", modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات") }, modifier = Modifier.fillMaxWidth())
+                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving && customer != null && invoice != null && treasury != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true,
+                onClick = {
+                    scope.launch {
+                        saving = true
+                        try {
+                            val selectedCustomer = requireNotNull(customer)
+                            val inv = requireNotNull(invoice)
+                            if (autoAllocate) {
+                                val result = container.salesService.postReceiptAutoAllocate(
+                                    customerId = selectedCustomer.id,
+                                    amountOriginal = amount.toDouble(),
+                                    currencyCode = inv.currencyCode,
+                                    exchangeRate = rate.toDouble(),
+                                    notes = notes,
+                                    createdBy = user.id,
+                                    treasuryAccountId = requireNotNull(treasury).id,
+                                )
+                                onDone("تم تحصيل ${result.receiptNo} وتوزيعه على ${result.allocationCount} فاتورة")
+                            } else {
+                                val result = container.salesService.postReceipt(
+                                    customerId = selectedCustomer.id,
+                                    invoiceId = inv.id,
+                                    amountOriginal = amount.toDouble(),
+                                    currencyCode = inv.currencyCode,
+                                    exchangeRate = rate.toDouble(),
+                                    notes = notes,
+                                    createdBy = user.id,
+                                    treasuryAccountId = requireNotNull(treasury).id,
+                                )
+                                onDone("تم تحصيل ${result.receiptNo} وربطه بالفاتورة ${inv.invoiceNo}")
+                            }
+                        } catch (e: Exception) {
+                            error = e.message ?: "تعذر تسجيل التحصيل"
+                        } finally {
+                            saving = false
+                        }
+                    }
+                },
+            ) { Text(if (saving) "جارٍ..." else "ترحيل التحصيل") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") } },
+    )
+}
+
+@Composable
+private fun ReverseSalesReceiptDialog(
+    container: AppContainer,
+    user: UserEntity,
+    receipt: CustomerReceiptEntity,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var reason by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf(salesDate(System.currentTimeMillis())) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("عكس التحصيل ${receipt.receiptNo}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("سيُنشأ مستند عكس وقيد عكسي، وتُعاد ذمة الفاتورة ويُصحح استحقاق العمولة تلقائياً.")
+                OutlinedTextField(date, { date = it }, label = { Text("تاريخ العكس YYYY-MM-DD") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(reason, { reason = it }, label = { Text("سبب العكس — إلزامي") }, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = !saving && reason.isNotBlank(),
+                onClick = {
+                    scope.launch {
+                        saving = true
+                        try {
+                            val result = container.salesService.reverseReceipt(receipt.id, reason, user.id, salesParseDate(date))
+                            onDone("تم عكس ${receipt.receiptNo} بالمستند ${result.reversalReceiptNo} وإعادة ${salesMoney(result.restoredReceivableBase)} إلى ذمة العميل")
+                        } catch (e: Exception) {
+                            error = e.message ?: "تعذر عكس التحصيل"
+                        } finally {
+                            saving = false
+                        }
+                    }
+                },
+            ) { Text(if (saving) "جارٍ..." else "تأكيد العكس") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") } },
+    )
+}
+
+@Composable
 private fun ReceiptDialog(
     container: AppContainer,
     user: UserEntity,
@@ -1095,3 +1073,5 @@ private fun salesChannelLabel(value: String): String = when (value) {
 private fun salesMoney(value: Double): String = if (kotlin.math.abs(value - value.toLong()) < 0.000001) value.toLong().toString() else "%.2f".format(Locale.US, value)
 private fun salesMoneyRaw(value: Double): String = if (kotlin.math.abs(value - value.toLong()) < 0.000001) value.toLong().toString() else "%.4f".format(Locale.US, value)
 private fun salesDate(value: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(value))
+private fun salesParseDate(value: String): Long = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }.parse(value)?.time
+    ?: error("تاريخ غير صالح")

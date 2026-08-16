@@ -479,7 +479,7 @@ private fun HomePageContent(
 ) {
     when (page) {
         "المبيعات" -> SalesScreen(container, user, modifier)
-        "العملاء" -> CustomersScreen(container, user, modifier)
+        "العملاء" -> CustomersScreen(container, user, modifier, onOpenSales = { onNavigate("المبيعات") })
         "التحصيلات" -> CollectionsDetailScreen(container, modifier)
         "الإنتاج" -> ProductionScreen(container, user, modifier, onNavigate = onNavigate)
         "الصيانة" -> MaintenanceScreen(container, user, modifier)

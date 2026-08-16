@@ -444,4 +444,9 @@
     <string name="language_arabic">Arabic</string>
     <string name="language_english">English</string>
     <string name="preferences_theme">Appearance</string>
+    <string name="customers_profile_sales_boundary_title">Customer profile for review and follow-up</string>
+    <string name="customers_profile_sales_boundary_detail">Create invoices, collections, returns, and collection corrections from Sales. This profile shows customer-linked activity without creating a sales transaction here.</string>
+    <string name="customers_open_sales_operations">Open sales operations</string>
+    <string name="sales_customer_collection">Customer collection</string>
+    <string name="sales_reverse_collection">Reverse collection</string>
 </resources>

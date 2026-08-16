@@ -30,7 +30,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
+fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier, onOpenSales: () -> Unit = {}) {
     val customers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
     val receivables by container.db.salesDao().observeReceivables(System.currentTimeMillis()).collectAsState(initial = emptyList())
     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
@@ -43,7 +43,7 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
     val noGovernorate = stringResource(R.string.customers_no_governorate)
 
     if (selected != null) {
-        CustomerProfileScreen(container, user, selected!!, onBack = { selected = null }, modifier = modifier)
+        CustomerProfileScreen(container, user, selected!!, onBack = { selected = null }, onOpenSales = onOpenSales, modifier = modifier)
         return
     }
 
@@ -432,12 +432,10 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
 }
 
 @Composable
-private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, customer: CustomerEntity, onBack: () -> Unit, modifier: Modifier) {
+private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, customer: CustomerEntity, onBack: () -> Unit, onOpenSales: () -> Unit, modifier: Modifier) {
     val tabs = listOf("المعلومات", "كشف الحساب", "الفواتير", "التحصيلات", "السندات", "المرتجعات", "العمولات", "المرفقات", "التدقيق")
     var tab by remember { mutableIntStateOf(0) }
-    var showSettlement by remember { mutableStateOf(false) }
     var reverseVoucher by remember { mutableStateOf<PartyVoucherEntity?>(null) }
-    var reverseReceipt by remember { mutableStateOf<CustomerReceiptEntity?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val vouchers by container.db.partyDao().observeCustomerVouchers(customer.id).collectAsState(initial = emptyList())
@@ -495,13 +493,21 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
                         tone = FushStatusTone.Info,
                     )
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { showSettlement = true }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("تحصيل فاتورة") }
-                    OutlinedButton(
-                        onClick = { message = "صرف مبلغ للعميل يجب أن يتم من مرتجع المبيعات مع اختيار رد نقدي حتى تبقى الفاتورة والذمة والأستاذ متطابقة." },
-                        modifier = Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.medium,
-                    ) { Text("صرف للعميل") }
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.customers_profile_sales_boundary_title), style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            stringResource(R.string.customers_profile_sales_boundary_detail),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Button(onClick = onOpenSales, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) {
+                            Text(stringResource(R.string.customers_open_sales_operations))
+                        }
+                    }
                 }
                 FushOperationMessage(message, onConsumed = { message = null })
             }
@@ -519,7 +525,7 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
             0 -> item { PartyInfoCustomer(customer) }
             1 -> customerLedgerItems(running)
             2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مبيعات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") "نقدي" else "آجل"}" }
-            3 -> customerReceiptItems(receipts, onReverse = { reverseReceipt = it })
+            3 -> customerReceiptItems(receipts)
             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
             5 -> profileSimpleEntityItems(if (returns.isEmpty()) "لا توجد مرتجعات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
             6 -> profileSimpleEntityItems(if (commissions.isEmpty()) "لا توجد عمولات مرتبطة بمبيعات العميل." else null, commissions) { r -> "فاتورة #${r.invoiceId} • مستحق ${partyMoney(r.earnedBase)} • معكوس ${partyMoney(r.reversedBase)} • ${r.beneficiary}" }
@@ -527,14 +533,7 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
             else -> auditItems(audits)
         }
     }
-    if (showSettlement) {
-        CustomerPartySettlementDialog(container, user, customer, onDismiss = { showSettlement = false }) { text ->
-            message = text
-            showSettlement = false
-        }
-    }
     reverseVoucher?.let { voucher -> ReverseVoucherDialog(container, user, voucher, onDismiss={reverseVoucher=null}) { message=it; reverseVoucher=null } }
-    reverseReceipt?.let { receipt -> ReverseCustomerReceiptDialog(container, user, receipt, onDismiss={reverseReceipt=null}) { message=it; reverseReceipt=null } }
 }
 
 @Composable
@@ -817,7 +816,7 @@ private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEven
     }
 }
 
-private fun LazyListScope.customerReceiptItems(rows: List<CustomerReceiptEntity>, onReverse: (CustomerReceiptEntity)->Unit) {
+private fun LazyListScope.customerReceiptItems(rows: List<CustomerReceiptEntity>, onReverse: ((CustomerReceiptEntity)->Unit)? = null) {
     val reversedIds = rows.mapNotNull { it.reversalOfReceiptId }.toSet()
     item { FushSectionHeader("تحصيلات العميل", "التصحيح يتم بالعكس المحاسبي؛ لا يحذف التحصيل الأصلي.") }
     if (rows.isEmpty()) item { FushInlineState("لا توجد تحصيلات.") }
@@ -830,7 +829,7 @@ private fun LazyListScope.customerReceiptItems(rows: List<CustomerReceiptEntity>
                 Text("${partyMoney(kotlin.math.abs(r.amountOriginal))} ${r.currencyCode} • أساس ${partyMoney(kotlin.math.abs(r.amountBase))}")
                 FushStatusPill(when { isReversal -> "مستند عكس"; isReversedOriginal -> "معكوس"; else -> "مرحل" }, if (isReversal || isReversedOriginal) FushStatusTone.Warning else FushStatusTone.Success)
                 if (r.notes.isNotBlank()) Text(r.notes, style = MaterialTheme.typography.bodySmall)
-                if (!isReversal && !isReversedOriginal) OutlinedButton(onClick = { onReverse(r) }) { Text("عكس التحصيل") }
+                if (!isReversal && !isReversedOriginal && onReverse != null) OutlinedButton(onClick = { onReverse?.invoke(r) }) { Text("عكس التحصيل") }
             }
         }
     }
@@ -852,11 +851,6 @@ private fun LazyListScope.supplierPaymentItems(rows: List<SupplierPaymentDetailR
             }
         }
     }
-}
-
-@Composable private fun ReverseCustomerReceiptDialog(container:AppContainer,user:UserEntity,receipt:CustomerReceiptEntity,onDismiss:()->Unit,onDone:(String)->Unit){
-    val scope=rememberCoroutineScope(); var reason by remember{mutableStateOf("")}; var date by remember{mutableStateOf(partyDate(System.currentTimeMillis()))}; var error by remember{mutableStateOf<String?>(null)}; var saving by remember{mutableStateOf(false)}
-    AlertDialog(onDismissRequest={if(!saving)onDismiss()},title={Text("عكس التحصيل ${receipt.receiptNo}")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){Text("سيُنشأ مستند عكس وقيد عكسي، وتُعاد ذمة الفاتورة ويُصحح استحقاق العمولة تلقائياً.");OutlinedTextField(date,{date=it},label={Text("تاريخ العكس YYYY-MM-DD")},singleLine=true,modifier=Modifier.fillMaxWidth());OutlinedTextField(reason,{reason=it},label={Text("سبب العكس — إلزامي")},modifier=Modifier.fillMaxWidth());error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={Button(enabled=!saving&&reason.isNotBlank(),onClick={scope.launch{saving=true;try{val result=container.salesService.reverseReceipt(receipt.id,reason,user.id,partyParseDate(date));onDone("تم عكس ${receipt.receiptNo} بالمستند ${result.reversalReceiptNo} وإعادة ${partyMoney(result.restoredReceivableBase)} إلى ذمة العميل") }catch(e:Exception){error=e.message?:"تعذر عكس التحصيل"}finally{saving=false}}}){Text(if(saving)"جارٍ..." else "تأكيد العكس")}},dismissButton={TextButton(onClick=onDismiss,enabled=!saving){Text("إلغاء")}})
 }
 
 @Composable private fun ReverseSupplierPaymentDialog(container:AppContainer,user:UserEntity,payment:SupplierPaymentDetailRow,onDismiss:()->Unit,onDone:(String)->Unit){
@@ -924,110 +918,6 @@ private fun AttachmentTab(container: AppContainer, user: UserEntity, customerId:
         if(attachments.isEmpty()) FushInlineState("لا توجد مرفقات.")
         attachments.forEach { a -> ElevatedCard(Modifier.fillMaxWidth()) { Row(Modifier.padding(10.dp), horizontalArrangement=Arrangement.SpaceBetween) { Column(Modifier.weight(1f)){Text(a.fileName); Text("${a.mimeType.ifBlank{"ملف"}} • ${partyDateTime(a.createdAt)}",style=MaterialTheme.typography.bodySmall)}; TextButton(onClick={ runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(a.uri)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)) }.onFailure{onMessage("تعذر فتح المرفق")}}){Text("فتح")} } } }
     }
-}
-
-@Composable
-private fun CustomerPartySettlementDialog(
-    container: AppContainer,
-    user: UserEntity,
-    customer: CustomerEntity,
-    onDismiss: () -> Unit,
-    onDone: (String) -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    val invoices by produceState(initialValue = emptyList<SalesInvoiceSummary>(), customer.id) {
-        value = container.db.salesDao().openInvoiceSummaries(customer.id)
-    }
-    val treasuries by container.db.accountingDao().observeTreasuryBalances().collectAsState(initial = emptyList())
-    var invoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
-    var treasury by remember { mutableStateOf<TreasuryBalanceRow?>(null) }
-    var rate by remember { mutableStateOf("1") }
-    var amount by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var autoAllocate by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var saving by remember { mutableStateOf(false) }
-
-    LaunchedEffect(invoices) {
-        if (invoice == null || invoices.none { it.id == invoice?.id }) invoice = invoices.firstOrNull()
-        if (invoices.size <= 1) autoAllocate = false
-    }
-    LaunchedEffect(invoice?.id, treasuries, autoAllocate, invoices) {
-        invoice?.let { inv ->
-            val options = treasuries.filter { it.currencyCode == inv.currencyCode }
-            if (treasury?.id !in options.map { it.id }) treasury = options.firstOrNull()
-            val historicalRate = if (inv.totalOriginal > 0.0) inv.totalBase / inv.totalOriginal else 1.0
-            if (rate.toDoubleOrNull() == null || rate == "1") rate = historicalRate.toString()
-            val relevant = invoices.filter { it.currencyCode == inv.currencyCode }
-            val totalOriginalOpen = relevant.sumOf { row ->
-                val rowRate = if (row.totalOriginal > 0.0) row.totalBase / row.totalOriginal else 1.0
-                if (rowRate > 0.0) row.outstandingBase / rowRate else 0.0
-            }
-            amount = if (autoAllocate) totalOriginalOpen.toString()
-            else if (historicalRate > 0.0) (inv.outstandingBase / historicalRate).toString() else ""
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = { if (!saving) onDismiss() },
-        title = { Text("تحصيل العميل — ${customer.nameAr}") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            if (invoices.isEmpty()) Text("لا توجد فواتير آجلة مفتوحة لهذا العميل.") else {
-                PartySelectionField("عملة / فاتورة مرجعية", invoice?.let { "${it.invoiceNo} • ${it.currencyCode}" } ?: "اختر", invoices, { "${it.invoiceNo} • ${it.currencyCode} • متبقي ${partyMoney(it.outstandingBase)}" }) { invoice = it; error = null }
-                val sameCurrency = invoices.filter { it.currencyCode == invoice?.currencyCode }
-                if (sameCurrency.size > 1) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = autoAllocate, onCheckedChange = { autoAllocate = it })
-                        Text("توزيع تلقائي على أقدم الفواتير المفتوحة بنفس العملة")
-                    }
-                    if (autoAllocate) Text("سيتم توزيع المبلغ على ${sameCurrency.size} فاتورة حسب الأقدم أولاً، دون تجاوز رصيد أي فاتورة.", style = MaterialTheme.typography.bodySmall)
-                }
-                val options = treasuries.filter { it.currencyCode == invoice?.currencyCode }
-                PartySelectionField("الخزينة / البنك", treasury?.nameAr ?: "اختر", options, { "${it.nameAr} • ${it.currencyCode}" }) { treasury = it }
-                if (options.isEmpty()) Text("لا توجد خزينة نشطة بعملة الفاتورة.", color = MaterialTheme.colorScheme.error)
-                OutlinedTextField(rate, { rate = it }, label = { Text("سعر الصرف الحالي للتحصيل") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(amount, { amount = it }, label = { Text("المبلغ بعملة الفاتورة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات") }, modifier = Modifier.fillMaxWidth())
-                Text("كل فاتورة تُقفل بسعرها التاريخي، بينما يخرج/يدخل النقد بسعر يوم التحصيل؛ فرق العملة يُسجل تلقائيًا.", style = MaterialTheme.typography.bodySmall)
-            }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        } },
-        confirmButton = { Button(
-            enabled = !saving && invoice != null && treasury != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true,
-            onClick = { scope.launch {
-                saving = true
-                try {
-                    val inv = requireNotNull(invoice)
-                    if (autoAllocate) {
-                        val result = container.salesService.postReceiptAutoAllocate(
-                            customerId = customer.id,
-                            amountOriginal = amount.toDouble(),
-                            currencyCode = inv.currencyCode,
-                            exchangeRate = rate.toDouble(),
-                            notes = notes,
-                            createdBy = user.id,
-                            treasuryAccountId = requireNotNull(treasury).id
-                        )
-                        onDone("تم تحصيل ${result.receiptNo} وتوزيعه على ${result.allocationCount} فاتورة")
-                    } else {
-                        val result = container.salesService.postReceipt(
-                            customerId = customer.id,
-                            invoiceId = inv.id,
-                            amountOriginal = amount.toDouble(),
-                            currencyCode = inv.currencyCode,
-                            exchangeRate = rate.toDouble(),
-                            notes = notes,
-                            createdBy = user.id,
-                            treasuryAccountId = requireNotNull(treasury).id
-                        )
-                        onDone("تم تحصيل ${result.receiptNo} وربطه بالفاتورة ${inv.invoiceNo}")
-                    }
-                } catch (e: Exception) { error = e.message ?: "تعذر تسجيل التحصيل" }
-                finally { saving = false }
-            } }
-        ) { Text(if (saving) "جارٍ..." else "ترحيل التحصيل") } },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") } }
-    )
 }
 
 @Composable
