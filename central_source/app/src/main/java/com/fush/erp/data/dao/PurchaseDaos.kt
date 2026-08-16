@@ -145,19 +145,22 @@ interface PurchaseDao {
                COALESCE((SELECT SUM(pr.totalBase) FROM purchase_returns pr
                          WHERE pr.purchaseInvoiceId=p.id AND pr.status='POSTED' AND pr.settlementType='SUPPLIER_CREDIT'),0) AS supplierCreditReturnsBase,
                COALESCE((SELECT SUM(spa.allocatedBase) FROM supplier_payment_allocations spa
-                         WHERE spa.invoiceId=p.id),0) AS paidBase,
+                         JOIN supplier_payments sp ON sp.id=spa.paymentId
+                         WHERE spa.invoiceId=p.id AND sp.supplierId=p.supplierId),0) AS paidBase,
                MAX(0, p.totalBase
                     - COALESCE((SELECT SUM(pr2.totalBase) FROM purchase_returns pr2
                                 WHERE pr2.purchaseInvoiceId=p.id AND pr2.status='POSTED' AND pr2.settlementType='SUPPLIER_CREDIT'),0)
                     - COALESCE((SELECT SUM(spa2.allocatedBase) FROM supplier_payment_allocations spa2
-                                WHERE spa2.invoiceId=p.id),0)) AS outstandingBase
+                                JOIN supplier_payments sp2 ON sp2.id=spa2.paymentId
+                                WHERE spa2.invoiceId=p.id AND sp2.supplierId=p.supplierId),0)) AS outstandingBase
         FROM purchase_invoices p
         WHERE p.supplierId=:supplierId AND p.status='POSTED' AND p.paymentType='CREDIT'
           AND (p.totalBase
                - COALESCE((SELECT SUM(pr3.totalBase) FROM purchase_returns pr3
                            WHERE pr3.purchaseInvoiceId=p.id AND pr3.status='POSTED' AND pr3.settlementType='SUPPLIER_CREDIT'),0)
                - COALESCE((SELECT SUM(spa3.allocatedBase) FROM supplier_payment_allocations spa3
-                           WHERE spa3.invoiceId=p.id),0)) > 0.000000001
+                           JOIN supplier_payments sp3 ON sp3.id=spa3.paymentId
+                           WHERE spa3.invoiceId=p.id AND sp3.supplierId=p.supplierId),0)) > 0.000000001
         ORDER BY COALESCE(p.dueDate,p.invoiceDate), p.invoiceDate, p.id
     """)
     suspend fun openSupplierInvoices(supplierId: Long): List<SupplierInvoicePayableRow>
@@ -172,7 +175,7 @@ interface PurchaseDao {
         JOIN supplier_payment_allocations spa ON spa.paymentId=sp.id
         JOIN purchase_invoices p ON p.id=spa.invoiceId
         JOIN treasury_accounts t ON t.id=sp.treasuryAccountId
-        WHERE sp.supplierId=:supplierId
+        WHERE sp.supplierId=:supplierId AND p.supplierId=:supplierId
         ORDER BY sp.paymentDate DESC, sp.id DESC
     """)
     suspend fun supplierPayments(supplierId: Long): List<SupplierPaymentDetailRow>
@@ -187,7 +190,7 @@ interface PurchaseDao {
         JOIN supplier_payment_allocations spa ON spa.paymentId=sp.id
         JOIN purchase_invoices p ON p.id=spa.invoiceId
         JOIN treasury_accounts t ON t.id=sp.treasuryAccountId
-        WHERE spa.invoiceId=:invoiceId
+        WHERE spa.invoiceId=:invoiceId AND sp.supplierId=p.supplierId
         ORDER BY sp.paymentDate, sp.id
     """)
     suspend fun supplierPaymentsForInvoice(invoiceId: Long): List<SupplierPaymentDetailRow>
@@ -200,12 +203,14 @@ interface PurchaseDao {
                    - COALESCE((SELECT SUM(pr.totalBase) FROM purchase_returns pr
                                JOIN purchase_invoices pi2 ON pi2.id=pr.purchaseInvoiceId
                                WHERE pr.supplierId=s.id AND pr.status='POSTED' AND pr.settlementType='SUPPLIER_CREDIT'
-                                 AND pi2.paymentType='CREDIT'),0)
+                                 AND pi2.supplierId=s.id AND pi2.paymentType='CREDIT'),0)
                )
                + COALESCE((SELECT SUM(pvDue.amountBase) FROM party_vouchers pvDue
                            WHERE pvDue.supplierId=s.id AND pvDue.status='POSTED' AND pvDue.voucherType='RECEIPT'),0) AS totalDueBase,
                COALESCE((SELECT SUM(spa.allocatedBase) FROM supplier_payment_allocations spa
-                         JOIN purchase_invoices pi3 ON pi3.id=spa.invoiceId WHERE pi3.supplierId=s.id),0)
+                         JOIN supplier_payments spPay ON spPay.id=spa.paymentId
+                         JOIN purchase_invoices pi3 ON pi3.id=spa.invoiceId
+                         WHERE pi3.supplierId=s.id AND spPay.supplierId=s.id),0)
                + COALESCE((SELECT SUM(pvPay.amountBase) FROM party_vouchers pvPay
                            WHERE pvPay.supplierId=s.id AND pvPay.status='POSTED' AND pvPay.voucherType='PAYMENT'),0) AS paidBase,
                (
@@ -215,9 +220,11 @@ interface PurchaseDao {
                    - COALESCE((SELECT SUM(pr4.totalBase) FROM purchase_returns pr4
                                JOIN purchase_invoices pi5 ON pi5.id=pr4.purchaseInvoiceId
                                WHERE pr4.supplierId=s.id AND pr4.status='POSTED' AND pr4.settlementType='SUPPLIER_CREDIT'
-                                 AND pi5.paymentType='CREDIT'),0)
+                                 AND pi5.supplierId=s.id AND pi5.paymentType='CREDIT'),0)
                    - COALESCE((SELECT SUM(spa4.allocatedBase) FROM supplier_payment_allocations spa4
-                               JOIN purchase_invoices pi6 ON pi6.id=spa4.invoiceId WHERE pi6.supplierId=s.id),0)
+                               JOIN supplier_payments sp6 ON sp6.id=spa4.paymentId
+                               JOIN purchase_invoices pi6 ON pi6.id=spa4.invoiceId
+                               WHERE pi6.supplierId=s.id AND sp6.supplierId=s.id),0)
                )
                + COALESCE((SELECT SUM(CASE WHEN pvBal.voucherType='RECEIPT' THEN pvBal.amountBase
                                             WHEN pvBal.voucherType='PAYMENT' THEN -pvBal.amountBase ELSE 0 END)
@@ -225,8 +232,12 @@ interface PurchaseDao {
                ) AS outstandingBase,
                COALESCE((SELECT SUM(MAX(0,
                     pi7.totalBase
-                    - COALESCE((SELECT SUM(pr7.totalBase) FROM purchase_returns pr7 WHERE pr7.purchaseInvoiceId=pi7.id AND pr7.status='POSTED' AND pr7.settlementType='SUPPLIER_CREDIT'),0)
-                    - COALESCE((SELECT SUM(spa7.allocatedBase) FROM supplier_payment_allocations spa7 WHERE spa7.invoiceId=pi7.id),0)))
+                    - COALESCE((SELECT SUM(pr7.totalBase) FROM purchase_returns pr7
+                                WHERE pr7.purchaseInvoiceId=pi7.id AND pr7.supplierId=pi7.supplierId
+                                  AND pr7.status='POSTED' AND pr7.settlementType='SUPPLIER_CREDIT'),0)
+                    - COALESCE((SELECT SUM(spa7.allocatedBase) FROM supplier_payment_allocations spa7
+                                JOIN supplier_payments sp7 ON sp7.id=spa7.paymentId
+                                WHERE spa7.invoiceId=pi7.id AND sp7.supplierId=pi7.supplierId),0)))
                   FROM purchase_invoices pi7
                   WHERE pi7.supplierId=s.id AND pi7.status='POSTED' AND pi7.paymentType='CREDIT'
                     AND pi7.dueDate IS NOT NULL AND pi7.dueDate < :now),0) AS overdueBase
@@ -237,7 +248,12 @@ interface PurchaseDao {
     @Query("SELECT * FROM purchase_invoices WHERE supplierId=:supplierId AND status='POSTED' ORDER BY invoiceDate DESC, id DESC")
     suspend fun supplierInvoices(supplierId: Long): List<PurchaseInvoiceEntity>
 
-    @Query("SELECT * FROM purchase_returns WHERE supplierId=:supplierId AND status='POSTED' ORDER BY returnDate DESC, id DESC")
+    @Query("""
+        SELECT pr.* FROM purchase_returns pr
+        JOIN purchase_invoices pi ON pi.id=pr.purchaseInvoiceId
+        WHERE pr.supplierId=:supplierId AND pi.supplierId=:supplierId AND pr.status='POSTED'
+        ORDER BY pr.returnDate DESC, pr.id DESC
+    """)
     suspend fun supplierReturns(supplierId: Long): List<PurchaseReturnEntity>
 
     @Query("""
@@ -254,7 +270,7 @@ interface PurchaseDao {
             FROM purchase_returns pr
             JOIN purchase_invoices pir ON pir.id=pr.purchaseInvoiceId
             WHERE pr.supplierId=:supplierId AND pr.status='POSTED' AND pr.settlementType='SUPPLIER_CREDIT'
-              AND pir.paymentType='CREDIT' AND pr.returnDate <= :toDate
+              AND pir.supplierId=:supplierId AND pir.paymentType='CREDIT' AND pr.returnDate <= :toDate
             UNION ALL
             SELECT sp.paymentDate AS eventDate,
                    CASE WHEN sp.reversalOfPaymentId IS NULL THEN 30 ELSE 35 END AS eventOrder,
@@ -266,7 +282,8 @@ interface PurchaseDao {
             FROM supplier_payments sp
             JOIN supplier_payment_allocations spa ON spa.paymentId=sp.id
             JOIN purchase_invoices pip ON pip.id=spa.invoiceId
-            WHERE sp.supplierId=:supplierId AND pip.paymentType='CREDIT' AND sp.paymentDate <= :toDate
+            WHERE sp.supplierId=:supplierId AND pip.supplierId=:supplierId
+              AND pip.paymentType='CREDIT' AND sp.paymentDate <= :toDate
             UNION ALL
             SELECT pv.voucherDate AS eventDate, 40 AS eventOrder,
                    CASE WHEN pv.voucherType='PAYMENT' THEN 'VOUCHER_PAYMENT' ELSE 'VOUCHER_RECEIPT' END AS eventType,
@@ -289,6 +306,21 @@ interface PurchaseDao {
     suspend fun supplierLedgerEvents(supplierId: Long, toDate: Long): List<SupplierLedgerEventRow>
 
     @Query("""
+        SELECT COALESCE(SUM(
+            CASE WHEN voucherDate <= :asOf
+                 THEN CASE WHEN voucherType='RECEIPT' THEN amountBase WHEN voucherType='PAYMENT' THEN -amountBase ELSE 0 END
+                 ELSE 0 END
+            +
+            CASE WHEN status='REVERSED' AND reversedAt IS NOT NULL AND reversedAt <= :asOf
+                 THEN CASE WHEN voucherType='RECEIPT' THEN -amountBase WHEN voucherType='PAYMENT' THEN amountBase ELSE 0 END
+                 ELSE 0 END
+        ),0)
+        FROM party_vouchers
+        WHERE supplierId=:supplierId AND voucherType IN ('PAYMENT','RECEIPT')
+    """)
+    suspend fun supplierVoucherAdjustmentAt(supplierId: Long, asOf: Long): Double
+
+    @Query("""
         SELECT s.id AS supplierId, s.nameAr AS supplierName,
                COALESCE(SUM(CASE WHEN x.outstandingBase > 0 AND (x.dueDate IS NULL OR x.dueDate >= :asOf) THEN x.outstandingBase ELSE 0 END),0) AS currentBase,
                COALESCE(SUM(CASE WHEN x.outstandingBase > 0 AND x.dueDate < :asOf AND (:asOf-x.dueDate)/86400000 BETWEEN 0 AND 30 THEN x.outstandingBase ELSE 0 END),0) AS days1To30Base,
@@ -301,10 +333,12 @@ interface PurchaseDao {
             SELECT pi.id, pi.supplierId, pi.dueDate,
                    MAX(0, pi.totalBase
                      - COALESCE((SELECT SUM(pr.totalBase) FROM purchase_returns pr
-                                 WHERE pr.purchaseInvoiceId=pi.id AND pr.status='POSTED' AND pr.settlementType='SUPPLIER_CREDIT' AND pr.returnDate <= :asOf),0)
+                                 WHERE pr.purchaseInvoiceId=pi.id AND pr.supplierId=pi.supplierId
+                                   AND pr.status='POSTED' AND pr.settlementType='SUPPLIER_CREDIT' AND pr.returnDate <= :asOf),0)
                      - COALESCE((SELECT SUM(spa.allocatedBase) FROM supplier_payment_allocations spa
                                  JOIN supplier_payments sp ON sp.id=spa.paymentId
-                                 WHERE spa.invoiceId=pi.id AND sp.paymentDate <= :asOf),0)) AS outstandingBase
+                                 WHERE spa.invoiceId=pi.id AND sp.supplierId=pi.supplierId
+                                   AND sp.paymentDate <= :asOf),0)) AS outstandingBase
             FROM purchase_invoices pi
             WHERE pi.status='POSTED' AND pi.paymentType='CREDIT' AND pi.invoiceDate <= :asOf
         ) x ON x.supplierId=s.id

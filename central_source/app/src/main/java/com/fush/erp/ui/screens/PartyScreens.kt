@@ -24,6 +24,8 @@ import com.fush.erp.data.AppContainer
 import com.fush.erp.data.entity.*
 import com.fush.erp.ui.*
 import com.fush.erp.domain.AccountingService
+import com.fush.erp.domain.SupplierProfileMath
+import com.fush.erp.domain.SupplierProfileSnapshot
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -548,12 +550,18 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
     val vouchers by container.db.partyDao().observeSupplierVouchers(supplier.id).collectAsState(initial = emptyList())
     val attachments by container.db.partyDao().observeSupplierAttachments(supplier.id).collectAsState(initial = emptyList())
     val audits by container.db.governanceDao().observeSupplierAudit(supplier.id).collectAsState(initial = emptyList())
-    val events by produceState(initialValue = emptyList<SupplierLedgerEventRow>(), supplier.id, vouchers) { value = container.db.purchaseDao().supplierLedgerEvents(supplier.id, System.currentTimeMillis()) }
+    val events by produceState(initialValue = emptyList<SupplierLedgerEventRow>(), supplier.id, vouchers, message) { value = container.db.purchaseDao().supplierLedgerEvents(supplier.id, System.currentTimeMillis()) }
     val invoices by produceState(initialValue = emptyList<PurchaseInvoiceEntity>(), supplier.id) { value = container.db.purchaseDao().supplierInvoices(supplier.id) }
     val payments by produceState(initialValue = emptyList<SupplierPaymentDetailRow>(), supplier.id, message) { value = container.db.purchaseDao().supplierPayments(supplier.id) }
     val returns by produceState(initialValue = emptyList<PurchaseReturnEntity>(), supplier.id) { value = container.db.purchaseDao().supplierReturns(supplier.id) }
+    val agingRows by produceState(initialValue = emptyList<SupplierAgingRow>(), supplier.id, vouchers, message) { value = container.db.purchaseDao().supplierAging(System.currentTimeMillis()) }
+    val voucherAdjustmentBase by produceState(initialValue = 0.0, supplier.id, vouchers, message) { value = container.db.purchaseDao().supplierVoucherAdjustmentAt(supplier.id, System.currentTimeMillis()) }
+    val profile = remember(events, agingRows, voucherAdjustmentBase, supplier.id) {
+        SupplierProfileMath.build(agingRows.firstOrNull { it.supplierId == supplier.id }, voucherAdjustmentBase, events)
+    }
     val running = remember(events) { var b=0.0; events.map { b += it.creditBase-it.debitBase; it to b } }
-    val currentBalance = running.lastOrNull()?.second ?: 0.0
+    val currentBalance = profile.statementBalanceBase
+    val paymentDocumentCount = remember(payments) { payments.map { it.paymentId }.distinct().size }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -593,7 +601,7 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
                     FushMetricCard(
                         label = "فواتير المشتريات",
                         value = invoices.size.toString(),
-                        helper = "${payments.size} دفعة • ${returns.size} مرتجع",
+                        helper = "$paymentDocumentCount دفعة • ${returns.size} مرتجع",
                         modifier = Modifier.weight(1f),
                         tone = FushStatusTone.Info,
                     )
@@ -620,7 +628,7 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
         }
         when (tab) {
             0 -> item { PartyInfoSupplier(supplier) }
-            1 -> supplierLedgerItems(running)
+            1 -> supplierLedgerItems(running, profile)
             2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مشتريات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)}" }
             3 -> profileSimpleEntityItems(if (payments.isEmpty()) "لا توجد دفعات للمورد." else null, payments) { r -> "${partyDate(r.paymentDate)} • ${r.paymentNo} • ${partyMoney(r.cashAmountBase)} • ${r.treasuryName}${if (r.invoiceNo.isNotBlank()) " • ${r.invoiceNo}" else ""}" }
             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
@@ -784,12 +792,38 @@ private fun LazyListScope.customerLedgerItems(rows: List<Pair<CustomerLedgerEven
     }
 }
 
-private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
+private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEventRow,Double>>, snapshot: SupplierProfileSnapshot) {
     item {
-        val balance = rows.lastOrNull()?.second ?: 0.0
         FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات المورد")
         Spacer(Modifier.height(8.dp))
-        FushMetricCard("الرصيد المستحق", partyMoney(balance), Modifier.fillMaxWidth(), helper = "المبلغ المستحق للمورد", tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
+        FushMetricCard("الرصيد المستحق", partyMoney(snapshot.statementBalanceBase), Modifier.fillMaxWidth(), helper = "المبلغ المستحق للمورد", tone = if (snapshot.statementBalanceBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
+        Spacer(Modifier.height(8.dp))
+        ElevatedCard(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+        ) {
+            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("أعمار ذمم المورد", style = MaterialTheme.typography.titleSmall)
+                SupplierAgingLine("جاري / غير مستحق", snapshot.currentBase)
+                SupplierAgingLine("متأخر 1–30 يوم", snapshot.days1To30Base)
+                SupplierAgingLine("متأخر 31–60 يوم", snapshot.days31To60Base)
+                SupplierAgingLine("متأخر 61–90 يوم", snapshot.days61To90Base)
+                SupplierAgingLine("أكثر من 90 يوم", snapshot.over90Base)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SupplierAgingLine("فواتير آجلة مفتوحة", snapshot.invoiceOutstandingBase)
+                SupplierAgingLine("تسويات وسندات خارج الفواتير", snapshot.nonInvoiceAdjustmentBase)
+                SupplierAgingLine("إجمالي الذمة المحسوب", snapshot.totalLiabilityBase)
+                if (!snapshot.isReconciled) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = MaterialTheme.shapes.small
+                    ) {
+                        Text("تنبيه مطابقة: فرق ${partyMoney(snapshot.reconciliationDifferenceBase)} بين كشف المورد والذمة المحسوبة.", Modifier.padding(9.dp), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
     }
     if (rows.isEmpty()) item { FushInlineState("لا توجد حركات على حساب المورد حتى الآن.") }
     items(rows) { (event, balance) ->
@@ -813,6 +847,15 @@ private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEven
                 if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+@Composable
+private fun SupplierAgingLine(label: String, amount: Double) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(partyMoney(amount), style = MaterialTheme.typography.labelLarge)
     }
 }
 
