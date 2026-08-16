@@ -21,6 +21,7 @@
 6. Phase 14.5.43 — Accounting Idempotency & Duplicate-Posting Protection — Run `31912860098`.
 7. Phase 14.5.44 — Professional Financial Statements & Cash Flow — Run `31914408158`.
 8. Phase 14.5.45 — General Ledger Dimensions & Cost Centers — Run `31915400563`.
+9. Phase 14.5.46 — Tax / VAT Accounting Framework — Run `31916655331`.
 
 ## الوظائف المحاسبية المعتمدة
 
@@ -71,14 +72,27 @@
 - تحويل مركز التكلفة من قائمة ثابتة خاصة بالمصروفات إلى بُعد محاسبي عام على مستوى **سطر القيد**.
 - أبعاد افتراضية قابلة للتوسع: `COST_CENTER`, `DEPARTMENT`, `PROJECT`, `BRANCH`.
 - جدول قيم عام لكل بُعد وجدول ربط `journal_line_dimensions` يسمح بعدة أبعاد مختلفة للسطر نفسه.
-- ترحيل مراكز تكلفة المصروفات القديمة إلى السجل العام وعمل Backfill للتصنيف التاريخي على سطر المصروف الفعلي.
-- المصروفات الجديدة تستخدم سجل مراكز التكلفة الديناميكي، ولا يوجد `EXPENSE_COST_CENTERS` ثابت في الواجهة.
-- إمكانية إسناد/إزالة الأبعاد من سطر اليومية مع Audit.
-- منع تغيير الأبعاد داخل فترة محاسبية `CLOSED`.
-- Trigger يمنع ربط قيمة ببُعد مختلف عن البُعد الذي تنتمي إليه.
-- شاشة «الأبعاد» لإدارة القيم وتحليل المدين/الدائن والرصيد الطبيعي حسب مركز التكلفة/المشروع/الفرع/القسم.
+- ترحيل مراكز تكلفة المصروفات القديمة وعمل Backfill للتصنيف التاريخي.
+- منع تغيير الأبعاد داخل فترة `CLOSED`.
 - Validation Run: `31915400563`.
 - Patch SHA-256: `ad48cca35d3a27675b0d0a8877d13469d6d451e338f597c3889c2e19e9021365`.
+
+### Phase 14.5.46 — Tax / VAT Accounting Framework
+- إطار ضريبي قابل للتهيئة بدون أي نسبة قانونية افتراضية أو تفعيل ضريبة تلقائي.
+- Tax Codes للنطاق `SALES / PURCHASE / BOTH` مع نسبة صريحة وحالة قابلية استرداد ضريبة المشتريات.
+- حفظ لقطة الرمز والنسبة والوعاء والضريبة على الفاتورة/المرتجع حتى لا تتغير المستندات التاريخية عند تعديل الإعداد لاحقًا.
+- `1400 — VAT_INPUT_RECEIVABLE` كحساب رقابة أصل ضريبي قابل للاسترداد.
+- `2410 — VAT_OUTPUT_PAYABLE` كحساب رقابة التزام ضريبة مخرجات.
+- المبيعات: النقد/الذمة بالإجمالي شامل الضريبة، الإيراد قبل الضريبة، والضريبة في حساب المخرجات.
+- المشتريات القابلة للاسترداد: المخزون قبل الضريبة + أصل VAT Input؛ غير القابلة للاسترداد تُرسمل ضمن تكلفة المخزون.
+- المرتجعات تعكس نسبة الضريبة التاريخية المخزنة في الفاتورة.
+- عمولة المندوب تعتمد على المبلغ قبل الضريبة.
+- سجل `tax_ledger_entries` وتقرير للمدخلات/المخرجات وصافي الضريبة.
+- إقفال الفترة يطابق حسابي VAT مع سجل الضريبة ويُرفض عند وجود فرق.
+- حسابا VAT محميان من القيود اليدوية المباشرة.
+- تصحيح اختبار Posting Profiles لتمييز 4 حسابات رقابة للأطراف عن 2 حسابات رقابة تنظيمية للضريبة.
+- Validation Run: `31916655331`.
+- Canonical Patch SHA-256: `0257991ee9c00e51d00c2117426d60a866e19d6e1cadc0d97b2baa4aeb3a1afa`.
 
 ## Room Schema — أرقام الفرع مؤقتة فقط
 - `27 -> 28`: Accounting periods/reconciliation.
@@ -92,28 +106,30 @@
 - `34 -> 35`: Accounting idempotency / postingKey protection.
 - Phase 14.5.44: no migration؛ يبقى `35`.
 - `35 -> 36`: General ledger dimensions / cost centers.
+- `36 -> 37`: Tax / VAT accounting framework.
 
 هذه الأرقام **BRANCH ONLY / PROVISIONAL**. المحادثة الرئيسية تعيد ترقيمها عند الدمج إذا حجزت فروع أخرى نفس الأرقام، مع الحفاظ على SQL والبيانات وعدم استخدام destructive migration.
 
 ## بوابة التحقق الأحدث
-Phase 14.5.45 — Run `31915400563`:
-- Patch chunk integrity / SHA-256 / GZIP: PASS.
-- Apply to validated Phase 14.5.44: PASS.
+Phase 14.5.46 — Run `31916655331`:
+- Original patch chunk integrity / SHA-256 / GZIP: PASS.
+- Reviewed regulatory-control test correction: PASS.
+- Canonical final patch integrity: PASS.
+- Apply to validated Phase 14.5.45: PASS.
 - Application ID / baseline identity guard: PASS.
-- Migration `35 -> 36`: PASS.
+- Migration `36 -> 37`: PASS.
 - No destructive migration: PASS.
-- General-ledger dimension wiring: PASS.
-- Dynamic expense cost centers: PASS.
-- SQLite dimension/value and closed-period guards: PASS.
+- Tax/VAT wiring and regulatory control-account wiring: PASS.
+- SQLite tax control: PASS.
 - Unit Tests: PASS.
 - Release Build: PASS.
-- Room Schema 36 generation: PASS.
+- Room Schema 37 generation: PASS.
 - Zipalign: PASS.
 - Artifact upload: PASS.
 
 التوقيع الرسمي **غير منفذ داخل GitHub CI**؛ لا يتم تخزين مفتاح التوقيع أو كلمة مروره في GitHub أو المصدر أو Workflow.
 
 ## مراجع المرحلة الحالية
-- `fush_accounting/PHASE14_5_45_SCOPE.md`
-- `fush_accounting/PHASE14_5_45_VALIDATION.md`
-- `.github/workflows/build-accounting-phase14.5.45.yml`
+- `fush_accounting/PHASE14_5_46_SCOPE.md`
+- `fush_accounting/PHASE14_5_46_VALIDATION.md`
+- `.github/workflows/build-accounting-phase14.5.46-v3.yml`
