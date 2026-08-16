@@ -63,12 +63,12 @@ jobs:
           set -euo pipefail
           curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/qa/P0_TEST_MATRIX.md" -o qa-p0-matrix.md
           test "$(git hash-object qa-p0-matrix.md)" = "$MATRIX_BLOB"
-          grep -q 'Status: **COMPLETE / READY FOR REVIEW**' qa-p0-matrix.md
-          grep -q 'Application ID.*com.fush.erp.recovery' qa-p0-matrix.md
-          grep -q 'Room schema.*34' qa-p0-matrix.md
-          grep -q 'P0 does not modify application code' qa-p0-matrix.md
-          grep -q 'Business Logic changed:** No' qa-p0-matrix.md
-          grep -q 'Migrations added:** None' qa-p0-matrix.md
+          grep -Fq 'Status: **COMPLETE / READY FOR REVIEW**' qa-p0-matrix.md
+          grep -Fq '| Application ID | `com.fush.erp.recovery` | PASS |' qa-p0-matrix.md
+          grep -Fq '| Room schema | `34` | PASS — unchanged by P0 |' qa-p0-matrix.md
+          grep -Fq 'P0 does not modify application code, Room entities, migrations, accounting logic, inventory logic, production logic, versionCode/versionName, signing configuration, or runtime behavior.' qa-p0-matrix.md
+          grep -Fq -- '- **Business Logic changed:** No.' qa-p0-matrix.md
+          grep -Fq -- '- **Migrations added:** None.' qa-p0-matrix.md
           for section in 'Authentication / session / MFA' 'Master data' 'Sales' 'Purchases' 'Treasury / cash / bank / FX' 'Accounting / GL / periods / reconciliation' 'Expenses' 'Inventory / warehouses' 'Production / quality' 'Employees / HR' 'Reports / exports / printing' 'Backup / restore' 'Database / Room migrations'; do
             grep -Fq "$section" qa-p0-matrix.md
           done
