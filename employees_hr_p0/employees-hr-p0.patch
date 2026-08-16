@@ -1,0 +1,88 @@
+diff --git a/app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt b/app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
+index e8e938b..5a264b7 100644
+--- a/app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
+@@ -125,7 +125,7 @@ interface EmployeeDao {
+     suspend fun operatorAssignment(orderId: Long): ProductionOperatorAssignmentEntity?
+ 
+     @Query("""
+-        SELECT po.id AS orderId, po.orderNo AS orderNo, po.plannedDate AS plannedDate,
++        SELECT pa.employeeId AS employeeId, po.id AS orderId, po.orderNo AS orderNo, po.plannedDate AS plannedDate,
+                po.status AS orderStatus, po.directLaborCostBase AS laborCostBase,
+                CASE WHEN EXISTS (
+                    SELECT 1 FROM journal_entries je
+diff --git a/app/src/main/java/com/fush/erp/data/entity/EmployeeEntities.kt b/app/src/main/java/com/fush/erp/data/entity/EmployeeEntities.kt
+index b48707c..024ff03 100644
+--- a/app/src/main/java/com/fush/erp/data/entity/EmployeeEntities.kt
++++ b/app/src/main/java/com/fush/erp/data/entity/EmployeeEntities.kt
+@@ -129,6 +129,7 @@ data class EquipmentAuthorizationSummary(
+ )
+ 
+ data class EmployeeProductionCompensationRow(
++    val employeeId: Long,
+     val orderId: Long,
+     val orderNo: String,
+     val plannedDate: Long,
+diff --git a/app/src/main/java/com/fush/erp/domain/EmployeeService.kt b/app/src/main/java/com/fush/erp/domain/EmployeeService.kt
+index eacad8a..9752b24 100644
+--- a/app/src/main/java/com/fush/erp/domain/EmployeeService.kt
++++ b/app/src/main/java/com/fush/erp/domain/EmployeeService.kt
+@@ -198,9 +198,13 @@ class EmployeeService(private val db: FushDatabase) {
+         require(employee.status == "ACTIVE") { "موظف الإنتاج غير نشط" }
+         order.primaryAssetId?.let { assetId -> assertEmployeeCanOperateAsset(employeeId, assetId) }
+         val current = db.employeeDao().operatorAssignment(orderId)
++        val laborAccrued = db.journalDao().bySource("PRODUCTION_LABOR", order.orderNo) != null
++        require(HrRules.employeeIdentityChangeAllowed(current?.employeeId, employeeId, laborAccrued)) {
++            "لا يمكن تغيير موظف الإنتاج بعد ترحيل استحقاق الأجور؛ يجب عكس/تسوية الحركة المالية أولاً مع الحفاظ على employeeId التاريخي"
++        }
+         if (current == null) {
+             db.employeeDao().insertOperatorAssignment(ProductionOperatorAssignmentEntity(orderId = orderId, employeeId = employeeId, assignedBy = assignedBy))
+-        } else {
++        } else if (current.employeeId != employeeId) {
+             db.employeeDao().updateOperatorAssignment(current.copy(employeeId = employeeId, assignedBy = assignedBy, assignedAt = System.currentTimeMillis()))
+         }
+         audit(assignedBy, "ASSIGN", "PRODUCTION_OPERATOR", orderId.toString(), current?.employeeId?.toString() ?: "", employeeId.toString(), "تعيين موظف إنتاج/مشغل وربط استحقاق الأجور بأمر الإنتاج")
+diff --git a/app/src/main/java/com/fush/erp/domain/HrRules.kt b/app/src/main/java/com/fush/erp/domain/HrRules.kt
+index 09a998d..37fb5a1 100644
+--- a/app/src/main/java/com/fush/erp/domain/HrRules.kt
++++ b/app/src/main/java/com/fush/erp/domain/HrRules.kt
+@@ -15,4 +15,17 @@ object HrRules {
+ 
+     fun authorizationIsValid(status: String, issuedAt: Long, expiresAt: Long?, at: Long): Boolean =
+         status == "ACTIVE" && issuedAt <= at && (expiresAt == null || expiresAt >= at)
++
++    /**
++     * P0 employee identity rule: once an employee-linked financial movement exists,
++     * the stable employee id behind that movement cannot be replaced by another employee.
++     * Display names remain editable snapshots/presentation data and are not identity keys.
++     */
++    fun employeeIdentityChangeAllowed(
++        currentEmployeeId: Long?,
++        requestedEmployeeId: Long,
++        financialMovementExists: Boolean
++    ): Boolean = currentEmployeeId == null ||
++        currentEmployeeId == requestedEmployeeId ||
++        !financialMovementExists
+ }
+diff --git a/app/src/test/java/com/fush/erp/domain/HrRulesTest.kt b/app/src/test/java/com/fush/erp/domain/HrRulesTest.kt
+index 1fabe2a..6c9e304 100644
+--- a/app/src/test/java/com/fush/erp/domain/HrRulesTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/HrRulesTest.kt
+@@ -22,4 +22,17 @@ class HrRulesTest {
+         assertFalse(HrRules.trainingIsValid("FAIL", true, true, 500L, null, 1_000L))
+         assertFalse(HrRules.authorizationIsValid("REVOKED", 500L, null, 1_000L))
+     }
++
++    @Test fun employee_identity_can_be_assigned_or_changed_before_financial_movement() {
++        assertTrue(HrRules.employeeIdentityChangeAllowed(null, 10L, false))
++        assertTrue(HrRules.employeeIdentityChangeAllowed(10L, 11L, false))
++    }
++
++    @Test fun same_employee_identity_remains_valid_after_financial_movement() {
++        assertTrue(HrRules.employeeIdentityChangeAllowed(10L, 10L, true))
++    }
++
++    @Test fun employee_identity_cannot_move_to_another_employee_after_financial_movement() {
++        assertFalse(HrRules.employeeIdentityChangeAllowed(10L, 11L, true))
++    }
+ }
