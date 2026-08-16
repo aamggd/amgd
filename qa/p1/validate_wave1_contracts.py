@@ -31,13 +31,17 @@ def main() -> int:
     record("application_id", 'applicationId = "com.fush.erp.recovery"' in build,
            "Application ID must remain com.fush.erp.recovery")
 
-    database = read(app / "src/main/java/com/fush/erp/data/FushDatabase.kt")
+    data_dir = app / "src/main/java/com/fush/erp/data"
+    database = read(data_dir / "FushDatabase.kt")
+    migrations = read(data_dir / "Migrations.kt")
+    app_container = read(data_dir / "AppContainer.kt")
     m = re.search(r"FUSH_DB_SCHEMA_VERSION\s*=\s*(\d+)", database)
     schema = int(m.group(1)) if m else -1
     record("room_schema_at_least_35", schema >= 35, f"Detected Room schema {schema}")
     record("accounting_migration_registered",
-           "MIGRATION_34_35_ACCOUNTING_P1" in database,
-           "Accounting P1 migration must exist in current/future Central")
+           "MIGRATION_34_35_ACCOUNTING_P1" in migrations
+           and "MIGRATION_34_35_ACCOUNTING_P1" in app_container,
+           "Accounting P1 migration exists and is registered in AppContainer")
 
     for marker in [
         "ACCOUNTING_STABLE_SOURCE_ID_REQUIRED",
@@ -46,13 +50,13 @@ def main() -> int:
         "POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL",
         "INVALID_JOURNAL_LINE",
     ]:
-        record(f"accounting_guard_{marker}", marker in database, marker)
+        record(f"accounting_guard_{marker}", marker in migrations, marker)
 
     for source_type in [
         "SALE", "CUSTOMER_RECEIPT", "SALES_RETURN",
         "PURCHASE", "PURCHASE_RETURN", "SUPPLIER_PAYMENT",
     ]:
-        record(f"stable_source_{source_type}", f"'{source_type}'" in database,
+        record(f"stable_source_{source_type}", f"'{source_type}'" in migrations,
                f"{source_type} remains protected by Accounting P1")
 
     main_tree = app / "src/main/java"
