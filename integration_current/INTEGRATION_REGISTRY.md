@@ -69,6 +69,7 @@ Handoffs are registered here only after dependency review and validation against
 | Order | Branch | Handoff SHA | Dependency review | Room delta | Status |
 |---|---|---|---|---|---|
 | 1 | `fush/users-permissions` — P1 Session Lifecycle | `b04efcc95c6ce241610610fac2b639617910751e` | Exact Phase 14.5.54 source; selective 5-file patch; full Unit + `assembleRelease` PASS in run `31917946736`; handoff files under `integration_current/handoffs/users-permissions/P1_session_lifecycle/` | None — stays `34` | **READY / VALIDATED HANDOFF — NOT YET APPLIED TO CENTRAL APP SOURCE** |
+| 2 | `fush/audit-evaluation` — Part 1 Initial Technical Audit | `066608d1baaf2bee4ffeb799693b13a2b1fd89ba` | Re-established on accepted Phase 14.5.54; audit/documentation only; eight findings contain ID, severity, owner, impact, expected/actual, evidence, reproduction, acceptance criteria and retest requirement; handoff under `integration_current/handoffs/audit-evaluation/P1_initial_technical_audit/` | None — audit documentation only | **REGISTERED / AUDIT EVIDENCE — NO APP PATCH TO APPLY** |
 
 ## 5. P0 Validation Gate
 
