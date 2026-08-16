@@ -1,0 +1,278 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/ProductionIssueLotAllocator.kt b/app/src/main/java/com/fush/erp/domain/ProductionIssueLotAllocator.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/ProductionIssueLotAllocator.kt
+@@ -0,0 +1,75 @@
++package com.fush.erp.domain
++
++import kotlin.math.abs
++import kotlin.math.min
++
++data class ProductionIssueLotCandidate(
++    val lotNo: String?,
++    val expiryDate: Long?,
++    val quantityBase: Double,
++    val inventoryValueBase: Double
++)
++
++data class ProductionIssueLotAllocation(
++    val lotNo: String?,
++    val expiryDate: Long?,
++    val quantityBase: Double,
++    val unitCostBase: Double
++)
++
++object ProductionIssueLotAllocator {
++    private const val EPS = 1e-9
++    private const val COMPLETION_EPS = 1e-7
++
++    fun allocate(
++        requiredQtyBase: Double,
++        lotTracked: Boolean,
++        expiryTracked: Boolean,
++        candidates: List<ProductionIssueLotCandidate>,
++        itemLabel: String? = null
++    ): List<ProductionIssueLotAllocation> {
++        require(requiredQtyBase > EPS && requiredQtyBase.isFinite()) {
++            "كمية الصرف المطلوبة غير صالحة"
++        }
++
++        var remaining = requiredQtyBase
++        val allocations = mutableListOf<ProductionIssueLotAllocation>()
++
++        for (candidate in candidates) {
++            if (remaining <= EPS) break
++            if (candidate.quantityBase <= EPS) continue
++            require(candidate.quantityBase.isFinite()) { "رصيد التشغيلة غير صالح" }
++            require(candidate.inventoryValueBase.isFinite()) { "قيمة مخزون التشغيلة غير صالحة" }
++
++            ProductionMath.validateIssueLotTracking(
++                lotTracked = lotTracked,
++                expiryTracked = expiryTracked,
++                lotNo = candidate.lotNo,
++                expiryDate = candidate.expiryDate,
++                itemLabel = itemLabel
++            )
++
++            val allocatedQty = min(remaining, candidate.quantityBase)
++            val unitCost = candidate.inventoryValueBase / candidate.quantityBase
++            require(unitCost.isFinite()) { "تكلفة التشغيلة غير صالحة" }
++
++            allocations += ProductionIssueLotAllocation(
++                lotNo = candidate.lotNo,
++                expiryDate = candidate.expiryDate,
++                quantityBase = allocatedQty,
++                unitCostBase = unitCost
++            )
++            remaining -= allocatedQty
++        }
++
++        require(remaining <= COMPLETION_EPS) {
++            val label = itemLabel?.takeIf { it.isNotBlank() } ?: "الصنف"
++            "المخزون الفعلي المقبول وغير المنتهي لا يكفي لإتمام صرف $label"
++        }
++
++        val allocatedTotal = allocations.sumOf { it.quantityBase }
++        check(abs(allocatedTotal - requiredQtyBase) <= COMPLETION_EPS) {
++            "تعذر مطابقة كمية الصرف مع تخصيص التشغيلات"
++        }
++        return allocations
++    }
++}
+diff --git a/app/src/main/java/com/fush/erp/domain/ProductionService.kt b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+--- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+@@ -303,31 +303,23 @@ class ProductionService(private val db: FushDatabase) {
+             val item = requireNotNull(db.itemDao().byId(material.itemId)) { "الصنف رقم ${material.itemId} غير موجود" }
+             val lots = AdvancedInventoryService(db).usableLots(order.rawWarehouseId, material.itemId)
+                 .filter { it.quantityBase > 1e-9 }
+-            lots.forEach { lot ->
+-                ProductionMath.validateIssueLotTracking(
+-                    lotTracked = item.lotTracked,
+-                    expiryTracked = item.expiryTracked,
+-                    lotNo = lot.lotNo,
+-                    expiryDate = lot.expiryDate,
+-                    itemLabel = "${item.nameAr} (${item.code})"
++            val allocations = ProductionIssueLotAllocator.allocate(
++                requiredQtyBase = needed,
++                lotTracked = item.lotTracked,
++                expiryTracked = item.expiryTracked,
++                itemLabel = "${item.nameAr} (${item.code})",
++                candidates = lots.map { lot ->
++                    ProductionIssueLotCandidate(
++                        lotNo = lot.lotNo,
++                        expiryDate = lot.expiryDate,
++                        quantityBase = lot.quantityBase,
++                        inventoryValueBase = lot.inventoryValueBase
++                    )
++                }
++            )
++
++            var materialCost = 0.0
++            for (allocation in allocations) {
++                val cost = allocation.quantityBase * allocation.unitCostBase
++                val issueId = db.productionDao().insertIssue(
++                    ProductionIssueEntity(
++                        orderId = order.id,
++                        materialId = material.id,
++                        itemId = material.itemId,
++                        quantityBase = allocation.quantityBase,
++                        unitCostBase = allocation.unitCostBase,
++                        totalCostBase = cost,
++                        lotNo = allocation.lotNo,
++                        expiryDate = allocation.expiryDate,
++                        createdBy = createdBy
++                    )
+                 )
+-            }
+-            val balanceNow = lots.sumOf { it.quantityBase }
+-            require(balanceNow + 1e-9 >= needed) {
+-                "المخزون المقبول وغير المنتهي والمكتمل بيانات التتبع لا يكفي لإتمام صرف المادة ${item.nameAr}"
+-            }
+-
+-            var remaining = needed
+-            var materialCost = 0.0
+-            for (lot in lots) {
+-                if (remaining <= 1e-9) break
+-                if (lot.quantityBase <= 1e-9) continue
+-                val allocated = min(remaining, lot.quantityBase)
+-                val unitCost = if (lot.quantityBase <= 1e-9) 0.0 else lot.inventoryValueBase / lot.quantityBase
+-                val cost = allocated * unitCost
+-                val issueId = db.productionDao().insertIssue(
+-                    ProductionIssueEntity(
+-                        orderId = order.id,
+-                        materialId = material.id,
+-                        itemId = material.itemId,
+-                        quantityBase = allocated,
+-                        unitCostBase = unitCost,
+-                        totalCostBase = cost,
+-                        lotNo = lot.lotNo,
+-                        expiryDate = lot.expiryDate,
+-                        createdBy = createdBy
+-                    )
+-                )
+                 db.stockDao().insertMovement(
+                     StockMovementEntity(
+                         movementDate = System.currentTimeMillis(),
+                         warehouseId = order.rawWarehouseId,
+                         itemId = material.itemId,
+                         movementType = "PRODUCTION_ISSUE",
+-                        quantityBase = -allocated,
+-                        unitCostBase = unitCost,
++                        quantityBase = -allocation.quantityBase,
++                        unitCostBase = allocation.unitCostBase,
+                         referenceType = "PRODUCTION_ISSUE",
+                         referenceId = issueId,
+-                        lotNo = lot.lotNo,
+-                        expiryDate = lot.expiryDate
++                        lotNo = allocation.lotNo,
++                        expiryDate = allocation.expiryDate
+                     )
+                 )
+-                remaining -= allocated
+                 materialCost += cost
+             }
+-            require(remaining <= 1e-7) { "تعذر تخصيص كامل كمية الصنف من التشغيلات المتاحة" }
+             totalIssueCost += materialCost
+             db.productionDao().updateMaterial(
+                 material.copy(
+diff --git a/app/src/test/java/com/fush/erp/domain/ProductionIssueLotAllocatorTest.kt b/app/src/test/java/com/fush/erp/domain/ProductionIssueLotAllocatorTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/ProductionIssueLotAllocatorTest.kt
+@@ -0,0 +1,92 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class ProductionIssueLotAllocatorTest {
++    @Test
++    fun `splits issue across actual lots and preserves lot identity and cost`() {
++        val allocations = ProductionIssueLotAllocator.allocate(
++            requiredQtyBase = 8.0,
++            lotTracked = true,
++            expiryTracked = true,
++            itemLabel = "مادة خام (RM-1)",
++            candidates = listOf(
++                ProductionIssueLotCandidate("LOT-A", 2_000L, 5.0, 50.0),
++                ProductionIssueLotCandidate("LOT-B", 3_000L, 10.0, 120.0)
++            )
++        )
++
++        assertEquals(2, allocations.size)
++        assertEquals("LOT-A", allocations[0].lotNo)
++        assertEquals(5.0, allocations[0].quantityBase, 1e-9)
++        assertEquals(10.0, allocations[0].unitCostBase, 1e-9)
++        assertEquals("LOT-B", allocations[1].lotNo)
++        assertEquals(3.0, allocations[1].quantityBase, 1e-9)
++        assertEquals(12.0, allocations[1].unitCostBase, 1e-9)
++        assertEquals(8.0, allocations.sumOf { it.quantityBase }, 1e-9)
++    }
++
++    @Test
++    fun `rejects issue before movements when usable physical stock is insufficient`() {
++        val error = assertThrows(IllegalArgumentException::class.java) {
++            ProductionIssueLotAllocator.allocate(
++                requiredQtyBase = 8.0,
++                lotTracked = true,
++                expiryTracked = false,
++                itemLabel = "مادة خام (RM-1)",
++                candidates = listOf(
++                    ProductionIssueLotCandidate("LOT-A", null, 5.0, 50.0)
++                )
++            )
++        }
++
++        assertEquals(
++            "المخزون الفعلي المقبول وغير المنتهي لا يكفي لإتمام صرف مادة خام (RM-1)",
++            error.message
++        )
++    }
++
++    @Test
++    fun `lot tracked material cannot allocate from a row without lot number`() {
++        assertThrows(IllegalArgumentException::class.java) {
++            ProductionIssueLotAllocator.allocate(
++                requiredQtyBase = 1.0,
++                lotTracked = true,
++                expiryTracked = false,
++                itemLabel = "مادة خام (RM-1)",
++                candidates = listOf(
++                    ProductionIssueLotCandidate(null, null, 2.0, 20.0)
++                )
++            )
++        }
++    }
++
++    @Test
++    fun `expiry tracked material cannot allocate from a row without expiry`() {
++        assertThrows(IllegalArgumentException::class.java) {
++            ProductionIssueLotAllocator.allocate(
++                requiredQtyBase = 1.0,
++                lotTracked = false,
++                expiryTracked = true,
++                itemLabel = "مادة خام (RM-1)",
++                candidates = listOf(
++                    ProductionIssueLotCandidate(null, null, 2.0, 20.0)
++                )
++            )
++        }
++    }
++
++    @Test
++    fun `does not overdraw the last lot`() {
++        val allocations = ProductionIssueLotAllocator.allocate(
++            requiredQtyBase = 6.0,
++            lotTracked = false,
++            expiryTracked = false,
++            candidates = listOf(
++                ProductionIssueLotCandidate(null, null, 4.0, 40.0),
++                ProductionIssueLotCandidate(null, null, 9.0, 90.0)
++            )
++        )
++
++        assertEquals(listOf(4.0, 2.0), allocations.map { it.quantityBase })
++    }
++}
