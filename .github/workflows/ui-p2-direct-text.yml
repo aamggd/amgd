@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   BASE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
@@ -151,20 +151,16 @@ jobs:
           git add -A ui_p2/generated
           git diff --cached --check
 
-      - name: Commit validated P2 direct localization to work branch only
+      - name: Create validated delivery patch
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'FUSH UI P2 CI'
-          git config user.email 'ui-p2-ci@fush.local'
-          git add -A central_source ui_p2/generated
-          git diff --cached --check
-          if git diff --cached --quiet; then
-            echo 'No generated changes to commit.'
-          else
-            git commit -m 'UI P2: localize direct Text literals on Central baseline'
-            git push origin HEAD:fush/ui-professional-redesign-p2
-          fi
+          mkdir -p ui_p2/generated
+          git diff --cached --binary -- central_source > ui_p2/generated/p2_direct_text.patch
+          test -s ui_p2/generated/p2_direct_text.patch
+          sha256sum ui_p2/generated/p2_direct_text.patch | tee ui_p2/generated/p2_direct_text.patch.sha256
+          git diff --cached --name-only -- central_source > ui_p2/generated/p2_direct_text.changed-files.txt
+          git diff --cached --stat -- central_source > ui_p2/generated/p2_direct_text.stat.txt
 
       - name: Upload P2 direct localization evidence
         uses: actions/upload-artifact@v4
@@ -175,6 +171,10 @@ jobs:
             ui_p2/generated/post_direct_summary.json
             ui_p2/generated/post_direct_inventory.log
             ui_p2/generated/release-apk.sha256
+            ui_p2/generated/p2_direct_text.patch
+            ui_p2/generated/p2_direct_text.patch.sha256
+            ui_p2/generated/p2_direct_text.changed-files.txt
+            ui_p2/generated/p2_direct_text.stat.txt
             central_source/app/src/main/res/values/p2_direct_text.xml
             central_source/app/src/main/res/values-ar/p2_direct_text.xml
           if-no-files-found: error
