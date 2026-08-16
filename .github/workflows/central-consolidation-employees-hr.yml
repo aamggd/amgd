@@ -1,0 +1,120 @@
+name: Central Consolidation - Employees HR
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-employees-hr.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: 'fd39ce3222e0fa1be3ab3df04e31e2d6c69fff4f'
+  HANDOFF_SHA: '981c1bb7560cd3657213a2204213c9d6a73a89b5'
+  PATCH_BLOB: 'b909efdc40771f1fbfa6375cfa38994194c3eb9e'
+
+jobs:
+  integrate-employees-hr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Cumulative Central before Employees HR"
+          grep -q 'ProductionMath.validateBomIntegrity' app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Fetch exact validated Employees HR P0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/employees_hr_p0/employees-hr-p0.patch" -o employees-hr.patch
+          test "$(git hash-object employees-hr.patch)" = "$PATCH_BLOB"
+          cd work-source
+          git apply --check ../employees-hr.patch
+          git apply ../employees-hr.patch
+          git diff --check
+          grep -q 'employeeIdentityChangeAllowed' app/src/main/java/com/fush/erp/domain/HrRules.kt
+          grep -q 'PRODUCTION_LABOR' app/src/main/java/com/fush/erp/domain/EmployeeService.kt
+          grep -q 'pa.employeeId AS employeeId' app/src/main/java/com/fush/erp/data/dao/EmployeeDao.kt
+          git add -A
+          git commit -qm "Integrate Employees HR P0"
+          echo "employees_hr_source_tree=$(git write-tree)" | tee ../employees-hr-source-tree.txt
+
+      - name: Employees HR domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.HrRulesTest' --tests 'com.fush.erp.domain.ProductionMathTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          grep -q 'employeeIdentityChangeAllowed' central_source/app/src/main/java/com/fush/erp/domain/HrRules.kt
+          grep -q 'ProductionMath.validateBomIntegrity' central_source/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source employees-hr-source-tree.txt
+          git commit -m "Central integration: add Employees HR P0"
+          git push origin HEAD:fush/integration-current
