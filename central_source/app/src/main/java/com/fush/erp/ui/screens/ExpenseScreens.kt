@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.fush.erp.data.AppContainer
 import com.fush.erp.data.entity.*
 import com.fush.erp.domain.AccountingService
+import com.fush.erp.domain.ExpenseClassificationPolicy
 import com.fush.erp.ui.export.ReportExportActions
 import com.fush.erp.ui.FushMetricCard
 import com.fush.erp.ui.FushSectionHeader
@@ -30,33 +31,9 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
-private val EXPENSE_COST_CENTERS = listOf(
-    "SALES" to "المبيعات",
-    "PURCHASES" to "المشتريات",
-    "PRODUCTION" to "الإنتاج",
-    "ADMIN" to "الإدارة",
-    "WAREHOUSE" to "المخزن",
-    "DISTRIBUTION" to "التوزيع",
-    "MAINTENANCE" to "الصيانة",
-    "MARKETING" to "التسويق",
-    "OTHER" to "أخرى"
-)
+private val EXPENSE_COST_CENTERS = ExpenseClassificationPolicy.costCenters.map { it.code to it.nameAr }
 
-private val EXPENSE_REFERENCE_TYPES = listOf(
-    "NONE" to "بدون مرجع",
-    "SALES_INVOICE" to "فاتورة مبيعات",
-    "SALES_ORDER" to "أمر بيع",
-    "PURCHASE_INVOICE" to "فاتورة مشتريات",
-    "PURCHASE_ORDER" to "أمر شراء",
-    "PRODUCTION_ORDER" to "أمر إنتاج",
-    "DISTRIBUTION" to "توزيع / توصيل",
-    "CUSTOMER" to "عميل",
-    "SUPPLIER" to "مورد",
-    "PRODUCT" to "منتج / صنف",
-    "BRANCH" to "فرع",
-    "FACILITY" to "منشأة",
-    "OTHER" to "مرجع آخر"
-)
+private val EXPENSE_REFERENCE_TYPES = ExpenseClassificationPolicy.referenceTypes.map { it.code to it.nameAr }
 
 @Composable
 fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
@@ -329,7 +306,7 @@ private fun AddExpenseDialog(
 ) {
     val context = LocalContext.current
     var source by remember { mutableStateOf<TreasuryBalanceRow?>(treasury.firstOrNull()) }
-    var account by remember { mutableStateOf<AccountEntity?>(accounts.firstOrNull()) }
+    var account by remember { mutableStateOf<AccountEntity?>(null) }
     var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
     var amount by remember { mutableStateOf("") }
     var rate by remember { mutableStateOf("1") }
@@ -337,7 +314,7 @@ private fun AddExpenseDialog(
     var date by remember { mutableStateOf(expenseTodayText()) }
     var employee by remember { mutableStateOf<EmployeeEntity?>(null) }
     var salesRep by remember { mutableStateOf<SalesRepresentativeEntity?>(null) }
-    var center by remember { mutableStateOf(EXPENSE_COST_CENTERS.last()) }
+    var center by remember { mutableStateOf<Pair<String, String>?>(null) }
     var organizationUnit by remember { mutableStateOf("") }
     var customer by remember { mutableStateOf<CustomerEntity?>(null) }
     var supplier by remember { mutableStateOf<SupplierEntity?>(null) }
@@ -383,7 +360,8 @@ private fun AddExpenseDialog(
         "CUSTOMER" -> customer != null
         "SUPPLIER" -> supplier != null
         "PRODUCT" -> item != null
-        "SALES_ORDER", "PURCHASE_ORDER", "DISTRIBUTION", "BRANCH", "FACILITY", "OTHER" -> referenceNo.isNotBlank() || referenceLabel.isNotBlank() || organizationUnit.isNotBlank()
+        "BRANCH", "FACILITY" -> organizationUnit.isNotBlank()
+        "SALES_ORDER", "PURCHASE_ORDER", "DISTRIBUTION", "OTHER" -> referenceNo.isNotBlank() || referenceLabel.isNotBlank() || organizationUnit.isNotBlank()
         else -> true
     }
 
@@ -405,8 +383,13 @@ private fun AddExpenseDialog(
                     Text("الأبعاد التحليلية", style=MaterialTheme.typography.titleSmall)
                     ExpenseNullableSelectionField("الموظف — اختياري", employee, employees, { "${it.code} — ${it.fullNameAr}" }) { employee=it }
                     ExpenseNullableSelectionField("مندوب المبيعات — اختياري", salesRep, salesReps, { "${it.code} — ${it.fullNameAr}" }) { salesRep=it }
-                    ExpenseSelectionField("مركز التكلفة / القسم", center, EXPENSE_COST_CENTERS, { it.second }) { center=it }
-                    OutlinedTextField(organizationUnit, { organizationUnit=it }, label={Text("الفرع / المنشأة — اختياري")}, modifier=Modifier.fillMaxWidth())
+                    ExpenseSelectionField("مركز التكلفة / القسم — إلزامي", center, EXPENSE_COST_CENTERS, { it.second }) { center=it }
+                    OutlinedTextField(
+                        organizationUnit,
+                        { organizationUnit=it },
+                        label={ Text(if (refType.first in setOf("BRANCH", "FACILITY")) "الفرع / المنشأة — إلزامي" else "الفرع / المنشأة — اختياري") },
+                        modifier=Modifier.fillMaxWidth()
+                    )
                     ExpenseNullableSelectionField("العميل — اختياري", customer, customers, { "${it.code} — ${it.nameAr}" }) { customer=it }
                     ExpenseNullableSelectionField("المورد — اختياري", supplier, suppliers, { "${it.code} — ${it.nameAr}" }) { supplier=it }
                     ExpenseNullableSelectionField("المنتج / الصنف — اختياري", item, items, { "${it.code} — ${it.nameAr}" }) { item=it }
@@ -437,7 +420,7 @@ private fun AddExpenseDialog(
         },
         confirmButton = {
             Button(
-                enabled = source != null && account != null && currency != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true && description.isNotBlank() && refReady,
+                enabled = source != null && account != null && currency != null && center != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true && description.isNotBlank() && refReady,
                 onClick = {
                     val refId = when(refType.first) {
                         "SALES_INVOICE" -> salesInvoice?.id
@@ -472,7 +455,7 @@ private fun AddExpenseDialog(
                             expenseContext=AccountingService.ExpenseContext(
                                 employeeId=employee?.id,
                                 salesRepId=salesRep?.id,
-                                costCenterCode=center.first,
+                                costCenterCode=requireNotNull(center).first,
                                 organizationUnit=organizationUnit,
                                 referenceType=refType.first,
                                 referenceId=refId,

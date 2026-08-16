@@ -48,7 +48,7 @@ class AccountingService(private val db: FushDatabase) {
     data class ExpenseContext(
         val employeeId: Long? = null,
         val salesRepId: Long? = null,
-        val costCenterCode: String = "OTHER",
+        val costCenterCode: String = "",
         val organizationUnit: String = "",
         val referenceType: String = "NONE",
         val referenceId: Long? = null,
@@ -1390,19 +1390,22 @@ class AccountingService(private val db: FushDatabase) {
         context: ExpenseContext,
         createdBy: Long
     ) {
-        val costCenters = mapOf(
-            "SALES" to "المبيعات",
-            "PURCHASES" to "المشتريات",
-            "PRODUCTION" to "الإنتاج",
-            "ADMIN" to "الإدارة",
-            "WAREHOUSE" to "المخزن",
-            "DISTRIBUTION" to "التوزيع",
-            "MAINTENANCE" to "الصيانة",
-            "MARKETING" to "التسويق",
-            "OTHER" to "أخرى"
+        ExpenseClassificationPolicy.validateMandatoryDimensions(
+            ExpenseMandatoryDimensions(
+                costCenterCode = context.costCenterCode,
+                organizationUnit = context.organizationUnit,
+                referenceType = context.referenceType,
+                referenceId = context.referenceId,
+                referenceNo = context.referenceNo,
+                referenceLabel = context.referenceLabel,
+                customerId = context.customerId,
+                supplierId = context.supplierId,
+                itemId = context.itemId
+            )
         )
-        val costCenterCode = context.costCenterCode.trim().uppercase(Locale.US)
-        val costCenterName = requireNotNull(costCenters[costCenterCode]) { "مركز التكلفة غير صالح" }
+        val costCenter = ExpenseClassificationPolicy.normalizeCostCenter(context.costCenterCode)
+        val costCenterCode = costCenter.code
+        val costCenterName = costCenter.nameAr
         val employee = context.employeeId?.let { id ->
             requireNotNull(db.employeeDao().employeeById(id)) { "الموظف المرتبط بالمصروف غير موجود" }
         }
@@ -1414,12 +1417,7 @@ class AccountingService(private val db: FushDatabase) {
         val supplier = context.supplierId?.let { id -> requireNotNull(db.supplierDao().byId(id)) { "المورد المرتبط بالمصروف غير موجود" } }
         val item = context.itemId?.let { id -> requireNotNull(db.itemDao().byId(id)) { "المنتج/الصنف المرتبط بالمصروف غير موجود" } }
 
-        val allowedReferences = setOf(
-            "NONE", "SALES_INVOICE", "SALES_ORDER", "PURCHASE_INVOICE", "PURCHASE_ORDER",
-            "PRODUCTION_ORDER", "DISTRIBUTION", "CUSTOMER", "SUPPLIER", "PRODUCT", "BRANCH", "FACILITY", "OTHER"
-        )
-        val referenceType = context.referenceType.trim().uppercase(Locale.US).ifBlank { "NONE" }
-        require(referenceType in allowedReferences) { "نوع مرجع المصروف غير صالح" }
+        val referenceType = ExpenseClassificationPolicy.normalizeReferenceType(context.referenceType).code
         var referenceId = context.referenceId
         var referenceNo = context.referenceNo.trim()
         var referenceLabel = context.referenceLabel.trim()
