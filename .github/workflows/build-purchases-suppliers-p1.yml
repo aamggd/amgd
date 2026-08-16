@@ -1,3 +1,4 @@
+# P1 validation workflow — exact Central 2cb8da8 baseline
 name: Build Purchases Suppliers P1
 
 on:
