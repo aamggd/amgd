@@ -65,8 +65,10 @@ jobs:
           echo "CENTRAL_SOURCE_TREE=$TREE"
           test "$TREE" = "$CENTRAL_TREE"
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
 
       - name: Verify and apply same exact P1 patch
@@ -112,9 +114,11 @@ jobs:
           set -euo pipefail
           cd final-repo
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
-          ! git diff --cached --name-only | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/'
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! git diff --cached --name-only | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|AppContainer.kt|app/schemas/'
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
           ! grep -E -q 'DROP TABLE|DELETE FROM sqlite_master|fallbackToDestructiveMigration' ../production_quality_p1/production-quality-p1.patch
 
