@@ -1,0 +1,156 @@
+name: Validate FUSH Treasury Banking P1
+
+on:
+  push:
+    branches: [fush/treasury-banking]
+    paths:
+      - '.github/workflows/build-treasury-banking-p1.yml'
+      - 'phase_treasury_banking_p1/treasury-banking-p1.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  INPUT_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  PATCH_SHA256: '5124c5abb47af24e997b6727aa3122b423893ed5c967e2cfeea8657a5e6b5da7'
+
+jobs:
+  validate-treasury-banking-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout treasury branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/treasury-banking
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Export exact current Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git cat-file -e "${CENTRAL_HEAD}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin '+refs/heads/fush/integration-current:refs/remotes/origin/fush/integration-current'
+          fi
+          git cat-file -e "${CENTRAL_HEAD}^{commit}"
+          rm -rf central-export work-source
+          mkdir -p central-export
+          git archive "${CENTRAL_HEAD}" central_source | tar -x -C central-export
+          cp -a central-export/central_source work-source
+          cd work-source
+          git init -q
+          git config user.name treasury-p1-ci
+          git config user.email treasury-p1-ci@users.noreply.github.com
+          git add -A
+          ACTUAL_TREE=$(git write-tree)
+          echo "Central input tree: ${ACTUAL_TREE}"
+          test "${ACTUAL_TREE}" = "${INPUT_TREE}"
+          git commit -qm "Exact Central ${CENTRAL_HEAD} before Treasury P1"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+      - name: Apply only P1 patch and verify scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/phase_treasury_banking_p1/treasury-banking-p1.patch"
+          echo "${PATCH_SHA256}  ${PATCH}" | sha256sum -c -
+          cd work-source
+          git apply --check "${PATCH}"
+          git apply "${PATCH}"
+          git add -A
+          git diff --cached --check
+          printf '%s\n' \
+            'app/src/main/java/com/fush/erp/domain/AccountingService.kt' \
+            'app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt' \
+            'app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt' | sort > /tmp/expected-files.txt
+          git diff --cached --name-only | sort > /tmp/actual-files.txt
+          diff -u /tmp/expected-files.txt /tmp/actual-files.txt
+          RESULT_TREE=$(git write-tree)
+          echo "${RESULT_TREE}" | tee "$GITHUB_WORKSPACE/p1-result-tree.txt"
+          echo "P1 result source tree: ${RESULT_TREE}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: P1 targeted unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.TreasuryPartyRequirementPolicyTest --tests com.fush.erp.domain.ControlAccountPolicyTest --tests com.fush.erp.domain.TreasuryMovementTypePolicyTest
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Safety integration and regression assertions
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          grep -Fq 'val tradeControlAccountCodes: Set<String> = setOf("1300", "2100")' app/src/main/java/com/fush/erp/domain/ControlAccountPolicy.kt
+          grep -Fq 'ControlAccountPolicy.requireGenericVoucherAllowed(offset.code)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -Fq 'val customer = requireNotNull(db.customerDao().byId(customerId))' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'val validatedSupplierId = SupplierMovementIdentity.requireId(supplierId)' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -Fq 'TreasuryPartyRequirement.CUSTOMER' app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+          grep -Fq 'TreasuryPartyRequirement.SUPPLIER' app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+          grep -Fq 'TreasuryPartyRequirement.EMPLOYEE' app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+          test -z "$(git diff HEAD -- app/src/main/java/com/fush/erp/data/FushDatabase.kt app/src/main/java/com/fush/erp/data/Migrations.kt app/schemas)"
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Prepare validation artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p validation-artifact
+          cp work-source/app/build/outputs/apk/release/app-release-unsigned.apk validation-artifact/
+          cp phase_treasury_banking_p1/treasury-banking-p1.patch validation-artifact/
+          cp p1-result-tree.txt validation-artifact/
+          cat > validation-artifact/VALIDATION.txt <<EOF
+          FUSH ERP Mobile — Treasury Banking P1
+          Central HEAD: ${CENTRAL_HEAD}
+          Central input tree: ${INPUT_TREE}
+          Patch SHA-256: ${PATCH_SHA256}
+          Application ID: com.fush.erp.recovery
+          Room schema: 34 unchanged
+          Unit tests: PASS if workflow succeeds
+          Release build: PASS if workflow succeeds
+          Signing: unsigned branch/test APK
+          EOF
+
+      - name: Upload unsigned validation APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Treasury-Banking-P1-Validation
+          path: validation-artifact/
+          if-no-files-found: error
