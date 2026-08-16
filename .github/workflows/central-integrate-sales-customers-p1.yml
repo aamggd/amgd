@@ -14,15 +14,18 @@ env:
   CENTRAL_BASE_HEAD: 'ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48'
   CENTRAL_BASE_TREE: 'af291928524bafffea73c07439008a5236813289'
   SOURCE_HANDOFF_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
-  PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
-  PATCH_BLOB: '8b5372494baf1e5943de24fa10b7e0a400c85928'
+  REFERENCE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  REFERENCE_CENTRAL_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  APPLICATOR_BLOB: '05b0d9b438061384bab717f0b6c8e8c2242a0d55'
+  VALIDATED_OUTPUT_PATCH_SHA256: '410b2e742cee956351ff9e51745353bc0f3feb98bf856636a4ef1cfeb03a921f'
+  HANDOFF_METADATA_PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
   EXPECTED_APP_ID: 'com.fush.erp.recovery'
   EXPECTED_SCHEMA: '35'
 
 jobs:
   integrate-sales-customers-p1:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - name: Checkout exact current Central branch
         uses: actions/checkout@v4
@@ -66,11 +69,39 @@ jobs:
 
           git fetch --no-tags origin '+refs/heads/fush/sales-customers:refs/remotes/origin/fush/sales-customers'
           test "$(git rev-parse refs/remotes/origin/fush/sales-customers)" = "$SOURCE_HANDOFF_SHA"
-          test "$(git rev-parse "$SOURCE_HANDOFF_SHA:sales_customers_p1/customer_identity_p1.patch")" = "$PATCH_BLOB"
-          git show "$SOURCE_HANDOFF_SHA:sales_customers_p1/customer_identity_p1.patch" > /tmp/customer_identity_p1.patch
-          echo "$PATCH_SHA256  /tmp/customer_identity_p1.patch" | sha256sum -c -
+          test "$(git rev-parse "$SOURCE_HANDOFF_SHA:sales_customers_p1/apply_p1.py")" = "$APPLICATOR_BLOB"
+          git show "$SOURCE_HANDOFF_SHA:sales_customers_p1/apply_p1.py" > /tmp/apply_p1.py
+          python3 -m py_compile /tmp/apply_p1.py
 
-      - name: Apply exact Sales P1 functional patch on Central 35
+      - name: Reproduce original validated functional patch exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf reference-export reference-source
+          mkdir reference-export
+          git archive "$REFERENCE_CENTRAL_HEAD" central_source | tar -x -C reference-export
+          mv reference-export/central_source reference-source
+          cd reference-source
+          git init -q
+          git config user.name 'FUSH Sales P1 Reference Proof'
+          git config user.email 'sales-p1-proof@fush.local'
+          git add -A
+          test "$(git write-tree)" = "$REFERENCE_CENTRAL_TREE"
+          git commit -qm 'Exact original Central before validated Sales P1'
+          python3 /tmp/apply_p1.py
+          git add -A
+          git diff --cached --check
+          git diff --cached --binary > /tmp/original-validated-sales-p1.patch
+          echo "$VALIDATED_OUTPUT_PATCH_SHA256  /tmp/original-validated-sales-p1.patch" | sha256sum -c -
+          printf '%s\n' \
+            'app/src/main/java/com/fush/erp/domain/AccountingService.kt' \
+            'app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt' \
+            'app/src/main/java/com/fush/erp/domain/SalesService.kt' \
+            'app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt' | sort > /tmp/reference-expected-files
+          git diff --cached --name-only | sort > /tmp/reference-actual-files
+          diff -u /tmp/reference-expected-files /tmp/reference-actual-files
+
+      - name: Apply exact validated Sales P1 transformations on Central 35
         shell: bash
         run: |
           set -euo pipefail
@@ -84,8 +115,8 @@ jobs:
           test "$(git write-tree)" = "$CENTRAL_BASE_TREE"
           git commit -qm 'Central before Sales Customers P1'
 
-          git apply --check --recount /tmp/customer_identity_p1.patch
-          git apply --recount /tmp/customer_identity_p1.patch
+          # The successful source workflow used this exact applicator, not the stale committed patch file.
+          python3 /tmp/apply_p1.py
           git add -A
           git diff --cached --check
 
@@ -102,6 +133,7 @@ jobs:
           # Sales P1 functional assertions.
           grep -Fq 'object CustomerMovementIdentity' app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'CustomerMovementIdentity.requireId(customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -Fq 'CustomerMovementIdentity.requireId(original.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -Fq 'CustomerMovementIdentity.requireId(invoice.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
@@ -113,6 +145,8 @@ jobs:
 
           # Sales P1 must not mutate Room/data schema or unrelated Wave 1 files.
           test -z "$(git diff --cached --name-only | grep -E '^(app/src/main/java/com/fush/erp/data/|app/schemas/|app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt)' || true)"
+          git diff --cached --binary > /tmp/sales-p1-on-central35.patch
+          sha256sum /tmp/sales-p1-on-central35.patch | awk '{print $1}' | tee /tmp/sales-evolved-patch-sha.txt
           RESULT_TREE=$(git write-tree)
           echo "$RESULT_TREE" | tee /tmp/sales-result-tree.txt
 
@@ -190,7 +224,8 @@ jobs:
 
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
           ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
-          ! grep -R -nE 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' "$MIG" | grep -A999 'MIGRATION_34_35_ACCOUNTING_P1' || true
+          P1_BLOCK="$(sed -n '/MIGRATION_34_35_ACCOUNTING_P1/,$p' "$MIG")"
+          ! grep -E 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' <<<"$P1_BLOCK"
 
           # Data/schema preservation: Sales P1 introduced no Room/schema changes.
           test -z "$(git diff HEAD -- app/src/main/java/com/fush/erp/data/FushDatabase.kt app/src/main/java/com/fush/erp/data/Migrations.kt app/src/main/java/com/fush/erp/data/SecurityMigrations.kt app/schemas || true)"
@@ -209,7 +244,6 @@ jobs:
           git config user.name 'FUSH Central Integration'
           git config user.email 'central-integration@fush.local'
           git add central_source
-          test "$(git write-tree | tr -d '\n')" != ''
 
           # Ensure no concurrent Central movement occurred before integration push.
           git fetch --no-tags origin '+refs/heads/fush/integration-current:refs/remotes/origin/fush/integration-current'
@@ -218,10 +252,8 @@ jobs:
           git commit -m 'Central integration: Sales Customers P1 customer identity'
           INTEGRATION_SHA=$(git rev-parse HEAD)
           echo "$INTEGRATION_SHA" | tee /tmp/sales-integration-sha.txt
-          git push origin HEAD:refs/heads/fush/integration-current
-
-          # Verify central_source tree in committed repository equals validated work-source tree.
           test "$(git rev-parse HEAD:central_source)" = "$RESULT_TREE"
+          git push origin HEAD:refs/heads/fush/integration-current
 
       - name: Record Sales P1 integration result
         shell: bash
@@ -229,11 +261,16 @@ jobs:
           set -euo pipefail
           INTEGRATION_SHA=$(cat /tmp/sales-integration-sha.txt)
           RESULT_TREE=$(cat /tmp/sales-result-tree.txt)
+          EVOLVED_PATCH_SHA=$(cat /tmp/sales-evolved-patch-sha.txt)
           mkdir -p central_integration_records
           cat > central_integration_records/wave1-sales-customers-p1.md <<EOF
           # Central Integration — Sales / Customers P1 Customer Movement Identity
           Source Handoff SHA: ${SOURCE_HANDOFF_SHA}
-          Patch SHA-256: ${PATCH_SHA256}
+          Handoff applicator blob: ${APPLICATOR_BLOB}
+          Original validation run: 31977975716
+          Original validated generated patch SHA-256: ${VALIDATED_OUTPUT_PATCH_SHA256}
+          Handoff README/request claimed patch SHA-256: ${HANDOFF_METADATA_PATCH_SHA256} (metadata mismatch; not the patch emitted by successful validation run)
+          Central-35 evolved functional diff SHA-256: ${EVOLVED_PATCH_SHA}
           Integration Commit SHA: ${INTEGRATION_SHA}
           Previous Central HEAD: ${CENTRAL_BASE_HEAD}
           Central source tree after integration: ${RESULT_TREE}
@@ -251,7 +288,7 @@ jobs:
           Data/schema preservation: PASS
           Destructive migration/reset guards: PASS
           zipalign: PASS
-          Conflict resolution: AccountingService overlap with Treasury P1 applied cleanly; both TreasuryPartyRequirementPolicy and CustomerMovementIdentity guards preserved.
+          Conflict resolution: AccountingService overlap with Treasury P1 was resolved by applying the exact validated Sales transformations to evolved Central; both TreasuryPartyRequirementPolicy and CustomerMovementIdentity guards are preserved.
           Result: SUCCESS
           EOF
           git add central_integration_records/wave1-sales-customers-p1.md
