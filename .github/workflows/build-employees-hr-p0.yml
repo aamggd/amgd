@@ -105,22 +105,22 @@ jobs:
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
           test -z "$(git diff --name-only HEAD^ HEAD | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/' || true)"
           mkdir -p ../output
-          cp "$APK" ../output/FushERP-Employees-HR-P0-14.5.54-aligned-unsigned.apk
+          cp "$APK" ../output/FushERP-Employees-HR-P0-14.5.54-unsigned.apk
           git format-patch -1 --stdout HEAD > ../output/employees-hr-p0.patch
-          cat > ../output/HANDOFF.txt <<'EOF'
-branch=fush/employees-hr
-phase=P0 stable employee identity
-baseline=Phase14.5.54 Printing Integrated
-applicationId=com.fush.erp.recovery
-roomSchema=34 unchanged
-migration=none
-signing=unsigned test build only
-unitTests=PASS
-releaseBuild=PASS
-accountingLogic=unchanged; reads existing PRODUCTION_LABOR posting to lock employee identity
-inventoryImpact=none
-productionImpact=operator employee cannot be reassigned after labor accrual
-EOF
+          printf '%s\n' \
+            'branch=fush/employees-hr' \
+            'phase=P0 stable employee identity' \
+            'baseline=Phase14.5.54 Printing Integrated' \
+            'applicationId=com.fush.erp.recovery' \
+            'roomSchema=34 unchanged' \
+            'migration=none' \
+            'signing=unsigned test build only' \
+            'unitTests=PASS' \
+            'releaseBuild=PASS' \
+            'accountingLogic=unchanged; reads existing PRODUCTION_LABOR posting to lock employee identity' \
+            'inventoryImpact=none' \
+            'productionImpact=operator employee cannot be reassigned after labor accrual' \
+            > ../output/HANDOFF.txt
 
       - name: Upload P0 validation artifact
         uses: actions/upload-artifact@v4
