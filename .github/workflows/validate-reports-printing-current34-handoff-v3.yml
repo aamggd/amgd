@@ -1,0 +1,447 @@
+name: Validate Reports Printing Current Central34 Handoff V3
+
+on:
+  push:
+    branches: [fush/reports-printing-central34-handoff]
+    paths:
+      - '.github/workflows/validate-reports-printing-current34-handoff-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download Phase 14.5.53 reference
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.53-Accounting-Printing-Build
+          path: refs/p53
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31908733997
+      - name: Download Phase 14.5.55 reference
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.55-Report-Export-Hardening-Build
+          path: refs/p55
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31913717196
+      - name: Download Phase 14.5.57 reference
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.57-Management-Print-Coverage-Build
+          path: refs/p57
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915147268
+      - name: Download Phase 14.5.58 reference
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.58-Nonblocking-Export-Build
+          path: refs/p58
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915869146
+
+      - name: Build exact current-Central selective handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git merge-base HEAD 2cb8da801fc54aec8c1f0d6a83588f097ca85117)" = "2cb8da801fc54aec8c1f0d6a83588f097ca85117"
+          grep -q 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q 'MIGRATION_32_33_SECURITY' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'MIGRATION_33_34_FIXED_ASSETS' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -Rqs 'fallbackToDestructiveMigration' central_source/app/src/main
+
+          extract_ref() {
+            local phase="$1" out="$2" src
+            src="$(find "refs/$phase" -maxdepth 1 -type f -name '*Source.zip' | head -1)"
+            test -n "$src"
+            rm -rf "$out"; mkdir -p "$out"; unzip -q "$src" -d "$out"
+            find "$out" -maxdepth 1 -type d -name 'FushERP_Mobile_*' | head -1
+          }
+          P53="$(extract_ref p53 /tmp/ref53)"
+          P55="$(extract_ref p55 /tmp/ref55)"
+          P57="$(extract_ref p57 /tmp/ref57)"
+          P58="$(extract_ref p58 /tmp/ref58)"
+
+          test "$(git hash-object central_source/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt)" = "$(git hash-object "$P53/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt")"
+          test "$(git hash-object central_source/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt)" = "$(git hash-object "$P57/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt")"
+
+          cd central_source
+          rm -rf .git app/build .gradle build .kotlin
+          git init -q
+          git config user.email reports-current34@fush.local
+          git config user.name "FUSH Reports Current34"
+          git add -A; git commit -qm current-central-2cb8da8-room34
+          BASE_SHA="$(git rev-parse HEAD)"
+
+          make_repo() {
+            local src="$1" out="$2"
+            rm -rf "$out"; mkdir -p "$out"; cp -a "$src/." "$out/"
+            cd "$out"; rm -rf .git app/build .gradle build .kotlin
+            git init -q; git config user.email refs@fush.local; git config user.name "FUSH Historical Reference"
+            git add -A; git commit -qm reference-base
+          }
+
+          # Export engine hardening: exact p53 -> p55 exporter-only delta.
+          make_repo "$P53" /tmp/gen1
+          cd /tmp/gen1
+          mkdir -p app/src/main/java/com/fush/erp/ui/export app/src/test/java/com/fush/erp/ui/export
+          for f in ReportExportSupport.kt ReportExportLayout.kt ReportTextLayout.kt; do cp "$P55/app/src/main/java/com/fush/erp/ui/export/$f" app/src/main/java/com/fush/erp/ui/export/; done
+          for f in ReportExportLayoutTest.kt ReportSpreadsheetExportTest.kt ReportTextLayoutTest.kt; do cp "$P55/app/src/test/java/com/fush/erp/ui/export/$f" app/src/test/java/com/fush/erp/ui/export/; done
+          git add -A; git diff --cached --binary --full-index HEAD > /tmp/01-export-hardening.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          git apply --check /tmp/01-export-hardening.patch; git apply --index /tmp/01-export-hardening.patch
+          git commit -qm reports-export-hardening
+
+          # Direct print coverage that applies cleanly to current Central.
+          make_repo "$P55" /tmp/gen2
+          cd /tmp/gen2
+          CLEAN=(CollectionsDetailScreen.kt EmployeeScreens.kt PartyScreens.kt PurchaseScreens.kt SalesRepresentativeScreens.kt SalesScreens.kt)
+          mkdir -p app/src/main/java/com/fush/erp/ui/screens app/src/test/java/com/fush/erp/ui/screens
+          for f in "${CLEAN[@]}" DirectSectionReports.kt RemainingSectionReports.kt; do cp "$P57/app/src/main/java/com/fush/erp/ui/screens/$f" app/src/main/java/com/fush/erp/ui/screens/; done
+          for f in DirectSectionReportsTest.kt RemainingSectionReportsTest.kt; do cp "$P57/app/src/test/java/com/fush/erp/ui/screens/$f" app/src/test/java/com/fush/erp/ui/screens/; done
+          git add -A; git diff --cached --binary --full-index HEAD > /tmp/02-clean-print-coverage.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          for f in "${CLEAN[@]}"; do git hash-object -w "$P55/app/src/main/java/com/fush/erp/ui/screens/$f" >/dev/null; done
+          git apply --3way --index /tmp/02-clean-print-coverage.patch
+          test -z "$(git diff --name-only --diff-filter=U)"
+          git commit -qm reports-clean-direct-print-coverage
+
+          # Eight evolved Central screens: insert only report hooks into CURRENT code.
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('app/src/main/java/com/fush/erp/ui/screens')
+          def read(name): return (root/name).read_text()
+          def write(name,s): (root/name).write_text(s)
+          def add_import(s,line,after):
+              if line in s: return s
+              if after not in s: raise SystemExit(f'import anchor missing: {after}')
+              return s.replace(after,after+'\n'+line,1)
+          def insert_after(s,anchor,block,marker):
+              if marker in s: return s
+              if anchor not in s: raise SystemExit(f'anchor missing for {marker}: {anchor[:100]}')
+              return s.replace(anchor,anchor+block,1)
+          def insert_before(s,anchor,block,marker):
+              if marker in s: return s
+              if anchor not in s: raise SystemExit(f'anchor missing for {marker}: {anchor[:100]}')
+              return s.replace(anchor,block+anchor,1)
+
+          n='AdvancedInventoryScreens.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          a='''                LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {\n                    items(sectionLabels) { (sectionKey, labelRes) ->\n                        FilterChip(selected = section == sectionKey, onClick = { section = sectionKey }, label = { Text(stringResource(labelRes)) })\n                    }\n                }'''
+          b='''\n                Spacer(Modifier.height(8.dp))\n                ReportExportActions(\n                    document = inventoryDirectReport(section, balances, reorder, expiry, counts, transfers, lots, movements),\n                    baseName = "FushERP-Inventory-${section}",\n                    printJobName = "Fush ERP — المخزون والمستودعات — $section",\n                    enabled = balances.isNotEmpty() || reorder.isNotEmpty() || expiry.isNotEmpty() || counts.isNotEmpty() || transfers.isNotEmpty() || lots.isNotEmpty() || movements.isNotEmpty(),\n                )'''
+          s=insert_after(s,a,b,'FushERP-Inventory-${section}'); write(n,s)
+
+          n='BackupRestoreScreen.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.BuildConfig','import com.fush.erp.backup.RestoreInspection')
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          a='''                    Text("SHA-256: ${info.databaseSha256}", style = MaterialTheme.typography.bodySmall)'''
+          b='''\n                    Spacer(Modifier.height(6.dp))\n                    ReportExportActions(\n                        document = backupVerificationReport(info, BuildConfig.VERSION_NAME),\n                        baseName = "FushERP-Backup-Verification",\n                        printJobName = "FUSH ERP - شهادة تحقق النسخة الاحتياطية"\n                    )'''
+          s=insert_after(s,a,b,'FushERP-Backup-Verification'); write(n,s)
+
+          n='GeographyScreens.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          pairs=[
+          ('''            Button(onClick = { showAdd = true }) { Text("تسجيل سعر يومي") }''','''\n            Spacer(Modifier.height(6.dp))\n            ReportExportActions(document = geographyFxReport(snapshots, rates), baseName = "FushERP-FX-History", printJobName = "FUSH ERP - أسعار الصرف", enabled = snapshots.isNotEmpty() || rates.isNotEmpty())''','FushERP-FX-History'),
+          ('''            Button(enabled = product != null && policies.isNotEmpty(), onClick = { showPrice = true }) { Text("إضافة سعر محافظة") }''','''\n            Spacer(Modifier.height(6.dp))\n            ReportExportActions(document = geographyPoliciesReport(policies), baseName = "FushERP-Province-Policies", printJobName = "FUSH ERP - سياسات المحافظات", enabled = policies.isNotEmpty())''','FushERP-Province-Policies'),
+          ('''        Text("البيع يستخدم فقط القائمة الفعالة والسارية في تاريخ الفاتورة لنفس المحافظة والقناة والعملة.", style = MaterialTheme.typography.bodySmall)''','''\n        ReportExportActions(document = geographyPricesReport(product, prices), baseName = "FushERP-Province-Prices-${product.code}", printJobName = "FUSH ERP - قائمة أسعار ${product.nameAr}", enabled = prices.isNotEmpty())''','FushERP-Province-Prices-${product.code}'),
+          ('''                        Text("المكافئ: ${geoMoney(q.totalBaseEquivalent)} ريال جديد", style = MaterialTheme.typography.titleMedium)''','''\n                        Spacer(Modifier.height(6.dp))\n                        ReportExportActions(document = geographyQuoteReport(policy, q), baseName = "FushERP-Geographic-Quote", printJobName = "FUSH ERP - عرض تسعير جغرافي")''','FushERP-Geographic-Quote'),
+          ('''            Button(onClick = { reload() }) { Text("تحديث التقرير") }''','''\n            Spacer(Modifier.height(6.dp))\n            ReportExportActions(document = geographyProfitabilityReport(from, to, provinces, invoices), baseName = "FushERP-Geographic-Profitability", printJobName = "FUSH ERP - الربحية الجغرافية", enabled = provinces.isNotEmpty() || invoices.isNotEmpty())''','FushERP-Geographic-Profitability')]
+          for a,b,m in pairs: s=insert_after(s,a,b,m)
+          write(n,s)
+
+          n='GovernanceScreen.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          a='''        if (message != null) {\n            item { FushOperationMessage(message, onConsumed = { message = null }) }\n        }'''
+          b='''\n        item {\n            ReportExportActions(document = governanceDirectReport(tab, documents, changes, approvals, audit), baseName = "FushERP-Governance-${tab + 1}", printJobName = "Fush ERP — الحوكمة والتدقيق", enabled = documents.isNotEmpty() || changes.isNotEmpty() || approvals.isNotEmpty() || audit.isNotEmpty())\n        }'''
+          s=insert_after(s,a,b,'FushERP-Governance-${tab + 1}'); write(n,s)
+
+          n='MaintenanceScreens.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.FushOperationMessage')
+          a='''                    Text("النتائج: ${filteredAssets.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
+          b='''\n                    ReportExportActions(document = maintenanceDirectReport(filteredAssets, workOrders, breakdowns, safetyIncidents, search, statusFilter, criticalityFilter), baseName = "FushERP-Maintenance-Safety", printJobName = "Fush ERP — الأصول والصيانة والسلامة", enabled = filteredAssets.isNotEmpty() || workOrders.isNotEmpty() || breakdowns.isNotEmpty() || safetyIncidents.isNotEmpty())'''
+          s=insert_after(s,a,b,'FushERP-Maintenance-Safety'); write(n,s)
+
+          n='PlanningScreen.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          anchor='''        item {\n            ElevatedCard(Modifier.fillMaxWidth()) {\n                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {\n                    Text("توقع الشهر القادم", style = MaterialTheme.typography.titleMedium)'''
+          block='''        item {\n            ReportExportActions(\n                document = planningDirectReport(selectedItem, selectedPolicy, forecast, seasonality, demandPlan, weeklyBudget, weeklyActual, seasonalAnalysis, provinceSeasonalityRows, finishedPolicy, productionPlan, productionPlanMaterials),\n                baseName = "FushERP-Planning-Seasonality", printJobName = "FUSH ERP - التخطيط والموسمية", enabled = selectedItem != null && selectedPolicy != null\n            )\n        }\n\n'''
+          s=insert_before(s,anchor,block,'FushERP-Planning-Seasonality'); write(n,s)
+
+          n='RiskControlScreen.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          a='''        if (message != null) {\n            item { FushOperationMessage(message, onConsumed = { message = null }) }\n        }'''
+          b='''\n        item {\n            ReportExportActions(\n                document = riskDirectReport(tab, risks, controls, tests, exceptions, rules),\n                baseName = "FushERP-Risk-Control", printJobName = "FUSH ERP - المخاطر والرقابة الداخلية",\n                enabled = when (tab) { 0 -> risks.isNotEmpty(); 1 -> controls.isNotEmpty(); 2 -> tests.isNotEmpty(); 3 -> exceptions.isNotEmpty(); else -> rules.isNotEmpty() }\n            )\n        }'''
+          s=insert_after(s,a,b,'FushERP-Risk-Control'); write(n,s)
+
+          n='HomeShell.kt'; s=read(n)
+          s=add_import(s,'import com.fush.erp.BuildConfig','import com.fush.erp.R')
+          s=add_import(s,'import com.fush.erp.ui.export.ReportExportActions','import com.fush.erp.ui.*')
+          a='''    val readiness = when {\n        criticalCount > 0 -> stringResource(R.string.common_needs_action)\n        alerts.isNotEmpty() -> stringResource(R.string.common_follow_up)\n        else -> stringResource(R.string.common_stable)\n    }'''
+          b='''\n    val dashboardPulse = listOf(\n        "العملاء" to customerCount.toString(), "فواتير البيع" to salesCount.toString(), "التحصيلات" to receiptCount.toString(),\n        "الموردون" to supplierCount.toString(), "المشتريات" to purchaseCount.toString(), "أوامر الإنتاج" to productionCount.toString(),\n        "الأصناف" to itemCount.toString(), "الموظفون" to employeeCount.toString(), "المناديب" to salesRepCount.toString(),\n        "صيانة مفتوحة" to openMaintenanceCount.toString(), "مخاطر مفتوحة" to openRiskCount.toString(), "موافقات معلقة" to pendingApprovalCount.toString(),\n        "تدريب منتهي" to expiredTrainingCount.toString(), "تصاريح منتهية" to expiredAuthorizationCount.toString(), "الإصدار" to BuildConfig.VERSION_NAME\n    )\n    val dashboardReportAlerts = alerts.map { alert -> Triple(stringResource(alert.titleRes), stringResource(alert.detailRes, *alert.detailArgs.toTypedArray()), alert.critical) }'''
+          s=insert_after(s,a,b,'dashboardReportAlerts')
+          a='''        item {\n            FushSectionHeader(\n                title = stringResource(R.string.dashboard_title),\n                subtitle = stringResource(R.string.dashboard_subtitle),\n            )\n        }'''
+          b='''\n        item { ReportExportActions(document = executiveDashboardReport(executive, readiness, dashboardReportAlerts, dashboardPulse), baseName = "FushERP-Executive-Dashboard", printJobName = "FUSH ERP - لوحة الإدارة التنفيذية") }'''
+          s=insert_after(s,a,b,'FushERP-Executive-Dashboard')
+          a='''        FushOperationMessage(message, onConsumed = { message = null })'''
+          b='''\n        Spacer(Modifier.height(8.dp))\n        ReportExportActions(\n            document = masterDataDirectReport(section, search, filteredItems, filteredUnits, filteredWarehouses, filteredConversions, itemsList, units),\n            baseName = "FushERP-Master-Data", printJobName = "FUSH ERP - البيانات الأساسية",\n            enabled = when (section) { "الوحدات" -> filteredUnits.isNotEmpty(); "المخازن" -> filteredWarehouses.isNotEmpty(); "التحويلات" -> filteredConversions.isNotEmpty(); else -> filteredItems.isNotEmpty() }\n        )'''
+          if 'FushERP-Master-Data' not in s:
+              idx=s.find('@Composable\nprivate fun MasterDataScreen')
+              if idx < 0: raise SystemExit('MasterDataScreen missing')
+              pre,tail=s[:idx],s[idx:]
+              if a not in tail: raise SystemExit('MasterData operation message anchor missing')
+              tail=tail.replace(a,a+b,1); s=pre+tail
+          write(n,s)
+          PY
+          git add app/src/main/java/com/fush/erp/ui/screens
+          git diff --cached --check HEAD
+          git commit -qm reports-selective-hooks-on-evolved-central-screens
+
+          # Non-blocking export: exact p57 -> p58 exporter-only delta.
+          make_repo "$P57" /tmp/gen3
+          cd /tmp/gen3
+          cp "$P58/app/src/main/java/com/fush/erp/ui/export/ReportExportActions.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P58/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt" app/src/main/java/com/fush/erp/ui/export/
+          cp "$P58/app/src/test/java/com/fush/erp/ui/export/ReportSpreadsheetExportTest.kt" app/src/test/java/com/fush/erp/ui/export/
+          git add -A; git diff --cached --binary --full-index HEAD > /tmp/03-nonblocking-export.patch
+          cd "$GITHUB_WORKSPACE/central_source"
+          git apply --check /tmp/03-nonblocking-export.patch; git apply --index /tmp/03-nonblocking-export.patch
+          git commit -qm reports-nonblocking-export
+
+          # Freeze the RUNTIME handoff BEFORE QA-only instrumentation changes.
+          FUNCTIONAL_SHA="$(git rev-parse HEAD)"
+          git diff --binary "$BASE_SHA".."$FUNCTIONAL_SHA" > "$GITHUB_WORKSPACE/reports_printing_current34_handoff/HANDOFF.patch"
+          git diff --name-only "$BASE_SHA".."$FUNCTIONAL_SHA" > "$GITHUB_WORKSPACE/reports_printing_current34_handoff/CHANGED_FILES.txt"
+          git diff --check "$BASE_SHA".."$FUNCTIONAL_SHA"
+          ! git diff --name-only "$BASE_SHA".."$FUNCTIONAL_SHA" | grep -E '^app/src/main/java/com/fush/erp/data/(FushDatabase|AppContainer)\.kt$'
+          ! git diff --name-only "$BASE_SHA".."$FUNCTIONAL_SHA" | grep -E '^app/src/main/java/com/fush/erp/data/(entity|migration|Migrations)'
+          ! git diff --name-only "$BASE_SHA".."$FUNCTIONAL_SHA" | grep -E '^app/src/main/java/com/fush/erp/domain/'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -Rqs 'fallbackToDestructiveMigration' app/src/main
+
+          # QA-only Android Print Framework harness.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts'); s=p.read_text()
+          needle='    testImplementation(libs.androidx.room.testing)\n'
+          extra='''    testImplementation(libs.androidx.room.testing)\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:core-ktx:1.6.1")\n    androidTestImplementation("androidx.test.ext:junit:1.2.1")\n'''
+          if 'androidx.test:runner:1.6.2' not in s:
+              if needle not in s: raise SystemExit('androidTest dependency anchor missing')
+              p.write_text(s.replace(needle,extra,1))
+          PY
+          mkdir -p app/src/androidTest/java/com/fush/erp/ui/export
+          cat > app/src/androidTest/java/com/fush/erp/ui/export/ReportPrintFrameworkSmokeTest.kt <<'KOTLIN'
+          package com.fush.erp.ui.export
+          import android.content.Context
+          import android.os.SystemClock
+          import android.print.PrintManager
+          import androidx.test.core.app.ActivityScenario
+          import androidx.test.ext.junit.runners.AndroidJUnit4
+          import androidx.test.platform.app.InstrumentationRegistry
+          import com.fush.erp.MainActivity
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import org.junit.runner.RunWith
+
+          @RunWith(AndroidJUnit4::class)
+          class ReportPrintFrameworkSmokeTest {
+              @Test fun generatedReportIsAcceptedByAndroidPrintFramework() {
+                  val doc = ReportExportDocument(
+                      title = "اختبار طباعة Fush ERP",
+                      subtitle = "Arabic RTL + English + 123,456.78 ر.ي",
+                      summary = listOf("الحالة" to "Print Framework Smoke"),
+                      tables = listOf(ReportExportTable(
+                          "قيود اختبارية",
+                          listOf("التاريخ", "رقم القيد", "البيان"),
+                          listOf(listOf("2026-08-17", "RV-20260817-VERY-LONG-REFERENCE-WITHOUT-SPACES-1234567890", "بيان عربي طويل لاختبار الالتفاف وعدم تداخل النص مع العمود المجاور English 12345"))
+                      ))
+                  )
+                  val bytes = ReportExportSupport.buildPdfBytesForAction(doc)
+                  assertTrue(bytes.size > 100)
+                  assertTrue(String(bytes.copyOfRange(0,4), Charsets.US_ASCII) == "%PDF")
+                  lateinit var pm: PrintManager
+                  val label="FUSH-REPORT-PRINT-SMOKE"
+                  val scenario = ActivityScenario.launch(MainActivity::class.java)
+                  scenario.onActivity { activity ->
+                      pm=activity.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                      ReportExportSupport.printPreparedPdf(activity, doc, label, bytes)
+                  }
+                  SystemClock.sleep(1800)
+                  assertTrue(pm.printJobs.any { it.info.label == label })
+                  InstrumentationRegistry.getInstrumentation().uiAutomation.pressBack()
+                  scenario.close()
+              }
+          }
+          KOTLIN
+          git add app/build.gradle.kts app/src/androidTest
+          git commit -qm reports-print-framework-smoke-test
+          git diff --binary "$FUNCTIONAL_SHA"..HEAD > "$GITHUB_WORKSPACE/reports_printing_current34_handoff/QA_PRINT_TEST.patch"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Unit tests
+        shell: bash
+        run: cd central_source && gradle --no-daemon :app:testDebugUnitTest
+      - name: Release build and Central safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd central_source
+          gradle --no-daemon :app:assembleRelease
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -Rqs 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Install lightweight emulator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "emulator" "system-images;android-30;google_apis;x86_64"
+          echo no | avdmanager create avd -f -n fush_reports_print -k "system-images;android-30;google_apis;x86_64" --device "pixel_2"
+          emulator -list-avds | grep -Fx fush_reports_print
+
+      - name: Android Print Framework emulator smoke
+        shell: bash
+        timeout-minutes: 18
+        run: |
+          set -euo pipefail
+          mkdir -p reports_printing_current34_handoff/diagnostics
+          adb kill-server >/dev/null 2>&1 || true
+          adb start-server >/dev/null
+          nohup emulator -avd fush_reports_print -no-window -noaudio -no-boot-anim -no-snapshot -no-snapshot-save -accel off -gpu swiftshader_indirect -memory 1536 -cores 2 -no-metrics > reports_printing_current34_handoff/diagnostics/EMULATOR.log 2>&1 &
+          EMU_PID=$!
+          echo "$EMU_PID" > reports_printing_current34_handoff/diagnostics/EMULATOR.pid
+
+          device_ready=0
+          for i in $(seq 1 120); do
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator process exited before ADB became ready' >&2
+              cat reports_printing_current34_handoff/diagnostics/EMULATOR.log >&2 || true
+              exit 1
+            fi
+            adb devices > reports_printing_current34_handoff/diagnostics/ADB_DEVICES.txt 2>&1 || true
+            if adb get-state 2>/dev/null | grep -qx device; then device_ready=1; break; fi
+            sleep 2
+          done
+          if [ "$device_ready" -ne 1 ]; then
+            echo 'ADB device did not become ready within 240 seconds' >&2
+            cat reports_printing_current34_handoff/diagnostics/EMULATOR.log >&2 || true
+            exit 1
+          fi
+
+          boot_ready=0
+          for i in $(seq 1 120); do
+            boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            echo "attempt=$i boot=$boot" >> reports_printing_current34_handoff/diagnostics/BOOT_WAIT.txt
+            if [ "$boot" = "1" ]; then boot_ready=1; break; fi
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then
+              echo 'Emulator exited during boot' >&2; exit 1
+            fi
+            sleep 2
+          done
+          if [ "$boot_ready" -ne 1 ]; then
+            echo 'Android boot did not complete within 240 seconds' >&2
+            adb shell getprop > reports_printing_current34_handoff/diagnostics/GETPROP.txt 2>&1 || true
+            cat reports_printing_current34_handoff/diagnostics/EMULATOR.log >&2 || true
+            exit 1
+          fi
+
+          adb shell settings put global window_animation_scale 0 || true
+          adb shell settings put global transition_animation_scale 0 || true
+          adb shell settings put global animator_duration_scale 0 || true
+          adb shell input keyevent 82 || true
+          adb shell getprop ro.build.version.sdk | tee reports_printing_current34_handoff/diagnostics/DEVICE_API.txt
+
+          set +e
+          cd central_source
+          timeout 600 gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.ui.export.ReportPrintFrameworkSmokeTest
+          TEST_RC=$?
+          cd ..
+          set -e
+          adb logcat -d > reports_printing_current34_handoff/diagnostics/LOGCAT.txt 2>&1 || true
+          adb shell dumpsys print > reports_printing_current34_handoff/PRINT_DUMPSYS.txt 2>&1 || true
+          if [ "$TEST_RC" -ne 0 ]; then
+            echo "Instrumentation print test failed rc=$TEST_RC" >&2
+            tail -200 reports_printing_current34_handoff/diagnostics/LOGCAT.txt >&2 || true
+            exit "$TEST_RC"
+          fi
+          grep -q 'FUSH-REPORT-PRINT-SMOKE' reports_printing_current34_handoff/PRINT_DUMPSYS.txt || {
+            echo 'Print job label not found in dumpsys print' >&2
+            cat reports_printing_current34_handoff/PRINT_DUMPSYS.txt >&2 || true
+            exit 1
+          }
+
+      - name: Package verified handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports-handoff-output
+          cp reports_printing_current34_handoff/HANDOFF.patch reports-handoff-output/
+          cp reports_printing_current34_handoff/QA_PRINT_TEST.patch reports-handoff-output/
+          cp reports_printing_current34_handoff/CHANGED_FILES.txt reports-handoff-output/
+          cp reports_printing_current34_handoff/PRINT_DUMPSYS.txt reports-handoff-output/
+          cp reports_printing_current34_handoff/README.md reports-handoff-output/HANDOFF.md
+          cp -r reports_printing_current34_handoff/diagnostics reports-handoff-output/
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 central_source/app/build/outputs/apk/release/app-release-unsigned.apk reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk
+          sha256sum reports-handoff-output/HANDOFF.patch reports-handoff-output/QA_PRINT_TEST.patch reports-handoff-output/FushERP-Reports-Printing-Current34-aligned-unsigned.apk > reports-handoff-output/SHA256SUMS.txt
+          printf '%s\n' \
+            'FUSH Reports/Printing — Current Central Room34 Handoff' \
+            'Base Central HEAD: 2cb8da801fc54aec8c1f0d6a83588f097ca85117' \
+            'Base Central source tree: 7733c6570357eb813f7e05e5093752ea26788749' \
+            'Application ID: com.fush.erp.recovery' \
+            'Room schema: 34 unchanged' \
+            'Migrations: unchanged' \
+            'Historical Phase 14.5.58 full merge: NOT USED' \
+            'Functional HANDOFF.patch excludes QA-only dependencies/tests: YES' \
+            'Full JVM unit tests: PASS' \
+            'Release build: PASS' \
+            'Android Print Framework emulator smoke: PASS' \
+            'Zipalign: PASS' \
+            'STOP: ready for handoff approval; no next phase started.' > reports-handoff-output/BUILD-REPORT.txt
+
+      - name: Upload print diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Reports-Printing-Current34-Print-Diagnostics-V3
+          path: reports_printing_current34_handoff/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload verified handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Reports-Printing-Current34-Handoff-V3
+          path: reports-handoff-output/
+          if-no-files-found: error
+          retention-days: 7
