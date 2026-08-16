@@ -1,0 +1,159 @@
+name: Validate FUSH Expenses P1 Final Handoff
+
+on:
+  push:
+    branches: [fush/expenses]
+    paths:
+      - '.github/workflows/build-expenses-p1-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FINAL_CENTRAL_HEAD: ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
+
+jobs:
+  validate-expenses-p1-final:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout expenses branch
+        uses: actions/checkout@v4
+
+      - name: Assert pinned Central is still current after wave
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT=$(git ls-remote origin refs/heads/fush/integration-current | awk '{print $1}')
+          test "$CURRENT" = "$FINAL_CENTRAL_HEAD"
+
+      - name: Checkout exact post-wave Central HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FINAL_CENTRAL_HEAD }}
+          path: central
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Reapply P1 as exact patch over newest Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central rev-parse HEAD)" = "$FINAL_CENTRAL_HEAD"
+          rm -rf source
+          cp -a central/central_source source
+          grep -q 'applicationId = "com.fush.erp.recovery"' source/app/build.gradle.kts
+          BASE_SCHEMA=$(sed -n 's/const val FUSH_DB_SCHEMA_VERSION = \([0-9][0-9]*\)/\1/p' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt)
+          test -n "$BASE_SCHEMA"
+          TARGET_SCHEMA=$((BASE_SCHEMA + 1))
+          echo "BASE_SCHEMA=$BASE_SCHEMA" >> "$GITHUB_ENV"
+          echo "TARGET_SCHEMA=$TARGET_SCHEMA" >> "$GITHUB_ENV"
+          cd source
+          git init -q
+          git config user.email validation@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm "post-wave-central-$FINAL_CENTRAL_HEAD"
+          cd ..
+          python3 phase_expenses_p1/apply_expenses_p1.py source phase_expenses_p1 | tee expenses-p1-apply.txt
+          git -C source add -A
+          git -C source diff --cached --check
+          git -C source diff --cached --binary > expenses-p1-final-exact.patch
+          test -s expenses-p1-final-exact.patch
+          sha256sum expenses-p1-final-exact.patch | tee expenses-p1-final-exact.patch.sha256
+          git -C source diff --cached --name-only | sort | tee expenses-p1-final-files.txt
+          printf 'Central HEAD: %s\nBase Room schema: %s\nProvisional target schema: %s\nBranch validation SHA: %s\n' "$FINAL_CENTRAL_HEAD" "$BASE_SCHEMA" "$TARGET_SCHEMA" "$GITHUB_SHA" > expenses-p1-final-baseline.txt
+
+      - name: Domain tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.ExpenseLifecyclePolicyTest --tests com.fush.erp.domain.ExpenseClassificationPolicyTest
+
+      - name: Full unit tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Room migration preservation test
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB="$RUNNER_TEMP/expenses-p1-final-migration.db"
+          sqlite3 "$DB" <<'SQL'
+          PRAGMA foreign_keys=ON;
+          CREATE TABLE treasury_accounts (id INTEGER PRIMARY KEY NOT NULL);
+          CREATE TABLE accounts (id INTEGER PRIMARY KEY NOT NULL);
+          CREATE TABLE central_sentinel (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+          INSERT INTO treasury_accounts(id) VALUES(1);
+          INSERT INTO accounts(id) VALUES(1);
+          INSERT INTO central_sentinel(id,value) VALUES(1,'preserve-me');
+          SQL
+          sqlite3 "$DB" < phase_expenses_p1/expense_workflow_migration.sql
+          test "$(sqlite3 "$DB" "SELECT value FROM central_sentinel WHERE id=1;")" = "preserve-me"
+          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='expense_workflow_requests';")" = "1"
+          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM pragma_table_info('expense_workflow_requests') WHERE name IN ('approvalStatus','paymentStatus','journalEntryId','partyVoucherId','dimensionReferenceNo');")" = "5"
+          sqlite3 "$DB" "INSERT INTO expense_workflow_requests(requestNo,treasuryAccountId,expenseAccountId,amountOriginal,currencyCode,exchangeRate,description,referenceNo,expenseDate,costCenterCode,organizationUnit,referenceType,dimensionReferenceNo,referenceLabel,attachmentFileName,attachmentMimeType,attachmentUri,attachmentNotes,approvalStatus,paymentStatus,createdBy,createdAt,rejectionReason,updatedAt) VALUES('ERQ-FINAL',1,1,100,'YER_NEW',1,'test','DOC-1',1,'ADMIN','HQ','OTHER','DIM-1','internal','','','','','DRAFT','UNPAID',1,1,'',1);"
+          test "$(sqlite3 "$DB" "SELECT approvalStatus || '|' || paymentStatus FROM expense_workflow_requests WHERE requestNo='ERQ-FINAL';")" = "DRAFT|UNPAID"
+
+      - name: Room schema and no-destructive checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "FUSH_DB_SCHEMA_VERSION = $TARGET_SCHEMA" source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q "Migration($BASE_SCHEMA, $TARGET_SCHEMA)" source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q "MIGRATION_${BASE_SCHEMA}_${TARGET_SCHEMA}_EXPENSE_WORKFLOW_PROVISIONAL" source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f "source/app/schemas/com.fush.erp.data.FushDatabase/$BASE_SCHEMA.json"
+          test -f "source/app/schemas/com.fush.erp.data.FushDatabase/$TARGET_SCHEMA.json"
+          ! grep -R -q 'fallbackToDestructiveMigration' source/app/src/main/java source/app/build.gradle.kts
+          ! sed -n '/Expenses P1 branch only/,$p' source/app/src/main/java/com/fush/erp/data/Migrations.kt | grep -Eiq 'DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM|VACUUM'
+
+      - name: Expense lifecycle safety assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'ExpenseWorkflowRequestEntity::class' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'expenseWorkflowDao(): ExpenseWorkflowDao' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'requirePaymentMatchesApproved' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'EXPENSE_PAID_POSTED' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'approvalStatus = ExpenseLifecyclePolicy.APPROVED' source/app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt
+          grep -q 'approvalStatus = ExpenseLifecyclePolicy.REJECTED' source/app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt
+          grep -q 'paymentStatus = ExpenseLifecyclePolicy.PAID' source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'APPROVAL_DECIDE' source/app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt
+          grep -q 'TREASURY_POST' source/app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt
+          test -s source/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Upload final handoff validation outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Expenses-P1-Final-Handoff
+          path: |
+            source/app/build/outputs/apk/release/app-release-unsigned.apk
+            source/app/schemas/com.fush.erp.data.FushDatabase/${{ env.TARGET_SCHEMA }}.json
+            expenses-p1-final-exact.patch
+            expenses-p1-final-exact.patch.sha256
+            expenses-p1-final-files.txt
+            expenses-p1-final-baseline.txt
+            expenses-p1-apply.txt
+          if-no-files-found: error
