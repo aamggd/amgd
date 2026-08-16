@@ -51,6 +51,21 @@ class ExpenseLifecyclePolicyTest {
     }
 
     @Test
+    fun payment_must_match_the_exact_approved_snapshot() {
+        val approved = snapshot()
+        ExpenseLifecyclePolicy.requirePaymentMatchesApproved(approved, approved.copy(currencyCode = " yer_new ", costCenterCode = "admin"))
+        assertThrows(IllegalArgumentException::class.java) {
+            ExpenseLifecyclePolicy.requirePaymentMatchesApproved(approved, approved.copy(amountOriginal = 101.0))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ExpenseLifecyclePolicy.requirePaymentMatchesApproved(approved, approved.copy(expenseAccountId = 99L))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ExpenseLifecyclePolicy.requirePaymentMatchesApproved(approved, approved.copy(dimensionReferenceNo = "INV-OTHER"))
+        }
+    }
+
+    @Test
     fun lifecycle_label_keeps_approval_and_payment_separate() {
         assertEquals("DRAFT", ExpenseLifecyclePolicy.lifecycleLabel("DRAFT", "UNPAID"))
         assertEquals("SUBMITTED", ExpenseLifecyclePolicy.lifecycleLabel("SUBMITTED", "UNPAID"))
@@ -58,4 +73,26 @@ class ExpenseLifecyclePolicyTest {
         assertEquals("REJECTED", ExpenseLifecyclePolicy.lifecycleLabel("REJECTED", "UNPAID"))
         assertEquals("PAID", ExpenseLifecyclePolicy.lifecycleLabel("APPROVED", "PAID"))
     }
+
+    private fun snapshot() = ExpensePaymentAuthorizationSnapshot(
+        treasuryAccountId = 10L,
+        expenseAccountId = 20L,
+        amountOriginal = 100.0,
+        currencyCode = "YER_NEW",
+        exchangeRate = 1.0,
+        description = "مواصلات",
+        voucherReferenceNo = "DOC-1",
+        expenseDate = 123L,
+        employeeId = null,
+        salesRepId = null,
+        costCenterCode = "ADMIN",
+        organizationUnit = "HQ",
+        referenceType = "OTHER",
+        referenceId = null,
+        dimensionReferenceNo = "INV-1",
+        referenceLabel = "فاتورة داخلية",
+        customerId = null,
+        supplierId = null,
+        itemId = null
+    )
 }
