@@ -1,0 +1,191 @@
+name: Central Unified Test Release
+
+on:
+  push:
+    branches: [fush/central-unified-test-build]
+    paths:
+      - '.github/workflows/central-unified-test-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ORIGIN_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
+  CENTRAL_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  TEST_VERSION_CODE: '101'
+  TEST_VERSION_NAME: '0.15.4.54-central-consolidated-test1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '34'
+  EXPECTED_SIGNER_SHA256: '22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586'
+
+jobs:
+  build-unified-test-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore exact Central source and set test release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source release-source
+          cd release-source
+          git init -q
+          git config user.name central-release-ci
+          git config user.email central-release-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "central_source_tree=$TREE"
+          test "$TREE" = "$CENTRAL_SOURCE_TREE"
+          git commit -qm "Exact Central functional source"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          s = p.read_text()
+          s = s.replace('versionCode = 93', 'versionCode = 101', 1)
+          s = s.replace('versionName = "0.15.4.54-printing-integrated"', 'versionName = "0.15.4.54-central-consolidated-test1"', 1)
+          p.write_text(s)
+          PY
+
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'versionCode = 101' app/build.gradle.kts
+          grep -Fq 'versionName = "0.15.4.54-central-consolidated-test1"' app/build.gradle.kts
+          ! grep -Eq 'signingConfig|storeFile|storePassword|keyPassword' app/build.gradle.kts
+
+      - name: Verify Room schema, migrations, and non-destructive database policy
+        working-directory: release-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB='app/src/main/java/com/fush/erp/data/FushDatabase.kt'
+          MIG='app/src/main/java/com/fush/erp/data/Migrations.kt'
+          SEC='app/src/main/java/com/fush/erp/data/SecurityMigrations.kt'
+          CON='app/src/main/java/com/fush/erp/data/AppContainer.kt'
+
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' "$DB"
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+
+          for i in $(seq 1 31); do
+            j=$((i+1))
+            grep -Fq "MIGRATION_${i}_${j}" "$MIG"
+            grep -Fq "MIGRATION_${i}_${j}" "$CON"
+          done
+          grep -Fq 'MIGRATION_32_33_SECURITY = object : Migration(32, 33)' "$SEC"
+          grep -Fq 'MIGRATION_32_33_SECURITY' "$CON"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS = object : Migration(33, 34)' "$MIG"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS' "$CON"
+
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Full Unit Tests
+        working-directory: release-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: assembleRelease
+        working-directory: release-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package, version, schema, and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK='release-source/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+
+          BADGING="$(${ANDROID_HOME}/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee out/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          echo "$BADGING" | grep -Fq "versionCode='${TEST_VERSION_CODE}'"
+          echo "$BADGING" | grep -Fq "versionName='${TEST_VERSION_NAME}'"
+
+          OUTAPK="out/FushERP-Central-Unified-Test-v${TEST_VERSION_CODE}-aligned-unsigned.apk"
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -P 16 -f -v 4 "$APK" "$OUTAPK" >/tmp/zipalign-create.log
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$OUTAPK" | tee out/zipalign-verification.txt
+          sha256sum "$OUTAPK" | tee out/FushERP-Central-Unified-Test-v${TEST_VERSION_CODE}-aligned-unsigned.apk.sha256
+
+      - name: Verify signing state without creating a replacement key
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="out/FushERP-Central-Unified-Test-v${TEST_VERSION_CODE}-aligned-unsigned.apk"
+          set +e
+          ${ANDROID_HOME}/build-tools/36.0.0/apksigner verify --verbose --print-certs "$APK" > out/apksigner-verification.txt 2>&1
+          RC=$?
+          set -e
+          cat out/apksigner-verification.txt
+          if [ "$RC" -eq 0 ]; then
+            echo 'Unexpected: unsigned candidate verified as signed.' >&2
+            exit 1
+          fi
+          printf '%s\n' \
+            'SIGNING STATUS: BLOCKED — official permanent P12 is not present in GitHub/build runner.' \
+            'No replacement keystore/key/certificate was created.' \
+            "Required signer SHA-256: ${EXPECTED_SIGNER_SHA256}" \
+            'Candidate remains aligned but unsigned and MUST NOT be treated as installable update.' \
+            > out/SIGNING-BLOCKER.txt
+
+      - name: Package matching source ZIP and verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOP="FushERP_Mobile_Central_Unified_Test_v${TEST_VERSION_CODE}"
+          rm -rf "$TOP"
+          mkdir "$TOP"
+          rsync -a --exclude '.git/' --exclude '.gradle/' --exclude '**/build/' release-source/ "$TOP/"
+          zip -qr "out/FushERP-Mobile-Central-Unified-Test-v${TEST_VERSION_CODE}-Source.zip" "$TOP"
+          sha256sum "out/FushERP-Mobile-Central-Unified-Test-v${TEST_VERSION_CODE}-Source.zip" | tee "out/FushERP-Mobile-Central-Unified-Test-v${TEST_VERSION_CODE}-Source.zip.sha256"
+
+          cat > out/BUILD-VERIFICATION.txt <<EOF
+          FUSH ERP Mobile — Central Unified Test Release Candidate
+          Origin Central HEAD: ${ORIGIN_CENTRAL_HEAD}
+          Central source tree: ${CENTRAL_SOURCE_TREE}
+          Application ID: ${EXPECTED_APP_ID}
+          versionCode: ${TEST_VERSION_CODE}
+          versionName: ${TEST_VERSION_NAME}
+          Room schema: ${EXPECTED_SCHEMA}
+          Migrations: 1->2 through 31->32, 32->33 SECURITY, 33->34 FIXED_ASSETS — VERIFIED REGISTERED
+          fallbackToDestructiveMigration: ABSENT
+          destructive DB recreation guards (deleteDatabase/clearAllTables): ABSENT
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          zipalign: PASS
+          Signing: BLOCKED — official permanent P12 unavailable to runner; no alternate key created
+          Required signer SHA-256: ${EXPECTED_SIGNER_SHA256}
+          Result: BUILD/QA PASS; INSTALLABLE-SIGNED-APK NOT PRODUCED
+          EOF
+
+      - name: Upload unified Central candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Central-Unified-Test-v101-Candidate
+          path: out/*
+          if-no-files-found: error
