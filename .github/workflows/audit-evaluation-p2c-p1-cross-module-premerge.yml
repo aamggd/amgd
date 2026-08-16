@@ -1,0 +1,225 @@
+name: Audit P2C P1 Cross-Module Pre-Merge
+
+on:
+  push:
+    branches: [fush/audit-evaluation]
+    paths:
+      - 'audit_evaluation/PART2C_P1_CROSS_MODULE_TEST_MATRIX.md'
+      - 'audit_evaluation/tests/CrossModuleP1ContractAuditTest.kt'
+      - '.github/workflows/audit-evaluation-p2c-p1-cross-module-premerge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SHA: '05ec94e097af5aed0e3e138bfee0afea12c9d8f2'
+  CENTRAL_REPO_TREE: 'a63c3e5bffe5c836ee42c32425e06caa7a83cd5d'
+  CENTRAL_SOURCE_TREE: '6007751001ec0527aa1440016f305382656c6ebc'
+  ACCOUNTING_P1_HANDOFF_SHA: '7510ff3dc03d28ebf751ebe32624e36ef175b9a7'
+  TREASURY_P1_SHA: '7a1f1aec9f0315a23b62205aa5e4b049449203cc'
+  PURCHASES_P1_SHA: 'b6a154a908898a25fcb40bd55dddfedce596c643'
+  SALES_P1_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
+  TREASURY_PATCH_SHA256: 'bc31448a56946982d7c07e1bdb70c3ff5b426a38bbd2a7a6ebbb239f6edc47c6'
+  PURCHASES_PATCH_BLOB: '6dd1066ef1b8e7c2e0fe25b0ec97d0357f7ee921'
+  SALES_PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+
+jobs:
+  p2c-premerge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout audit branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin current Central and specialist P1 identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin \
+            fush/integration-current \
+            fush/accounting \
+            fush/treasury-banking \
+            fush/purchases-suppliers \
+            fush/sales-customers
+
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse origin/fush/accounting)" = "$ACCOUNTING_P1_HANDOFF_SHA"
+          test "$(git rev-parse origin/fush/treasury-banking)" = "$TREASURY_P1_SHA"
+          test "$(git rev-parse origin/fush/purchases-suppliers)" = "$PURCHASES_P1_SHA"
+          test "$(git rev-parse origin/fush/sales-customers)" = "$SALES_P1_SHA"
+
+          test "$(git rev-parse ${CENTRAL_SHA}^{tree})" = "$CENTRAL_REPO_TREE"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+
+      - name: Export exact current Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source output /tmp/p2c-*.patch
+          mkdir -p work-source output
+          git archive "${CENTRAL_SHA}:central_source" | tar -x -C work-source
+
+          cd work-source
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'AccountingP1IntegrityPolicy' app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+          git init -q
+          git config user.name 'FUSH Audit P2C'
+          git config user.email audit-p2c@fush.local
+          git add -A
+          git commit -qm 'Exact current Central before pending P1 compatibility'
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+
+      - name: Extract and verify exact pending P1 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show "${TREASURY_P1_SHA}:phase_treasury_banking_p1/treasury-banking-p1.patch" > /tmp/p2c-treasury.patch
+          git show "${PURCHASES_P1_SHA}:purchases_suppliers_p1/phase_p1.patch" > /tmp/p2c-purchases.patch
+          git show "${SALES_P1_SHA}:sales_customers_p1/customer_identity_p1.patch" > /tmp/p2c-sales.patch
+
+          test "$(sha256sum /tmp/p2c-treasury.patch | awk '{print $1}')" = "$TREASURY_PATCH_SHA256"
+          test "$(git hash-object /tmp/p2c-purchases.patch)" = "$PURCHASES_PATCH_BLOB"
+          test "$(sha256sum /tmp/p2c-sales.patch | awk '{print $1}')" = "$SALES_PATCH_SHA256"
+
+          sha256sum /tmp/p2c-treasury.patch /tmp/p2c-purchases.patch /tmp/p2c-sales.patch | tee output/PENDING_P1_PATCH_SHA256.txt
+
+      - name: Selectively apply Treasury then Purchases then Sales P1 over current Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+
+          git apply --check --recount /tmp/p2c-treasury.patch
+          git apply --recount /tmp/p2c-treasury.patch
+
+          git apply --check --recount /tmp/p2c-purchases.patch
+          git apply --recount /tmp/p2c-purchases.patch
+
+          git apply --check --recount /tmp/p2c-sales.patch
+          git apply --recount /tmp/p2c-sales.patch
+
+          git add -A
+          git diff --cached --check
+
+          cat > /tmp/p2c-expected-files <<'EOF'
+          app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+          app/src/main/java/com/fush/erp/domain/SalesService.kt
+          app/src/main/java/com/fush/erp/domain/SupplierProfileMath.kt
+          app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
+          app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt
+          app/src/test/java/com/fush/erp/domain/SupplierProfileMathTest.kt
+          app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt
+          EOF
+          sort /tmp/p2c-expected-files -o /tmp/p2c-expected-files
+          git diff --cached --name-only | sort > /tmp/p2c-actual-files
+          diff -u /tmp/p2c-expected-files /tmp/p2c-actual-files
+
+          ! git diff --cached --name-only | grep -Eq '^app/src/main/java/com/fush/erp/data/(FushDatabase|Migrations|SecurityMigrations)\.kt$|^app/schemas/'
+          ! git diff --cached --name-only | grep -q '^app/build.gradle.kts$'
+
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'CustomerMovementIdentity.requireId' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'supplierVoucherAdjustmentAt' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -q 'sp.supplierId=p.supplierId' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -q 'SupplierProfileMath.build' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+          git commit -qm 'P2C pre-merge candidate: pending P1 patches on current Central'
+          echo "P2C_PREMERGE_SOURCE_TREE=$(git write-tree)" | tee -a "$GITHUB_ENV"
+
+      - name: Inject audit-only cross-module contract test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work-source/app/src/test/java/com/fush/erp/audit
+          cp audit_evaluation/tests/CrossModuleP1ContractAuditTest.kt \
+            work-source/app/src/test/java/com/fush/erp/audit/CrossModuleP1ContractAuditTest.kt
+
+      - name: Run focused Accounting Treasury Purchases Sales P1 tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.audit.CrossModuleP1ContractAuditTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.TreasuryPartyRequirementPolicyTest' \
+            --tests 'com.fush.erp.domain.CustomerMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest'
+
+      - name: Run full Unit regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build pre-merge release candidate
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate candidate invariants and mark NOT FINAL
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=work-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -q 'applicationId = "com.fush.erp.recovery"' work-source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' work-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f work-source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' work-source/app/src/main work-source/app/build.gradle.kts
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" output/FushERP-P2C-PREMERGE-NOT-FINAL-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 output/FushERP-P2C-PREMERGE-NOT-FINAL-aligned-unsigned.apk
+
+          cat > output/PREMERGE_STATUS.txt <<EOF
+          STATUS=PRE-MERGE COMPATIBILITY / CONTRACT TESTED ONLY
+          FINAL_STATUS=BLOCKED UNTIL NEW INTEGRATED CENTRAL APK IS BUILT AND RETESTED
+          CENTRAL_SHA=$CENTRAL_SHA
+          CENTRAL_SOURCE_TREE=$CENTRAL_SOURCE_TREE
+          PREMERGE_SOURCE_TREE=$P2C_PREMERGE_SOURCE_TREE
+          ROOM_SCHEMA=35
+          APPLICATION_ID=com.fush.erp.recovery
+          EOF
+          sha256sum output/FushERP-P2C-PREMERGE-NOT-FINAL-aligned-unsigned.apk >> output/PREMERGE_STATUS.txt
+
+      - name: Upload pre-merge audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-P2C-P1-Cross-Module-PREMERGE-NOT-FINAL
+          path: output/
+          if-no-files-found: error
