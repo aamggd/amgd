@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           APP=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
           base64 -d backup_recovery_p0/phase1.patch.gz.b64 | gzip -dc > phase1.patch
-          echo 'c9b2eb29a64517ac59c8d25fd995a0ec963a9ac25e0d6dfe44899b7f95e6133a  phase1.patch' | sha256sum -c -
+          echo '2c28e60bf3db41ea16929219ad974ee47cef2488d833f444435f00e8447ea03a  phase1.patch' | sha256sum -c -
           cd "$APP"
           git init -q
           git config user.email backup-recovery@fush.local

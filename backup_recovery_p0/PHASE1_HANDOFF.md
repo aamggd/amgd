@@ -11,7 +11,7 @@
 - Accounting/inventory/production business logic: unchanged. Backup transport/storage only.
 - Branch versionCode/versionName: unchanged from baseline; no official version allocated here.
 - Signing: no key/certificate created or stored. CI builds unsigned release APK only.
-- Patch SHA-256: c9b2eb29a64517ac59c8d25fd995a0ec963a9ac25e0d6dfe44899b7f95e6133a.
+- Patch SHA-256: 2c28e60bf3db41ea16929219ad974ee47cef2488d833f444435f00e8447ea03a.
 
 ## Changed application files
 - app/src/main/java/com/fush/erp/backup/BackupArchiveCodec.kt
