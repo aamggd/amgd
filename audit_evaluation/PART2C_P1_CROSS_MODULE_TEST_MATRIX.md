@@ -8,26 +8,29 @@ This phase is audit/test work only. It does not repair application defects and i
 
 ## 1. Current Central anchor
 
-The preparation baseline is the current accepted integration branch at the time this matrix was created:
+The preparation baseline was re-pinned after Treasury P1 entered Central while the first pre-merge automation was being prepared:
 
 - Central branch: `fush/integration-current`
-- Central HEAD: `05ec94e097af5aed0e3e138bfee0afea12c9d8f2`
-- Central repository tree: `a63c3e5bffe5c836ee42c32425e06caa7a83cd5d`
-- `central_source` tree: `6007751001ec0527aa1440016f305382656c6ebc`
+- Central HEAD: `bd39c9fdce444da865460539ea80058f02770d4a`
+- Central repository tree: `8b44fe7f02ae146673e11637cfa9f9169738a452`
+- `central_source` tree: `2c8f39d515e627d9d7d6ba1eac3e065a1d17f245`
 - Application ID: `com.fush.erp.recovery`
 - Room schema: `35`
-- Accounting P1 is already integrated in this Central.
+- Accounting P1 is integrated in this Central.
+- Treasury P1 is integrated in this Central.
 
 ### Specialist P1 handoffs under test
 
-| Module | Branch | P1 handoff/head SHA | Central status at preparation time |
+| Module | Branch | P1 handoff/head SHA | Central status at current preparation anchor |
 |---|---|---|---|
-| Accounting P1 — Journal Integrity | `fush/accounting` | `7510ff3dc03d28ebf751ebe32624e36ef175b9a7` | **Already integrated** into current Central |
-| Treasury P1 — Party Requirement | `fush/treasury-banking` | `7a1f1aec9f0315a23b62205aa5e4b049449203cc` | Pending integration |
+| Accounting P1 — Journal Integrity | `fush/accounting` | `7510ff3dc03d28ebf751ebe32624e36ef175b9a7` | **Integrated** |
+| Treasury P1 — Party Requirement | `fush/treasury-banking` | `7a1f1aec9f0315a23b62205aa5e4b049449203cc` | **Integrated** at Central commit `bd39c9fdce444da865460539ea80058f02770d4a` |
 | Purchases P1 — Supplier Profile / AP Reconciliation | `fush/purchases-suppliers` | `b6a154a908898a25fcb40bd55dddfedce596c643` | Pending integration |
 | Sales P1 — Customer Movement Identity | `fush/sales-customers` | `f7e6263f2c675704913fb6c1fb675f7ade36fc37` | Pending integration |
 
-All three pending handoffs were originally prepared against the previous Central `2cb8da801fc54aec8c1f0d6a83588f097ca85117` / schema 34. Therefore this audit first checks that their functional patches remain compatible when selectively re-established on the **current** Central after Accounting P1/schema 35. It must never replace current Central files with old branch source trees.
+Purchases P1 and Sales P1 were prepared against the older Central `2cb8da801fc54aec8c1f0d6a83588f097ca85117` / schema 34. The audit therefore applies **only their functional P1 patches** to a temporary copy of the current Central after Accounting P1 + Treasury P1/schema 35. It must never replace current Central files with old branch source trees.
+
+The original pre-merge run was also intentionally invalidated when Central advanced from Accounting-only commit `05ec94e097af5aed0e3e138bfee0afea12c9d8f2` to the Treasury-integrated commit above. This demonstrates the baseline pinning gate: a compatibility result from a superseded Central is not carried forward automatically.
 
 ## 2. Hard finalization rule
 
@@ -50,9 +53,9 @@ If either identity is different from the tested identity, the final result remai
 
 | ID | Area | Scenario | Required result before merge | Final APK gate |
 |---|---|---|---|---|
-| P2C-PRE-001 | Baseline | Export exact current Central and verify HEAD/tree/App ID/Room 35 | PASS | Re-pin to final Central |
-| P2C-PRE-002 | Handoff identity | Fetch exact Treasury/Purchases/Sales P1 SHAs and exact patch identities | PASS | Re-pin accepted integration SHAs |
-| P2C-PRE-003 | Selective integration | Apply only the P1 functional patches over current Central; no historical branch tree replacement | PASS | Must match actual integrated diff |
+| P2C-PRE-001 | Baseline | Export exact current Central and verify HEAD/tree/App ID/Room 35 plus integrated Accounting P1 + Treasury P1 | PASS | Re-pin to final Central |
+| P2C-PRE-002 | Handoff identity | Fetch exact Purchases/Sales P1 SHAs and exact Git blob identities for their functional patches | PASS | Re-pin accepted integration SHAs |
+| P2C-PRE-003 | Selective integration | Apply only pending Purchases/Sales P1 functional patches over current Central; no historical branch tree replacement | PASS | Must match actual integrated diff |
 | P2C-PRE-004 | Room safety | Pending P1 patches must not alter `FushDatabase.kt`, `Migrations.kt`, schema JSON or allocate a new migration | PASS; remain schema 35 | Verify final assigned schema/migration chain |
 | P2C-PRE-005 | Destructive safety | No `fallbackToDestructiveMigration`, DB deletion/reset, or `clearAllTables` introduced | PASS | PASS on final source/APK build record |
 | P2C-PRE-006 | Accounting stable keys | `SALE`, `CUSTOMER_RECEIPT`, `SALES_RETURN`, `PURCHASE`, `PURCHASE_RETURN`, `SUPPLIER_PAYMENT` remain duplicate-protected stable source types | PASS | E2E replay test on integrated build |
@@ -237,10 +240,10 @@ A pre-merge unsigned APK produced by this audit workflow is only a **candidate c
 ## 6. Phase status
 
 - Matrix prepared: **YES**
-- Pre-merge automation prepared: **YES / execute separately**
+- Pre-merge automation prepared: **YES / running against re-pinned current Central**
 - Accounting P1 on current Central: **PRESENT**
-- Treasury P1 integrated into Central: **NOT YET at matrix creation**
-- Purchases P1 integrated into Central: **NOT YET at matrix creation**
-- Sales P1 integrated into Central: **NOT YET at matrix creation**
+- Treasury P1 on current Central: **PRESENT**
+- Purchases P1 integrated into Central: **NOT YET at current anchor**
+- Sales P1 integrated into Central: **NOT YET at current anchor**
 - Final integrated Central APK tested: **NO**
 - Part 2C final status: **IN PROGRESS / NOT FINAL**
