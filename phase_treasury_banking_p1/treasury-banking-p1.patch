@@ -2,7 +2,7 @@ diff --git a/app/src/main/java/com/fush/erp/domain/AccountingService.kt b/app/sr
 index 02838d0..b634581 100644
 --- a/app/src/main/java/com/fush/erp/domain/AccountingService.kt
 +++ b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
-@@ -6,6 +6,15 @@
+@@ -1517,6 +1517,15 @@
      }
  
      private suspend fun resolvePartyLink(offset: AccountEntity, request: VoucherRequest): PartyLink {
