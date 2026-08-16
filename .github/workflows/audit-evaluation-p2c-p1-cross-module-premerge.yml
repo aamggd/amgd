@@ -20,9 +20,9 @@ env:
   TREASURY_P1_SHA: '7a1f1aec9f0315a23b62205aa5e4b049449203cc'
   PURCHASES_P1_SHA: 'b6a154a908898a25fcb40bd55dddfedce596c643'
   SALES_P1_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
-  TREASURY_PATCH_SHA256: 'bc31448a56946982d7c07e1bdb70c3ff5b426a38bbd2a7a6ebbb239f6edc47c6'
+  TREASURY_PATCH_BLOB: '41148df5882c2878fce7f660ef568998689c93bb'
   PURCHASES_PATCH_BLOB: '6dd1066ef1b8e7c2e0fe25b0ec97d0357f7ee921'
-  SALES_PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+  SALES_PATCH_BLOB: '8b5372494baf1e5943de24fa10b7e0a400c85928'
 
 jobs:
   p2c-premerge:
@@ -104,15 +104,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse ${TREASURY_P1_SHA}:phase_treasury_banking_p1/treasury-banking-p1.patch)" = "$TREASURY_PATCH_BLOB"
+          test "$(git rev-parse ${PURCHASES_P1_SHA}:purchases_suppliers_p1/phase_p1.patch)" = "$PURCHASES_PATCH_BLOB"
+          test "$(git rev-parse ${SALES_P1_SHA}:sales_customers_p1/customer_identity_p1.patch)" = "$SALES_PATCH_BLOB"
+
           git show "${TREASURY_P1_SHA}:phase_treasury_banking_p1/treasury-banking-p1.patch" > /tmp/p2c-treasury.patch
           git show "${PURCHASES_P1_SHA}:purchases_suppliers_p1/phase_p1.patch" > /tmp/p2c-purchases.patch
           git show "${SALES_P1_SHA}:sales_customers_p1/customer_identity_p1.patch" > /tmp/p2c-sales.patch
 
-          test "$(sha256sum /tmp/p2c-treasury.patch | awk '{print $1}')" = "$TREASURY_PATCH_SHA256"
+          test "$(git hash-object /tmp/p2c-treasury.patch)" = "$TREASURY_PATCH_BLOB"
           test "$(git hash-object /tmp/p2c-purchases.patch)" = "$PURCHASES_PATCH_BLOB"
-          test "$(sha256sum /tmp/p2c-sales.patch | awk '{print $1}')" = "$SALES_PATCH_SHA256"
+          test "$(git hash-object /tmp/p2c-sales.patch)" = "$SALES_PATCH_BLOB"
 
-          sha256sum /tmp/p2c-treasury.patch /tmp/p2c-purchases.patch /tmp/p2c-sales.patch | tee output/PENDING_P1_PATCH_SHA256.txt
+          {
+            echo "TREASURY_GIT_BLOB=$TREASURY_PATCH_BLOB"
+            echo "PURCHASES_GIT_BLOB=$PURCHASES_PATCH_BLOB"
+            echo "SALES_GIT_BLOB=$SALES_PATCH_BLOB"
+            sha256sum /tmp/p2c-treasury.patch /tmp/p2c-purchases.patch /tmp/p2c-sales.patch
+          } | tee output/PENDING_P1_PATCH_IDENTITIES.txt
 
       - name: Selectively apply Treasury then Purchases then Sales P1 over current Central
         shell: bash
