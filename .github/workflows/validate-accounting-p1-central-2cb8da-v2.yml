@@ -1,0 +1,199 @@
+name: Validate Accounting P1 Journal Integrity v2
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/validate-accounting-p1-central-2cb8da-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout handoff branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact approved Central
+        uses: actions/checkout@v4
+        with:
+          ref: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
+          path: central-repo
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Exact baseline and patch guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central-repo rev-parse HEAD)" = "2cb8da801fc54aec8c1f0d6a83588f097ca85117"
+          test "$(git -C central-repo rev-parse HEAD:central_source)" = "7733c6570357eb813f7e05e5093752ea26788749"
+          grep -q 'applicationId = "com.fush.erp.recovery"' central-repo/central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central-repo/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          echo '6ef030b26c2ae27ca181bb7b78ddebf9de1ea1e5d0a4ae14e6dbf5c0c88b85ec  fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch' | sha256sum -c -
+
+      - name: Apply exact five-file P1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch"
+          git -C central-repo apply --check --directory=central_source "$PATCH"
+          git -C central-repo apply --directory=central_source "$PATCH"
+          git -C central-repo add -N \
+            central_source/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt \
+            central_source/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt
+          git -C central-repo diff --check
+          actual="$(git -C central-repo diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt \
+            central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt \
+            central_source/app/src/main/java/com/fush/erp/data/Migrations.kt \
+            central_source/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt \
+            central_source/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt | sort)"
+          printf '%s\n' "$actual"
+          test "$actual" = "$expected"
+
+      - name: P0 to P1 stable-source contract regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('central-repo/central_source')
+          contract=(root/'app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt').read_text()
+          migration=(root/'app/src/main/java/com/fush/erp/data/Migrations.kt').read_text()
+          stable=set()
+          for line in contract.splitlines():
+              if 'AccountingEventSpec(' in line and 'AccountingReplayPolicy.STABLE_SOURCE' in line:
+                  m=re.search(r'AccountingEventSpec\("([A-Z0-9_]+)"', line)
+                  if m: stable.add(m.group(1))
+          block=migration.split('val MIGRATION_34_35_ACCOUNTING_P1',1)[1]
+          migration_stable=set(re.findall(r"'([A-Z][A-Z0-9_]+)'", block.split('""".trimIndent()',1)[0]))
+          if stable != migration_stable:
+              raise SystemExit(f'P0/P1 stable source mismatch: {sorted(stable)} != {sorted(migration_stable)}')
+          if len(stable) != 13:
+              raise SystemExit(f'unexpected stable source count {len(stable)}')
+          print('ACCOUNTING_P1_STABLE_SOURCE_REGRESSION_OK')
+          PY
+
+      - name: Room migration and destructive guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=central-repo/central_source
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' "$ROOT/app/src/main/java"
+          p1_block="$(sed -n '/MIGRATION_34_35_ACCOUNTING_P1/,$p' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt")"
+          ! grep -E 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' <<<"$p1_block"
+          for trigger in \
+            trg_journal_stable_source_id_required_insert \
+            trg_journal_no_duplicate_stable_source_insert \
+            trg_journal_no_duplicate_stable_source_update \
+            trg_posted_journal_no_update \
+            trg_posted_journal_no_delete \
+            trg_journal_line_sanity_insert \
+            trg_posted_journal_line_no_update \
+            trg_posted_journal_line_no_delete; do
+            grep -q "$trigger" <<<"$p1_block"
+          done
+
+      - name: SQLite journal-integrity migration smoke
+        run: python fush_accounting/handoffs/P1_journal_integrity/sqlite_p1_smoke.py
+
+      - name: Unit tests
+        working-directory: central-repo/central_source
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/accounting-p1-unit.log"
+
+      - name: Diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Accounting-P1-v2-Diagnostics
+          path: accounting-p1-unit.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: central-repo/central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room 35 and package validated handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/central-repo/central_source"
+          OUT="$GITHUB_WORKSPACE/accounting-p1-output"
+          mkdir -p "$OUT"
+          test -f "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          grep -q '"version": 35' "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk" "$OUT/FushERP-Accounting-P1-Journal-Integrity-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$OUT/FushERP-Accounting-P1-Journal-Integrity-aligned-unsigned.apk"
+          cp fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch "$OUT/"
+          git -C central-repo diff --binary -- central_source > "$OUT/CENTRAL-2cb8da-ACCOUNTING-P1.diff"
+          cp -a "$ROOT" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source"
+          rm -rf "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/.gradle" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/.kotlin" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/app/build" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/build"
+          cd "$GITHUB_WORKSPACE" && zip -qr "$OUT/FushERP-Mobile-Accounting-P1-Journal-Integrity-Source.zip" FushERP_Accounting_P1_Source
+          sha256sum "$OUT"/* > "$OUT/SHA256SUMS.txt"
+          cat > "$OUT/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting P1 Journal Integrity
+          Exact Central HEAD: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
+          Central source tree: 7733c6570357eb813f7e05e5093752ea26788749
+          Application ID: com.fush.erp.recovery
+          Central Room before P1: 34
+          Branch-local Room after P1: 35 PROVISIONAL
+          Migration: 34 -> 35 ACCOUNTING_P1 PROVISIONAL
+          Patch SHA-256: 6ef030b26c2ae27ca181bb7b78ddebf9de1ea1e5d0a4ae14e6dbf5c0c88b85ec
+          Changed Central application files: 5
+          P0 stable-source regression: PASS
+          Historical data preservation smoke: PASS
+          Stable-source duplicate prevention: PASS
+          Posted journal immutability: PASS
+          Posted line immutability: PASS
+          Reversal as new balanced entry: PASS
+          Double-entry validator regression: PASS
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 35 generation: PASS
+          No destructive migration/fallback: PASS
+          Zipalign: PASS
+          Inventory quantity logic changed: NO
+          Production quantity logic changed: NO
+          Signing: NOT PERFORMED
+          ACCOUNTING_P1_JOURNAL_INTEGRITY_VALIDATED_OK
+          REPORT
+
+      - name: Upload validated handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-P1-Journal-Integrity-Validated-Handoff
+          path: accounting-p1-output/
+          if-no-files-found: error
+          retention-days: 7
