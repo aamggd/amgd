@@ -1,0 +1,215 @@
+name: Validate FUSH Accounting Phase 14.5.46 Tax VAT Framework
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/build-accounting-phase14.5.46.yml'
+      - 'fush_accounting/rebase/phase14.5.46_chunks/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  phase46-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download validated Phase 14.5.45 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.45-General-Ledger-Dimensions-Validated-Build
+          path: phase45-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31915400563
+
+      - name: Reconstruct and verify Phase 14.5.46 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          CH="$GITHUB_WORKSPACE/fush_accounting/rebase/phase14.5.46_chunks"
+          for n in 00 01 02 03 04 05; do test "$(wc -c < "$CH/part${n}.b64")" -eq 3000; done
+          test "$(wc -c < "$CH/part06.b64")" -eq 1460
+          echo '52108fc33bd2a662b399dd42240750642f10f266fddbfa0e80341d83ba136e5e  part00.b64' | (cd "$CH" && sha256sum -c -)
+          echo '6da76b94a181038021e9d47847401ec3d3563577e0e772ab45a4d06af5b67c2f  part01.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'f70d5e8e92d34ca96131e1f36dae91a7e6f38cee839203e0a92729da8909bd1a  part02.b64' | (cd "$CH" && sha256sum -c -)
+          echo '67f9c01ab13e7b0d8337b798ee232c528f722bb186c6db7387d2fc3b756351a2  part03.b64' | (cd "$CH" && sha256sum -c -)
+          echo 'eaf60990d6431a11ee2a54600ed68e50ce28571f0181ca15f64e5cb3552c662c  part04.b64' | (cd "$CH" && sha256sum -c -)
+          echo '6e3816aaf11779a04133b6013a0b344d788deddf0101634d54d86808b93a5c4f  part05.b64' | (cd "$CH" && sha256sum -c -)
+          echo '38a47e5ae93c344cd4be4921114c5e8ddec987e327dc240df8ca61ca555c4299  part06.b64' | (cd "$CH" && sha256sum -c -)
+          cat "$CH"/part*.b64 > /tmp/phase46.patch.gz.b64
+          test "$(wc -c < /tmp/phase46.patch.gz.b64)" -eq 19460
+          echo '163c5445bb7f26536b3b877d25ba21ac17c274b56a7e1f26f40f21ddb29cf1ac  /tmp/phase46.patch.gz.b64' | sha256sum -c -
+          base64 --decode /tmp/phase46.patch.gz.b64 > /tmp/phase46.patch.gz
+          test "$(wc -c < /tmp/phase46.patch.gz)" -eq 14593
+          echo 'e1f5fe1154d4d32edbd7b3dd64bc82a50d19a85a37420f862dc1a415777b0ae9  /tmp/phase46.patch.gz' | sha256sum -c -
+          gzip -t /tmp/phase46.patch.gz
+          gzip -dc /tmp/phase46.patch.gz > /tmp/phase46.patch
+          test "$(wc -c < /tmp/phase46.patch)" -eq 72271
+          echo '15a50ce08c145b562922a34a1cf037f729f26ba9261efe3e4be548f62f486480  /tmp/phase46.patch' | sha256sum -c -
+
+      - name: Apply Phase 14.5.46 to validated Phase 14.5.45
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"
+          mkdir -p "$ROOT/work" && cd "$ROOT/work"
+          unzip -q "$ROOT/phase45-artifact/FushERP-Mobile-Phase14.5.45-General-Ledger-Dimensions-Source.zip"
+          cd repo
+          git init -q
+          git config user.name 'FUSH Accounting Phase46 CI'
+          git config user.email 'fush-accounting-ci@example.invalid'
+          git add -A && git commit -qm 'validated Phase14.5.45 baseline'
+          git apply --check /tmp/phase46.patch
+          git apply /tmp/phase46.patch
+          git diff --check
+
+      - name: Verify identity, schema and tax wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 77' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.38-ui-inventory-master-data"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 37' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_36_37' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_36_37' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f app/src/main/java/com/fush/erp/data/entity/TaxEntities.kt
+          test -f app/src/main/java/com/fush/erp/data/dao/TaxDao.kt
+          test -f app/src/main/java/com/fush/erp/domain/TaxMath.kt
+          test -f app/src/main/java/com/fush/erp/domain/TaxService.kt
+          test -f app/src/main/java/com/fush/erp/ui/screens/TaxAccountingScreens.kt
+          test -f app/src/test/java/com/fush/erp/domain/TaxMathTest.kt
+          grep -q 'VAT_INPUT_RECEIVABLE' app/src/main/java/com/fush/erp/domain/PostingProfiles.kt
+          grep -q 'VAT_OUTPUT_PAYABLE' app/src/main/java/com/fush/erp/domain/PostingProfiles.kt
+          grep -q 'taxService.resolve(request.taxCode, "SALES"' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'taxService.resolve(request.taxCode, "PURCHASE"' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -q 'vatInputSubledger' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'vatOutputSubledger' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q '"الضرائب"' app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' app/src/main/java
+
+      - name: SQLite tax migration smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          db=sqlite3.connect(':memory:')
+          db.executescript('''
+          CREATE TABLE accounts(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,code TEXT NOT NULL UNIQUE,nameAr TEXT NOT NULL,nameEn TEXT NOT NULL,type TEXT NOT NULL,parentCode TEXT,isPosting INTEGER NOT NULL,isActive INTEGER NOT NULL);
+          CREATE TABLE posting_profiles(role TEXT PRIMARY KEY NOT NULL,accountId INTEGER NOT NULL,expectedAccountType TEXT NOT NULL,displayNameAr TEXT NOT NULL,isControl INTEGER NOT NULL,updatedBy INTEGER,updatedAt INTEGER NOT NULL);
+          CREATE TABLE sales_invoices(id INTEGER PRIMARY KEY,totalOriginal REAL NOT NULL);
+          CREATE TABLE sales_returns(id INTEGER PRIMARY KEY,totalOriginal REAL NOT NULL);
+          CREATE TABLE purchase_invoices(id INTEGER PRIMARY KEY,subtotalOriginal REAL NOT NULL,totalOriginal REAL NOT NULL);
+          CREATE TABLE purchase_returns(id INTEGER PRIMARY KEY,totalOriginal REAL NOT NULL);
+          INSERT INTO sales_invoices VALUES(1,100);
+          INSERT INTO purchase_invoices VALUES(1,200,200);
+          CREATE TABLE tax_codes(code TEXT NOT NULL PRIMARY KEY,nameAr TEXT NOT NULL,nameEn TEXT NOT NULL,ratePct REAL NOT NULL,appliesTo TEXT NOT NULL,purchaseRecoverable INTEGER NOT NULL,isActive INTEGER NOT NULL,createdBy INTEGER,createdAt INTEGER NOT NULL,updatedBy INTEGER,updatedAt INTEGER NOT NULL);
+          CREATE TABLE tax_ledger_entries(id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,sourceType TEXT NOT NULL,sourceId TEXT NOT NULL,sourceDate INTEGER NOT NULL,taxDirection TEXT NOT NULL,taxCodeSnapshot TEXT NOT NULL,taxNameSnapshot TEXT NOT NULL,ratePct REAL NOT NULL,taxableOriginal REAL NOT NULL,taxOriginal REAL NOT NULL,taxableBase REAL NOT NULL,taxBase REAL NOT NULL,currencyCode TEXT NOT NULL,exchangeRate REAL NOT NULL,recoverable INTEGER NOT NULL,createdBy INTEGER NOT NULL,createdAt INTEGER NOT NULL);
+          CREATE UNIQUE INDEX index_tax_ledger_entries_sourceType_sourceId ON tax_ledger_entries(sourceType,sourceId);
+          ''')
+          for t in ['sales_invoices','sales_returns','purchase_invoices','purchase_returns']:
+              db.execute(f'ALTER TABLE {t} ADD COLUMN taxCode TEXT')
+              db.execute(f'ALTER TABLE {t} ADD COLUMN taxRatePct REAL NOT NULL DEFAULT 0')
+              db.execute(f'ALTER TABLE {t} ADD COLUMN taxableOriginal REAL NOT NULL DEFAULT 0')
+              db.execute(f'ALTER TABLE {t} ADD COLUMN taxOriginal REAL NOT NULL DEFAULT 0')
+              db.execute(f'ALTER TABLE {t} ADD COLUMN taxBase REAL NOT NULL DEFAULT 0')
+          db.execute('ALTER TABLE purchase_invoices ADD COLUMN taxRecoverable INTEGER NOT NULL DEFAULT 0')
+          db.execute('ALTER TABLE purchase_returns ADD COLUMN taxRecoverable INTEGER NOT NULL DEFAULT 0')
+          db.execute('UPDATE sales_invoices SET taxableOriginal=totalOriginal WHERE taxableOriginal=0 AND totalOriginal>0')
+          db.execute('UPDATE purchase_invoices SET taxableOriginal=subtotalOriginal WHERE taxableOriginal=0 AND subtotalOriginal>0')
+          assert db.execute('SELECT taxableOriginal,taxOriginal FROM sales_invoices').fetchone()==(100.0,0.0)
+          db.execute("INSERT INTO accounts(code,nameAr,nameEn,type,parentCode,isPosting,isActive) VALUES('1400','Input VAT','Input VAT','ASSET',NULL,1,1)")
+          db.execute("INSERT INTO accounts(code,nameAr,nameEn,type,parentCode,isPosting,isActive) VALUES('2410','Output VAT','Output VAT','LIABILITY',NULL,1,1)")
+          db.execute("INSERT INTO posting_profiles SELECT 'VAT_INPUT_RECEIVABLE',id,'ASSET','Input VAT',1,NULL,0 FROM accounts WHERE code='1400'")
+          db.execute("INSERT INTO posting_profiles SELECT 'VAT_OUTPUT_PAYABLE',id,'LIABILITY','Output VAT',1,NULL,0 FROM accounts WHERE code='2410'")
+          assert db.execute('SELECT COUNT(*) FROM posting_profiles WHERE isControl=1').fetchone()[0]==2
+          db.execute("INSERT INTO tax_ledger_entries(sourceType,sourceId,sourceDate,taxDirection,taxCodeSnapshot,taxNameSnapshot,ratePct,taxableOriginal,taxOriginal,taxableBase,taxBase,currencyCode,exchangeRate,recoverable,createdBy,createdAt) VALUES('SALE','1',1,'OUTPUT','TAX15','Tax',15,100,15,100,15,'YER_NEW',1,0,1,1)")
+          try:
+              db.execute("INSERT INTO tax_ledger_entries(sourceType,sourceId,sourceDate,taxDirection,taxCodeSnapshot,taxNameSnapshot,ratePct,taxableOriginal,taxOriginal,taxableBase,taxBase,currencyCode,exchangeRate,recoverable,createdBy,createdAt) VALUES('SALE','1',1,'OUTPUT','TAX15','Tax',15,100,15,100,15,'YER_NEW',1,0,1,1)")
+              raise AssertionError('duplicate tax source accepted')
+          except sqlite3.IntegrityError: pass
+          print('PHASE14_5_46_SQLITE_TAX_MIGRATION_OK')
+          PY
+
+      - name: Unit tests
+        working-directory: work/repo
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/phase46-unit-test.log"
+
+      - name: Upload unit-test diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Unit-Test-Diagnostics
+          path: phase46-unit-test.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: work/repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema and package output
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE"; cd "$ROOT/work/repo"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/schemas/com.fush.erp.data.FushDatabase/37.json
+          grep -q '"version": 37' app/schemas/com.fush.erp.data.FushDatabase/37.json
+          mkdir -p "$ROOT/phase46-output"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 app/build/outputs/apk/release/app-release-unsigned.apk "$ROOT/phase46-output/FushERP-Accounting-Phase14.5.46-Tax-VAT-Framework-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/phase46-output/FushERP-Accounting-Phase14.5.46-Tax-VAT-Framework-aligned-unsigned.apk"
+          cp /tmp/phase46.patch "$ROOT/phase46-output/FushERP-Phase14.5.46-Tax-VAT-Accounting-Framework.patch"
+          rm -rf .git .gradle .kotlin app/build build
+          cd "$ROOT/work" && zip -qr "$ROOT/phase46-output/FushERP-Mobile-Phase14.5.46-Tax-VAT-Accounting-Framework-Source.zip" repo
+          sha256sum "$ROOT/phase46-output/"* > "$ROOT/phase46-output/SHA256SUMS.txt"
+          cat > "$ROOT/phase46-output/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting Phase 14.5.46 validation
+          Base: validated Accounting Phase 14.5.45 General Ledger Dimensions & Cost Centers
+          Base validation run: 31915400563
+          Application ID: com.fush.erp.recovery
+          Branch testing versionCode retained: 77
+          Branch testing versionName retained: 0.15.4.38-ui-inventory-master-data
+          Accounting branch Room schema: 37 (PROVISIONAL / BRANCH ONLY)
+          Phase 14.5.46 patch SHA-256: 15a50ce08c145b562922a34a1cf037f729f26ba9261efe3e4be548f62f486480
+          Legal default tax rate: NONE
+          SQLite tax migration smoke: PASS
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 37 generation: PASS
+          Zipalign: PASS
+          Signing: NOT PERFORMED IN CI — permanent signing material is intentionally not stored in GitHub
+          PHASE14_5_46_TAX_VAT_ACCOUNTING_VALIDATED_OK
+          REPORT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.46-Tax-VAT-Framework-Validated-Build
+          path: phase46-output/
+          if-no-files-found: error
+          retention-days: 7
