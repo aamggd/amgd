@@ -7,6 +7,28 @@ import com.fush.erp.data.entity.ExpenseWorkflowRequestEntity
 import java.util.Locale
 import java.util.UUID
 
+data class ExpensePaymentAuthorizationSnapshot(
+    val treasuryAccountId: Long,
+    val expenseAccountId: Long,
+    val amountOriginal: Double,
+    val currencyCode: String,
+    val exchangeRate: Double,
+    val description: String,
+    val voucherReferenceNo: String,
+    val expenseDate: Long,
+    val employeeId: Long?,
+    val salesRepId: Long?,
+    val costCenterCode: String,
+    val organizationUnit: String,
+    val referenceType: String,
+    val referenceId: Long?,
+    val dimensionReferenceNo: String,
+    val referenceLabel: String,
+    val customerId: Long?,
+    val supplierId: Long?,
+    val itemId: Long?
+)
+
 object ExpenseLifecyclePolicy {
     const val DRAFT = "DRAFT"
     const val SUBMITTED = "SUBMITTED"
@@ -35,6 +57,15 @@ object ExpenseLifecyclePolicy {
         require(paymentStatus == UNPAID) { "تم دفع المصروف مسبقاً" }
     }
 
+    fun requirePaymentMatchesApproved(
+        approved: ExpensePaymentAuthorizationSnapshot,
+        requested: ExpensePaymentAuthorizationSnapshot
+    ) {
+        require(normalizeSnapshot(approved) == normalizeSnapshot(requested)) {
+            "بيانات الدفع لا تطابق نسخة المصروف التي تم اعتمادها"
+        }
+    }
+
     fun lifecycleLabel(approvalStatus: String, paymentStatus: String): String = when {
         paymentStatus == PAID -> "PAID"
         approvalStatus == REJECTED -> "REJECTED"
@@ -42,12 +73,72 @@ object ExpenseLifecyclePolicy {
         approvalStatus == SUBMITTED -> "SUBMITTED"
         else -> "DRAFT"
     }
+
+    private fun normalizeSnapshot(value: ExpensePaymentAuthorizationSnapshot): ExpensePaymentAuthorizationSnapshot = value.copy(
+        currencyCode = value.currencyCode.trim().uppercase(Locale.US),
+        description = value.description.trim(),
+        voucherReferenceNo = value.voucherReferenceNo.trim(),
+        costCenterCode = value.costCenterCode.trim().uppercase(Locale.US),
+        organizationUnit = value.organizationUnit.trim(),
+        referenceType = value.referenceType.trim().ifBlank { "NONE" }.uppercase(Locale.US),
+        dimensionReferenceNo = value.dimensionReferenceNo.trim(),
+        referenceLabel = value.referenceLabel.trim()
+    )
+}
+
+fun ExpenseWorkflowRequestEntity.paymentAuthorizationSnapshot(): ExpensePaymentAuthorizationSnapshot =
+    ExpensePaymentAuthorizationSnapshot(
+        treasuryAccountId = treasuryAccountId,
+        expenseAccountId = expenseAccountId,
+        amountOriginal = amountOriginal,
+        currencyCode = currencyCode,
+        exchangeRate = exchangeRate,
+        description = description,
+        voucherReferenceNo = referenceNo,
+        expenseDate = expenseDate,
+        employeeId = employeeId,
+        salesRepId = salesRepId,
+        costCenterCode = costCenterCode,
+        organizationUnit = organizationUnit,
+        referenceType = referenceType,
+        referenceId = referenceId,
+        dimensionReferenceNo = dimensionReferenceNo,
+        referenceLabel = referenceLabel,
+        customerId = customerId,
+        supplierId = supplierId,
+        itemId = itemId
+    )
+
+fun AccountingService.VoucherRequest.expensePaymentAuthorizationSnapshot(): ExpensePaymentAuthorizationSnapshot {
+    val context = requireNotNull(expenseContext) { "بيانات تصنيف المصروف مطلوبة" }
+    return ExpensePaymentAuthorizationSnapshot(
+        treasuryAccountId = treasuryAccountId,
+        expenseAccountId = requireNotNull(offsetAccountId) { "حساب المصروف مطلوب" },
+        amountOriginal = amountOriginal,
+        currencyCode = currencyCode,
+        exchangeRate = exchangeRate,
+        description = description,
+        voucherReferenceNo = referenceNo,
+        expenseDate = voucherDate,
+        employeeId = context.employeeId,
+        salesRepId = context.salesRepId,
+        costCenterCode = context.costCenterCode,
+        organizationUnit = context.organizationUnit,
+        referenceType = context.referenceType,
+        referenceId = context.referenceId,
+        dimensionReferenceNo = context.referenceNo,
+        referenceLabel = context.referenceLabel,
+        customerId = context.customerId,
+        supplierId = context.supplierId,
+        itemId = context.itemId
+    )
 }
 
 class ExpenseWorkflowService(private val db: FushDatabase) {
     suspend fun createDraft(request: AccountingService.VoucherRequest, createdBy: Long): Long = db.withTransaction {
         db.requireUserPermission(createdBy, SecurityPermissions.ACCOUNTING_POST)
         require(request.type == "EXPENSE") { "دورة الاعتماد هذه مخصصة للمصروفات فقط" }
+        require(request.approvedExpenseRequestId == null) { "لا يمكن إنشاء مسودة من طلب اعتماد مدفوع" }
         require(request.treasuryAccountId > 0L) { "مصدر الدفع مطلوب" }
         require((request.offsetAccountId ?: 0L) > 0L) { "حساب المصروف مطلوب" }
         require(request.amountOriginal.isFinite() && request.amountOriginal > 0.0) { "المبلغ يجب أن يكون أكبر من صفر" }
@@ -63,17 +154,18 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
                 treasuryAccountId = request.treasuryAccountId,
                 expenseAccountId = requireNotNull(request.offsetAccountId),
                 amountOriginal = request.amountOriginal,
-                currencyCode = request.currencyCode.trim(),
+                currencyCode = request.currencyCode.trim().uppercase(Locale.US),
                 exchangeRate = request.exchangeRate,
                 description = request.description.trim(),
                 referenceNo = request.referenceNo.trim(),
                 expenseDate = request.voucherDate,
                 employeeId = context.employeeId,
                 salesRepId = context.salesRepId,
-                costCenterCode = context.costCenterCode.trim(),
+                costCenterCode = context.costCenterCode.trim().uppercase(Locale.US),
                 organizationUnit = context.organizationUnit.trim(),
-                referenceType = context.referenceType.trim().ifBlank { "NONE" },
+                referenceType = context.referenceType.trim().ifBlank { "NONE" }.uppercase(Locale.US),
                 referenceId = context.referenceId,
+                dimensionReferenceNo = context.referenceNo.trim(),
                 referenceLabel = context.referenceLabel.trim(),
                 customerId = context.customerId,
                 supplierId = context.supplierId,
@@ -144,12 +236,12 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
         audit(actorId, "EXPENSE_REJECTED", requestId, "SUBMITTED|UNPAID", "REJECTED|UNPAID", reason)
     }
 
-    suspend fun pay(requestId: Long, actorId: Long): Long = db.withTransaction {
+    suspend fun pay(requestId: Long, actorId: Long): Long {
         db.requireUserPermission(actorId, SecurityPermissions.TREASURY_POST)
         val row = requireRequest(requestId)
         ExpenseLifecyclePolicy.requireCanPay(row.approvalStatus, row.paymentStatus)
         validateForSubmission(row)
-        val entryId = AccountingService(db).postVoucher(
+        return AccountingService(db).postVoucher(
             AccountingService.VoucherRequest(
                 type = "EXPENSE",
                 treasuryAccountId = row.treasuryAccountId,
@@ -161,6 +253,7 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
                 referenceNo = row.referenceNo,
                 voucherDate = row.expenseDate,
                 createdBy = actorId,
+                approvedExpenseRequestId = row.id,
                 expenseContext = AccountingService.ExpenseContext(
                     employeeId = row.employeeId,
                     salesRepId = row.salesRepId,
@@ -168,7 +261,7 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
                     organizationUnit = row.organizationUnit,
                     referenceType = row.referenceType,
                     referenceId = row.referenceId,
-                    referenceNo = row.referenceNo,
+                    referenceNo = row.dimensionReferenceNo,
                     referenceLabel = row.referenceLabel,
                     customerId = row.customerId,
                     supplierId = row.supplierId,
@@ -184,20 +277,6 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
                 )
             )
         )
-        val voucher = requireNotNull(db.partyDao().voucherByJournalEntryId(entryId)) { "تعذر ربط سند المصروف بطلب الاعتماد" }
-        val now = System.currentTimeMillis()
-        db.expenseWorkflowDao().update(
-            row.copy(
-                paymentStatus = ExpenseLifecyclePolicy.PAID,
-                paidBy = actorId,
-                paidAt = now,
-                journalEntryId = entryId,
-                partyVoucherId = voucher.id,
-                updatedAt = now
-            )
-        )
-        audit(actorId, "EXPENSE_PAID_POSTED", requestId, "APPROVED|UNPAID", "APPROVED|PAID", "journalEntryId=$entryId;partyVoucherId=${voucher.id}")
-        entryId
     }
 
     private suspend fun requireRequest(requestId: Long): ExpenseWorkflowRequestEntity =
@@ -216,7 +295,7 @@ class ExpenseWorkflowService(private val db: FushDatabase) {
                 organizationUnit = row.organizationUnit,
                 referenceType = row.referenceType,
                 referenceId = row.referenceId,
-                referenceNo = row.referenceNo,
+                referenceNo = row.dimensionReferenceNo,
                 referenceLabel = row.referenceLabel,
                 customerId = row.customerId,
                 supplierId = row.supplierId,
