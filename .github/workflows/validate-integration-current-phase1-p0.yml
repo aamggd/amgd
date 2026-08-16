@@ -1,3 +1,4 @@
+# Phase 1 P0 validation gate — handoff branch only
 name: Validate FUSH Integration Current Phase 1 P0
 
 on:
