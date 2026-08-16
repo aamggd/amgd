@@ -15,7 +15,6 @@ permissions:
 env:
   CENTRAL_SHA: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
   CENTRAL_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
-  PATCH_BLOB_SHA1: '8b5372494baf1e5943de24fa10b7e0a400c85928'
 
 jobs:
   validate-p1:
@@ -56,8 +55,6 @@ jobs:
           set -euo pipefail
           git cat-file -e "${CENTRAL_SHA}^{commit}"
           test "$(git rev-parse ${CENTRAL_SHA})" = "${CENTRAL_SHA}"
-          test "$(git hash-object sales_customers_p1/customer_identity_p1.patch)" = "${PATCH_BLOB_SHA1}"
-          echo "PATCH_SHA256=$(sha256sum sales_customers_p1/customer_identity_p1.patch | awk '{print $1}')"
           rm -rf work-source central-p1-export
           mkdir central-p1-export
           git archive "${CENTRAL_SHA}" central_source | tar -x -C central-p1-export
@@ -75,8 +72,7 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
-          git apply --check "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
-          git apply "$GITHUB_WORKSPACE/sales_customers_p1/customer_identity_p1.patch"
+          python3 "$GITHUB_WORKSPACE/sales_customers_p1/apply_p1.py"
           git diff --check
 
       - name: P1 exact scope and identity regression checks
@@ -95,7 +91,6 @@ jobs:
           mapfile -t EXPECTED_SORTED < <(printf '%s\n' "${EXPECTED[@]}" | sort)
           test "${#FILES[@]}" -eq "${#EXPECTED_SORTED[@]}"
           for i in "${!FILES[@]}"; do test "${FILES[$i]}" = "${EXPECTED_SORTED[$i]}"; done
-          test -f app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           grep -q 'object CustomerMovementIdentity' app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           grep -q 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -q 'CustomerMovementIdentity.requireId(customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
@@ -107,6 +102,10 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           ! git diff --cached --name-only | grep -Eq 'app/src/main/java/com/fush/erp/data/(entity|Migrations|SecurityMigrations)|app/schemas/'
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          mkdir -p "$GITHUB_WORKSPACE/output"
+          git diff --cached --binary > "$GITHUB_WORKSPACE/output/customer_identity_p1.patch"
+          git apply --check --reverse "$GITHUB_WORKSPACE/output/customer_identity_p1.patch"
+          sha256sum "$GITHUB_WORKSPACE/output/customer_identity_p1.patch"
 
       - name: Customer identity unit tests
         working-directory: work-source
@@ -138,9 +137,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p output
           cp work-source/app/build/outputs/apk/release/app-release-unsigned.apk output/FushERP-Sales-Customers-P1-Customer-Identity-unsigned.apk
-          cp sales_customers_p1/customer_identity_p1.patch output/customer_identity_p1.patch
           cp sales_customers_p1/README.md output/README.md
           sha256sum output/* > output/SHA256SUMS.txt
 
