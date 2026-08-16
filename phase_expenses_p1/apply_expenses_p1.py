@@ -84,8 +84,8 @@ migration_block = (
 migrations = root / "app/src/main/java/com/fush/erp/data/Migrations.kt"
 migrations.write_text(migrations.read_text(encoding="utf-8").rstrip() + migration_block, encoding="utf-8")
 
-# Direct EXPENSE posting is no longer a valid public path after P1. The workflow service supplies
-# the approved request id; all other voucher types retain their current behavior.
+# Direct EXPENSE posting is bound to one approved workflow snapshot. AccountingService also marks
+# that request PAID in the same Room transaction as the journal/voucher insert, preventing replay.
 accounting = root / "app/src/main/java/com/fush/erp/domain/AccountingService.kt"
 must_replace(
     accounting,
@@ -95,17 +95,64 @@ must_replace(
 must_replace(
     accounting,
     '        if (request.type == "EXPENSE") requireNotNull(request.expenseContext) { "بيانات تصنيف المصروف مطلوبة" }\n        else require(request.expenseContext == null) { "أبعاد المصروف تستخدم مع سند المصروف فقط" }',
-    '        if (request.type == "EXPENSE") {\n            requireNotNull(request.expenseContext) { "بيانات تصنيف المصروف مطلوبة" }\n            val approvalId = requireNotNull(request.approvedExpenseRequestId) { "يجب دفع المصروف من دورة الاعتماد" }\n            val approval = requireNotNull(db.expenseWorkflowDao().byId(approvalId)) { "طلب اعتماد المصروف غير موجود" }\n            ExpenseLifecyclePolicy.requireCanPay(approval.approvalStatus, approval.paymentStatus)\n        } else {\n            require(request.expenseContext == null) { "أبعاد المصروف تستخدم مع سند المصروف فقط" }\n            require(request.approvedExpenseRequestId == null) { "مرجع اعتماد المصروف يستخدم مع سند المصروف فقط" }\n        }',
+    '''        val expenseApproval = if (request.type == "EXPENSE") {
+            requireNotNull(request.expenseContext) { "بيانات تصنيف المصروف مطلوبة" }
+            val approvalId = requireNotNull(request.approvedExpenseRequestId) { "يجب دفع المصروف من دورة الاعتماد" }
+            val approval = requireNotNull(db.expenseWorkflowDao().byId(approvalId)) { "طلب اعتماد المصروف غير موجود" }
+            ExpenseLifecyclePolicy.requireCanPay(approval.approvalStatus, approval.paymentStatus)
+            ExpenseLifecyclePolicy.requirePaymentMatchesApproved(
+                approval.paymentAuthorizationSnapshot(),
+                request.expensePaymentAuthorizationSnapshot()
+            )
+            approval
+        } else {
+            require(request.expenseContext == null) { "أبعاد المصروف تستخدم مع سند المصروف فقط" }
+            require(request.approvedExpenseRequestId == null) { "مرجع اعتماد المصروف يستخدم مع سند المصروف فقط" }
+            null
+        }''',
 )
-
-service = root / "app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt"
-service_text = service.read_text(encoding="utf-8")
-service_text = service_text.replace(
-    "                createdBy = actorId,\n                expenseContext = AccountingService.ExpenseContext(",
-    "                createdBy = actorId,\n                approvedExpenseRequestId = row.id,\n                expenseContext = AccountingService.ExpenseContext(",
-    1,
-)
-service.write_text(service_text, encoding="utf-8")
+old_expense_post = '''            if (request.type == "EXPENSE") {
+                insertExpenseDimension(
+                    partyVoucherId = voucherId,
+                    treasury = treasury,
+                    context = requireNotNull(request.expenseContext),
+                    createdBy = request.createdBy
+                )
+            }
+            db.governanceDao().insertAudit('''
+new_expense_post = '''            if (request.type == "EXPENSE") {
+                insertExpenseDimension(
+                    partyVoucherId = voucherId,
+                    treasury = treasury,
+                    context = requireNotNull(request.expenseContext),
+                    createdBy = request.createdBy
+                )
+                val approved = requireNotNull(expenseApproval) { "طلب اعتماد المصروف غير موجود" }
+                val paidAt = System.currentTimeMillis()
+                db.expenseWorkflowDao().update(
+                    approved.copy(
+                        paymentStatus = ExpenseLifecyclePolicy.PAID,
+                        paidBy = request.createdBy,
+                        paidAt = paidAt,
+                        journalEntryId = entryId,
+                        partyVoucherId = voucherId,
+                        updatedAt = paidAt
+                    )
+                )
+                db.governanceDao().insertAudit(
+                    AuditEventEntity(
+                        userId = request.createdBy,
+                        action = "EXPENSE_PAID_POSTED",
+                        entityType = "EXPENSE_WORKFLOW",
+                        entityId = approved.id.toString(),
+                        oldValue = "APPROVED|UNPAID",
+                        newValue = "APPROVED|PAID",
+                        reason = "journalEntryId=$entryId;partyVoucherId=$voucherId"
+                    )
+                )
+            }
+            db.governanceDao().insertAudit('''
+must_replace(accounting, old_expense_post, new_expense_post)
 
 screens = root / "app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt"
 must_replace(
