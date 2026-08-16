@@ -70,6 +70,7 @@ Handoffs are registered here only after dependency review and validation against
 |---|---|---|---|---|---|
 | 1 | `fush/users-permissions` — P1 Session Lifecycle | `b04efcc95c6ce241610610fac2b639617910751e` | Exact Phase 14.5.54 source; selective 5-file patch; full Unit + `assembleRelease` PASS in run `31917946736`; handoff files under `integration_current/handoffs/users-permissions/P1_session_lifecycle/` | None — stays `34` | **READY / VALIDATED HANDOFF — NOT YET APPLIED TO CENTRAL APP SOURCE** |
 | 2 | `fush/audit-evaluation` — Part 1 Initial Technical Audit | `066608d1baaf2bee4ffeb799693b13a2b1fd89ba` | Re-established on accepted Phase 14.5.54; audit/documentation only; eight findings contain ID, severity, owner, impact, expected/actual, evidence, reproduction, acceptance criteria and retest requirement; handoff under `integration_current/handoffs/audit-evaluation/P1_initial_technical_audit/` | None — audit documentation only | **REGISTERED / AUDIT EVIDENCE — NO APP PATCH TO APPLY** |
+| 3 | `fush/accounting` — P0 Accounting Integration Contract | validation record `b4b1138498c7cc1f7593fc6b646dd7574585e556`; validated workflow head `09764d6b74b2d0cb4e122694f91ac500c5202fbb` | Exact accepted Phase 14.5.54 source; exactly 3 new files; source-contract regression + Unit + `assembleRelease` + Zipalign PASS in run `31918423520`; handoff under `integration_current/handoffs/accounting/P0_integration_contract/` | None — stays `34` | **READY / VALIDATED HANDOFF — NOT YET APPLIED TO CENTRAL APP SOURCE** |
 
 ## 5. P0 Validation Gate
 
