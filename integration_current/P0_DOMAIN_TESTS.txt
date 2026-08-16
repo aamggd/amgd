@@ -1,1 +1,37 @@
-# Fully-qualified JUnit selectors for accepted P0 domain regressions.
+# P0 — Central Integration Registry validation record
+
+Scope: documentation/control metadata only. No Android application source patch is applied by this P0 refresh.
+
+Central Baseline: Phase 14.5.54 Printing Integrated
+Baseline source tree: 1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff
+Registry refresh commit: 44b79e4e30f551ed38eae4ef84466def0c1d2831
+
+Fresh local source-integrity checks against the exact delivered 14.5.54 Source ZIP:
+- Reconstructed Git tree: 1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff — PASS / exact match
+- Application ID com.fush.erp.recovery — PASS
+- Baseline versionCode 93 identity — PASS (baseline identifier only; not a new branch release number)
+- Baseline versionName 0.15.4.54-printing-integrated identity — PASS (baseline identifier only)
+- FUSH_DB_SCHEMA_VERSION = 34 — PASS
+- Room schema 34 JSON present — PASS
+- MIGRATION_32_33_SECURITY present — PASS
+- 33 -> 34 migration present — PASS
+- fallbackToDestructiveMigration absent — PASS
+- Signing secret/keystore files absent from source — PASS
+
+Source-level build gates for this exact tree:
+- GitHub Actions run 31909754750 — completed / success
+- Unit tests — PASS
+- Release build — PASS
+- Zipalign — PASS
+
+P0 impact:
+- Business logic changed: NO
+- Room schema changed: NO
+- Migration added: NO
+- Accounting changed: NO
+- Inventory changed: NO
+- Production changed: NO
+- Signing configuration changed: NO
+
+P0 result: PASS / COMPLETE FOR REGISTRY REFRESH.
+P1 is NOT started by this commit.
