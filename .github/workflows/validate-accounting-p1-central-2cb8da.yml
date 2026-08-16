@@ -1,0 +1,293 @@
+name: Validate Accounting P1 Journal Integrity on Current Central
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/validate-accounting-p1-central-2cb8da.yml'
+      - 'fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout accounting handoff branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact approved Central HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
+          path: central-repo
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Verify exact Central and patch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central-repo rev-parse HEAD)" = "2cb8da801fc54aec8c1f0d6a83588f097ca85117"
+          test "$(git -C central-repo rev-parse HEAD:central_source)" = "7733c6570357eb813f7e05e5093752ea26788749"
+          grep -q 'applicationId = "com.fush.erp.recovery"' central-repo/central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central-repo/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          echo '6ef030b26c2ae27ca181bb7b78ddebf9de1ea1e5d0a4ae14e6dbf5c0c88b85ec  fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch' | sha256sum -c -
+
+      - name: Apply only P1 patch to current Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch"
+          git -C central-repo apply --check --directory=central_source "$PATCH"
+          git -C central-repo apply --directory=central_source "$PATCH"
+          git -C central-repo diff --check
+          mapfile -t changed < <(git -C central-repo diff --name-only)
+          printf '%s\n' "${changed[@]}"
+          test "${#changed[@]}" -eq 5
+          expected=$(cat <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          central_source/app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt
+          central_source/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt
+          EOF
+          )
+          actual="$(printf '%s\n' "${changed[@]}" | sort)"
+          test "$actual" = "$(printf '%s\n' "$expected" | sed 's/^          //' | sort)"
+
+      - name: P0 contract and P1 stable-source regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('central-repo/central_source')
+          contract=(root/'app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt').read_text()
+          migration=(root/'app/src/main/java/com/fush/erp/data/Migrations.kt').read_text()
+          stable=set()
+          for line in contract.splitlines():
+              if 'AccountingEventSpec(' in line and 'AccountingReplayPolicy.STABLE_SOURCE' in line:
+                  m=re.search(r'AccountingEventSpec\("([A-Z0-9_]+)"', line)
+                  if m: stable.add(m.group(1))
+          block=migration.split('val MIGRATION_34_35_ACCOUNTING_P1',1)[1]
+          quoted=set(re.findall(r"'([A-Z][A-Z0-9_]+)'", block.split('""".trimIndent()',1)[0]))
+          if stable != quoted:
+              raise SystemExit(f'P0/P1 stable-source mismatch: contract={sorted(stable)} migration={sorted(quoted)}')
+          expected={
+              'CASH_COUNT_ADJUSTMENT','FX_REVALUATION','SALE','CUSTOMER_RECEIPT','SALES_RETURN',
+              'PURCHASE','PURCHASE_RETURN','SUPPLIER_PAYMENT','INVENTORY_COUNT','PRODUCTION_ISSUE',
+              'PRODUCTION_LABOR','PRODUCTION_RECEIPT','PRODUCTION_REJECT'
+          }
+          if stable != expected:
+              raise SystemExit(f'unexpected stable set: {sorted(stable)}')
+          print('ACCOUNTING_P1_STABLE_SOURCE_REGRESSION_OK', len(stable))
+          PY
+
+      - name: Room and non-destructive guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=central-repo/central_source
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' "$ROOT/app/src/main/java"
+          ! grep -n -E 'DROP TABLE|DELETE FROM journal_entries|DELETE FROM journal_lines' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+
+      - name: SQLite P1 migration and journal-integrity smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          stable="'CASH_COUNT_ADJUSTMENT','FX_REVALUATION','SALE','CUSTOMER_RECEIPT','SALES_RETURN','PURCHASE','PURCHASE_RETURN','SUPPLIER_PAYMENT','INVENTORY_COUNT','PRODUCTION_ISSUE','PRODUCTION_LABOR','PRODUCTION_RECEIPT','PRODUCTION_REJECT'"
+          db=sqlite3.connect(':memory:')
+          db.executescript('''
+          PRAGMA foreign_keys=ON;
+          CREATE TABLE journal_entries(
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            entryNo TEXT NOT NULL UNIQUE,
+            entryDate INTEGER NOT NULL,
+            description TEXT NOT NULL,
+            currencyCode TEXT NOT NULL,
+            exchangeRate REAL NOT NULL,
+            sourceType TEXT NOT NULL,
+            sourceId TEXT,
+            status TEXT NOT NULL,
+            createdBy INTEGER NOT NULL,
+            createdAt INTEGER NOT NULL
+          );
+          CREATE TABLE journal_lines(
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            entryId INTEGER NOT NULL,
+            accountId INTEGER NOT NULL,
+            debit REAL NOT NULL,
+            credit REAL NOT NULL,
+            memo TEXT NOT NULL,
+            FOREIGN KEY(entryId) REFERENCES journal_entries(id) ON DELETE CASCADE
+          );
+          ''')
+          # Historical duplicates remain untouched by migration.
+          for no in ('OLD-1','OLD-2'):
+              db.execute("INSERT INTO journal_entries(entryNo,entryDate,description,currencyCode,exchangeRate,sourceType,sourceId,status,createdBy,createdAt) VALUES(?,1,'old','YER_NEW',1,'SALE','historical-dup','POSTED',1,1)",(no,))
+          assert db.execute("SELECT COUNT(*) FROM journal_entries WHERE sourceType='SALE' AND sourceId='historical-dup'").fetchone()[0] == 2
+
+          trigger_sql=f'''
+          CREATE TRIGGER trg_journal_stable_source_id_required_insert BEFORE INSERT ON journal_entries
+          WHEN NEW.status='POSTED' AND NEW.sourceType IN ({stable}) AND (NEW.sourceId IS NULL OR TRIM(NEW.sourceId)='')
+          BEGIN SELECT RAISE(ABORT,'ACCOUNTING_STABLE_SOURCE_ID_REQUIRED'); END;
+          CREATE TRIGGER trg_journal_no_duplicate_stable_source_insert BEFORE INSERT ON journal_entries
+          WHEN NEW.status='POSTED' AND NEW.sourceType IN ({stable}) AND NEW.sourceId IS NOT NULL AND TRIM(NEW.sourceId)<>'' AND EXISTS(
+            SELECT 1 FROM journal_entries e WHERE e.status='POSTED' AND e.sourceType=NEW.sourceType AND e.sourceId=NEW.sourceId)
+          BEGIN SELECT RAISE(ABORT,'DUPLICATE_ACCOUNTING_POSTING'); END;
+          CREATE TRIGGER trg_journal_no_duplicate_stable_source_update BEFORE UPDATE OF status,sourceType,sourceId ON journal_entries
+          WHEN OLD.status<>'POSTED' AND NEW.status='POSTED' AND NEW.sourceType IN ({stable}) AND NEW.sourceId IS NOT NULL AND TRIM(NEW.sourceId)<>'' AND EXISTS(
+            SELECT 1 FROM journal_entries e WHERE e.id<>NEW.id AND e.status='POSTED' AND e.sourceType=NEW.sourceType AND e.sourceId=NEW.sourceId)
+          BEGIN SELECT RAISE(ABORT,'DUPLICATE_ACCOUNTING_POSTING'); END;
+          CREATE TRIGGER trg_posted_journal_no_update BEFORE UPDATE ON journal_entries WHEN OLD.status='POSTED'
+          BEGIN SELECT RAISE(ABORT,'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL'); END;
+          CREATE TRIGGER trg_posted_journal_no_delete BEFORE DELETE ON journal_entries WHEN OLD.status='POSTED'
+          BEGIN SELECT RAISE(ABORT,'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL'); END;
+          CREATE TRIGGER trg_journal_line_sanity_insert BEFORE INSERT ON journal_lines
+          WHEN NEW.debit<0 OR NEW.credit<0 OR (NEW.debit>0 AND NEW.credit>0)
+          BEGIN SELECT RAISE(ABORT,'INVALID_JOURNAL_LINE'); END;
+          CREATE TRIGGER trg_posted_journal_line_no_update BEFORE UPDATE ON journal_lines WHEN EXISTS(
+            SELECT 1 FROM journal_entries je WHERE je.id=OLD.entryId AND je.status='POSTED')
+          BEGIN SELECT RAISE(ABORT,'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL'); END;
+          CREATE TRIGGER trg_posted_journal_line_no_delete BEFORE DELETE ON journal_lines WHEN EXISTS(
+            SELECT 1 FROM journal_entries je WHERE je.id=OLD.entryId AND je.status='POSTED')
+          BEGIN SELECT RAISE(ABORT,'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL'); END;
+          '''
+          db.executescript(trigger_sql)
+
+          def must_fail(sql,args=()):
+              try:
+                  db.execute(sql,args)
+                  raise AssertionError('statement unexpectedly succeeded: '+sql)
+              except sqlite3.IntegrityError:
+                  pass
+
+          base="INSERT INTO journal_entries(entryNo,entryDate,description,currencyCode,exchangeRate,sourceType,sourceId,status,createdBy,createdAt) VALUES(?,1,'x','YER_NEW',1,?,?,?,1,1)"
+          db.execute(base,('S-1','SALE','42','POSTED'))
+          sale_id=db.execute("SELECT id FROM journal_entries WHERE entryNo='S-1'").fetchone()[0]
+          db.execute("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,1,100,0,'')",(sale_id,))
+          db.execute("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,2,0,100,'')",(sale_id,))
+          assert db.execute("SELECT ROUND(SUM(debit-credit),6) FROM journal_lines WHERE entryId=?",(sale_id,)).fetchone()[0] == 0
+
+          must_fail(base,('S-2','SALE','42','POSTED'))
+          must_fail(base,('S-3','SALE',' ','POSTED'))
+          # Manual/repeatable source is not falsely deduplicated.
+          db.execute(base,('M-1','MANUAL','same','POSTED'))
+          db.execute(base,('M-2','MANUAL','same','POSTED'))
+          # Invalid line shapes are refused.
+          must_fail("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,3,-1,0,'')",(sale_id,))
+          must_fail("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,3,1,1,'')",(sale_id,))
+          # Posted journal and its lines are immutable.
+          must_fail("UPDATE journal_entries SET description='edited' WHERE id=?",(sale_id,))
+          must_fail("DELETE FROM journal_entries WHERE id=?",(sale_id,))
+          line_id=db.execute("SELECT id FROM journal_lines WHERE entryId=? LIMIT 1",(sale_id,)).fetchone()[0]
+          must_fail("UPDATE journal_lines SET debit=99 WHERE id=?",(line_id,))
+          must_fail("DELETE FROM journal_lines WHERE id=?",(line_id,))
+          # Reversal remains a new independent balanced journal.
+          db.execute(base,('R-1','REVERSAL',str(sale_id),'POSTED'))
+          rev_id=db.execute("SELECT id FROM journal_entries WHERE entryNo='R-1'").fetchone()[0]
+          db.execute("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,1,0,100,'')",(rev_id,))
+          db.execute("INSERT INTO journal_lines(entryId,accountId,debit,credit,memo) VALUES(?,2,100,0,'')",(rev_id,))
+          assert db.execute("SELECT ROUND(SUM(debit-credit),6) FROM journal_lines WHERE entryId=?",(rev_id,)).fetchone()[0] == 0
+          print('ACCOUNTING_P1_SQLITE_JOURNAL_INTEGRITY_OK')
+          PY
+
+      - name: Unit tests
+        working-directory: central-repo/central_source
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/accounting-p1-unit.log"
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Accounting-P1-Journal-Integrity-Diagnostics
+          path: accounting-p1-unit.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+      - name: Release build
+        working-directory: central-repo/central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Room schema 35 and package handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$GITHUB_WORKSPACE/central-repo/central_source"
+          OUT="$GITHUB_WORKSPACE/accounting-p1-output"
+          mkdir -p "$OUT"
+          test -f "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          grep -q '"version": 35' "$ROOT/app/schemas/com.fush.erp.data.FushDatabase/35.json"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk" "$OUT/FushERP-Accounting-P1-Journal-Integrity-aligned-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$OUT/FushERP-Accounting-P1-Journal-Integrity-aligned-unsigned.apk"
+          cp "$GITHUB_WORKSPACE/fush_accounting/handoffs/P1_journal_integrity/ACCOUNTING_P1_JOURNAL_INTEGRITY.patch" "$OUT/"
+          git -C "$GITHUB_WORKSPACE/central-repo" diff --binary -- central_source > "$OUT/CENTRAL-2cb8da-ACCOUNTING-P1.diff"
+          cp -a "$ROOT" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source"
+          rm -rf "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/.gradle" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/.kotlin" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/app/build" "$GITHUB_WORKSPACE/FushERP_Accounting_P1_Source/build"
+          cd "$GITHUB_WORKSPACE" && zip -qr "$OUT/FushERP-Mobile-Accounting-P1-Journal-Integrity-Source.zip" FushERP_Accounting_P1_Source
+          sha256sum "$OUT"/* > "$OUT/SHA256SUMS.txt"
+          cat > "$OUT/BUILD-REPORT.txt" <<'REPORT'
+          FUSH ERP Mobile — Accounting P1 Journal Integrity
+          Exact Central HEAD: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
+          Central source tree before P1: 7733c6570357eb813f7e05e5093752ea26788749
+          Application ID: com.fush.erp.recovery
+          Central Room before P1: 34
+          Branch-local Room after P1: 35 (PROVISIONAL; integration owns final numbering)
+          Migration: 34 -> 35 ACCOUNTING_P1 (provisional)
+          Patch SHA-256: 6ef030b26c2ae27ca181bb7b78ddebf9de1ea1e5d0a4ae14e6dbf5c0c88b85ec
+          P0 stable-source contract regression: PASS
+          Historical duplicate preservation smoke: PASS
+          Stable-source duplicate prevention smoke: PASS
+          Posted journal immutability smoke: PASS
+          Posted journal-line immutability smoke: PASS
+          Reversal-as-new-entry smoke: PASS
+          Double-entry validator regression: PASS
+          Unit Tests: PASS
+          Release Build: PASS
+          Room Schema 35 generation: PASS
+          No destructive migration/fallback: PASS
+          Zipalign: PASS
+          Inventory quantity logic changed: NO
+          Production quantity logic changed: NO
+          Signing: NOT PERFORMED
+          ACCOUNTING_P1_JOURNAL_INTEGRITY_VALIDATED_OK
+          REPORT
+
+      - name: Upload validated P1 handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-P1-Journal-Integrity-Validated-Handoff
+          path: accounting-p1-output/
+          if-no-files-found: error
+          retention-days: 7
