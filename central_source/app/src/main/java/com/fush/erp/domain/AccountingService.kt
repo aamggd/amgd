@@ -1534,7 +1534,7 @@ class AccountingService(private val db: FushDatabase) {
             }
             "2100" -> {
                 require(request.customerId == null && request.employeeId == null && request.salesRepId == null) { "حساب الموردين يقبل مورداً فقط" }
-                val id = requireNotNull(request.supplierId) { "يجب تحديد المورد عند استخدام حساب الموردين" }
+                val id = SupplierMovementIdentity.requireId(request.supplierId)
                 val supplier = requireNotNull(db.supplierDao().byId(id)) { "المورد المحدد غير موجود" }
                 require(supplier.isActive) { "المورد المحدد غير نشط" }
                 PartyLink("SUPPLIER", supplier.nameAr, supplierId = supplier.id)

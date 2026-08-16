@@ -70,7 +70,8 @@ class PurchaseService(private val db: FushDatabase) {
         db.requireUserPermission(request.createdBy, SecurityPermissions.PURCHASE_POST)
         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع السداد غير صالح" }
         PurchaseMath.validateExchangeRate(request.exchangeRate)
-        val supplier = requireNotNull(db.supplierDao().byId(request.supplierId)) { "المورد غير موجود" }
+        val supplierId = SupplierMovementIdentity.requireId(request.supplierId)
+        val supplier = requireNotNull(db.supplierDao().byId(supplierId)) { "المورد غير موجود" }
         require(db.warehouseDao().allActive().any { it.id == request.warehouseId }) { "المخزن غير موجود" }
         val cashTreasury = if (request.paymentType == "CASH") resolveTreasury(request.treasuryAccountId, request.currencyCode) else null
         val totalOriginal = PurchaseMath.totalOriginal(request.lines)
@@ -158,6 +159,7 @@ class PurchaseService(private val db: FushDatabase) {
         PurchaseMath.validateReturnDraft(request.lines)
 
         val invoice = requireNotNull(db.purchaseDao().invoiceById(request.purchaseInvoiceId)) { "فاتورة الشراء غير موجودة" }
+        SupplierMovementIdentity.requireId(invoice.supplierId)
         require(invoice.status == "POSTED") { "يمكن إرجاع الأصناف من فاتورة مرحلة فقط" }
         val refundTreasury = if (request.settlementType == "CASH_REFUND") resolveTreasury(request.treasuryAccountId, invoice.currencyCode) else null
 
@@ -389,7 +391,8 @@ class PurchaseService(private val db: FushDatabase) {
         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس الدفعة" }
 
         PurchaseMath.validateExchangeRate(paymentExchangeRate)
-        val supplier = requireNotNull(db.supplierDao().byId(supplierId)) { "المورد غير موجود" }
+        val validatedSupplierId = SupplierMovementIdentity.requireId(supplierId)
+        val supplier = requireNotNull(db.supplierDao().byId(validatedSupplierId)) { "المورد غير موجود" }
         val treasury = requireNotNull(db.accountingDao().treasuryById(treasuryAccountId)) { "الخزينة/البنك غير موجود" }
         require(treasury.isActive) { "الخزينة/البنك غير نشط" }
         require(treasury.currencyCode == currencyCode) { "عملة الخزينة يجب أن تطابق عملة الدفعة" }
@@ -472,6 +475,7 @@ class PurchaseService(private val db: FushDatabase) {
         require(reason.trim().isNotBlank()) { "سبب عكس دفعة المورد مطلوب" }
         AccountingService(db).requirePostingPeriodOpen(reversalDate)
         val original = requireNotNull(db.purchaseDao().supplierPaymentById(paymentId)) { "دفعة المورد غير موجودة" }
+        SupplierMovementIdentity.requireId(original.supplierId)
         require(original.reversalOfPaymentId == null) { "لا يمكن عكس مستند عكس" }
         require(reversalDate >= original.paymentDate) { "تاريخ العكس لا يمكن أن يسبق تاريخ الدفع" }
         require(db.purchaseDao().reversalForSupplierPayment(original.id) == null) { "تم عكس هذه الدفعة مسبقاً" }
