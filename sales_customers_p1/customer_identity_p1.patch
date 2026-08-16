@@ -1,0 +1,152 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/AccountingService.kt b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+--- a/app/src/main/java/com/fush/erp/domain/AccountingService.kt
++++ b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+@@ -1521,7 +1521,7 @@ class AccountingService(private val db: FushDatabase) {
+         return when (offset.code) {
+             "1300" -> {
+                 require(request.supplierId == null && request.employeeId == null && request.salesRepId == null) { "حساب العملاء يقبل عميلاً فقط" }
+-                val id = requireNotNull(request.customerId) { "يجب تحديد العميل عند استخدام حساب العملاء" }
++                val id = CustomerMovementIdentity.requireId(request.customerId)
+                 val customer = requireNotNull(db.customerDao().byId(id)) { "العميل المحدد غير موجود" }
+                 require(customer.isActive) { "العميل المحدد غير نشط" }
+                 PartyLink("CUSTOMER", customer.nameAr, customerId = customer.id)
+diff --git a/app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt b/app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
+@@ -0,0 +1,17 @@
++package com.fush.erp.domain
++
++/**
++ * Identity guard for every business movement that belongs to a customer.
++ *
++ * Customer names are display snapshots only and must never be used as the
++ * transaction identity. A persisted receivable/customer movement must carry
++ * a real, positive customer primary key.
++ */
++object CustomerMovementIdentity {
++    fun requireId(customerId: Long?): Long {
++        val id = requireNotNull(customerId) { "يجب تحديد العميل وربط الحركة بمعرف العميل" }
++        require(id > 0L) { "معرف العميل غير صالح" }
++        return id
++    }
++}
+diff --git a/app/src/main/java/com/fush/erp/domain/SalesService.kt b/app/src/main/java/com/fush/erp/domain/SalesService.kt
+--- a/app/src/main/java/com/fush/erp/domain/SalesService.kt
++++ b/app/src/main/java/com/fush/erp/domain/SalesService.kt
+@@ -178,7 +178,8 @@ class SalesService(private val db: FushDatabase) {
+         db.requireUserPermission(request.createdBy, SecurityPermissions.SALES_POST)
+         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع البيع غير صالح" }
+         SalesMath.validateExchangeRate(request.exchangeRate)
+-        val customer = requireNotNull(db.customerDao().byId(request.customerId)) { "العميل غير موجود" }
++        val customerId = CustomerMovementIdentity.requireId(request.customerId)
++        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
+         val salesRep = (request.salesRepId ?: customer.salesRepId)?.let { id ->
+             requireNotNull(db.salesRepresentativeDao().byId(id)) { "مندوب المبيعات غير موجود" }.also {
+                 require(it.status == "ACTIVE") { "مندوب المبيعات غير نشط" }
+@@ -337,7 +338,8 @@ class SalesService(private val db: FushDatabase) {
+         receiptDate: Long = System.currentTimeMillis(),
+         treasuryAccountId: Long? = null
+     ): MultiReceiptResult = db.withTransaction {
+-        val open = db.salesDao().openInvoiceSummaries(customerId)
++        val validatedCustomerId = CustomerMovementIdentity.requireId(customerId)
++        val open = db.salesDao().openInvoiceSummaries(validatedCustomerId)
+             .filter { it.currencyCode == currencyCode }
+         val plan = SettlementAllocationMath.allocateOldest(
+             amountOriginal,
+@@ -348,7 +350,7 @@ class SalesService(private val db: FushDatabase) {
+             }
+         )
+         postReceiptAllocationsInternal(
+-            customerId = customerId,
++            customerId = validatedCustomerId,
+             allocations = plan.allocations.map { ReceiptAllocationRequest(it.invoiceId, it.amountOriginal) },
+             currencyCode = currencyCode,
+             exchangeRate = exchangeRate,
+@@ -388,7 +390,8 @@ class SalesService(private val db: FushDatabase) {
+         SalesMath.validateExchangeRate(exchangeRate)
+         require(allocations.isNotEmpty()) { "يجب تحديد فاتورة واحدة على الأقل للتحصيل" }
+         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس التحصيل" }
+-        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
++        val validatedCustomerId = CustomerMovementIdentity.requireId(customerId)
++        val customer = requireNotNull(db.customerDao().byId(validatedCustomerId)) { "العميل غير موجود" }
+         val treasury = resolveTreasury(treasuryAccountId, currencyCode)
+ 
+         data class Prepared(val invoice: SalesInvoiceEntity, val request: ReceiptAllocationRequest, val split: CustomerArMath.ReceiptSplit)
+@@ -480,6 +483,7 @@ class SalesService(private val db: FushDatabase) {
+         require(reason.trim().isNotBlank()) { "سبب عكس التحصيل مطلوب" }
+         AccountingService(db).requirePostingPeriodOpen(reversalDate)
+         val original = requireNotNull(db.salesDao().receiptById(receiptId)) { "التحصيل غير موجود" }
++        val customerId = CustomerMovementIdentity.requireId(original.customerId)
+         require(original.reversalOfReceiptId == null) { "لا يمكن عكس مستند عكس" }
+         require(reversalDate >= original.receiptDate) { "تاريخ العكس لا يمكن أن يسبق تاريخ التحصيل" }
+         require(db.salesDao().reversalForReceipt(original.id) == null) { "تم عكس هذا التحصيل مسبقاً" }
+@@ -487,7 +491,11 @@ class SalesService(private val db: FushDatabase) {
+         require(allocations.isNotEmpty()) { "التحصيل لا يحتوي تخصيصاً لفاتورة" }
+         val invoices = allocations.map { allocation ->
+-            requireNotNull(db.salesDao().invoiceById(allocation.invoiceId)) { "فاتورة التحصيل غير موجودة" }
++            requireNotNull(db.salesDao().invoiceById(allocation.invoiceId)) { "فاتورة التحصيل غير موجودة" }.also { invoice ->
++                val invoiceCustomerId = CustomerMovementIdentity.requireId(invoice.customerId)
++                require(invoiceCustomerId == customerId) {
++                    "فاتورة التحصيل لا تخص العميل المرتبط بالتحصيل"
++                }
++            }
+         }
+         require(invoices.all { it.paymentType == "CREDIT" }) {
+             "التحصيل النقدي التلقائي لفاتورة نقدية يعكس من عملية البيع الأصلية، وليس كتحصيل مستقل"
+@@ -508,7 +516,7 @@ class SalesService(private val db: FushDatabase) {
+             CustomerReceiptEntity(
+                 receiptNo = reversalNo,
+-                customerId = original.customerId,
++                customerId = customerId,
+                 receiptDate = reversalDate,
+                 currencyCode = original.currencyCode,
+                 exchangeRate = original.exchangeRate,
+@@ -560,7 +568,8 @@ class SalesService(private val db: FushDatabase) {
+         require(reason.isNotBlank()) { "سبب المرتجع مطلوب" }
+         val line = requireNotNull(db.salesDao().lineById(salesLineId)) { "سطر البيع غير موجود" }
+         val invoice = requireNotNull(db.salesDao().invoiceById(line.invoiceId)) { "فاتورة البيع غير موجودة" }
+-        val customer = requireNotNull(db.customerDao().byId(invoice.customerId)) { "العميل غير موجود" }
++        val customerId = CustomerMovementIdentity.requireId(invoice.customerId)
++        val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
+         val refundTreasury = if (settlementType == "CASH_REFUND") resolveTreasury(treasuryAccountId, invoice.currencyCode) else null
+         val alreadyReturned = db.salesDao().returnedQuantityForLine(line.id)
+         SalesMath.validateReturn(quantity, line.quantity, alreadyReturned)
+diff --git a/app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt b/app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt
+@@ -0,0 +1,31 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class CustomerMovementIdentityTest {
++    @Test
++    fun positiveCustomerIdIsAccepted() {
++        assertEquals(42L, CustomerMovementIdentity.requireId(42L))
++    }
++
++    @Test
++    fun missingCustomerIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            CustomerMovementIdentity.requireId(null)
++        }
++    }
++
++    @Test
++    fun zeroCustomerIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            CustomerMovementIdentity.requireId(0L)
++        }
++    }
++
++    @Test
++    fun negativeCustomerIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            CustomerMovementIdentity.requireId(-7L)
++        }
++    }
++}
