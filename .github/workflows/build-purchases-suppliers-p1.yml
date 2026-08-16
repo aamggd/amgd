@@ -15,7 +15,7 @@ permissions:
 env:
   CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
   CENTRAL_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
-  PHASE_PATCH_SHA256: 'da8e434ed18d17cd136d80dee872f4a5528d708369fa473cc1ff71b3ea0f2753'
+  PHASE_PATCH_BLOB: '6dd1066ef1b8e7c2e0fe25b0ec97d0357f7ee921'
 
 jobs:
   validate-p1:
@@ -61,7 +61,7 @@ jobs:
           test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
           test -f central_source/app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt
           ! grep -R -n 'fallbackToDestructiveMigration' central_source/app/src/main central_source/app/build.gradle.kts
-          echo "${PHASE_PATCH_SHA256}  purchases_suppliers_p1/phase_p1.patch" | sha256sum -c -
+          test "$(git hash-object purchases_suppliers_p1/phase_p1.patch)" = "$PHASE_PATCH_BLOB"
 
       - name: Apply P1 on a clean Central working copy
         shell: bash
