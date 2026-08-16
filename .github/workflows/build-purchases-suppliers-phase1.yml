@@ -1,0 +1,129 @@
+name: Build Purchases Suppliers Phase 1
+
+on:
+  push:
+    branches: [fush/purchases-suppliers]
+    paths:
+      - 'purchases_suppliers_phase1/**'
+      - '.github/workflows/build-purchases-suppliers-phase1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-phase1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch handoff
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Restore exact validated central 14.5.54 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Verify baseline and apply Phase 1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          mkdir -p restored final-repo output
+          unzip -q "$ZIP" -d restored
+          BASE=$(find restored -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" final-repo/
+
+          cd final-repo
+          git init -q
+          git config user.email purchases-suppliers@fush.local
+          git config user.name 'FUSH Purchases Suppliers'
+          git add -A
+          git commit -qm baseline-14.5.54
+          BASE_TREE=$(git write-tree)
+          echo "BASE_TREE=$BASE_TREE"
+          test "$BASE_TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-printing-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+
+          git apply --check ../purchases_suppliers_phase1/phase1.patch
+          git apply ../purchases_suppliers_phase1/phase1.patch
+          git diff --check
+
+          test -f app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt
+          test -f app/src/test/java/com/fush/erp/domain/SupplierMovementIdentityTest.kt
+          grep -q 'SupplierMovementIdentity.requireId(request.supplierId)' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -q 'SupplierMovementIdentity.requireId(request.supplierId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+
+          # Phase 1 must not alter Room schema, application identity or official central version metadata.
+          test "$(git diff --name-only | grep -c '^app/src/main/java/com/fush/erp/data/FushDatabase.kt$' || true)" -eq 0
+          test "$(git diff --name-only | grep -c '^app/schemas/' || true)" -eq 0
+          test "$(git diff --name-only | grep -c '^app/build.gradle.kts$' || true)" -eq 0
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+
+      - name: Phase 1 focused unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.SupplierMovementIdentityTest
+
+      - name: Full unit regression suite
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate release output
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=final-repo/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -q 'applicationId = "com.fush.erp.recovery"' final-repo/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' final-repo/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' final-repo/app/src/main/java final-repo/app/build.gradle.kts
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" output/FushERP-Purchases-Suppliers-Phase1-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 output/FushERP-Purchases-Suppliers-Phase1-aligned-unsigned.apk
+          (cd final-repo && zip -qr ../output/FushERP-Mobile-Purchases-Suppliers-Phase1-Source.zip . -x '.git/*' '.gradle/*' '.kotlin/*' 'app/build/*' 'build/*')
+          sha256sum output/* > output/SHA256SUMS.txt
+
+      - name: Upload Phase 1 validation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Purchases-Suppliers-Phase1-Build
+          path: output/
+          if-no-files-found: error

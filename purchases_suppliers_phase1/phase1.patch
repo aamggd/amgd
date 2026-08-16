@@ -1,0 +1,114 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/AccountingService.kt b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+index 0fb43ec..eca6560 100644
+--- a/app/src/main/java/com/fush/erp/domain/AccountingService.kt
++++ b/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+@@ -1534,7 +1534,7 @@ class AccountingService(private val db: FushDatabase) {
+             }
+             "2100" -> {
+                 require(request.customerId == null && request.employeeId == null && request.salesRepId == null) { "حساب الموردين يقبل مورداً فقط" }
+-                val id = requireNotNull(request.supplierId) { "يجب تحديد المورد عند استخدام حساب الموردين" }
++                val id = SupplierMovementIdentity.requireId(request.supplierId)
+                 val supplier = requireNotNull(db.supplierDao().byId(id)) { "المورد المحدد غير موجود" }
+                 require(supplier.isActive) { "المورد المحدد غير نشط" }
+                 PartyLink("SUPPLIER", supplier.nameAr, supplierId = supplier.id)
+diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+index fe8c6e6..7931f4a 100644
+--- a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
++++ b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+@@ -70,7 +70,8 @@ class PurchaseService(private val db: FushDatabase) {
+         db.requireUserPermission(request.createdBy, SecurityPermissions.PURCHASE_POST)
+         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع السداد غير صالح" }
+         PurchaseMath.validateExchangeRate(request.exchangeRate)
+-        val supplier = requireNotNull(db.supplierDao().byId(request.supplierId)) { "المورد غير موجود" }
++        val supplierId = SupplierMovementIdentity.requireId(request.supplierId)
++        val supplier = requireNotNull(db.supplierDao().byId(supplierId)) { "المورد غير موجود" }
+         require(db.warehouseDao().allActive().any { it.id == request.warehouseId }) { "المخزن غير موجود" }
+         val cashTreasury = if (request.paymentType == "CASH") resolveTreasury(request.treasuryAccountId, request.currencyCode) else null
+         val totalOriginal = PurchaseMath.totalOriginal(request.lines)
+@@ -158,6 +159,7 @@ class PurchaseService(private val db: FushDatabase) {
+         PurchaseMath.validateReturnDraft(request.lines)
+ 
+         val invoice = requireNotNull(db.purchaseDao().invoiceById(request.purchaseInvoiceId)) { "فاتورة الشراء غير موجودة" }
++        SupplierMovementIdentity.requireId(invoice.supplierId)
+         require(invoice.status == "POSTED") { "يمكن إرجاع الأصناف من فاتورة مرحلة فقط" }
+         val refundTreasury = if (request.settlementType == "CASH_REFUND") resolveTreasury(request.treasuryAccountId, invoice.currencyCode) else null
+ 
+@@ -389,7 +391,8 @@ class PurchaseService(private val db: FushDatabase) {
+         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس الدفعة" }
+ 
+         PurchaseMath.validateExchangeRate(paymentExchangeRate)
+-        val supplier = requireNotNull(db.supplierDao().byId(supplierId)) { "المورد غير موجود" }
++        val validatedSupplierId = SupplierMovementIdentity.requireId(supplierId)
++        val supplier = requireNotNull(db.supplierDao().byId(validatedSupplierId)) { "المورد غير موجود" }
+         val treasury = requireNotNull(db.accountingDao().treasuryById(treasuryAccountId)) { "الخزينة/البنك غير موجود" }
+         require(treasury.isActive) { "الخزينة/البنك غير نشط" }
+         require(treasury.currencyCode == currencyCode) { "عملة الخزينة يجب أن تطابق عملة الدفعة" }
+@@ -472,6 +475,7 @@ class PurchaseService(private val db: FushDatabase) {
+         require(reason.trim().isNotBlank()) { "سبب عكس دفعة المورد مطلوب" }
+         AccountingService(db).requirePostingPeriodOpen(reversalDate)
+         val original = requireNotNull(db.purchaseDao().supplierPaymentById(paymentId)) { "دفعة المورد غير موجودة" }
++        SupplierMovementIdentity.requireId(original.supplierId)
+         require(original.reversalOfPaymentId == null) { "لا يمكن عكس مستند عكس" }
+         require(reversalDate >= original.paymentDate) { "تاريخ العكس لا يمكن أن يسبق تاريخ الدفع" }
+         require(db.purchaseDao().reversalForSupplierPayment(original.id) == null) { "تم عكس هذه الدفعة مسبقاً" }
+diff --git a/app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt b/app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt
+new file mode 100644
+index 0000000..0c94352
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt
+@@ -0,0 +1,16 @@
++package com.fush.erp.domain
++
++/**
++ * Identity guard for every business movement that belongs to a supplier.
++ *
++ * Supplier names are display snapshots only and must never be used as the
++ * transaction identity. A persisted supplier movement must carry a real,
++ * positive supplier primary key.
++ */
++object SupplierMovementIdentity {
++    fun requireId(supplierId: Long?): Long {
++        val id = requireNotNull(supplierId) { "يجب تحديد المورد وربط الحركة بمعرف المورد" }
++        require(id > 0L) { "معرف المورد غير صالح" }
++        return id
++    }
++}
+diff --git a/app/src/test/java/com/fush/erp/domain/SupplierMovementIdentityTest.kt b/app/src/test/java/com/fush/erp/domain/SupplierMovementIdentityTest.kt
+new file mode 100644
+index 0000000..16cad50
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/SupplierMovementIdentityTest.kt
+@@ -0,0 +1,33 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class SupplierMovementIdentityTest {
++    @Test
++    fun positiveSupplierIdIsAccepted() {
++        assertEquals(42L, SupplierMovementIdentity.requireId(42L))
++    }
++
++    @Test
++    fun missingSupplierIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            SupplierMovementIdentity.requireId(null)
++        }
++    }
++
++    @Test
++    fun zeroSupplierIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            SupplierMovementIdentity.requireId(0L)
++        }
++    }
++
++    @Test
++    fun negativeSupplierIdIsRejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            SupplierMovementIdentity.requireId(-7L)
++        }
++    }
++}
