@@ -1,0 +1,216 @@
+name: Audit P2C Post-Merge Central APK Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      central_sha:
+        description: 'Final fush/integration-current commit SHA'
+        required: true
+        type: string
+      central_source_tree:
+        description: 'Final central_source tree SHA'
+        required: true
+        type: string
+      room_schema:
+        description: 'Final Central Room schema number'
+        required: true
+        type: string
+      build_run_id:
+        description: 'Exact Central build workflow run ID'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Exact Central build artifact name'
+        required: true
+        type: string
+      apk_filename:
+        description: 'Exact APK filename inside the artifact'
+        required: true
+        type: string
+      apk_sha256:
+        description: 'Expected APK SHA-256'
+        required: true
+        type: string
+      expected_cert_sha256:
+        description: 'Expected signing certificate SHA-256; optional only if release control has not pinned it yet'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  postmerge-central-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout audit branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Verify final Central identity and export exact source
+        shell: bash
+        env:
+          FINAL_CENTRAL_SHA: ${{ inputs.central_sha }}
+          FINAL_SOURCE_TREE: ${{ inputs.central_source_tree }}
+          FINAL_SCHEMA: ${{ inputs.room_schema }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$FINAL_CENTRAL_SHA"
+          git cat-file -e "${FINAL_CENTRAL_SHA}^{commit}"
+          test "$(git rev-parse ${FINAL_CENTRAL_SHA}:central_source)" = "$FINAL_SOURCE_TREE"
+
+          rm -rf final-source final-artifact output
+          mkdir -p final-source final-artifact output
+          git archive "${FINAL_CENTRAL_SHA}:central_source" | tar -x -C final-source
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' final-source/app/build.gradle.kts
+          grep -q "FUSH_DB_SCHEMA_VERSION = ${FINAL_SCHEMA}" final-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "final-source/app/schemas/com.fush.erp.data.FushDatabase/${FINAL_SCHEMA}.json"
+          ! grep -R -n 'fallbackToDestructiveMigration' final-source/app/src/main final-source/app/build.gradle.kts
+
+          cd final-source
+          git init -q
+          git config user.name 'FUSH Audit P2C Final'
+          git config user.email audit-p2c-final@fush.local
+          git add -A
+          git commit -qm 'Exact final Central source for P2C audit'
+          test "$(git write-tree)" = "$FINAL_SOURCE_TREE"
+
+      - name: Inject final-source audit contract test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-source/app/src/test/java/com/fush/erp/audit
+          cp audit_evaluation/tests/CrossModuleP1ContractAuditTest.kt \
+            final-source/app/src/test/java/com/fush/erp/audit/CrossModuleP1ContractAuditTest.kt
+
+      - name: Run focused final-source P1 contract tests
+        working-directory: final-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.audit.CrossModuleP1ContractAuditTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.TreasuryPartyRequirementPolicyTest' \
+            --tests 'com.fush.erp.domain.CustomerMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest'
+
+      - name: Run full final-source Unit suite
+        working-directory: final-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Download exact final Central artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: final-artifact
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: ${{ inputs.build_run_id }}
+
+      - name: Verify exact Central APK identity package alignment and existing signature
+        shell: bash
+        env:
+          APK_FILENAME: ${{ inputs.apk_filename }}
+          EXPECTED_APK_SHA256: ${{ inputs.apk_sha256 }}
+          EXPECTED_CERT_SHA256: ${{ inputs.expected_cert_sha256 }}
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find final-artifact -type f -name "$APK_FILENAME" -print)
+          test "${#APKS[@]}" -eq 1
+          APK="${APKS[0]}"
+          test -s "$APK"
+
+          ACTUAL_APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
+          test "${ACTUAL_APK_SHA,,}" = "${EXPECTED_APK_SHA256,,}"
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee output/APK_BADGING.txt
+          grep -q "package: name='com.fush.erp.recovery'" output/APK_BADGING.txt
+
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 "$APK" | tee output/ZIPALIGN.txt
+
+          # The audit branch never creates/signs with a new key. The supplied Central APK must already be signed.
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee output/APKSIGNER.txt
+
+          if [ -n "$EXPECTED_CERT_SHA256" ]; then
+            ACTUAL_CERT=$(grep -m1 'certificate SHA-256 digest:' output/APKSIGNER.txt | awk '{print $NF}' | tr '[:lower:]' '[:upper:]' | tr -d ':')
+            EXPECTED_CERT=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:lower:]' '[:upper:]' | tr -d ':')
+            test -n "$ACTUAL_CERT"
+            test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          fi
+
+          cp "$APK" output/FINAL_CENTRAL_APK_UNMODIFIED.apk
+          echo "FINAL_APK_PATH=$GITHUB_WORKSPACE/output/FINAL_CENTRAL_APK_UNMODIFIED.apk" >> "$GITHUB_ENV"
+          echo "APK_SHA256=$ACTUAL_APK_SHA" > output/FINAL_APK_IDENTITY.txt
+          echo "CENTRAL_SHA=${{ inputs.central_sha }}" >> output/FINAL_APK_IDENTITY.txt
+          echo "CENTRAL_SOURCE_TREE=${{ inputs.central_source_tree }}" >> output/FINAL_APK_IDENTITY.txt
+          echo "ROOM_SCHEMA=${{ inputs.room_schema }}" >> output/FINAL_APK_IDENTITY.txt
+          echo "BUILD_RUN_ID=${{ inputs.build_run_id }}" >> output/FINAL_APK_IDENTITY.txt
+          echo "ARTIFACT_NAME=${{ inputs.artifact_name }}" >> output/FINAL_APK_IDENTITY.txt
+
+      - name: Install and launch exact signed Central APK on Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb logcat -c
+            adb install -r "$FINAL_APK_PATH"
+            adb shell pm path com.fush.erp.recovery
+            adb shell monkey -p com.fush.erp.recovery -c android.intent.category.LAUNCHER 1
+            sleep 10
+            adb shell pidof com.fush.erp.recovery
+            adb logcat -d > "$GITHUB_WORKSPACE/output/EMULATOR_LOGCAT.txt"
+            if grep -A12 -B3 'FATAL EXCEPTION' "$GITHUB_WORKSPACE/output/EMULATOR_LOGCAT.txt" | grep -q 'com.fush.erp.recovery'; then
+              echo 'Fatal crash detected for com.fush.erp.recovery'
+              exit 1
+            fi
+
+      - name: Mark infrastructure gate PASS but business E2E still pending
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > output/POSTMERGE_APK_GATE_STATUS.txt <<'EOF'
+          STATUS=POST-MERGE CENTRAL SOURCE + EXACT APK INFRASTRUCTURE GATE PASS
+          FINAL_PART2C_STATUS=BUSINESS E2E MATRIX STILL REQUIRED BEFORE COMPLETE
+          NEW_SIGNING_KEY_CREATED=NO
+          APK_MODIFIED_OR_RESIGNED_BY_AUDIT=NO
+          EOF
+
+      - name: Upload final APK gate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-P2C-PostMerge-Central-APK-Gate-Evidence
+          path: output/
+          if-no-files-found: error
