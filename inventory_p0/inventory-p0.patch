@@ -1,0 +1,159 @@
+diff --git a/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt b/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+index 9b21a3b..5bbdf92 100644
+--- a/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+@@ -341,6 +341,14 @@ interface StockDao {
+     @Query("SELECT COALESCE(SUM(quantityBase), 0) FROM stock_movements WHERE warehouseId = :warehouseId AND itemId = :itemId")
+     suspend fun balance(warehouseId: Long, itemId: Long): Double
+ 
++    /** Canonical historical ledger balance: sum of persisted movements up to and including asOf. */
++    @Query("""
++        SELECT COALESCE(SUM(quantityBase), 0)
++        FROM stock_movements
++        WHERE warehouseId = :warehouseId AND itemId = :itemId AND movementDate <= :asOf
++    """)
++    suspend fun balanceAt(warehouseId: Long, itemId: Long, asOf: Long): Double
++
+     @Query("SELECT COALESCE(SUM(ABS(balance)), 0) FROM (SELECT SUM(quantityBase) AS balance FROM stock_movements WHERE warehouseId = :warehouseId GROUP BY itemId)")
+     suspend fun absoluteWarehouseBalance(warehouseId: Long): Double
+ 
+diff --git a/app/src/main/java/com/fush/erp/domain/InventoryService.kt b/app/src/main/java/com/fush/erp/domain/InventoryService.kt
+index fb8637f..57d74b5 100644
+--- a/app/src/main/java/com/fush/erp/domain/InventoryService.kt
++++ b/app/src/main/java/com/fush/erp/domain/InventoryService.kt
+@@ -11,6 +11,19 @@ import java.util.Locale
+ import java.util.UUID
+ 
+ class InventoryService(private val db: FushDatabase) {
++    /**
++     * Recomputes an inventory balance from the stock ledger for a historical cutoff.
++     * No cached/stored quantity is consulted or mutated.
++     */
++    suspend fun balanceAt(warehouseId: Long, itemId: Long, asOf: Long): Double {
++        require(asOf >= 0L) { "تاريخ رصيد المخزون غير صالح" }
++        require(db.warehouseDao().allActive().any { it.id == warehouseId }) { "المخزن غير موجود" }
++        require(db.itemDao().allActive().any { it.id == itemId }) { "الصنف غير موجود" }
++        val result = db.stockDao().balanceAt(warehouseId, itemId, asOf)
++        require(result.isFinite()) { "رصيد المخزون المحسوب غير صالح" }
++        return if (kotlin.math.abs(result) <= StockLedgerInvariant.EPS) 0.0 else result
++    }
++
+     suspend fun postOpeningStock(
+         warehouseId: Long,
+         itemId: Long,
+diff --git a/app/src/main/java/com/fush/erp/domain/StockLedgerInvariant.kt b/app/src/main/java/com/fush/erp/domain/StockLedgerInvariant.kt
+new file mode 100644
+index 0000000..c30765b
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/domain/StockLedgerInvariant.kt
+@@ -0,0 +1,35 @@
++package com.fush.erp.domain
++
++import kotlin.math.abs
++
++/**
++ * Canonical stock-ledger invariant for FUSH inventory.
++ *
++ * A stock balance is derived only from persisted stock movements:
++ * balance(item, warehouse, asOf) = Σ quantityBase for movements whose movementDate <= asOf.
++ *
++ * This helper intentionally contains no mutable/stored-balance concept. It is used by tests and
++ * domain code to keep historical recomputation semantics explicit and deterministic.
++ */
++data class StockLedgerPoint(
++    val movementDate: Long,
++    val quantityBase: Double,
++)
++
++object StockLedgerInvariant {
++    const val EPS = 0.000000001
++
++    fun balance(points: Iterable<StockLedgerPoint>, asOf: Long = Long.MAX_VALUE): Double {
++        require(asOf >= 0L) { "تاريخ رصيد المخزون غير صالح" }
++
++        var total = 0.0
++        points.forEach { point ->
++            require(point.movementDate >= 0L) { "تاريخ حركة المخزون غير صالح" }
++            require(point.quantityBase.isFinite()) { "كمية حركة المخزون غير صالحة" }
++            if (point.movementDate <= asOf) total += point.quantityBase
++        }
++
++        require(total.isFinite()) { "رصيد المخزون المحسوب غير صالح" }
++        return if (abs(total) <= EPS) 0.0 else total
++    }
++}
+diff --git a/app/src/test/java/com/fush/erp/domain/StockLedgerInvariantTest.kt b/app/src/test/java/com/fush/erp/domain/StockLedgerInvariantTest.kt
+new file mode 100644
+index 0000000..2e7d9f0
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/StockLedgerInvariantTest.kt
+@@ -0,0 +1,69 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class StockLedgerInvariantTest {
++    @Test
++    fun balance_is_sum_of_movements_up_to_cutoff() {
++        val points = listOf(
++            StockLedgerPoint(100L, 100.0),
++            StockLedgerPoint(200L, -20.0),
++            StockLedgerPoint(300L, 15.0),
++        )
++
++        assertEquals(100.0, StockLedgerInvariant.balance(points, 150L), 1e-9)
++        assertEquals(80.0, StockLedgerInvariant.balance(points, 250L), 1e-9)
++        assertEquals(95.0, StockLedgerInvariant.balance(points, 300L), 1e-9)
++    }
++
++    @Test
++    fun later_movements_do_not_change_historical_balance() {
++        val original = listOf(
++            StockLedgerPoint(100L, 100.0),
++            StockLedgerPoint(200L, -20.0),
++        )
++        val withLaterMovement = original + StockLedgerPoint(400L, -50.0)
++
++        assertEquals(
++            StockLedgerInvariant.balance(original, 250L),
++            StockLedgerInvariant.balance(withLaterMovement, 250L),
++            1e-9,
++        )
++    }
++
++    @Test
++    fun same_timestamp_movements_are_all_included() {
++        val points = listOf(
++            StockLedgerPoint(100L, 10.0),
++            StockLedgerPoint(100L, -2.5),
++            StockLedgerPoint(100L, 1.5),
++        )
++
++        assertEquals(9.0, StockLedgerInvariant.balance(points, 100L), 1e-9)
++    }
++
++    @Test
++    fun near_zero_balance_is_normalized_to_zero() {
++        val points = listOf(
++            StockLedgerPoint(100L, 1.0),
++            StockLedgerPoint(200L, -1.0 + 1e-12),
++        )
++
++        assertEquals(0.0, StockLedgerInvariant.balance(points), 0.0)
++    }
++
++    @Test
++    fun invalid_movement_values_are_rejected() {
++        assertThrows(IllegalArgumentException::class.java) {
++            StockLedgerInvariant.balance(listOf(StockLedgerPoint(100L, Double.NaN)))
++        }
++        assertThrows(IllegalArgumentException::class.java) {
++            StockLedgerInvariant.balance(listOf(StockLedgerPoint(-1L, 1.0)))
++        }
++        assertThrows(IllegalArgumentException::class.java) {
++            StockLedgerInvariant.balance(emptyList(), -1L)
++        }
++    }
++}
