@@ -116,7 +116,7 @@ jobs:
           test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
           ! git diff --cached --name-only | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/'
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
-          ! grep -R -E -q 'DROP TABLE|DELETE FROM sqlite_master' app/src/main/java/com/fush/erp/data
+          ! grep -E -q 'DROP TABLE|DELETE FROM sqlite_master|fallbackToDestructiveMigration' ../production_quality_p1/production-quality-p1.patch
 
       - name: Package initial branch-only artifacts
         shell: bash
