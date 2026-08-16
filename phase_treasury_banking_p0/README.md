@@ -11,6 +11,7 @@ Branch: `fush/treasury-banking`
 - Exact source tree: `1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff`
 - Application ID: `com.fush.erp.recovery`
 - Room schema: `34` (unchanged by P0)
+- Re-confirmed against current integration control: `fush/integration-current@72d8f7fa5298ed577776c3c66c07d4f2c63fef44`, whose registry still pins Phase 14.5.54 as the accepted Central Baseline. No newer Central Baseline was published before this P0 re-validation.
 
 ## Phase P0 scope
 
