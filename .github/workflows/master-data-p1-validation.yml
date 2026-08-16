@@ -1,4 +1,4 @@
-name: Validate master-data P1 stable auto codes
+name: Validate master-data P1 on final Wave Central
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
     paths:
       - 'central_source/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt'
       - 'central_source/app/src/test/java/com/fush/erp/domain/AutoNumberSequencePolicyTest.kt'
-      - 'master_data_p1/**'
       - '.github/workflows/master-data-p1-validation.yml'
   workflow_dispatch:
 
@@ -14,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  validate-p1:
+  validate-p1-final:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -22,11 +21,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify starting Central ancestry and exact app scope
+      - name: Verify final Central ancestry and exact P1 app patch
         shell: bash
         run: |
           set -euo pipefail
-          BASE=2cb8da801fc54aec8c1f0d6a83588f097ca85117
+          BASE=ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
           git merge-base --is-ancestor "$BASE" HEAD
           mapfile -t APP_CHANGED < <(git diff --name-only "$BASE" HEAD -- central_source/app | sort)
           printf '%s\n' "${APP_CHANGED[@]}"
@@ -35,6 +34,7 @@ jobs:
           test "${APP_CHANGED[1]}" = 'central_source/app/src/test/java/com/fush/erp/domain/AutoNumberSequencePolicyTest.kt'
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
           git diff --quiet "$BASE" HEAD -- central_source/app/schemas
 
       - name: Java 17
@@ -59,17 +59,15 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
-      - name: P1 domain tests
-        working-directory: central_source
-        run: >-
-          gradle --no-daemon :app:testDebugUnitTest
-          --tests com.fush.erp.domain.AutoNumberFormatTest
-          --tests com.fush.erp.domain.AutoNumberSequencePolicyTest
-
-      - name: SQLite sequence concurrency contract
+      - name: Domain tests and sequence concurrency contract
         shell: bash
         run: |
           set -euo pipefail
+          cd central_source
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.AutoNumberFormatTest \
+            --tests com.fush.erp.domain.AutoNumberSequencePolicyTest
+          cd ..
           python3 - <<'PY'
           import os, sqlite3, tempfile, threading
 
@@ -114,11 +112,7 @@ jobs:
               for t in threads: t.start()
               for t in threads: t.join()
               assert sorted(values) == list(range(1, 201)), sorted(values)
-
-              # Deactivating/deleting a master row elsewhere must not reset its sequence.
               assert reserve('MASTER:UNT') == 201
-
-              # Independent master namespaces remain independent and monotonic.
               assert reserve('MASTER:WH') == 1
               assert reserve('MASTER:WH') == 2
           finally:
@@ -137,13 +131,25 @@ jobs:
           gradle --no-daemon :app:assembleRelease
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Room and no-destructive safety checks
+      - name: Room and migration checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          git diff --quiet "$BASE" HEAD -- central_source/app/schemas
+
+      - name: No-destructive and identity checks
         shell: bash
         run: |
           set -euo pipefail
           grep -q 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
           ! grep -R -q 'fallbackToDestructiveMigration' central_source/app/src/main/java central_source/app/build.gradle.kts
           grep -q 'db.withTransaction' central_source/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt
           grep -q 'AutoNumberSequencePolicy.next' central_source/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt

@@ -2239,3 +2239,127 @@ val MIGRATION_33_34_FIXED_ASSETS = object : Migration(33, 34) {
         db.execSQL("CREATE INDEX IF NOT EXISTS index_fixed_asset_disposals_treasuryAccountId ON fixed_asset_disposals(treasuryAccountId)")
     }
 }
+
+// Accounting P1 (branch-local/provisional numbering):
+// Protect posted journals from destructive mutation and prevent a second POSTED journal for the
+// exact same operational source only when P0 proved sourceType + sourceId is a stable event identity.
+// Historical rows are preserved as-is; this migration creates guards only and never deletes data.
+val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        val stableSourcesSql = """
+            'CASH_COUNT_ADJUSTMENT',
+            'FX_REVALUATION',
+            'SALE',
+            'CUSTOMER_RECEIPT',
+            'SALES_RETURN',
+            'PURCHASE',
+            'PURCHASE_RETURN',
+            'SUPPLIER_PAYMENT',
+            'INVENTORY_COUNT',
+            'PRODUCTION_ISSUE',
+            'PRODUCTION_LABOR',
+            'PRODUCTION_RECEIPT',
+            'PRODUCTION_REJECT'
+        """.trimIndent()
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_journal_stable_source_id_required_insert
+            BEFORE INSERT ON journal_entries
+            WHEN NEW.status = 'POSTED'
+              AND NEW.sourceType IN ($stableSourcesSql)
+              AND (NEW.sourceId IS NULL OR TRIM(NEW.sourceId) = '')
+            BEGIN
+                SELECT RAISE(ABORT, 'ACCOUNTING_STABLE_SOURCE_ID_REQUIRED');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_journal_no_duplicate_stable_source_insert
+            BEFORE INSERT ON journal_entries
+            WHEN NEW.status = 'POSTED'
+              AND NEW.sourceType IN ($stableSourcesSql)
+              AND NEW.sourceId IS NOT NULL
+              AND TRIM(NEW.sourceId) <> ''
+              AND EXISTS (
+                  SELECT 1 FROM journal_entries existing
+                  WHERE existing.status = 'POSTED'
+                    AND existing.sourceType = NEW.sourceType
+                    AND existing.sourceId = NEW.sourceId
+              )
+            BEGIN
+                SELECT RAISE(ABORT, 'DUPLICATE_ACCOUNTING_POSTING');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_journal_no_duplicate_stable_source_update
+            BEFORE UPDATE OF status, sourceType, sourceId ON journal_entries
+            WHEN OLD.status <> 'POSTED'
+              AND NEW.status = 'POSTED'
+              AND NEW.sourceType IN ($stableSourcesSql)
+              AND NEW.sourceId IS NOT NULL
+              AND TRIM(NEW.sourceId) <> ''
+              AND EXISTS (
+                  SELECT 1 FROM journal_entries existing
+                  WHERE existing.id <> NEW.id
+                    AND existing.status = 'POSTED'
+                    AND existing.sourceType = NEW.sourceType
+                    AND existing.sourceId = NEW.sourceId
+              )
+            BEGIN
+                SELECT RAISE(ABORT, 'DUPLICATE_ACCOUNTING_POSTING');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_no_update
+            BEFORE UPDATE ON journal_entries
+            WHEN OLD.status = 'POSTED'
+            BEGIN
+                SELECT RAISE(ABORT, 'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_no_delete
+            BEFORE DELETE ON journal_entries
+            WHEN OLD.status = 'POSTED'
+            BEGIN
+                SELECT RAISE(ABORT, 'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_journal_line_sanity_insert
+            BEFORE INSERT ON journal_lines
+            WHEN NEW.debit < 0 OR NEW.credit < 0 OR (NEW.debit > 0 AND NEW.credit > 0)
+            BEGIN
+                SELECT RAISE(ABORT, 'INVALID_JOURNAL_LINE');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_line_no_update
+            BEFORE UPDATE ON journal_lines
+            WHEN EXISTS (
+                SELECT 1 FROM journal_entries je
+                WHERE je.id = OLD.entryId AND je.status = 'POSTED'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL');
+            END
+        """.trimIndent())
+
+        db.execSQL("""
+            CREATE TRIGGER IF NOT EXISTS trg_posted_journal_line_no_delete
+            BEFORE DELETE ON journal_lines
+            WHEN EXISTS (
+                SELECT 1 FROM journal_entries je
+                WHERE je.id = OLD.entryId AND je.status = 'POSTED'
+            )
+            BEGIN
+                SELECT RAISE(ABORT, 'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL');
+            END
+        """.trimIndent())
+    }
+}

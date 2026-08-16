@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 import com.fush.erp.data.dao.*
 import com.fush.erp.data.entity.*
 
-const val FUSH_DB_SCHEMA_VERSION = 34
+const val FUSH_DB_SCHEMA_VERSION = 35
 
 @Database(
     entities = [
