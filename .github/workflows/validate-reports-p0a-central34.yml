@@ -48,9 +48,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo 'be2957eb53abc77f0d228af9ad0f2885c9147185ae9135da7f1551394fc42e4a  reports_plan_p0a_central34/payload/p0a.patch.gz.b64' | sha256sum -c -
+          echo 'd2d4704c7422a129c0d3b8a68ac2d1d8020b2e0487ca29aae5a812b39fba9b27  reports_plan_p0a_central34/payload/p0a.patch.gz.b64' | sha256sum -c -
           base64 -d reports_plan_p0a_central34/payload/p0a.patch.gz.b64 | gzip -dc > reports_plan_p0a_central34/p0a.patch
-          echo '646017ff7bd7113678e8a129397560c2f3ae7e026079ccbdf64f695c885306a1  reports_plan_p0a_central34/p0a.patch' | sha256sum -c -
+          echo 'ce47f8b14f51d26fd8c7a56258aaced60719e90756eb26ccde1b707ced0efb5a  reports_plan_p0a_central34/p0a.patch' | sha256sum -c -
           unzip -q central-build/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
           ROOT="$(find . -maxdepth 1 -type d -name 'FushERP_Mobile_*' | head -1)"
           test -n "$ROOT"
@@ -63,7 +63,8 @@ jobs:
           git commit -qm central-14.5.54-schema34
           git apply --check ../reports_plan_p0a_central34/p0a.patch
           git apply ../reports_plan_p0a_central34/p0a.patch
-          git diff --check HEAD
+          git add -A
+          git diff --cached --check HEAD
           grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
@@ -75,10 +76,10 @@ jobs:
           grep -q 'ReportTextLayout.wrap' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
           grep -q 'canvas.clipRect' app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
           # This handoff must not alter central version identifiers or DB files.
-          git diff --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt'
-          git diff --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt'
-          git diff --name-only HEAD | grep -Fx 'app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt'
-          test "$(git diff --name-only HEAD | wc -l)" -eq 3
+          git diff --cached --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt'
+          git diff --cached --name-only HEAD | grep -Fx 'app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt'
+          git diff --cached --name-only HEAD | grep -Fx 'app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt'
+          test "$(git diff --cached --name-only HEAD | wc -l)" -eq 3
 
       - uses: gradle/actions/setup-gradle@v4
         with:
