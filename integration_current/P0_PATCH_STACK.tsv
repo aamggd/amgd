@@ -1,2 +1,3 @@
 # mode<TAB>path<TAB>handoff_sha<TAB>patch_identity<TAB>label
 none	-	19ed5ade8863aea1d7cf4e38986afab64f66aae7	d67077387a02ebef692027d44a133134843d96b9	ui-professional-redesign P0 audit-only
+raw	integration_current/handoffs/accounting/P0_integration_contract/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch	3cf0ca5c4b4ba1e597337b5b68041b3518dbc1ae	79519e120c66edf5e2d53f3c064f26667664a313	accounting P0 integration contract
