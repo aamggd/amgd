@@ -1,0 +1,430 @@
+name: Audit Evaluation Accounting E2E 14.5.54
+
+on:
+  push:
+    branches: [fush/audit-evaluation]
+    paths:
+      - '.github/workflows/audit-evaluation-accounting-e2e-14.5.54.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  accounting-e2e-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+
+      - name: Java 21 for Robolectric SDK 36
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact validated Central 14.5.54 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifact54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore and verify exact audited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifact54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          mkdir -p source54
+          unzip -q "$ZIP" -d source54
+          ROOT=$(find source54 -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$ROOT"
+          cp -a "$ROOT" final-repo
+          cd final-repo
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 93' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.54-printing-integrated"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          git init -q
+          git config user.email audit@fush.local
+          git config user.name FUSH-Audit
+          git add -A
+          git commit -qm baseline-audit-14.5.54
+          TREE=$(git write-tree)
+          echo "AUDITED_SOURCE_TREE=$TREE"
+          test "$TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+
+      - name: Inject audit-only Robolectric harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts')
+          s=p.read_text()
+          needle='''    packaging {\n'''
+          assert needle in s
+          s=s.replace(needle, '''    testOptions {\n        unitTests.isIncludeAndroidResources = true\n    }\n\n    packaging {\n''', 1)
+          needle='''    testImplementation(libs.junit)\n'''
+          assert needle in s
+          s=s.replace(needle, '''    testImplementation(libs.junit)\n    testImplementation("org.robolectric:robolectric:4.16.1")\n    testImplementation("androidx.test:core:1.7.0")\n''', 1)
+          p.write_text(s)
+          PY
+
+          mkdir -p app/src/test/java/com/fush/erp/audit
+          cat > app/src/test/java/com/fush/erp/audit/AccountingSettlementE2EAuditTest.kt <<'KOTLIN'
+          package com.fush.erp.audit
+
+          import android.content.Context
+          import androidx.test.core.app.ApplicationProvider
+          import com.fush.erp.data.AppContainer
+          import com.fush.erp.data.entity.AccountingPeriodEntity
+          import com.fush.erp.data.entity.CustomerEntity
+          import com.fush.erp.data.entity.PurchaseInvoiceEntity
+          import com.fush.erp.data.entity.PurchaseLineEntity
+          import com.fush.erp.data.entity.SalesAllocationEntity
+          import com.fush.erp.data.entity.SalesInvoiceEntity
+          import com.fush.erp.data.entity.SalesLineEntity
+          import com.fush.erp.data.entity.StockMovementEntity
+          import com.fush.erp.data.entity.SupplierEntity
+          import com.fush.erp.data.entity.UserEntity
+          import com.fush.erp.domain.PurchaseDraftLine
+          import com.fush.erp.domain.PurchaseReturnDraftLine
+          import com.fush.erp.domain.PurchaseService
+          import kotlinx.coroutines.runBlocking
+          import org.junit.After
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertNotNull
+          import org.junit.Before
+          import org.junit.Test
+          import org.junit.runner.RunWith
+          import org.robolectric.RobolectricTestRunner
+          import org.robolectric.annotation.Config
+
+          @RunWith(RobolectricTestRunner::class)
+          @Config(sdk = [36])
+          class AccountingSettlementE2EAuditTest {
+              private lateinit var context: Context
+              private lateinit var container: AppContainer
+              private var salesUserId: Long = 0
+              private var purchasingUserId: Long = 0
+
+              @Before
+              fun setUp() = runBlocking {
+                  context = ApplicationProvider.getApplicationContext()
+                  context.deleteDatabase("fush_erp.db")
+                  container = AppContainer(context)
+                  container.seedIfNeeded()
+                  salesUserId = container.db.userDao().insert(
+                      UserEntity(
+                          username = "audit_sales",
+                          displayName = "Audit Sales",
+                          passwordHash = "audit-only",
+                          salt = "audit-only",
+                          role = "SALES",
+                          isActive = true,
+                          mustChangePassword = false
+                      )
+                  )
+                  purchasingUserId = container.db.userDao().insert(
+                      UserEntity(
+                          username = "audit_purchasing",
+                          displayName = "Audit Purchasing",
+                          passwordHash = "audit-only",
+                          salt = "audit-only",
+                          role = "PURCHASING",
+                          isActive = true,
+                          mustChangePassword = false
+                      )
+                  )
+              }
+
+              @After
+              fun tearDown() {
+                  container.db.close()
+                  context.deleteDatabase("fush_erp.db")
+              }
+
+              @Test
+              fun reproduces_AE_ACC_009_uncollected_credit_sale_cash_refund_leaves_AR_open() = runBlocking {
+                  val now = 1_780_000_000_000L
+                  val customerId = container.db.customerDao().insert(
+                      CustomerEntity(
+                          code = "AUD-CUST-001",
+                          nameAr = "عميل تدقيق",
+                          currencyCode = "YER_NEW",
+                          allowCredit = true,
+                          creditLimitBase = 10_000.0,
+                          creditDays = 30
+                      )
+                  )
+                  val warehouse = requireNotNull(container.db.warehouseDao().byCode("FG"))
+                  val item = requireNotNull(container.db.itemDao().byCode("FG-FUSH-60"))
+                  val unit = requireNotNull(container.db.unitDao().byCode("PCS"))
+                  val treasury = container.db.accountingDao().allActiveTreasury().first { it.currencyCode == "YER_NEW" }
+                  val ar = requireNotNull(container.db.accountDao().byCode("1300"))
+
+                  val invoiceId = container.db.salesDao().insertInvoice(
+                      SalesInvoiceEntity(
+                          invoiceNo = "AUD-SINV-001",
+                          customerId = customerId,
+                          invoiceDate = now,
+                          dueDate = now + 30L * 86_400_000L,
+                          warehouseId = warehouse.id,
+                          currencyCode = "YER_NEW",
+                          exchangeRate = 1.0,
+                          paymentType = "CREDIT",
+                          channel = "RETAIL",
+                          province = "تعز",
+                          discountPct = 0.0,
+                          grossOriginal = 100.0,
+                          discountOriginal = 0.0,
+                          transportOriginal = 0.0,
+                          feesOriginal = 0.0,
+                          riskMarginOriginal = 0.0,
+                          totalOriginal = 100.0,
+                          totalBase = 100.0,
+                          createdBy = salesUserId
+                      )
+                  )
+                  val lineId = container.db.salesDao().insertLine(
+                      SalesLineEntity(
+                          invoiceId = invoiceId,
+                          itemId = item.id,
+                          unitId = unit.id,
+                          quantity = 1.0,
+                          factorToBase = 1.0,
+                          baseQuantity = 1.0,
+                          unitPriceOriginal = 100.0,
+                          grossOriginal = 100.0,
+                          discountOriginal = 0.0,
+                          netOriginal = 100.0
+                      )
+                  )
+                  container.db.salesDao().insertAllocation(
+                      SalesAllocationEntity(
+                          salesLineId = lineId,
+                          itemId = item.id,
+                          lotNo = "AUD-SALE-LOT",
+                          expiryDate = now + 365L * 86_400_000L,
+                          quantityBase = 1.0,
+                          unitCostBase = 50.0,
+                          costBase = 50.0
+                      )
+                  )
+
+                  assertEquals(100.0, container.salesService.invoiceOutstandingBase(invoiceId), 0.000001)
+                  val result = container.salesService.postReturn(
+                      salesLineId = lineId,
+                      quantity = 1.0,
+                      settlementType = "CASH_REFUND",
+                      reason = "audit reproduction",
+                      createdBy = salesUserId,
+                      returnDate = now + 1_000L,
+                      treasuryAccountId = treasury.id
+                  )
+
+                  // Defect reproduction: full return succeeds but the credit receivable remains due.
+                  assertEquals(100.0, container.salesService.invoiceOutstandingBase(invoiceId), 0.000001)
+                  val journal = container.db.journalDao().bySource("SALES_RETURN", result.returnId.toString())
+                  assertNotNull(journal)
+                  val lines = container.db.journalDao().linesForEntry(requireNotNull(journal).id)
+                  assertEquals(100.0, lines.filter { it.accountId == treasury.accountId }.sumOf { it.credit - it.debit }, 0.000001)
+                  assertFalse(lines.any { it.accountId == ar.id })
+              }
+
+              @Test
+              fun reproduces_AE_ACC_010_unpaid_credit_purchase_cash_refund_leaves_AP_open() = runBlocking {
+                  val now = 1_780_100_000_000L
+                  val supplierId = container.db.supplierDao().insert(
+                      SupplierEntity(
+                          code = "AUD-SUP-001",
+                          nameAr = "مورد تدقيق",
+                          currencyCode = "YER_NEW",
+                          paymentTermsDays = 30
+                      )
+                  )
+                  val warehouse = requireNotNull(container.db.warehouseDao().byCode("RM"))
+                  val item = requireNotNull(container.db.itemDao().byCode("RM-BORIC"))
+                  val unit = requireNotNull(container.db.unitDao().byCode("KG"))
+                  val treasury = container.db.accountingDao().allActiveTreasury().first { it.currencyCode == "YER_NEW" }
+                  val ap = requireNotNull(container.db.accountDao().byCode("2100"))
+                  val expiry = now + 365L * 86_400_000L
+
+                  val invoiceId = container.db.purchaseDao().insertInvoice(
+                      PurchaseInvoiceEntity(
+                          invoiceNo = "AUD-PINV-001",
+                          supplierId = supplierId,
+                          invoiceDate = now,
+                          dueDate = now + 30L * 86_400_000L,
+                          warehouseId = warehouse.id,
+                          currencyCode = "YER_NEW",
+                          exchangeRate = 1.0,
+                          paymentType = "CREDIT",
+                          subtotalOriginal = 100.0,
+                          totalOriginal = 100.0,
+                          totalBase = 100.0,
+                          createdBy = purchasingUserId
+                      )
+                  )
+                  val purchaseLineId = container.db.purchaseDao().insertLine(
+                      PurchaseLineEntity(
+                          invoiceId = invoiceId,
+                          itemId = item.id,
+                          unitId = unit.id,
+                          quantity = 1.0,
+                          factorToBase = 1.0,
+                          baseQuantity = 1.0,
+                          unitPriceOriginal = 100.0,
+                          lineTotalOriginal = 100.0,
+                          unitCostBase = 100.0,
+                          lotNo = "AUD-PUR-LOT",
+                          expiryDate = expiry
+                      )
+                  )
+                  container.db.stockDao().insertMovement(
+                      StockMovementEntity(
+                          movementDate = now,
+                          warehouseId = warehouse.id,
+                          itemId = item.id,
+                          movementType = "PURCHASE",
+                          quantityBase = 1.0,
+                          unitCostBase = 100.0,
+                          referenceType = "PURCHASE_LINE",
+                          referenceId = purchaseLineId,
+                          lotNo = "AUD-PUR-LOT",
+                          expiryDate = expiry
+                      )
+                  )
+
+                  assertEquals(100.0, container.db.purchaseDao().openSupplierInvoices(supplierId).single().outstandingBase, 0.000001)
+                  val returnId = container.purchaseService.postPurchaseReturn(
+                      PurchaseService.PostPurchaseReturnRequest(
+                          purchaseInvoiceId = invoiceId,
+                          settlementType = "CASH_REFUND",
+                          reason = "audit reproduction",
+                          createdBy = purchasingUserId,
+                          returnDate = now + 1_000L,
+                          lines = listOf(PurchaseReturnDraftLine(purchaseLineId, 1.0)),
+                          treasuryAccountId = treasury.id
+                      )
+                  )
+
+                  // Defect reproduction: full return succeeds but the supplier payable remains due.
+                  assertEquals(100.0, container.db.purchaseDao().openSupplierInvoices(supplierId).single().outstandingBase, 0.000001)
+                  val journal = container.db.journalDao().bySource("PURCHASE_RETURN", returnId.toString())
+                  assertNotNull(journal)
+                  val lines = container.db.journalDao().linesForEntry(requireNotNull(journal).id)
+                  assertEquals(100.0, lines.filter { it.accountId == treasury.accountId }.sumOf { it.debit - it.credit }, 0.000001)
+                  assertFalse(lines.any { it.accountId == ap.id })
+              }
+
+              @Test
+              fun reproduces_closed_period_bypass_for_operational_purchase_posting() = runBlocking {
+                  val start = 1_780_200_000_000L
+                  val end = start + 86_399_999L
+                  container.db.accountingDao().insertPeriod(
+                      AccountingPeriodEntity(
+                          fiscalYear = 2026,
+                          periodNo = 8,
+                          nameAr = "فترة تدقيق مقفلة",
+                          startDate = start,
+                          endDate = end,
+                          status = "CLOSED",
+                          createdBy = purchasingUserId,
+                          closedBy = purchasingUserId,
+                          closedAt = start - 1_000L,
+                          closeReason = "audit fixture"
+                      )
+                  )
+                  val supplierId = container.db.supplierDao().insert(
+                      SupplierEntity(
+                          code = "AUD-SUP-CLOSED",
+                          nameAr = "مورد فترة مقفلة",
+                          currencyCode = "YER_NEW",
+                          paymentTermsDays = 30
+                      )
+                  )
+                  val warehouse = requireNotNull(container.db.warehouseDao().byCode("RM"))
+                  val item = requireNotNull(container.db.itemDao().byCode("RM-POTATO"))
+                  val unit = requireNotNull(container.db.unitDao().byCode("KG"))
+
+                  // This should be rejected by a closed-period control, but current operational posting path accepts it.
+                  val invoiceId = container.purchaseService.postPurchase(
+                      PurchaseService.PostPurchaseRequest(
+                          supplierId = supplierId,
+                          warehouseId = warehouse.id,
+                          currencyCode = "YER_NEW",
+                          exchangeRate = 1.0,
+                          paymentType = "CREDIT",
+                          supplierInvoiceNo = "AUD-CLOSED-001",
+                          notes = "audit closed period reproduction",
+                          invoiceDate = start + 10_000L,
+                          createdBy = purchasingUserId,
+                          lines = listOf(
+                              PurchaseDraftLine(
+                                  itemId = item.id,
+                                  unitId = unit.id,
+                                  quantity = 1.0,
+                                  factorToBase = 1.0,
+                                  unitPriceOriginal = 100.0
+                              )
+                          )
+                      )
+                  )
+                  val journal = container.db.journalDao().bySource("PURCHASE", invoiceId.toString())
+                  assertNotNull(journal)
+                  assertEquals(start + 10_000L, requireNotNull(journal).entryDate)
+              }
+          }
+          KOTLIN
+
+          grep -q 'reproduces_AE_ACC_009' app/src/test/java/com/fush/erp/audit/AccountingSettlementE2EAuditTest.kt
+          grep -q 'reproduces_AE_ACC_010' app/src/test/java/com/fush/erp/audit/AccountingSettlementE2EAuditTest.kt
+          grep -q 'closed_period_bypass' app/src/test/java/com/fush/erp/audit/AccountingSettlementE2EAuditTest.kt
+
+      - name: Run targeted dynamic accounting audit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.audit.AccountingSettlementE2EAuditTest'
+
+      - name: Run complete baseline unit suite with audit harness
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build safety gate
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify invariants after audit harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          echo 'AUDIT_ACCOUNTING_E2E_RESULT=REPRODUCED'
