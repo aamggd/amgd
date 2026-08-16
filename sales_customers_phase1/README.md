@@ -40,3 +40,5 @@ git apply /tmp/phase1_p0.patch
 The branch workflow independently restores the validated baseline artifact, verifies its source-tree hash, reconstructs and applies this patch, runs unit tests and `assembleRelease`, validates the P0 workspace boundary, and verifies the branch safety constraints. The successful workflow artifact also exports the raw `phase1_p0.patch` plus an unsigned aligned APK.
 
 Validation transport: XZ payload only; the superseded gzip transport was removed from the branch.
+
+Validation payload SHA-256: `c28d2a3b1489008c29cd2c2be9e6fd8a7e427ac2da7daf333206a9af4eb9af08`.
