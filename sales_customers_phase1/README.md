@@ -29,10 +29,10 @@ Implements P0 only: separate sales operations from the customer profile while ke
 
 ## Apply
 
-The repository stores the patch gzip-compressed and Base64-encoded as `sales_customers_phase1/phase1_p0.patch.gz.b64` to keep the branch handoff compact. Reconstruct and apply it from an exact Phase 14.5.54 source tree:
+The repository stores the patch XZ-compressed and Base64-encoded as `sales_customers_phase1/phase1_p0.patch.xz.b64` to keep the branch handoff compact and transport-safe. Reconstruct and apply it from an exact Phase 14.5.54 source tree:
 
 ```bash
-base64 -d sales_customers_phase1/phase1_p0.patch.gz.b64 | gzip -dc > /tmp/phase1_p0.patch
+base64 -d sales_customers_phase1/phase1_p0.patch.xz.b64 | xz -dc > /tmp/phase1_p0.patch
 git apply --check /tmp/phase1_p0.patch
 git apply /tmp/phase1_p0.patch
 ```
