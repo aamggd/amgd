@@ -1517,6 +1517,15 @@ class AccountingService(private val db: FushDatabase) {
     }
 
     private suspend fun resolvePartyLink(offset: AccountEntity, request: VoucherRequest): PartyLink {
+        TreasuryPartyRequirementPolicy.requireValidSelection(
+            accountCode = offset.code,
+            selection = TreasuryPartySelection(
+                customerId = request.customerId,
+                supplierId = request.supplierId,
+                employeeId = request.employeeId,
+                salesRepId = request.salesRepId
+            )
+        )
         return when (offset.code) {
             "1300" -> {
                 require(request.supplierId == null && request.employeeId == null && request.salesRepId == null) { "حساب العملاء يقبل عميلاً فقط" }
