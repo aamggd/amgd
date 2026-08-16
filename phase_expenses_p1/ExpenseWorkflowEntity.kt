@@ -48,6 +48,7 @@ data class ExpenseWorkflowRequestEntity(
     val organizationUnit: String = "",
     val referenceType: String = "NONE",
     val referenceId: Long? = null,
+    val dimensionReferenceNo: String = "",
     val referenceLabel: String = "",
     val customerId: Long? = null,
     val supplierId: Long? = null,
