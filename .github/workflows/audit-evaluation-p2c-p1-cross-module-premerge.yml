@@ -13,14 +13,13 @@ permissions:
   contents: read
 
 env:
-  CENTRAL_SHA: 'bd39c9fdce444da865460539ea80058f02770d4a'
-  CENTRAL_REPO_TREE: '8b44fe7f02ae146673e11637cfa9f9169738a452'
-  CENTRAL_SOURCE_TREE: '2c8f39d515e627d9d7d6ba1eac3e065a1d17f245'
+  CENTRAL_SHA: 'ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48'
+  CENTRAL_REPO_TREE: '21a893101a01d5a28c288a44b40050bd8fbc336f'
+  CENTRAL_SOURCE_TREE: 'af291928524bafffea73c07439008a5236813289'
   ACCOUNTING_P1_HANDOFF_SHA: '7510ff3dc03d28ebf751ebe32624e36ef175b9a7'
   TREASURY_P1_SHA: '7a1f1aec9f0315a23b62205aa5e4b049449203cc'
   PURCHASES_P1_SHA: 'b6a154a908898a25fcb40bd55dddfedce596c643'
   SALES_P1_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
-  PURCHASES_PATCH_BLOB: '6dd1066ef1b8e7c2e0fe25b0ec97d0357f7ee921'
   SALES_PATCH_BLOB: '8b5372494baf1e5943de24fa10b7e0a400c85928'
 
 jobs:
@@ -74,7 +73,7 @@ jobs:
           test "$(git rev-parse ${CENTRAL_SHA}^{tree})" = "$CENTRAL_REPO_TREE"
           test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
 
-      - name: Export exact current Central with Accounting P1 and Treasury P1
+      - name: Export exact current Central with Accounting Treasury and Purchases P1
         shell: bash
         run: |
           set -euo pipefail
@@ -92,58 +91,47 @@ jobs:
           grep -q 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           test -f app/src/main/java/com/fush/erp/domain/TreasuryPartyRequirementPolicy.kt
           test -f app/src/test/java/com/fush/erp/domain/TreasuryPartyRequirementPolicyTest.kt
+          grep -q 'supplierVoucherAdjustmentAt' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -q 'sp.supplierId=p.supplierId' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -q 'SupplierProfileMath.build' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+          test -f app/src/test/java/com/fush/erp/domain/SupplierProfileMathTest.kt
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
 
           git init -q
           git config user.name 'FUSH Audit P2C'
           git config user.email audit-p2c@fush.local
           git add -A
-          git commit -qm 'Exact current Central with Accounting P1 and Treasury P1'
+          git commit -qm 'Exact current Central with Accounting Treasury Purchases P1'
           test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
 
-      - name: Extract and verify exact pending Purchases P1 and Sales P1 patches
+      - name: Extract and verify exact pending Sales P1 patch
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse ${PURCHASES_P1_SHA}:purchases_suppliers_p1/phase_p1.patch)" = "$PURCHASES_PATCH_BLOB"
           test "$(git rev-parse ${SALES_P1_SHA}:sales_customers_p1/customer_identity_p1.patch)" = "$SALES_PATCH_BLOB"
-
-          git show "${PURCHASES_P1_SHA}:purchases_suppliers_p1/phase_p1.patch" > /tmp/p2c-purchases.patch
           git show "${SALES_P1_SHA}:sales_customers_p1/customer_identity_p1.patch" > /tmp/p2c-sales.patch
-
-          test "$(git hash-object /tmp/p2c-purchases.patch)" = "$PURCHASES_PATCH_BLOB"
           test "$(git hash-object /tmp/p2c-sales.patch)" = "$SALES_PATCH_BLOB"
-
           {
-            echo "PURCHASES_GIT_BLOB=$PURCHASES_PATCH_BLOB"
             echo "SALES_GIT_BLOB=$SALES_PATCH_BLOB"
-            sha256sum /tmp/p2c-purchases.patch /tmp/p2c-sales.patch
+            sha256sum /tmp/p2c-sales.patch
           } | tee output/PENDING_P1_PATCH_IDENTITIES.txt
 
-      - name: Selectively apply Purchases then Sales P1 over current Central
+      - name: Selectively apply Sales P1 over current Central
         shell: bash
         run: |
           set -euo pipefail
           cd work-source
 
-          git apply --check --recount /tmp/p2c-purchases.patch
-          git apply --recount /tmp/p2c-purchases.patch
-
           git apply --check --recount /tmp/p2c-sales.patch
           git apply --recount /tmp/p2c-sales.patch
-
           git add -A
           git diff --cached --check
 
           cat > /tmp/p2c-expected-files <<'EOF'
-          app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
           app/src/main/java/com/fush/erp/domain/AccountingService.kt
           app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           app/src/main/java/com/fush/erp/domain/SalesService.kt
-          app/src/main/java/com/fush/erp/domain/SupplierProfileMath.kt
-          app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
           app/src/test/java/com/fush/erp/domain/CustomerMovementIdentityTest.kt
-          app/src/test/java/com/fush/erp/domain/SupplierProfileMathTest.kt
           EOF
           sort /tmp/p2c-expected-files -o /tmp/p2c-expected-files
           git diff --cached --name-only | sort > /tmp/p2c-actual-files
@@ -157,11 +145,10 @@ jobs:
           grep -q 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           grep -q 'CustomerMovementIdentity.requireId' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -q 'supplierVoucherAdjustmentAt' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
-          grep -q 'sp.supplierId=p.supplierId' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
           grep -q 'SupplierProfileMath.build' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
 
-          git commit -qm 'P2C pre-merge candidate: Purchases P1 and Sales P1 over current Central'
+          git commit -qm 'P2C pre-merge candidate: Sales P1 over current Central'
           echo "P2C_PREMERGE_SOURCE_TREE=$(git write-tree)" | tee -a "$GITHUB_ENV"
 
       - name: Inject audit-only cross-module contract test
@@ -215,7 +202,7 @@ jobs:
           PREMERGE_SOURCE_TREE=$P2C_PREMERGE_SOURCE_TREE
           ACCOUNTING_P1=INTEGRATED
           TREASURY_P1=INTEGRATED
-          PURCHASES_P1=PREMERGE_CANDIDATE
+          PURCHASES_P1=INTEGRATED
           SALES_P1=PREMERGE_CANDIDATE
           ROOM_SCHEMA=35
           APPLICATION_ID=com.fush.erp.recovery
