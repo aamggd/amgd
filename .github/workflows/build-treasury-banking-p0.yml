@@ -68,9 +68,9 @@ jobs:
           git commit -qm baseline-14.5.54
           test "$(git write-tree)" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
           base64 -d "$GITHUB_WORKSPACE/phase_treasury_banking_p0/payload.patch.gz.b64" | gzip -dc > "$GITHUB_WORKSPACE/decoded/treasury-banking-p0.patch"
-          echo 'e00c126b5f13c549c4ea85a158020c7b1f5881aa3a978a2a2c9af3b23f172b98  '"$GITHUB_WORKSPACE"'/decoded/treasury-banking-p0.patch' | sha256sum -c -
+          echo 'f0471f24fca05c1babdbb888975cd37cae8bac5c7640c28329a8575e528b1e2e  '"$GITHUB_WORKSPACE"'/decoded/treasury-banking-p0.patch' | sha256sum -c -
           git am "$GITHUB_WORKSPACE/decoded/treasury-banking-p0.patch"
-          test "$(git write-tree)" = 'bd9bf24296c226f470db8e9a668bd123d33301ce'
+          test "$(git write-tree)" = 'e904951e4c7fe279cf619fcabe18c8b347d46de7'
           git diff HEAD^ --check
 
       - name: Unit tests
