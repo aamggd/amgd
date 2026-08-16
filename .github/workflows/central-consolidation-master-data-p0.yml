@@ -1,0 +1,129 @@
+name: Central Consolidation - Master Data P0
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-master-data-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CENTRAL_HEAD: 'b57f6bf05e80f1a4cff586f2e3cbb00494869e63'
+  INPUT_TREE: 'a1ae8b67a621cafb9b3b6652b5ef83c9ac1fa0ac'
+  HANDOFF_SHA: 'aedad48afb8d4a38255868bbb17e859ad9042867'
+  HANDOFF_BLOB: 'f4061f55d3e918488b290dae4b1861965515bc99'
+
+jobs:
+  integrate-master-data-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore and verify current Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Current Central before Master Data P0 record"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+      - name: Fetch exact Master Data P0 handoff inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/master_data_p0/P0_MASTER_ENTITY_INVENTORY.md" -o master-data-p0.md
+          test "$(git hash-object master-data-p0.md)" = "$HANDOFF_BLOB"
+          grep -q 'Status: P0 INVENTORY COMPLETE / NO FUNCTIONAL CHANGE' master-data-p0.md
+          grep -q 'Business logic changed: NO' master-data-p0.md
+          grep -q 'Room schema changed: NO' master-data-p0.md
+          grep -q 'Migrations added: NONE' master-data-p0.md
+          grep -q 'Application ID: `com.fush.erp.recovery`' master-data-p0.md
+          grep -q 'Room schema: `34`' master-data-p0.md
+
+      - name: Master Data domain regression
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.MasterDataMathTest' --tests 'com.fush.erp.domain.AutoNumberFormatTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks and no-op source proof
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          test "$(git write-tree)" = "$INPUT_TREE"
+
+      - name: Create validated Central integration record
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p central_integration_records
+          cp master-data-p0.md central_integration_records/master-data-p0-source-inventory.md
+          cat > central_integration_records/master-data-p0.md <<EOF
+          # Central Integration Record — Master Data P0
+
+          - Source branch: fush/master-data
+          - Source handoff SHA: ${HANDOFF_SHA}
+          - Central base HEAD: ${CENTRAL_HEAD}
+          - Central source tree before/after: ${INPUT_TREE}
+          - Scope: documentation/inventory only; no application source transplant
+          - Application ID: com.fush.erp.recovery
+          - Room schema: 34 unchanged
+          - Migrations: none
+          - Destructive migration: absent
+          - Master Data domain regression: PASS
+          - Full unit tests: PASS
+          - Release build: PASS
+          - Result: SUCCESS / VALIDATED DOCUMENTATION HANDOFF
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_integration_records/master-data-p0.md central_integration_records/master-data-p0-source-inventory.md
+          git commit -m "Central integration: record Master Data P0 validation"
+          git push origin HEAD:fush/integration-current

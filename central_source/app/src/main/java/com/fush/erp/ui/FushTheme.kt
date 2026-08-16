@@ -10,7 +10,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
@@ -96,11 +95,11 @@ private val FushTypography = Typography(
 )
 
 private val FushShapes = Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(22.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(30.dp),
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(FushRadius.extraSmall),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(FushRadius.small),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(FushRadius.medium),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(FushRadius.large),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(FushRadius.extraLarge),
 )
 
 @Composable

@@ -84,33 +84,47 @@ object ReauthenticationPolicy {
 }
 
 data class SessionTimeoutSettings(
-    val automaticLogoutEnabled: Boolean = false,
-    val idleTimeoutMinutes: Long = 30L,
-    val maxSessionMinutes: Long = 480L
+    val automaticLogoutEnabled: Boolean = true,
+    val idleTimeoutMinutes: Long = SessionPolicy.DEFAULT_IDLE_MINUTES,
+    val maxSessionMinutes: Long = SessionPolicy.DEFAULT_ABSOLUTE_MINUTES
 )
 
 object SessionPolicy {
-    const val DEFAULT_IDLE_MINUTES = 30L
-    const val DEFAULT_MAX_SESSION_MINUTES = 480L
+    const val DEFAULT_IDLE_MINUTES = 5L
+    const val DEFAULT_ABSOLUTE_MINUTES = 480L
+    const val ADMIN_IDLE_MINUTES = 3L
+    const val ADMIN_ABSOLUTE_MINUTES = 240L
     const val MIN_TIMEOUT_MINUTES = 1L
-    const val MAX_TIMEOUT_MINUTES = 43_200L // 30 days
+    const val MAX_TIMEOUT_MINUTES = 43_200L // 30 days; effective policy caps are stricter.
 
     fun normalize(settings: SessionTimeoutSettings): SessionTimeoutSettings = settings.copy(
+        automaticLogoutEnabled = true,
         idleTimeoutMinutes = settings.idleTimeoutMinutes.coerceIn(MIN_TIMEOUT_MINUTES, MAX_TIMEOUT_MINUTES),
         maxSessionMinutes = settings.maxSessionMinutes.coerceIn(MIN_TIMEOUT_MINUTES, MAX_TIMEOUT_MINUTES)
     )
 
+    fun effective(settings: SessionTimeoutSettings, role: String): SessionTimeoutSettings {
+        val safe = normalize(settings)
+        val idleCap = if (role == "ADMIN") ADMIN_IDLE_MINUTES else DEFAULT_IDLE_MINUTES
+        val absoluteCap = if (role == "ADMIN") ADMIN_ABSOLUTE_MINUTES else DEFAULT_ABSOLUTE_MINUTES
+        return safe.copy(
+            automaticLogoutEnabled = true,
+            idleTimeoutMinutes = minOf(safe.idleTimeoutMinutes, idleCap),
+            maxSessionMinutes = minOf(safe.maxSessionMinutes, absoluteCap)
+        )
+    }
+
     fun shouldExpire(
         settings: SessionTimeoutSettings,
+        role: String,
         sessionStartedAt: Long,
         lastActivityAt: Long,
         now: Long = System.currentTimeMillis()
     ): Boolean {
-        if (!settings.automaticLogoutEnabled) return false
-        val safe = normalize(settings)
+        val safe = effective(settings, role)
         val idleExpired = now - lastActivityAt >= safe.idleTimeoutMinutes * 60_000L
-        val maxSessionExpired = now - sessionStartedAt >= safe.maxSessionMinutes * 60_000L
-        return idleExpired || maxSessionExpired
+        val absoluteExpired = now - sessionStartedAt >= safe.maxSessionMinutes * 60_000L
+        return idleExpired || absoluteExpired
     }
 }
 

@@ -1,0 +1,127 @@
+name: Central Consolidation - Users Permissions P1
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-users-permissions-p1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: 'fa2efe19e5563170d151540918c658389f864308'
+  HANDOFF_SHA: '20a1f91ced8111d22401ef80eaee6b84f226d236'
+  PATCH_B64_BLOB: '2340532f3adafc4b9e8817f73f4130e86b19bdb9'
+  PATCH_SHA256: '6058262a40acfea0e5b516ede92b0e4dd657e1b746a227fcc7ead8ff9e087957'
+
+jobs:
+  integrate-users-permissions-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Cumulative Central before Users Permissions P1"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+      - name: Fetch exact validated Users Permissions P1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/security_central_14_5_54/P1_session_policy.patch.gz.b64" -o users-permissions-p1.patch.gz.b64
+          test "$(git hash-object users-permissions-p1.patch.gz.b64)" = "$PATCH_B64_BLOB"
+          base64 -d users-permissions-p1.patch.gz.b64 | gzip -dc > users-permissions-p1.patch
+          echo "${PATCH_SHA256}  users-permissions-p1.patch" | sha256sum -c -
+          cd work-source
+          git apply --check ../users-permissions-p1.patch
+          git apply ../users-permissions-p1.patch
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 5
+          grep -q 'automaticLogoutEnabled: Boolean = true' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'ADMIN_IDLE_MINUTES = 3L' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'ADMIN_ABSOLUTE_MINUTES = 240L' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          git add -A
+          git commit -qm "Integrate Users Permissions P1"
+          echo "users_permissions_p1_source_tree=$(git write-tree)" | tee ../users-permissions-p1-source-tree.txt
+
+      - name: Security policy domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SecurityPolicyTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          grep -q 'AndroidKeyStore' app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          grep -q 'ADMIN_IDLE_MINUTES = 3L' central_source/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'AndroidKeyStore' central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source users-permissions-p1-source-tree.txt
+          git commit -m "Central integration: add Users Permissions P1"
+          git push origin HEAD:fush/integration-current

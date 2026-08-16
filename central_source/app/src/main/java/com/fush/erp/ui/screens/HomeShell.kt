@@ -106,6 +106,7 @@ fun HomeShell(
             val now = System.currentTimeMillis()
             val timedOut = SessionPolicy.shouldExpire(
                 settings = container.sessionSettings.current(),
+                role = user.role,
                 sessionStartedAt = sessionStartedAt,
                 lastActivityAt = lastActivityAt.get(),
                 now = now
