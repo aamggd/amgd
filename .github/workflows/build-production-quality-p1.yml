@@ -16,7 +16,7 @@ jobs:
   validate-p1-final:
     runs-on: ubuntu-latest
     env:
-      CENTRAL_HEAD: ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
+      CENTRAL_HEAD: ac1b93bbb7117ec1ec3a8aa6a35ba79b9fd6d922
       CENTRAL_TREE: af291928524bafffea73c07439008a5236813289
       PATCH_SHA256: fe62719a8b1d44b133145ef552329a6c3c9c7d3fa93fa619289170f2b0abae8a
     steps:
@@ -47,7 +47,7 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
-      - name: Restore exact post-wave Central source
+      - name: Restore exact latest post-wave Central source
         shell: bash
         run: |
           set -euo pipefail
