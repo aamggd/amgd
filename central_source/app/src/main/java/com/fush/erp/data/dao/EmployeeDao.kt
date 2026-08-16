@@ -125,7 +125,7 @@ interface EmployeeDao {
     suspend fun operatorAssignment(orderId: Long): ProductionOperatorAssignmentEntity?
 
     @Query("""
-        SELECT po.id AS orderId, po.orderNo AS orderNo, po.plannedDate AS plannedDate,
+        SELECT pa.employeeId AS employeeId, po.id AS orderId, po.orderNo AS orderNo, po.plannedDate AS plannedDate,
                po.status AS orderStatus, po.directLaborCostBase AS laborCostBase,
                CASE WHEN EXISTS (
                    SELECT 1 FROM journal_entries je
