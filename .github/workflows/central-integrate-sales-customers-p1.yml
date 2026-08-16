@@ -11,7 +11,8 @@ permissions:
   contents: write
 
 env:
-  CENTRAL_BASE_HEAD: 'ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48'
+  CENTRAL_BASE_HEAD: 'ac1b93bbb7117ec1ec3a8aa6a35ba79b9fd6d922'
+  PRE_AUDIT_CENTRAL_HEAD: 'ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48'
   CENTRAL_BASE_TREE: 'af291928524bafffea73c07439008a5236813289'
   SOURCE_HANDOFF_SHA: 'f7e6263f2c675704913fb6c1fb675f7ade36fc37'
   REFERENCE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
@@ -19,6 +20,8 @@ env:
   APPLICATOR_BLOB: '05b0d9b438061384bab717f0b6c8e8c2242a0d55'
   VALIDATED_OUTPUT_PATCH_SHA256: '410b2e742cee956351ff9e51745353bc0f3feb98bf856636a4ef1cfeb03a921f'
   HANDOFF_METADATA_PATCH_SHA256: '5edb9fff2c533556c4c5520c853c2cf6dcbd023af3f3561440678cb2845ae7c7'
+  AUDIT_PREMERGE_RESULT_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  AUDIT_PREMERGE_RUN: '31979547378'
   EXPECTED_APP_ID: 'com.fush.erp.recovery'
   EXPECTED_SCHEMA: '35'
 
@@ -60,6 +63,12 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CENTRAL_BASE_HEAD"
           test "$(git rev-parse HEAD:central_source)" = "$CENTRAL_BASE_TREE"
+          # The intervening audit-evidence record must not have changed application source.
+          test "$(git rev-parse "$PRE_AUDIT_CENTRAL_HEAD:central_source")" = "$CENTRAL_BASE_TREE"
+          test -f integration_current/handoffs/audit-evaluation/P2C_p1_cross_module_premerge/HANDOFF.md
+          grep -Fq 'Handoff type: **AUDIT / TEST EVIDENCE ONLY — NO CENTRAL APPLICATION PATCH**' integration_current/handoffs/audit-evaluation/P2C_p1_cross_module_premerge/HANDOFF.md
+          grep -Fq 'Central application source changed by this handoff: **No**' integration_current/handoffs/audit-evaluation/P2C_p1_cross_module_premerge/HANDOFF.md
+
           grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
           grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
@@ -115,7 +124,7 @@ jobs:
           test "$(git write-tree)" = "$CENTRAL_BASE_TREE"
           git commit -qm 'Central before Sales Customers P1'
 
-          # The successful source workflow used this exact applicator, not the stale committed patch file.
+          # The successful source workflow used this exact applicator.
           python3 /tmp/apply_p1.py
           git add -A
           git diff --cached --check
@@ -130,7 +139,6 @@ jobs:
           git diff --cached --name-only | sort > /tmp/actual-sales-files
           diff -u /tmp/expected-sales-files /tmp/actual-sales-files
 
-          # Sales P1 functional assertions.
           grep -Fq 'object CustomerMovementIdentity' app/src/main/java/com/fush/erp/domain/CustomerMovementIdentity.kt
           grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -Fq 'CustomerMovementIdentity.requireId(customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
@@ -138,17 +146,18 @@ jobs:
           grep -Fq 'CustomerMovementIdentity.requireId(invoice.customerId)' app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -Fq 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
 
-          # Wave 1 coexistence assertions: Treasury, Accounting P1, Purchases remain present.
+          # Wave-1 coexistence guards.
           grep -Fq 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
           grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
           grep -Fq 'SupplierProfileMath.build' app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
-
-          # Sales P1 must not mutate Room/data schema or unrelated Wave 1 files.
           test -z "$(git diff --cached --name-only | grep -E '^(app/src/main/java/com/fush/erp/data/|app/schemas/|app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt)' || true)"
-          git diff --cached --binary > /tmp/sales-p1-on-central35.patch
-          sha256sum /tmp/sales-p1-on-central35.patch | awk '{print $1}' | tee /tmp/sales-evolved-patch-sha.txt
+
           RESULT_TREE=$(git write-tree)
           echo "$RESULT_TREE" | tee /tmp/sales-result-tree.txt
+          # Independent audit run already established this exact candidate source tree from ccbe Central.
+          test "$RESULT_TREE" = "$AUDIT_PREMERGE_RESULT_TREE"
+          git diff --cached --binary > /tmp/sales-p1-on-central35.patch
+          sha256sum /tmp/sales-p1-on-central35.patch | awk '{print $1}' | tee /tmp/sales-evolved-patch-sha.txt
 
       - name: Targeted Sales and Customer identity tests
         working-directory: work-source
@@ -209,11 +218,8 @@ jobs:
           grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
           test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
           grep -Fq '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
-
           for i in $(seq 1 31); do
-            j=$((i+1))
-            grep -Fq "MIGRATION_${i}_${j}" "$MIG"
-            grep -Fq "MIGRATION_${i}_${j}" "$CON"
+            j=$((i+1)); grep -Fq "MIGRATION_${i}_${j}" "$MIG"; grep -Fq "MIGRATION_${i}_${j}" "$CON"
           done
           grep -Fq 'MIGRATION_32_33_SECURITY = object : Migration(32, 33)' "$SEC"
           grep -Fq 'MIGRATION_32_33_SECURITY' "$CON"
@@ -221,15 +227,11 @@ jobs:
           grep -Fq 'MIGRATION_33_34_FIXED_ASSETS' "$CON"
           grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$MIG"
           grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$CON"
-
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
           ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
           P1_BLOCK="$(sed -n '/MIGRATION_34_35_ACCOUNTING_P1/,$p' "$MIG")"
           ! grep -E 'DROP TABLE|DELETE FROM|ALTER TABLE .* RENAME' <<<"$P1_BLOCK"
-
-          # Data/schema preservation: Sales P1 introduced no Room/schema changes.
           test -z "$(git diff HEAD -- app/src/main/java/com/fush/erp/data/FushDatabase.kt app/src/main/java/com/fush/erp/data/Migrations.kt app/src/main/java/com/fush/erp/data/SecurityMigrations.kt app/schemas || true)"
-
           ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK"
 
       - name: Create actual Sales P1 integration commit
@@ -240,15 +242,11 @@ jobs:
           rm -rf central_source
           cp -a work-source central_source
           rm -rf central_source/.git central_source/.gradle central_source/.kotlin central_source/app/build central_source/build
-
           git config user.name 'FUSH Central Integration'
           git config user.email 'central-integration@fush.local'
           git add central_source
-
-          # Ensure no concurrent Central movement occurred before integration push.
           git fetch --no-tags origin '+refs/heads/fush/integration-current:refs/remotes/origin/fush/integration-current'
           test "$(git rev-parse refs/remotes/origin/fush/integration-current)" = "$CENTRAL_BASE_HEAD"
-
           git commit -m 'Central integration: Sales Customers P1 customer identity'
           INTEGRATION_SHA=$(git rev-parse HEAD)
           echo "$INTEGRATION_SHA" | tee /tmp/sales-integration-sha.txt
@@ -270,9 +268,12 @@ jobs:
           Original validation run: 31977975716
           Original validated generated patch SHA-256: ${VALIDATED_OUTPUT_PATCH_SHA256}
           Handoff README/request claimed patch SHA-256: ${HANDOFF_METADATA_PATCH_SHA256} (metadata mismatch; not the patch emitted by successful validation run)
+          Independent audit pre-merge validation run: ${AUDIT_PREMERGE_RUN}
+          Independently validated Central-35 candidate source tree: ${AUDIT_PREMERGE_RESULT_TREE}
           Central-35 evolved functional diff SHA-256: ${EVOLVED_PATCH_SHA}
           Integration Commit SHA: ${INTEGRATION_SHA}
           Previous Central HEAD: ${CENTRAL_BASE_HEAD}
+          Intervening Central change from ${PRE_AUDIT_CENTRAL_HEAD}: audit/test evidence record only; central_source unchanged
           Central source tree after integration: ${RESULT_TREE}
           Application ID: ${EXPECTED_APP_ID}
           Room schema: ${EXPECTED_SCHEMA}
@@ -288,7 +289,7 @@ jobs:
           Data/schema preservation: PASS
           Destructive migration/reset guards: PASS
           zipalign: PASS
-          Conflict resolution: AccountingService overlap with Treasury P1 was resolved by applying the exact validated Sales transformations to evolved Central; both TreasuryPartyRequirementPolicy and CustomerMovementIdentity guards are preserved.
+          Conflict resolution: AccountingService overlap with Treasury P1 resolved by applying the exact validated Sales transformations to evolved Central; both TreasuryPartyRequirementPolicy and CustomerMovementIdentity guards preserved.
           Result: SUCCESS
           EOF
           git add central_integration_records/wave1-sales-customers-p1.md
