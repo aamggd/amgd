@@ -1,0 +1,99 @@
+name: Validate master-data P0 against central 14.5.54
+
+on:
+  push:
+    branches: [fush/master-data]
+    paths:
+      - 'master_data_p0/**'
+      - '.github/workflows/master-data-p0-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p0:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact validated central 14.5.54 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore and verify exact central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          echo '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1  '"$ZIP" | sha256sum -c -
+          mkdir -p source
+          unzip -q "$ZIP" -d source
+          BASE=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          cd "$BASE"
+          git init -q
+          git add -A
+          TREE=$(git write-tree)
+          echo "SOURCE_TREE=$TREE"
+          test "$TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
+          cd "$BASE"
+          gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=$(find source -mindepth 1 -maxdepth 1 -type d | head -1)
+          cd "$BASE"
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: P0 scope guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f master_data_p0/P0_MASTER_ENTITY_INVENTORY.md
+          grep -q 'Business logic changed: NO' master_data_p0/P0_MASTER_ENTITY_INVENTORY.md
+          grep -q 'Room schema changed: NO' master_data_p0/P0_MASTER_ENTITY_INVENTORY.md
+          grep -q 'Migrations added: NONE' master_data_p0/P0_MASTER_ENTITY_INVENTORY.md
