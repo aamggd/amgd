@@ -194,7 +194,7 @@ object AccountingReportMath {
         val opening = treasuryRows.filter { it.entryDate < fromDate }.sumOf { it.debit - it.credit }
         val period = treasuryRows.filter { it.entryDate in fromDate..toDate }
         // Internal transfers between treasury accounts do not represent business cash inflow/outflow.
-        val external = period.filter { it.sourceType != "TREASURY_TRANSFER" }
+        val external = period.filterNot { TreasuryMovementTypePolicy.isInternalTransferSource(it.sourceType) }
         val inflows = external.sumOf { it.debit }
         val outflows = external.sumOf { it.credit }
         val closing = opening + period.sumOf { it.debit - it.credit }

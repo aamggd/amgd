@@ -57,6 +57,8 @@ class AccountingReportMathTest {
                 row(1, "1100", "صندوق", "ASSET", 1000.0, 0.0, 500L, "TREASURY_RECEIPT", 1),
                 row(2, "1150", "بنك", "ASSET", 300.0, 0.0, 1500L, "TREASURY_TRANSFER", 2),
                 row(1, "1100", "صندوق", "ASSET", 0.0, 300.0, 1500L, "TREASURY_TRANSFER", 2),
+                row(2, "1150", "بنك", "ASSET", 100.0, 0.0, 1550L, "TRANSFER", 4),
+                row(1, "1100", "صندوق", "ASSET", 0.0, 100.0, 1550L, "TRANSFER", 4),
                 row(1, "1100", "صندوق", "ASSET", 0.0, 200.0, 1600L, "TREASURY_EXPENSE", 3)
             ),
             treasuryAccountIds = setOf(1, 2),

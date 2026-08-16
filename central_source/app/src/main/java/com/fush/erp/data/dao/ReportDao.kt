@@ -564,11 +564,11 @@ interface ReportDao {
                je.id AS entryId, je.entryNo AS entryNo, je.entryDate AS entryDate,
                je.description AS description, je.sourceType AS sourceType,
                jl.debit AS debitBase, jl.credit AS creditBase,
-               CASE WHEN je.sourceType = 'TREASURY_TRANSFER' OR (
+               CASE WHEN je.sourceType IN ('TRANSFER', 'TREASURY_TRANSFER') OR (
                    je.sourceType = 'REVERSAL' AND EXISTS(
                        SELECT 1 FROM journal_entries original
                        WHERE original.id = CAST(je.sourceId AS INTEGER)
-                         AND original.sourceType = 'TREASURY_TRANSFER'
+                         AND original.sourceType IN ('TRANSFER', 'TREASURY_TRANSFER')
                    )
                ) THEN 1 ELSE 0 END AS isInternalTransfer
         FROM treasury_accounts t

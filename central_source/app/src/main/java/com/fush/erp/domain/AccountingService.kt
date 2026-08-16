@@ -238,7 +238,7 @@ class AccountingService(private val db: FushDatabase) {
                 DraftJournalLine(target.accountId, amountBase, 0.0),
                 DraftJournalLine(treasury.accountId, 0.0, amountBase)
             )
-            sourceType = "TREASURY_TRANSFER"
+            sourceType = TreasuryMovementType.TRANSFER.sourceType
             prefix = "TV"
         } else {
             val offset = requireNotNull(request.offsetAccountId?.let { requirePostingAccount(it) }) { "الحساب المقابل مطلوب" }
@@ -258,12 +258,7 @@ class AccountingService(private val db: FushDatabase) {
                     DraftJournalLine(treasury.accountId, 0.0, amountBase)
                 )
             }
-            sourceType = when (request.type) {
-                "RECEIPT" -> "TREASURY_RECEIPT"
-                "PAYMENT" -> "TREASURY_PAYMENT"
-                "EXPENSE" -> "TREASURY_EXPENSE"
-                else -> "TREASURY_INCOME"
-            }
+            sourceType = TreasuryMovementTypePolicy.forVoucher(request.type, partyLink.partyType).sourceType
             prefix = when (request.type) {
                 "RECEIPT" -> "RV"
                 "PAYMENT" -> "PV"
@@ -1582,8 +1577,16 @@ class AccountingService(private val db: FushDatabase) {
 
     companion object {
         val REVERSIBLE_SOURCE_TYPES = setOf(
-            "MANUAL", "TREASURY_RECEIPT", "TREASURY_PAYMENT",
-            "TREASURY_EXPENSE", "TREASURY_INCOME", "TREASURY_TRANSFER"
+            "MANUAL",
+            TreasuryMovementType.CUSTOMER_RECEIPT.sourceType,
+            TreasuryMovementType.SUPPLIER_PAYMENT.sourceType,
+            TreasuryMovementType.EXPENSE_PAYMENT.sourceType,
+            TreasuryMovementType.EMPLOYEE_PAYMENT.sourceType,
+            TreasuryMovementType.TRANSFER.sourceType,
+            TreasuryMovementType.ADJUSTMENT.sourceType,
+            // Historical Phase 14.5.x treasury source names remain reversible after upgrade.
+            "TREASURY_RECEIPT", "TREASURY_PAYMENT", "TREASURY_EXPENSE",
+            "TREASURY_INCOME", "TREASURY_TRANSFER"
         )
     }
 }
