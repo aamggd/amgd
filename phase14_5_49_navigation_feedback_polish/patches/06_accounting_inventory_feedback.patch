@@ -1,0 +1,72 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+index ed7e114..8d9f27f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+@@ -109,14 +109,8 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+                 OutlinedButton(onClick = { showAddAccount = true }, shape = MaterialTheme.shapes.medium) { Text("حساب جديد") }
+             }
+         }
+-        message?.let { text ->
+-            item {
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.medium,
+-                ) { Text(text, Modifier.fillMaxWidth().padding(12.dp)) }
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+@@ -280,14 +274,8 @@ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Mod
+                 OutlinedButton(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("إضافة حساب") }
+             }
+         }
+-        message?.let { text ->
+-            item {
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.medium,
+-                ) { Text(text, Modifier.fillMaxWidth().padding(12.dp)) }
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+@@ -407,11 +395,7 @@ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier
+             FushMetricCard("العملات", currencies.size.toString(), Modifier.weight(1f), "عملة معرفة", FushStatusTone.Neutral)
+         }
+         Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = MaterialTheme.shapes.medium) { Text("إنشاء قيد يدوي") }
+-        message?.let { text ->
+-            Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = MaterialTheme.shapes.medium) {
+-                Text(text, Modifier.fillMaxWidth().padding(12.dp))
+-            }
+-        }
++        FushOperationMessage(message, onConsumed = { message = null })
+     }
+     if (show) {
+         ManualJournalDialog(accounts.filter { it.isPosting }, currencies, onDismiss = { show = false }) { description, date, currency, rate, lines ->
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 0c8b776..18dbf0c 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -101,14 +101,8 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+             }
+         }
+ 
+-        message?.let { text ->
+-            item(key = "inventory-message") {
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.medium,
+-                ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
+-            }
++        if (message != null) {
++            item(key = "inventory-message") { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+ 
+         when (section) {

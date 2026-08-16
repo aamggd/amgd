@@ -1,0 +1,125 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -392,79 +405,85 @@ private fun DashboardScreen(
+         executive = runCatching { container.db.reportDao().executive(periodFrom, now) }.getOrNull()
+     }
+ 
+-    data class AlertRow(val title: String, val detail: String, val target: String, val critical: Boolean)
++    data class AlertRow(
++        @StringRes val titleRes: Int,
++        @StringRes val detailRes: Int,
++        val detailArgs: List<Any>,
++        val target: String,
++        val critical: Boolean,
++    )
+     val alerts = buildList {
+-        if (overdueCount > 0) add(AlertRow("ذمم آجلة متأخرة", "$overdueCount فاتورة تحتاج متابعة تحصيل", "المبيعات", true))
+-        if (qcHoldCount > 0) add(AlertRow("دفعات تحت الجودة", "$qcHoldCount دفعة غير متاحة للبيع حتى قرار الجودة", "الإنتاج", true))
+-        if (highRiskCount > 0) add(AlertRow("مخاطر عالية", "$highRiskCount خطر بدرجة متبقية مرتفعة", "المخاطر", true))
+-        if (openSafetyCount > 0) add(AlertRow("حوادث سلامة مفتوحة", "$openSafetyCount حادث/حالة لم تغلق", "الصيانة", true))
+-        if (overdueExceptionCount > 0) add(AlertRow("استثناءات رقابية متأخرة", "$overdueExceptionCount استثناء تجاوز تاريخ الاستحقاق", "المخاطر", true))
+-        if (lowStockRows.isNotEmpty()) add(AlertRow("إعادة طلب", "${lowStockRows.size} صنف عند أو تحت حد إعادة الطلب", "المخزون", false))
+-        if (expiryRows.isNotEmpty()) add(AlertRow("صلاحية قريبة", "${expiryRows.size} تشغيلة تنتهي خلال 30 يومًا", "المخزون", false))
+-        if (controlledLots > 0) add(AlertRow("مخزون حجر/موقوف", "$controlledLots تشغيلة تحتاج قرارًا", "المخزون", false))
+-        if (overdueMaintenanceCount > 0 || overdueWorkOrders > 0) add(AlertRow("صيانة متأخرة", "خطط متأخرة: $overdueMaintenanceCount • أوامر متأخرة: $overdueWorkOrders", "الصيانة", false))
+-        if (overdueEquipmentChecks > 0) add(AlertRow("فحص/معايرة معدات", "$overdueEquipmentChecks معدة متأخرة عن الفحص أو المعايرة", "الصيانة", false))
+-        if (expiredTrainingCount > 0 || expiredAuthorizationCount > 0) add(AlertRow("تأهيل الموظفين", "تدريب منتهي: $expiredTrainingCount • تصاريح منتهية: $expiredAuthorizationCount", "الموظفون", false))
+-        if (pendingApprovalCount > 0) add(AlertRow("موافقات معلقة", "$pendingApprovalCount طلب ينتظر الاعتماد", "الحوكمة", false))
+-        if (openChangeCount > 0) add(AlertRow("طلبات تغيير مفتوحة", "$openChangeCount طلب تغيير لم يغلق", "الحوكمة", false))
+-        if (openExceptionCount > 0 && overdueExceptionCount == 0) add(AlertRow("استثناءات رقابية مفتوحة", "$openExceptionCount استثناء يحتاج متابعة", "المخاطر", false))
++        if (overdueCount > 0) add(AlertRow(R.string.alert_overdue_receivables, R.string.alert_overdue_receivables_detail, listOf(overdueCount), "المبيعات", true))
++        if (qcHoldCount > 0) add(AlertRow(R.string.alert_qc_hold, R.string.alert_qc_hold_detail, listOf(qcHoldCount), "الإنتاج", true))
++        if (highRiskCount > 0) add(AlertRow(R.string.alert_high_risk, R.string.alert_high_risk_detail, listOf(highRiskCount), "المخاطر", true))
++        if (openSafetyCount > 0) add(AlertRow(R.string.alert_open_safety, R.string.alert_open_safety_detail, listOf(openSafetyCount), "الصيانة", true))
++        if (overdueExceptionCount > 0) add(AlertRow(R.string.alert_overdue_control_exceptions, R.string.alert_overdue_control_exceptions_detail, listOf(overdueExceptionCount), "المخاطر", true))
++        if (lowStockRows.isNotEmpty()) add(AlertRow(R.string.alert_reorder, R.string.alert_reorder_detail, listOf(lowStockRows.size), "المخزون", false))
++        if (expiryRows.isNotEmpty()) add(AlertRow(R.string.alert_near_expiry, R.string.alert_near_expiry_detail, listOf(expiryRows.size), "المخزون", false))
++        if (controlledLots > 0) add(AlertRow(R.string.alert_controlled_stock, R.string.alert_controlled_stock_detail, listOf(controlledLots), "المخزون", false))
++        if (overdueMaintenanceCount > 0 || overdueWorkOrders > 0) add(AlertRow(R.string.alert_overdue_maintenance, R.string.alert_overdue_maintenance_detail, listOf(overdueMaintenanceCount, overdueWorkOrders), "الصيانة", false))
++        if (overdueEquipmentChecks > 0) add(AlertRow(R.string.alert_equipment_checks, R.string.alert_equipment_checks_detail, listOf(overdueEquipmentChecks), "الصيانة", false))
++        if (expiredTrainingCount > 0 || expiredAuthorizationCount > 0) add(AlertRow(R.string.alert_employee_qualification, R.string.alert_employee_qualification_detail, listOf(expiredTrainingCount, expiredAuthorizationCount), "الموظفون", false))
++        if (pendingApprovalCount > 0) add(AlertRow(R.string.alert_pending_approvals, R.string.alert_pending_approvals_detail, listOf(pendingApprovalCount), "الحوكمة", false))
++        if (openChangeCount > 0) add(AlertRow(R.string.alert_open_changes, R.string.alert_open_changes_detail, listOf(openChangeCount), "الحوكمة", false))
++        if (openExceptionCount > 0 && overdueExceptionCount == 0) add(AlertRow(R.string.alert_open_control_exceptions, R.string.alert_open_control_exceptions_detail, listOf(openExceptionCount), "المخاطر", false))
+     }
+     val criticalCount = alerts.count { it.critical }
+     val readiness = when {
+-        criticalCount > 0 -> "يحتاج تدخل"
+-        alerts.isNotEmpty() -> "متابعة"
+-        else -> "مستقر"
++        criticalCount > 0 -> stringResource(R.string.common_needs_action)
++        alerts.isNotEmpty() -> stringResource(R.string.common_follow_up)
++        else -> stringResource(R.string.common_stable)
+     }
+ 
+     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+             FushSectionHeader(
+-                title = "لوحة الإدارة التنفيذية",
+-                subtitle = "ملخص آخر 30 يومًا مع التنبيهات التي تحتاج قرارًا أو متابعة",
++                title = stringResource(R.string.dashboard_title),
++                subtitle = stringResource(R.string.dashboard_subtitle),
+             )
+         }
+ 
+         item {
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-                    Text("الحالة التنفيذية", style = MaterialTheme.typography.titleLarge)
++                    Text(stringResource(R.string.dashboard_executive_status), style = MaterialTheme.typography.titleLarge)
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        Metric("الجاهزية", readiness, Modifier.weight(1f))
+-                        Metric("تنبيهات", alerts.size.toString(), Modifier.weight(1f))
+-                        Metric("حرجة", criticalCount.toString(), Modifier.weight(1f))
++                        Metric(stringResource(R.string.dashboard_readiness), readiness, Modifier.weight(1f))
++                        Metric(stringResource(R.string.dashboard_alerts), alerts.size.toString(), Modifier.weight(1f))
++                        Metric(stringResource(R.string.dashboard_critical), criticalCount.toString(), Modifier.weight(1f))
+                     }
+                 }
+             }
+         }
+ 
+         item {
+-            FushSectionHeader("المؤشرات الرئيسية", "أهم الأرقام المالية والتشغيلية في نظرة واحدة")
++            FushSectionHeader(stringResource(R.string.dashboard_kpis), stringResource(R.string.dashboard_kpis_subtitle))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                ExecutiveMetric("صافي المبيعات", executive?.let { it.grossSalesBase - it.salesReturnsBase }, "ريال", Modifier.weight(1f)) { onNavigate("المبيعات") }
+-                ExecutiveMetric("صافي التحصيل", executive?.collectionsBase, "ريال", Modifier.weight(1f)) { onNavigate("التحصيلات") }
++                ExecutiveMetric(stringResource(R.string.metric_net_sales), executive?.let { it.grossSalesBase - it.salesReturnsBase }, stringResource(R.string.currency_yer), Modifier.weight(1f)) { onNavigate("المبيعات") }
++                ExecutiveMetric(stringResource(R.string.metric_net_collections), executive?.collectionsBase, stringResource(R.string.currency_yer), Modifier.weight(1f)) { onNavigate("التحصيلات") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                ExecutiveMetric("الذمم", executive?.receivablesBase, "ريال", Modifier.weight(1f)) { onNavigate("المبيعات") }
+-                ExecutiveMetric("المخزون", executive?.inventoryValueBase, "ريال", Modifier.weight(1f)) { onNavigate("المخزون") }
++                ExecutiveMetric(stringResource(R.string.metric_receivables), executive?.receivablesBase, stringResource(R.string.currency_yer), Modifier.weight(1f)) { onNavigate("المبيعات") }
++                ExecutiveMetric(stringResource(R.string.metric_inventory), executive?.inventoryValueBase, stringResource(R.string.currency_yer), Modifier.weight(1f)) { onNavigate("المخزون") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("نقدي %", "%.0f".format(cashSalesPct), Modifier.weight(1f)) { onNavigate("المبيعات") }
+-                Metric("هالك", executive?.scrapQtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
++                Metric(stringResource(R.string.metric_cash_ratio), "%.0f".format(cashSalesPct), Modifier.weight(1f)) { onNavigate("المبيعات") }
++                Metric(stringResource(R.string.metric_scrap), executive?.scrapQtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Metric("مقبول 60 مل", executive?.accepted60QtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
+-                Metric("مقبول 200 مل", executive?.accepted200QtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
++                Metric(stringResource(R.string.metric_accepted_60), executive?.accepted60QtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
++                Metric(stringResource(R.string.metric_accepted_200), executive?.accepted200QtyBase?.let { "%.0f".format(it) } ?: "—", Modifier.weight(1f)) { onNavigate("الإنتاج") }
+             }
+         }
+ 
+         item {
+-            FushSectionHeader("القرارات والتنبيهات", "ابدأ بالحالات الحرجة ثم انتقل إلى التنبيهات التشغيلية")
++            FushSectionHeader(stringResource(R.string.dashboard_decisions_alerts), stringResource(R.string.dashboard_decisions_alerts_subtitle))
+             if (alerts.isEmpty()) {
+                 Card(Modifier.fillMaxWidth()) {
+-                    FushInlineState("لا توجد تنبيهات تشغيلية معلقة حاليًا.", modifier = Modifier.padding(8.dp), tone = FushStatusTone.Success)
++                    FushInlineState(stringResource(R.string.dashboard_no_pending_alerts), modifier = Modifier.padding(8.dp), tone = FushStatusTone.Success)
+                 }
+             }
+         }

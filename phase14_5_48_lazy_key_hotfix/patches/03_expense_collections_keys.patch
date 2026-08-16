@@ -1,0 +1,43 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
+index 0ca9d38..b56554c 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
+@@ -3,6 +3,7 @@ package com.fush.erp.ui.screens
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.lazy.itemsIndexed
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Modifier
+@@ -83,7 +84,7 @@ fun CollectionsDetailScreen(container: AppContainer, modifier: Modifier = Modifi
+             }
+         }
+ 
+-        items(visibleRows, key = { "${it.entryType}:${it.referenceNo}:${it.eventDate}" }) { row ->
++        itemsIndexed(visibleRows, key = { index, row -> "collection:${row.entryType}:${row.referenceNo}:${row.eventDate}:$index" }) { _, row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 6988f7e..c98dee7 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -208,7 +208,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+                 }
+             }
+         }
+-        items(filtered, key = { it.expenseId }) { row ->
++        items(filtered, key = { "expense-${it.expenseId}" }) { row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -238,7 +238,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+         }
+         item { FushSectionHeader("مساهمة مندوبي المبيعات", "صافي المساهمة = صافي المبيعات − صافي تكلفة البضاعة − المصروفات المباشرة.") }
+         if (repContribution.isEmpty()) item { FushInlineState("لا توجد بيانات مساهمة لمناديب المبيعات ضمن الفترة الحالية.") }
+-        items(repContribution, key = { it.salesRepId }) { row ->
++        items(repContribution, key = { "rep-contribution-${it.salesRepId}" }) { row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {

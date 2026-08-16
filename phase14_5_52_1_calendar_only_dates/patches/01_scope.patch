@@ -1,0 +1,38 @@
+diff --git a/UI_PROFESSIONALIZATION_21_CALENDAR_ONLY_DATES_SCOPE.md b/UI_PROFESSIONALIZATION_21_CALENDAR_ONLY_DATES_SCOPE.md
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_21_CALENDAR_ONLY_DATES_SCOPE.md
+@@ -0,0 +1,32 @@
++# UI Professionalization 21 — Calendar-Only Date Inputs
++
++## Objective
++All date entry in the FUSH ERP Mobile UI must be selected from the calendar picker. Manual date typing is not allowed.
++
++## UI policy
++- `FushDateField` is read-only.
++- The displayed/stored value remains the existing `yyyy-MM-dd` string expected by current parsing, reporting, posting, inventory, and service code.
++- Users change a date only through the existing Material 3 date picker action.
++- Optional dates can still be cleared through the picker dialog's Clear action.
++- Required dates cannot be cleared through normal UI interaction.
++- No keyboard is required for date fields.
++
++## Coverage
++The shared field is already used by date inputs introduced/migrated in the UI branch for:
++- Accounting and Treasury: report ranges, as-of dates, manual journal dates, voucher dates.
++- Expenses: report/filter range and expense date.
++- Purchases: invoice date, expiry date, supplier payment date.
++- Inventory: transfer date and expiry/lot assignment dates.
++- Customer/Supplier party vouchers.
++- Geography/currency: FX snapshot date, price-list validity dates, geographic quote date.
++
++Any future date input must use `FushDateField` (or another calendar-only picker) rather than an editable `OutlinedTextField`.
++
++## Safety boundary
++Presentation/input-control only. No database schema, migration, DAO, accounting posting, stock quantity/costing, production, payroll/commission, permissions/authentication, or backup behavior changes.
++
++## Branch test identity
++- versionCode `94`
++- versionName `0.15.4.52.1-ui-calendar-only-dates`
++
++Central integration owns the final integrated version/schema and official APK build/signing.

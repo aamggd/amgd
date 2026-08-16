@@ -1,0 +1,572 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 8ec103d..c9af13d 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -9,6 +9,7 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
+@@ -39,6 +40,7 @@ private data class PurchaseLineUi(
+ 
+ @Composable
+ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val suppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
+     val purchases by container.db.purchaseDao().observeSummaries().collectAsState(initial = emptyList())
+@@ -237,7 +239,7 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                     message = "تمت إضافة المورد بالكود ${supplier.code}"
+                     showSupplier = false
+                 } catch (e: Exception) {
+-                    message = e.message ?: "تعذر إضافة المورد"
++                    message = e.message ?: uiContext.getString(R.string.deep_could_not_add_supplier_a9530)
+                 }
+             }
+         }
+@@ -318,6 +320,7 @@ private fun PurchaseInvoiceDetailDialog(
+     warehouses: List<WarehouseEntity>,
+     onDismiss: () -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val invoice by produceState<PurchaseInvoiceEntity?>(initialValue = null, key1 = invoiceSummary.id) {
+         value = container.db.purchaseDao().invoiceById(invoiceSummary.id)
+     }
+@@ -344,25 +347,25 @@ private fun PurchaseInvoiceDetailDialog(
+                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+                 verticalArrangement = Arrangement.spacedBy(10.dp)
+             ) {
+-                Text("بيان فاتورة المشتريات", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_purchase_invoice_statement_04d63), style = MaterialTheme.typography.headlineSmall)
+                 Text(invoiceSummary.invoiceNo, style = MaterialTheme.typography.titleLarge)
+                 HorizontalDivider()
+ 
+                 invoice?.let { row ->
+                     val warehouse = warehouses.firstOrNull { it.id == row.warehouseId }
+-                    Text("بيانات الفاتورة", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_invoice_details_556b6), style = MaterialTheme.typography.titleMedium)
+                     Text("المورد: ${invoiceSummary.supplierName}")
+                     if (row.supplierInvoiceNo.isNotBlank()) Text("رقم فاتورة المورد: ${row.supplierInvoiceNo}")
+                     Text("التاريخ: ${formatDate(row.invoiceDate)}")
+                     row.dueDate?.let { Text("تاريخ الاستحقاق: ${formatDate(it)}") }
+-                    Text("نوع الشراء: ${if (row.paymentType == "CASH") "نقدي" else "آجل"} • الحالة: ${if (row.status == "POSTED") "مرحلة" else row.status}")
++                    Text("نوع الشراء: ${if (row.paymentType == "CASH") uiContext.getString(R.string.common_cash) else uiContext.getString(R.string.common_credit)} • الحالة: ${if (row.status == "POSTED") "مرحلة" else row.status}")
+                     Text("المخزن: ${warehouse?.nameAr ?: "#${row.warehouseId}"}${warehouse?.code?.let { " • $it" } ?: ""}")
+                     Text("العملة: ${row.currencyCode} • سعر الصرف: ${formatMoneyDetailed(row.exchangeRate)}")
+                     if (row.notes.isNotBlank()) Text("ملاحظات: ${row.notes}")
+ 
+                     HorizontalDivider()
+                     Text("تفاصيل الأصناف (${purchaseLines.size})", style = MaterialTheme.typography.titleMedium)
+-                    if (purchaseLines.isEmpty()) FushInlineState("لا توجد أسطر محفوظة لهذه الفاتورة.")
++                    if (purchaseLines.isEmpty()) FushInlineState(uiContext.getString(R.string.deep_no_saved_lines_for_this_invoice_086ac))
+                     purchaseLines.forEachIndexed { index, line ->
+                         val item = itemsList.firstOrNull { it.id == line.itemId }
+                         val unit = units.firstOrNull { it.id == line.unitId }
+@@ -372,7 +375,7 @@ private fun PurchaseInvoiceDetailDialog(
+                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                 Text("${index + 1}. ${item?.nameAr ?: "صنف #${line.itemId}"}", style = MaterialTheme.typography.titleSmall)
+                                 item?.let { Text("الكود: ${it.code}", style = MaterialTheme.typography.bodySmall) }
+-                                Text("الكمية: ${formatMoney(line.quantity)} ${unit?.nameAr ?: "وحدة"} • الأساسية: ${formatMoney(line.baseQuantity)}")
++                                Text("الكمية: ${formatMoney(line.quantity)} ${unit?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)} • الأساسية: ${formatMoney(line.baseQuantity)}")
+                                 if (kotlin.math.abs(line.factorToBase - 1.0) > 0.000001) {
+                                     Text("معامل التحويل للوحدة الأساسية: ${formatMoneyDetailed(line.factorToBase)}", style = MaterialTheme.typography.bodySmall)
+                                 }
+@@ -382,14 +385,14 @@ private fun PurchaseInvoiceDetailDialog(
+                                 if (!line.lotNo.isNullOrBlank()) Text("التشغيلة/الدفعة: ${line.lotNo}")
+                                 line.expiryDate?.let { Text("الصلاحية: ${formatDate(it)}") }
+                                 if (returnedQty > 0.000001) {
+-                                    Text("المرتجع: ${formatMoney(returnedQty)} ${unit?.nameAr ?: "وحدة"} • المتبقي من الشراء: ${formatMoney(remainingQty)}", color = MaterialTheme.colorScheme.error)
++                                    Text("المرتجع: ${formatMoney(returnedQty)} ${unit?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)} • المتبقي من الشراء: ${formatMoney(remainingQty)}", color = MaterialTheme.colorScheme.error)
+                                 }
+                             }
+                         }
+                     }
+ 
+                     HorizontalDivider()
+-                    Text("الملخص المالي", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_financial_summary_9ab87), style = MaterialTheme.typography.titleMedium)
+                     Text("الإجمالي قبل التسويات: ${formatMoney(row.subtotalOriginal)} ${row.currencyCode}")
+                     Text("إجمالي الفاتورة: ${formatMoney(row.totalOriginal)} ${row.currencyCode}", style = MaterialTheme.typography.titleMedium)
+                     Text("الإجمالي بالعملة الأساسية: ${formatMoney(row.totalBase)}")
+@@ -409,7 +412,7 @@ private fun PurchaseInvoiceDetailDialog(
+ 
+                     if (supplierPayments.isNotEmpty()) {
+                         HorizontalDivider()
+-                        Text("دفعات المورد", style = MaterialTheme.typography.titleMedium)
++                        Text(uiContext.getString(R.string.deep_supplier_payments_461eb), style = MaterialTheme.typography.titleMedium)
+                         supplierPayments.forEach { payment ->
+                             Text("${payment.paymentNo} • ${formatDate(payment.paymentDate)} • ${formatMoney(payment.amountOriginal)} ${payment.currencyCode} • ${payment.treasuryName}")
+                         }
+@@ -417,11 +420,11 @@ private fun PurchaseInvoiceDetailDialog(
+ 
+                     if (returns.isNotEmpty()) {
+                         HorizontalDivider()
+-                        Text("المرتجعات", style = MaterialTheme.typography.titleMedium)
++                        Text(uiContext.getString(R.string.deep_returns_14cf6), style = MaterialTheme.typography.titleMedium)
+                         returns.forEach { purchaseReturn ->
+                             val settlement = when (purchaseReturn.settlementType) {
+-                                "CASH_REFUND" -> "استرداد نقدي"
+-                                "SUPPLIER_CREDIT" -> "تخفيض رصيد المورد"
++                                "CASH_REFUND" -> uiContext.getString(R.string.deep_cash_refund_90f61)
++                                "SUPPLIER_CREDIT" -> uiContext.getString(R.string.deep_reduce_supplier_balance_56443)
+                                 else -> purchaseReturn.settlementType
+                             }
+                             Text("${purchaseReturn.returnNo} • ${formatDate(purchaseReturn.returnDate)} • ${formatMoney(purchaseReturn.totalOriginal)} ${purchaseReturn.currencyCode} • $settlement${purchaseReturn.reason.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""}")
+@@ -430,7 +433,7 @@ private fun PurchaseInvoiceDetailDialog(
+                 } ?: Text("جارٍ تحميل تفاصيل الفاتورة...")
+ 
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    Button(onClick = onDismiss) { Text("إغلاق") }
++                    Button(onClick = onDismiss) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                 }
+             }
+         }
+@@ -443,6 +446,7 @@ private fun AddSupplierDialog(
+     onDismiss: () -> Unit,
+     onSave: (String, String, CurrencyEntity, Int) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var name by remember { mutableStateOf("") }
+     var phone by remember { mutableStateOf("") }
+     var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
+@@ -450,23 +454,23 @@ private fun AddSupplierDialog(
+     LaunchedEffect(currencies) { if (currency == null) currency = currencies.firstOrNull { it.isBase } ?: currencies.firstOrNull() }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("إضافة مورد") },
++        title = { Text(uiContext.getString(R.string.deep_add_supplier_88afb)) },
+         text = {
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("كود المورد: ينشئه النظام تلقائياً عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+-                OutlinedTextField(name, { name = it }, label = { Text("اسم المورد") }, singleLine = true)
++                Text(uiContext.getString(R.string.deep_supplier_code_is_generated_automatically_w_77795), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++                OutlinedTextField(name, { name = it }, label = { Text(uiContext.getString(R.string.deep_supplier_name_655ec)) }, singleLine = true)
+                 FushPhoneField(phone, { phone = it }, modifier = Modifier.fillMaxWidth())
+-                SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
+-                FushIntegerField(daysText, { daysText = it.filter { c -> c.isDigit() } }, "مدة السداد بالأيام", modifier = Modifier.fillMaxWidth())
++                SelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it }
++                FushIntegerField(daysText, { daysText = it.filter { c -> c.isDigit() } }, uiContext.getString(R.string.deep_payment_terms_in_days_91414), modifier = Modifier.fillMaxWidth())
+             }
+         },
+         confirmButton = {
+             Button(
+                 enabled = name.isNotBlank() && currency != null && daysText.toIntOrNull() != null,
+                 onClick = { onSave(name, phone, currency!!, daysText.toInt()) }
+-            ) { Text("حفظ") }
++            ) { Text(uiContext.getString(R.string.deep_save_56ee6)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -483,6 +487,7 @@ private fun PurchaseInvoiceDialog(
+     onPosted: (Long) -> Unit,
+     onError: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     var supplier by remember { mutableStateOf<SupplierEntity?>(null) }
+     var warehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+@@ -541,34 +546,34 @@ private fun PurchaseInvoiceDialog(
+                 Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
+                 verticalArrangement = Arrangement.spacedBy(8.dp)
+             ) {
+-                Text("فاتورة شراء جديدة", style = MaterialTheme.typography.headlineSmall)
+-                Text("رقم فاتورة النظام ينشأ تلقائياً عند الترحيل (PINV-YYYYMMDD-####).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+-                SelectionField("المورد", supplier?.nameAr ?: "اختر", suppliers, { it.nameAr }) { supplier = it }
+-                OutlinedTextField(supplierInvoiceNo, { supplierInvoiceNo = it }, label = { Text("رقم فاتورة المورد - اختياري") }, singleLine = true)
+-                FushDateField(invoiceDateText, { invoiceDateText = it }, "تاريخ الفاتورة", modifier = Modifier.fillMaxWidth())
+-                SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+-                SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it; if (it.isBase) exchangeRateText = "1" }
++                Text(uiContext.getString(R.string.deep_new_purchase_invoice_325f9), style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_the_system_invoice_number_is_generated_aut_bf2bc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++                SelectionField(uiContext.getString(R.string.deep_supplier_70ff5), supplier?.nameAr ?: uiContext.getString(R.string.common_select), suppliers, { it.nameAr }) { supplier = it }
++                OutlinedTextField(supplierInvoiceNo, { supplierInvoiceNo = it }, label = { Text(uiContext.getString(R.string.deep_supplier_invoice_number_optional_c7dbb)) }, singleLine = true)
++                FushDateField(invoiceDateText, { invoiceDateText = it }, uiContext.getString(R.string.deep_invoice_date_96358), modifier = Modifier.fillMaxWidth())
++                SelectionField(uiContext.getString(R.string.deep_warehouse_01d55), warehouse?.nameAr ?: uiContext.getString(R.string.common_select), warehouses, { it.nameAr }) { warehouse = it }
++                SelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it; if (it.isBase) exchangeRateText = "1" }
+                 FushDecimalField(exchangeRateText, { exchangeRateText = it }, "سعر الصرف إلى الريال الجديد", modifier = Modifier.fillMaxWidth(), enabled = currency?.isBase != true)
+-                StringSelectionField("السداد", if (paymentType == "CASH") "نقدي" else "آجل", listOf("CASH", "CREDIT")) { paymentType = it }
++                StringSelectionField(uiContext.getString(R.string.deep_payment_a77dd), if (paymentType == "CASH") uiContext.getString(R.string.common_cash) else uiContext.getString(R.string.common_credit), listOf("CASH", "CREDIT")) { paymentType = it }
+                 HorizontalDivider()
+-                Text("إضافة صنف للفاتورة", style = MaterialTheme.typography.titleMedium)
+-                SelectionField("الصنف", item?.nameAr ?: "اختر", itemsList.filter { it.category != "FINISHED_GOOD" }, { it.nameAr }) { item = it }
++                Text(uiContext.getString(R.string.deep_add_invoice_item_71f9c), style = MaterialTheme.typography.titleMedium)
++                SelectionField(uiContext.getString(R.string.deep_item_2a4bf), item?.nameAr ?: uiContext.getString(R.string.common_select), itemsList.filter { it.category != "FINISHED_GOOD" }, { it.nameAr }) { item = it }
+                 SelectionField(
+-                    "الوحدة",
+-                    conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: "اختر",
++                    uiContext.getString(R.string.deep_unit_44501),
++                    conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: uiContext.getString(R.string.common_select),
+                     conversions,
+-                    { c -> units.firstOrNull { it.id == c.unitId }?.nameAr ?: "وحدة" }
++                    { c -> units.firstOrNull { it.id == c.unitId }?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea) }
+                 ) { conversion = it }
+-                FushDecimalField(quantityText, { quantityText = it }, "الكمية", modifier = Modifier.fillMaxWidth())
+-                FushDecimalField(priceText, { priceText = it }, "سعر الوحدة بالعملة المختارة", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(quantityText, { quantityText = it }, uiContext.getString(R.string.deep_quantity_a9513), modifier = Modifier.fillMaxWidth())
++                FushDecimalField(priceText, { priceText = it }, uiContext.getString(R.string.deep_unit_price_in_selected_currency_8769d), modifier = Modifier.fillMaxWidth())
+                 if (loadingLastPrice) {
+-                    Text("جارٍ جلب آخر سعر شراء...", style = MaterialTheme.typography.bodySmall)
++                    Text(uiContext.getString(R.string.deep_loading_last_purchase_price_0f073), style = MaterialTheme.typography.bodySmall)
+                 } else {
+                     val previous = lastPurchasePrice
+-                    val selectedUnitName = conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: "الوحدة"
++                    val selectedUnitName = conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: uiContext.getString(R.string.deep_unit_44501)
+                     if (previous == null) {
+                         Text(
+-                            "لا يوجد شراء سابق لنفس الصنف بهذه الوحدة والعملة.",
++                            uiContext.getString(R.string.deep_no_previous_purchase_for_this_item_in_the__819f7),
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                         )
+@@ -581,9 +586,9 @@ private fun PurchaseInvoiceDialog(
+                         priceText.toDoubleOrNull()?.takeIf { it >= 0.0 }?.let { currentPrice ->
+                             val variance = PurchaseMath.priceVariance(currentPrice, previous.unitPriceOriginal)
+                             val direction = when {
+-                                variance.amount > 0.0000001 -> "أعلى من آخر شراء"
+-                                variance.amount < -0.0000001 -> "أقل من آخر شراء"
+-                                else -> "مطابق لآخر شراء"
++                                variance.amount > 0.0000001 -> uiContext.getString(R.string.deep_higher_than_last_purchase_47b9f)
++                                variance.amount < -0.0000001 -> uiContext.getString(R.string.deep_lower_than_last_purchase_cd1b6)
++                                else -> uiContext.getString(R.string.deep_same_as_last_purchase_1c29b)
+                             }
+                             val sign = if (variance.amount > 0.0) "+" else ""
+                             val pct = variance.percent?.let { " (${if (it > 0) "+" else ""}${String.format(Locale.US, "%.2f", it)}%)" } ?: ""
+@@ -600,18 +605,18 @@ private fun PurchaseInvoiceDialog(
+                         }
+                     }
+                 }
+-                OutlinedTextField(lotNoText, { lotNoText = it }, label = { Text("رقم التشغيلة - اختياري") }, singleLine = true)
+-                FushDateField(expiryText, { expiryText = it }, "تاريخ الصلاحية", modifier = Modifier.fillMaxWidth(), optional = true)
++                OutlinedTextField(lotNoText, { lotNoText = it }, label = { Text(uiContext.getString(R.string.deep_lot_number_optional_86e65)) }, singleLine = true)
++                FushDateField(expiryText, { expiryText = it }, uiContext.getString(R.string.deep_expiry_date_d46aa), modifier = Modifier.fillMaxWidth(), optional = true)
+                 OutlinedButton(
+                     onClick = {
+                         try {
+-                            val q = requireNotNull(quantityText.toDoubleOrNull()) { "أدخل كمية صحيحة" }
+-                            val p = requireNotNull(priceText.toDoubleOrNull()) { "أدخل سعراً صحيحاً" }
+-                            require(q > 0 && p >= 0) { "الكمية والسعر غير صالحين" }
+-                            val i = requireNotNull(item) { "اختر الصنف" }
+-                            val c = requireNotNull(conversion) { "اختر الوحدة" }
+-                            val u = requireNotNull(units.firstOrNull { it.id == c.unitId }) { "الوحدة غير موجودة" }
+-                            val expiry = if (expiryText.isBlank()) null else requireNotNull(parseDate(expiryText)) { "تاريخ الصلاحية غير صحيح" }
++                            val q = requireNotNull(quantityText.toDoubleOrNull()) { uiContext.getString(R.string.deep_enter_a_valid_quantity_51929) }
++                            val p = requireNotNull(priceText.toDoubleOrNull()) { uiContext.getString(R.string.deep_enter_a_valid_price_1faf3) }
++                            require(q > 0 && p >= 0) { uiContext.getString(R.string.deep_invalid_quantity_or_price_a6fd4) }
++                            val i = requireNotNull(item) { uiContext.getString(R.string.deep_select_an_item_38e39) }
++                            val c = requireNotNull(conversion) { uiContext.getString(R.string.deep_select_a_unit_4be64) }
++                            val u = requireNotNull(units.firstOrNull { it.id == c.unitId }) { uiContext.getString(R.string.deep_unit_not_found_8e799) }
++                            val expiry = if (expiryText.isBlank()) null else requireNotNull(parseDate(expiryText)) { uiContext.getString(R.string.deep_invalid_expiry_date_d5286) }
+                             lines.add(PurchaseLineUi(i, u, c.factorToBase, q, p, lotNoText.trim().ifBlank { null }, expiry))
+                             quantityText = ""
+                             priceText = ""
+@@ -621,10 +626,10 @@ private fun PurchaseInvoiceDialog(
+                         } catch (e: Exception) { error = e.message }
+                     },
+                     modifier = Modifier.fillMaxWidth()
+-                ) { Text("إضافة السطر") }
++                ) { Text(uiContext.getString(R.string.deep_add_line_c3f6a)) }
+ 
+                 if (lines.isNotEmpty()) {
+-                    Text("بنود الفاتورة", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_invoice_lines_9b178), style = MaterialTheme.typography.titleMedium)
+                     lines.forEachIndexed { index, line ->
+                         Card(Modifier.fillMaxWidth()) {
+                             Row(Modifier.padding(10.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+@@ -635,7 +640,7 @@ private fun PurchaseInvoiceDialog(
+                                     if (!line.lotNo.isNullOrBlank()) Text("التشغيلة: ${line.lotNo}")
+                                     line.expiryDate?.let { Text("الصلاحية: ${formatDate(it)}") }
+                                 }
+-                                TextButton(onClick = { lines.removeAt(index) }) { Text("حذف") }
++                                TextButton(onClick = { lines.removeAt(index) }) { Text(uiContext.getString(R.string.deep_delete_2d2bb)) }
+                             }
+                         }
+                     }
+@@ -643,7 +648,7 @@ private fun PurchaseInvoiceDialog(
+                 }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Spacer(Modifier.width(8.dp))
+                     Button(
+                         enabled = !saving && lines.isNotEmpty() && supplier != null && warehouse != null && currency != null,
+@@ -651,8 +656,8 @@ private fun PurchaseInvoiceDialog(
+                             scope.launch {
+                                 saving = true
+                                 try {
+-                                    val rate = if (currency?.isBase == true) 1.0 else requireNotNull(exchangeRateText.toDoubleOrNull()) { "سعر الصرف غير صالح" }
+-                                    val invoiceDate = requireNotNull(parseDate(invoiceDateText)) { "تاريخ الفاتورة غير صحيح" }
++                                    val rate = if (currency?.isBase == true) 1.0 else requireNotNull(exchangeRateText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_exchange_rate_d8efc) }
++                                    val invoiceDate = requireNotNull(parseDate(invoiceDateText)) { uiContext.getString(R.string.deep_invalid_invoice_date_467ff) }
+                                     val id = container.purchaseService.postPurchase(
+                                         PurchaseService.PostPurchaseRequest(
+                                             supplierId = supplier!!.id,
+@@ -668,13 +673,13 @@ private fun PurchaseInvoiceDialog(
+                                     )
+                                     onPosted(id)
+                                 } catch (e: Exception) {
+-                                    val text = e.message ?: "تعذر ترحيل الفاتورة"
++                                    val text = e.message ?: uiContext.getString(R.string.deep_could_not_post_invoice_c95ff)
+                                     error = text
+                                     onError(text)
+                                 } finally { saving = false }
+                             }
+                         }
+-                    ) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل الفاتورة") }
++                    ) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_post_invoice_60222)) }
+                 }
+             }
+         }
+@@ -692,6 +697,7 @@ private fun PurchaseReturnDialog(
+     onPosted: (Long) -> Unit,
+     onError: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val purchaseLines by produceState(initialValue = emptyList<PurchaseLineEntity>(), key1 = invoice.id) {
+         value = container.db.purchaseDao().linesForInvoice(invoice.id)
+@@ -719,18 +725,18 @@ private fun PurchaseReturnDialog(
+     Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-                Text("مرتجع مشتريات جزئي", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_partial_purchase_return_91e4d), style = MaterialTheme.typography.headlineSmall)
+                 Text("من الفاتورة ${invoice.invoiceNo} — ${invoice.supplierName}")
+-                Text("يمكن إرجاع جزء من سطر واحد أو عدة أسطر في مستند مرتجع واحد.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++                Text(uiContext.getString(R.string.deep_you_can_return_part_of_one_or_several_line_06bca), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+ 
+                 if (purchaseLines.isEmpty()) {
+-                    Text("جارٍ تحميل أصناف الفاتورة...")
++                    Text(uiContext.getString(R.string.deep_loading_invoice_items_779ba))
+                 } else if (returnableLines.isEmpty()) {
+-                    FushInlineState("لا توجد كميات متبقية قابلة للمرتجع في هذه الفاتورة.", tone = FushStatusTone.Warning)
++                    FushInlineState(uiContext.getString(R.string.deep_there_are_no_remaining_quantities_availabl_1fb22), tone = FushStatusTone.Warning)
+                 } else {
+                     returnableLines.forEach { line ->
+                         val itemName = itemsList.firstOrNull { it.id == line.itemId }?.nameAr ?: "صنف #${line.itemId}"
+-                        val unitName = units.firstOrNull { it.id == line.unitId }?.nameAr ?: "وحدة"
++                        val unitName = units.firstOrNull { it.id == line.unitId }?.nameAr ?: uiContext.getString(R.string.deep_unit_95eea)
+                         val alreadyReturned = returnedQtyByLine[line.id] ?: 0.0
+                         val remaining = (line.quantity - alreadyReturned).coerceAtLeast(0.0)
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -748,9 +754,9 @@ private fun PurchaseReturnDialog(
+                                     modifier = Modifier.fillMaxWidth()
+                                 )
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                                    TextButton(onClick = { quantities[line.id] = remaining.toString() }, enabled = !saving) { Text("إرجاع كل المتبقي") }
++                                    TextButton(onClick = { quantities[line.id] = remaining.toString() }, enabled = !saving) { Text(uiContext.getString(R.string.deep_return_all_remaining_3eb8e)) }
+                                     if (!quantities[line.id].isNullOrBlank()) {
+-                                        TextButton(onClick = { quantities[line.id] = "" }, enabled = !saving) { Text("مسح") }
++                                        TextButton(onClick = { quantities[line.id] = "" }, enabled = !saving) { Text(uiContext.getString(R.string.common_clear)) }
+                                     }
+                                 }
+                             }
+@@ -761,8 +767,8 @@ private fun PurchaseReturnDialog(
+                 if (selectedDrafts.isNotEmpty()) {
+                     Text("إجمالي المرتجع المحدد: ${formatMoney(selectedTotal)} ${invoice.currencyCode}", style = MaterialTheme.typography.titleMedium)
+                 }
+-                StringSelectionField("التسوية", if (settlement == "CASH_REFUND") "استرداد نقدي" else "تخفيض رصيد المورد", listOf("CASH_REFUND", "SUPPLIER_CREDIT")) { settlement = it }
+-                OutlinedTextField(reason, { reason = it }, label = { Text("سبب المرتجع (مطلوب)") }, modifier = Modifier.fillMaxWidth())
++                StringSelectionField(uiContext.getString(R.string.deep_settlement_c8429), if (settlement == "CASH_REFUND") uiContext.getString(R.string.deep_cash_refund_90f61) else uiContext.getString(R.string.deep_reduce_supplier_balance_56443), listOf("CASH_REFUND", "SUPPLIER_CREDIT")) { settlement = it }
++                OutlinedTextField(reason, { reason = it }, label = { Text(uiContext.getString(R.string.deep_return_reason_required_06098)) }, modifier = Modifier.fillMaxWidth())
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+ 
+                 val quantitiesWithinLimits = selectedDrafts.all { draft ->
+@@ -771,7 +777,7 @@ private fun PurchaseReturnDialog(
+                     draft.quantity <= remaining + 1e-9
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Spacer(Modifier.width(8.dp))
+                     Button(
+                         enabled = !saving && selectedDrafts.isNotEmpty() && quantitiesWithinLimits && reason.isNotBlank(),
+@@ -791,13 +797,13 @@ private fun PurchaseReturnDialog(
+                                     )
+                                     onPosted(id)
+                                 } catch (e: Exception) {
+-                                    val text = e.message ?: "تعذر ترحيل المرتجع"
++                                    val text = e.message ?: uiContext.getString(R.string.deep_could_not_post_return_d5775)
+                                     error = text
+                                     onError(text)
+                                 } finally { saving = false }
+                             }
+                         }
+-                    ) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل المرتجع") }
++                    ) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_post_return_35de8)) }
+                 }
+             }
+         }
+@@ -815,6 +821,7 @@ private fun SupplierPaymentDialog(
+     onPosted: (String) -> Unit,
+     onError: (String) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val openInvoices by produceState(initialValue = emptyList<SupplierInvoicePayableRow>(), key1 = supplier.id) {
+         value = container.db.purchaseDao().openSupplierInvoices(supplier.id)
+@@ -850,14 +857,14 @@ private fun SupplierPaymentDialog(
+     Dialog(onDismissRequest = { if (!saving) onDismiss() }) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("دفع مورد", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_supplier_payment_5c765), style = MaterialTheme.typography.headlineSmall)
+                 Text("${supplier.nameAr} • ${supplier.code}")
+                 if (openInvoices.isEmpty()) {
+-                    FushInlineState("لا توجد فواتير آجلة مستحقة لهذا المورد.", tone = FushStatusTone.Success)
++                    FushInlineState(uiContext.getString(R.string.deep_there_are_no_outstanding_credit_invoices_f_f07ff), tone = FushStatusTone.Success)
+                 } else {
+                     SelectionField(
+-                        "الفاتورة",
+-                        invoice?.let { "${it.invoiceNo} • متبقي ${formatMoney(it.outstandingBase)}" } ?: "اختر",
++                        uiContext.getString(R.string.deep_invoice_26abf),
++                        invoice?.let { "${it.invoiceNo} • متبقي ${formatMoney(it.outstandingBase)}" } ?: uiContext.getString(R.string.common_select),
+                         openInvoices,
+                         { "${it.invoiceNo} • ${formatDate(it.invoiceDate)} • متبقي ${formatMoney(it.outstandingBase)}" }
+                     ) { selected -> invoice = selected; amountText = ""; error = null }
+@@ -867,8 +874,8 @@ private fun SupplierPaymentDialog(
+                         selected.dueDate?.let { Text("تاريخ الاستحقاق: ${formatDate(it)}") }
+                         val compatibleTreasury = treasuryAccounts.filter { it.currencyCode == selected.currencyCode }
+                         SelectionField(
+-                            "الصندوق / البنك",
+-                            treasury?.nameAr ?: "اختر",
++                            uiContext.getString(R.string.deep_cashbox_bank_03eb0),
++                            treasury?.nameAr ?: uiContext.getString(R.string.common_select),
+                             compatibleTreasury,
+                             { "${it.nameAr} • ${it.currencyCode}" }
+                         ) { treasury = it }
+@@ -876,15 +883,15 @@ private fun SupplierPaymentDialog(
+                             FushInlineState("لا توجد خزينة نشطة بعملة ${selected.currencyCode}. أنشئها من الحسابات أولًا.", tone = FushStatusTone.Danger)
+                         }
+                         FushDecimalField(amountText, { amountText = it }, "المبلغ المدفوع (${selected.currencyCode})", modifier = Modifier.fillMaxWidth())
+-                        FushDecimalField(rateText, { rateText = it }, "سعر الصرف بتاريخ الدفع", modifier = Modifier.fillMaxWidth())
+-                        Text("يخفّض حساب المورد بسعر الفاتورة التاريخي، وأي فرق عن سعر الدفع يسجل تلقائياً كربح/خسارة فرق عملة.", style = MaterialTheme.typography.bodySmall)
++                        FushDecimalField(rateText, { rateText = it }, uiContext.getString(R.string.deep_exchange_rate_on_payment_date_6cfe2), modifier = Modifier.fillMaxWidth())
++                        Text(uiContext.getString(R.string.deep_the_supplier_balance_is_reduced_using_the__fe3fd), style = MaterialTheme.typography.bodySmall)
+                     }
+-                    FushDateField(dateText, { dateText = it }, "تاريخ الدفع", modifier = Modifier.fillMaxWidth())
+-                    OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات - اختياري") })
++                    FushDateField(dateText, { dateText = it }, uiContext.getString(R.string.deep_payment_date_ea898), modifier = Modifier.fillMaxWidth())
++                    OutlinedTextField(notes, { notes = it }, label = { Text(uiContext.getString(R.string.deep_notes_optional_083fb)) })
+                 }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    TextButton(onClick = onDismiss, enabled = !saving) { Text("إلغاء") }
++                    TextButton(onClick = onDismiss, enabled = !saving) { Text(uiContext.getString(R.string.common_cancel)) }
+                     Spacer(Modifier.width(8.dp))
+                     Button(
+                         enabled = !saving && invoice != null && treasury != null && amountText.toDoubleOrNull() != null && rateText.toDoubleOrNull() != null,
+@@ -892,26 +899,26 @@ private fun SupplierPaymentDialog(
+                             scope.launch {
+                                 saving = true
+                                 try {
+-                                    val selected = requireNotNull(invoice) { "اختر الفاتورة" }
++                                    val selected = requireNotNull(invoice) { uiContext.getString(R.string.deep_select_an_invoice_42423) }
+                                     val result = container.purchaseService.postSupplierPayment(
+                                         supplierId = supplier.id,
+                                         invoiceId = selected.invoiceId,
+                                         treasuryAccountId = requireNotNull(treasury).id,
+-                                        amountOriginal = requireNotNull(amountText.toDoubleOrNull()) { "المبلغ غير صالح" },
+-                                        paymentExchangeRate = requireNotNull(rateText.toDoubleOrNull()) { "سعر الصرف غير صالح" },
++                                        amountOriginal = requireNotNull(amountText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_amount_84b32) },
++                                        paymentExchangeRate = requireNotNull(rateText.toDoubleOrNull()) { uiContext.getString(R.string.deep_invalid_exchange_rate_d8efc) },
+                                         notes = notes,
+                                         createdBy = user.id,
+-                                        paymentDate = requireNotNull(parseDate(dateText)) { "تاريخ الدفع غير صحيح" }
++                                        paymentDate = requireNotNull(parseDate(dateText)) { uiContext.getString(R.string.deep_invalid_payment_date_7d0c1) }
+                                     )
+                                     onPosted(result.paymentNo)
+                                 } catch (e: Exception) {
+-                                    val text = e.message ?: "تعذر ترحيل دفعة المورد"
++                                    val text = e.message ?: uiContext.getString(R.string.deep_could_not_post_supplier_payment_8aef8)
+                                     error = text
+                                     onError(text)
+                                 } finally { saving = false }
+                             }
+                         }
+-                    ) { Text(if (saving) "جارٍ الترحيل..." else "ترحيل الدفع") }
++                    ) { Text(if (saving) uiContext.getString(R.string.deep_posting_2b9d6) else uiContext.getString(R.string.deep_post_payment_2f7d2)) }
+                 }
+             }
+         }
+@@ -924,6 +931,7 @@ private fun SupplierAccountDialog(
+     supplier: SupplierEntity,
+     onDismiss: () -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     val asOf = remember { System.currentTimeMillis() }
+     val events by produceState(initialValue = emptyList<SupplierLedgerEventRow>(), key1 = supplier.id) {
+         value = container.db.purchaseDao().supplierLedgerEvents(supplier.id, asOf)
+@@ -945,17 +953,17 @@ private fun SupplierAccountDialog(
+     Dialog(onDismissRequest = onDismiss) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.94f)) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("كشف حساب المورد", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_supplier_statement_975ed), style = MaterialTheme.typography.headlineSmall)
+                 Text("${supplier.nameAr} • ${supplier.code}")
+                 Text("الرصيد الحالي: ${formatMoney(running.lastOrNull()?.second ?: 0.0)} بالعملة الأساسية", style = MaterialTheme.typography.titleMedium)
+                 Text("فواتير مفتوحة: ${openInvoices.size} • دفعات مسجلة: ${payments.size}")
+                 HorizontalDivider()
+-                Text("الحركة", style = MaterialTheme.typography.titleMedium)
+-                if (running.isEmpty()) FushInlineState("لا توجد حركة دائنة لهذا المورد.")
++                Text(uiContext.getString(R.string.deep_movement_15cf9), style = MaterialTheme.typography.titleMedium)
++                if (running.isEmpty()) FushInlineState(uiContext.getString(R.string.deep_there_is_no_payable_activity_for_this_supp_194a7))
+                 running.forEach { (event, balance) ->
+                     val type = when (event.eventType) {
+                         "INVOICE" -> "فاتورة"
+-                        "RETURN" -> "مرتجع"
++                        "RETURN" -> uiContext.getString(R.string.deep_return_0353b)
+                         "PAYMENT" -> "دفعة"
+                         else -> event.eventType
+                     }
+@@ -969,13 +977,13 @@ private fun SupplierAccountDialog(
+                 }
+                 if (openInvoices.isNotEmpty()) {
+                     HorizontalDivider()
+-                    Text("الفواتير المفتوحة", style = MaterialTheme.typography.titleMedium)
++                    Text(uiContext.getString(R.string.deep_open_invoices_66f22), style = MaterialTheme.typography.titleMedium)
+                     openInvoices.forEach { row ->
+                         Text("${row.invoiceNo} • ${formatDate(row.invoiceDate)} • استحقاق ${row.dueDate?.let(::formatDate) ?: "غير محدد"} • متبقي ${formatMoney(row.outstandingBase)}")
+                     }
+                 }
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+-                    Button(onClick = onDismiss) { Text("إغلاق") }
++                    Button(onClick = onDismiss) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+                 }
+             }
+         }
+@@ -984,6 +992,7 @@ private fun SupplierAccountDialog(
+ 
+ @Composable
+ private fun SupplierAgingDialog(container: AppContainer, onDismiss: () -> Unit) {
++    val uiContext = LocalContext.current
+     val asOf = remember { System.currentTimeMillis() }
+     val rows by produceState(initialValue = emptyList<SupplierAgingRow>(), key1 = asOf) {
+         value = container.db.purchaseDao().supplierAging(asOf)
+@@ -991,9 +1000,9 @@ private fun SupplierAgingDialog(container: AppContainer, onDismiss: () -> Unit)
+     Dialog(onDismissRequest = onDismiss) {
+         Surface(shape = MaterialTheme.shapes.large, tonalElevation = 8.dp, modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Text("أعمار ديون الموردين AP Aging", style = MaterialTheme.typography.headlineSmall)
++                Text(uiContext.getString(R.string.deep_supplier_ap_aging_00b5f), style = MaterialTheme.typography.headlineSmall)
+                 Text("حتى ${formatDate(asOf)} • جميع القيم بالعملة الأساسية")
+-                if (rows.isEmpty()) FushInlineState("لا توجد أرصدة موردين مفتوحة.", tone = FushStatusTone.Success)
++                if (rows.isEmpty()) FushInlineState(uiContext.getString(R.string.deep_there_are_no_open_supplier_balances_c0729), tone = FushStatusTone.Success)
+                 rows.forEach { row ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+@@ -1009,7 +1018,7 @@ private fun SupplierAgingDialog(container: AppContainer, onDismiss: () -> Unit)
+                     HorizontalDivider()
+                     Text("إجمالي الدائنين المفتوح: ${formatMoney(rows.sumOf { it.totalOutstandingBase })}", style = MaterialTheme.typography.titleMedium)
+                 }
+-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Button(onClick = onDismiss) { Text("إغلاق") } }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { Button(onClick = onDismiss) { Text(uiContext.getString(R.string.deep_close_5bf82)) } }
+             }
+         }
+     }

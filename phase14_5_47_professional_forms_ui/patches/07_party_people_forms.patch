@@ -1,0 +1,119 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 100d932..9bd5196 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -204,7 +204,7 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text("${row.employeeName} — ${row.assetName}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+-                        FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else row.status, if (active) FushStatusTone.Success else FushStatusTone.Warning)
++                        FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else employeeAuthorizationStatusAr(row.status), if (active) FushStatusTone.Success else FushStatusTone.Warning)
+                     }
+                     Text("${row.authorizationNo} • تدريب: ${row.courseTitle}", style = MaterialTheme.typography.bodySmall)
+                     Text("الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "حتى الإلغاء"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -432,7 +432,7 @@ private fun EmployeeProfileScreen(
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                     Text("${row.authorizationNo} — ${row.assetName}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+-                                    FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else row.status, if (active) FushStatusTone.Success else FushStatusTone.Warning)
++                                    FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else employeeAuthorizationStatusAr(row.status), if (active) FushStatusTone.Success else FushStatusTone.Warning)
+                                 }
+                                 Text("التدريب: ${row.courseTitle}")
+                                 Text("الإصدار: ${fmtDate(row.issuedAt)} • الانتهاء: ${row.expiresAt?.let(::fmtDate) ?: "مفتوح"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -483,7 +483,7 @@ private fun EmployeeProfileScreen(
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                     Text(voucher.voucherNo, style = MaterialTheme.typography.titleMedium)
+-                                    FushStatusPill(voucher.status, if (voucher.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
++                                    FushStatusPill(employeeVoucherStatusAr(voucher.status), if (voucher.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
+                                 }
+                                 Text("${fmtDate(voucher.voucherDate)} • ${if (voucher.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${employeeMoney(voucher.amountBase)} ريال")
+                                 Text(voucher.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -551,6 +551,22 @@ private fun EmployeeReverseVoucherDialog(voucher: PartyVoucherEntity, onDismiss:
+ }
+ 
+ private fun employeeMoney(value: Double): String = if (kotlin.math.abs(value - value.toLong()) < 0.000001) value.toLong().toString() else "%.2f".format(Locale.US, value)
++private fun employeeAuthorizationStatusAr(value: String): String = when (value) {
++    "ACTIVE" -> "ساري"
++    "SUSPENDED" -> "موقوف"
++    "REVOKED" -> "ملغى"
++    "EXPIRED" -> "منتهي"
++    else -> value
++}
++
++private fun employeeVoucherStatusAr(value: String): String = when (value) {
++    "POSTED" -> "مرحّل"
++    "DRAFT" -> "مسودة"
++    "REVERSED" -> "معكوس"
++    "CANCELLED" -> "ملغى"
++    else -> value
++}
++
+ private fun employeeDateTime(value: Long): String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(value))
+ 
+ @Composable
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 3b238b3..11bcd38 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -901,7 +901,7 @@ private fun QuickPartyVoucherDialog(container: AppContainer, type:String, custom
+     LaunchedEffect(source?.currencyCode) { if(source?.currencyCode=="YER_NEW") rate="1" }
+     val offset=accounts.firstOrNull { it.code == if(customer!=null) "1300" else "2100" }
+     AlertDialog(onDismissRequest=onDismiss,title={Text(if(type=="RECEIPT") "سند قبض — ${customer?.nameAr?:supplier?.nameAr}" else "سند صرف — ${customer?.nameAr?:supplier?.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+-        PartySelectionField("الخزينة / البنك",source?.nameAr?:"اختر",treasury,{"${it.nameAr} • ${it.currencyCode}"}){source=it}; OutlinedTextField(amount,{amount=it},label={Text("المبلغ")},singleLine=true,modifier=Modifier.fillMaxWidth()); OutlinedTextField(rate,{rate=it},label={Text("سعر الصرف")},singleLine=true,modifier=Modifier.fillMaxWidth()); OutlinedTextField(description,{description=it},label={Text("البيان")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(reference,{reference=it},label={Text("المرجع - اختياري")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(date,{date=it},label={Text("التاريخ YYYY-MM-DD")},singleLine=true,modifier=Modifier.fillMaxWidth()); if(offset==null) Text("حساب الطرف الرقابي غير موجود.",color=MaterialTheme.colorScheme.error)
++        PartySelectionField("الخزينة / البنك",source?.nameAr?:"اختر",treasury,{"${it.nameAr} • ${it.currencyCode}"}){source=it}; FushDecimalField(amount,{amount=it},"المبلغ",modifier=Modifier.fillMaxWidth()); FushDecimalField(rate,{rate=it},"سعر الصرف",modifier=Modifier.fillMaxWidth()); OutlinedTextField(description,{description=it},label={Text("البيان")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(reference,{reference=it},label={Text("المرجع - اختياري")},modifier=Modifier.fillMaxWidth()); FushDateField(date,{date=it},"التاريخ",modifier=Modifier.fillMaxWidth()); if(offset==null) Text("حساب الطرف الرقابي غير موجود.",color=MaterialTheme.colorScheme.error)
+     }},confirmButton={Button(enabled=source!=null&&offset!=null&&amount.toDoubleOrNull()?.let{it>0}==true&&rate.toDoubleOrNull()?.let{it>0}==true&&description.isNotBlank(),onClick={onPost(AccountingService.VoucherRequest(type=type,treasuryAccountId=source!!.id,offsetAccountId=offset!!.id,amountOriginal=amount.toDouble(),currencyCode=source!!.currencyCode,exchangeRate=rate.toDouble(),description=description,referenceNo=reference,voucherDate=partyParseDate(date),createdBy=0L,customerId=customer?.id,supplierId=supplier?.id))}){Text("ترحيل")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index f4c27b4..cd726e6 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -289,7 +289,7 @@ private fun SalesRepresentativeProfile(
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                     Text("فاتورة #${c.invoiceId}", style = MaterialTheme.typography.titleMedium)
+-                                    FushStatusPill(c.status, if (net > 0.000001) FushStatusTone.Success else FushStatusTone.Warning)
++                                    FushStatusPill(repCommissionStatusAr(c.status), if (net > 0.000001) FushStatusTone.Success else FushStatusTone.Warning)
+                                 }
+                                 Text("${repDate(c.createdAt)} • صافي العمولة ${repMoney(net)} ريال", style = MaterialTheme.typography.titleSmall)
+                                 Text("مكتسب ${repMoney(c.earnedBase)} • معكوس ${repMoney(c.reversedBase)} • النسبة ${repMoney(c.ratePct)}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -305,7 +305,7 @@ private fun SalesRepresentativeProfile(
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                     Text(v.voucherNo, style = MaterialTheme.typography.titleMedium)
+-                                    FushStatusPill(v.status, if (v.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
++                                    FushStatusPill(repVoucherStatusAr(v.status), if (v.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
+                                 }
+                                 Text("${repDate(v.voucherDate)} • ${if (v.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${repMoney(v.amountBase)} ريال")
+                                 Text(v.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+@@ -434,7 +434,7 @@ private fun AddSalesRepDialog(
+ private fun EditSalesRepDialog(rep: SalesRepresentativeEntity, onDismiss: () -> Unit, onSave: (String, String, String, String, Double, String, String) -> Unit) {
+     var name by remember { mutableStateOf(rep.fullNameAr) }; var en by remember { mutableStateOf(rep.fullNameEn) }; var phone by remember { mutableStateOf(rep.phone) }; var territory by remember { mutableStateOf(rep.territory) }; var rate by remember { mutableStateOf(rep.commissionRatePct.toString()) }; var status by remember { mutableStateOf(rep.status) }; var notes by remember { mutableStateOf(rep.notes) }
+     AlertDialog(onDismissRequest = onDismiss, title = { Text("تعديل المندوب") }, text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-        OutlinedTextField(name,{name=it},label={Text("الاسم")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(en,{en=it},label={Text("English")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(phone,{phone=it},label={Text("الهاتف")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(territory,{territory=it},label={Text("المنطقة")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(rate,{rate=it},label={Text("العمولة %")},modifier=Modifier.fillMaxWidth()); RepStringSelection("الحالة",status,listOf("ACTIVE","INACTIVE"),{if(it=="ACTIVE")"نشط" else "موقوف"}){status=it}; OutlinedTextField(notes,{notes=it},label={Text("ملاحظات")},modifier=Modifier.fillMaxWidth())
++        OutlinedTextField(name,{name=it},label={Text("الاسم")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(en,{en=it},label={Text("English")},modifier=Modifier.fillMaxWidth()); FushPhoneField(phone,{phone=it},modifier=Modifier.fillMaxWidth()); OutlinedTextField(territory,{territory=it},label={Text("المنطقة")},modifier=Modifier.fillMaxWidth()); FushDecimalField(rate,{rate=it},"العمولة %",modifier=Modifier.fillMaxWidth()); RepStringSelection("الحالة",status,listOf("ACTIVE","INACTIVE"),{if(it=="ACTIVE")"نشط" else "موقوف"}){status=it}; OutlinedTextField(notes,{notes=it},label={Text("ملاحظات")},modifier=Modifier.fillMaxWidth())
+     } }, confirmButton = { Button(enabled=name.isNotBlank()&&rate.toDoubleOrNull()?.let{it in 0.0..100.0}==true,onClick={onSave(name,en,phone,territory,rate.toDouble(),status,notes)}){Text("حفظ")} }, dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -516,5 +516,20 @@ private fun <T> RepSelection(label: String, current: String, options: List<T>, o
+ private fun RepStringSelection(label:String,current:String,options:List<String>,optionLabel:(String)->String,onSelected:(String)->Unit){RepSelection(label,optionLabel(current),options,optionLabel,onSelected)}
+ 
+ private fun repMoney(v: Double): String = if (kotlin.math.abs(v-v.toLong()) < 0.000001) v.toLong().toString() else "%.2f".format(Locale.US,v)
++private fun repCommissionStatusAr(value: String): String = when (value) {
++    "EARNED" -> "مكتسبة"
++    "PARTIAL_REVERSED" -> "معكوسة جزئيًا"
++    "REVERSED" -> "معكوسة"
++    else -> value
++}
++
++private fun repVoucherStatusAr(value: String): String = when (value) {
++    "POSTED" -> "مرحّل"
++    "DRAFT" -> "مسودة"
++    "REVERSED" -> "معكوس"
++    "CANCELLED" -> "ملغى"
++    else -> value
++}
++
+ private fun repDate(v: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(v))
+ private fun repDateTime(v: Long): String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(v))

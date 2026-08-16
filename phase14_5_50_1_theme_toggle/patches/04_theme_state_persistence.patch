@@ -1,0 +1,72 @@
+diff --git a/app/src/main/java/com/fush/erp/MainActivity.kt b/app/src/main/java/com/fush/erp/MainActivity.kt
+index 1e219b1..bb2a349 100644
+--- a/app/src/main/java/com/fush/erp/MainActivity.kt
++++ b/app/src/main/java/com/fush/erp/MainActivity.kt
+@@ -4,6 +4,11 @@ import android.os.Bundle
+ import androidx.activity.ComponentActivity
+ import androidx.activity.compose.setContent
+ import androidx.activity.enableEdgeToEdge
++import androidx.compose.foundation.isSystemInDarkTheme
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
+ import com.fush.erp.ui.FushErpApp
+ import com.fush.erp.ui.FushTheme
+ 
+@@ -12,8 +17,21 @@ class MainActivity : ComponentActivity() {
+         super.onCreate(savedInstanceState)
+         enableEdgeToEdge()
+         setContent {
+-            FushTheme {
+-                FushErpApp((application as FushErpApplication).container)
++            val systemDarkTheme = isSystemInDarkTheme()
++            val themePreferences = remember { getSharedPreferences("fush_ui_preferences", MODE_PRIVATE) }
++            var darkTheme by remember {
++                mutableStateOf(themePreferences.getBoolean("dark_theme", systemDarkTheme))
++            }
++
++            FushTheme(darkTheme = darkTheme) {
++                FushErpApp(
++                    container = (application as FushErpApplication).container,
++                    darkTheme = darkTheme,
++                    onToggleTheme = {
++                        darkTheme = !darkTheme
++                        themePreferences.edit().putBoolean("dark_theme", darkTheme).apply()
++                    },
++                )
+             }
+         }
+     }
+diff --git a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+index e984221..3a8e892 100644
+--- a/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
++++ b/app/src/main/java/com/fush/erp/ui/FushErpApp.kt
+@@ -19,7 +19,11 @@ import com.fush.erp.ui.screens.HomeShell
+ import com.fush.erp.ui.screens.LoginScreen
+ 
+ @Composable
+-fun FushErpApp(container: AppContainer) {
++fun FushErpApp(
++    container: AppContainer,
++    darkTheme: Boolean,
++    onToggleTheme: () -> Unit,
++) {
+     val context = LocalContext.current
+     var seeded by remember { mutableStateOf(false) }
+     var user by remember { mutableStateOf<UserEntity?>(null) }
+@@ -62,7 +66,13 @@ fun FushErpApp(container: AppContainer) {
+                 }
+             }
+             user == null -> LoginScreen(container) { user = it }
+-            else -> HomeShell(container, user!!) { user = null }
++            else -> HomeShell(
++                container = container,
++                user = user!!,
++                darkTheme = darkTheme,
++                onToggleTheme = onToggleTheme,
++                onLogout = { user = null },
++            )
+         }
+     }
+ }

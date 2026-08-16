@@ -1,0 +1,118 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
+index 382cf1f..0ca9d38 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt
+@@ -9,6 +9,9 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.CollectionDetailRow
++import com.fush.erp.ui.FushEmptyState
++import com.fush.erp.ui.FushErrorState
++import com.fush.erp.ui.FushLoadingState
+ import java.text.SimpleDateFormat
+ import java.util.Date
+ import java.util.Locale
+@@ -66,13 +69,18 @@ fun CollectionsDetailScreen(container: AppContainer, modifier: Modifier = Modifi
+         }
+ 
+         if (loading) {
+-            item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
++            item { FushLoadingState("جاري تحميل التحصيلات", "يتم تجهيز المقبوضات والمبالغ المستردة وصافي التحصيل لآخر 30 يومًا.") }
+         }
+         error?.let { msg ->
+-            item { Text("تعذر تحميل التفاصيل: $msg", color = MaterialTheme.colorScheme.error) }
++            item { FushErrorState(detail = "تعذر تحميل تفاصيل التحصيل: $msg") }
+         }
+         if (!loading && error == null && visibleRows.isEmpty()) {
+-            item { Text("لا توجد حركات تحصيل ضمن الفترة المحددة.") }
++            item {
++                FushEmptyState(
++                    title = "لا توجد حركات تحصيل ضمن الفترة",
++                    detail = "غيّر المرشح أو راجع فترة آخر 30 يومًا في حال كنت تتوقع وجود حركة.",
++                )
++            }
+         }
+ 
+         items(visibleRows, key = { "${it.entryType}:${it.referenceNo}:${it.eventDate}" }) { row ->
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 22d4be5..16fd774 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -11,10 +11,7 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+-import com.fush.erp.ui.FushMetricCard
+-import com.fush.erp.ui.FushSectionHeader
+-import com.fush.erp.ui.FushStatusPill
+-import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -147,7 +144,12 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         }
+ 
+         item { FushSectionHeader("دليل الموظفين", "${filteredEmployees.size} ملف مطابق للبحث والتصفية") }
+-        if (filteredEmployees.isEmpty()) item { Text("لا توجد ملفات موظفين مطابقة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (filteredEmployees.isEmpty()) item {
++            FushEmptyState(
++                title = if (employees.isEmpty()) "لا توجد ملفات موظفين بعد" else "لا توجد نتائج مطابقة",
++                detail = if (employees.isEmpty()) "أضف أول موظف لبدء إدارة التدريب والتصاريح ومستحقات الإنتاج." else "غيّر البحث أو مرشح الحالة لعرض موظفين آخرين.",
++            )
++        }
+         items(filteredEmployees, key = { it.id }) { employee ->
+             ElevatedCard(onClick = { selectedEmployeeId = employee.id }, modifier = Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+@@ -174,7 +176,9 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         }
+ 
+         item { FushSectionHeader("التدريب والكفاءة", "آخر سجلات التدريب مع إبراز السجلات المنتهية") }
+-        if (trainings.isEmpty()) item { Text("لا توجد سجلات تدريب.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (trainings.isEmpty()) item {
++            FushEmptyState("لا توجد سجلات تدريب", "ستظهر هنا الدورات المكتملة ونتائج الكفاءة عند تسجيلها.")
++        }
+         items(trainings.take(30)) { row ->
+             val expired = row.expiresAt != null && row.expiresAt < now
+             ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -190,7 +194,9 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         }
+ 
+         item { FushSectionHeader("تصاريح تشغيل المعدات", "التصريح النشط يربط الموظف بالمعدة والتدريب المؤهل") }
+-        if (authorizations.isEmpty()) item { Text("لا توجد تصاريح تشغيل.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (authorizations.isEmpty()) item {
++            FushEmptyState("لا توجد تصاريح تشغيل", "أصدر تصريحًا بعد التحقق من التدريب والكفاءة المطلوبة للمعدة.")
++        }
+         items(authorizations.take(30)) { row ->
+             val expired = row.expiresAt != null && row.expiresAt < now
+             val active = row.status == "ACTIVE" && !expired
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index a5ce5f1..abf33c4 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -12,10 +12,7 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+-import com.fush.erp.ui.FushMetricCard
+-import com.fush.erp.ui.FushSectionHeader
+-import com.fush.erp.ui.FushStatusPill
+-import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.*
+ import com.fush.erp.domain.AccountingService
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+@@ -99,7 +96,12 @@ fun SalesRepresentativesScreen(container: AppContainer, user: UserEntity, modifi
+             }
+         }
+         item { FushSectionHeader("دليل المناديب", "${filtered.size} ملف مطابق للبحث والتصفية") }
+-        if (filtered.isEmpty()) item { Text("لا يوجد مناديب مطابقون للبحث.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (filtered.isEmpty()) item {
++            FushEmptyState(
++                title = if (reps.isEmpty()) "لا يوجد مناديب مبيعات بعد" else "لا توجد نتائج مطابقة",
++                detail = if (reps.isEmpty()) "أضف أول مندوب لربط العملاء والمبيعات والتحصيلات والعمولات." else "غيّر البحث أو مرشح الحالة لعرض مناديب آخرين.",
++            )
++        }
+         items(filtered, key = { it.id }) { rep ->
+             ElevatedCard(onClick = { selectedId = rep.id }, modifier = Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

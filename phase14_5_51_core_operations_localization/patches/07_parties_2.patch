@@ -1,0 +1,125 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index f856b86..3574521 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -278,16 +282,16 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "عدد الموردين",
++                    label = stringResource(R.string.suppliers_count),
+                     value = suppliers.size.toString(),
+-                    helper = "مورد مسجل",
++                    helper = stringResource(R.string.suppliers_registered),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+                 FushMetricCard(
+-                    label = "إجمالي المستحق",
++                    label = stringResource(R.string.suppliers_total_due),
+                     value = partyMoney(totalOutstanding),
+-                    helper = "بالعملة الأساسية",
++                    helper = stringResource(R.string.common_base_currency),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalOutstanding > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                 )
+@@ -296,16 +300,16 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+-                    label = "متأخر السداد",
++                    label = stringResource(R.string.suppliers_overdue),
+                     value = partyMoney(totalOverdue),
+-                    helper = "التزام يحتاج متابعة",
++                    helper = stringResource(R.string.suppliers_liability_followup),
+                     modifier = Modifier.weight(1f),
+                     tone = if (totalOverdue > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
+                 )
+                 FushMetricCard(
+-                    label = "موردون بشروط أجل",
++                    label = stringResource(R.string.suppliers_with_terms),
+                     value = creditTermsCount.toString(),
+-                    helper = "شروط دفع أكبر من صفر",
++                    helper = stringResource(R.string.suppliers_terms_helper),
+                     modifier = Modifier.weight(1f),
+                     tone = FushStatusTone.Info,
+                 )
+@@ -316,20 +320,20 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+             OutlinedTextField(
+                 value = search,
+                 onValueChange = { search = it },
+-                label = { Text("بحث عن المورد") },
+-                placeholder = { Text("الاسم، الكود، الهاتف، العنوان أو العملة") },
++                label = { Text(stringResource(R.string.suppliers_search)) },
++                placeholder = { Text(stringResource(R.string.suppliers_search_hint)) },
+                 modifier = Modifier.fillMaxWidth(),
+                 singleLine = true,
+                 shape = MaterialTheme.shapes.medium,
+-                supportingText = { Text("يعرض ${filtered.size} من ${suppliers.size} مورد") },
++                supportingText = { Text(stringResource(R.string.suppliers_showing, filtered.size, suppliers.size)) },
+             )
+         }
+ 
+         if (filtered.isEmpty()) {
+             item {
+                 FushEmptyState(
+-                    title = if (suppliers.isEmpty()) "لا يوجد موردون بعد" else "لا توجد نتائج مطابقة",
+-                    detail = if (suppliers.isEmpty()) "أنشئ أول ملف مورد لتبدأ إدارة المشتريات والالتزامات." else "جرّب البحث باسم أو كود مختلف.",
++                    title = if (suppliers.isEmpty()) stringResource(R.string.purchases_no_suppliers) else stringResource(R.string.common_no_matching_results),
++                    detail = if (suppliers.isEmpty()) stringResource(R.string.suppliers_empty_detail) else stringResource(R.string.customers_search_empty_detail),
+                 )
+             }
+         }
+@@ -368,7 +372,7 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                             FushStatusPill(supplier.currencyCode, FushStatusTone.Info)
+                             FushStatusPill(
+-                                if (supplier.paymentTermsDays > 0) "أجل ${supplier.paymentTermsDays} يوم" else "نقدي",
++                                if (supplier.paymentTermsDays > 0) stringResource(R.string.suppliers_payment_terms, supplier.paymentTermsDays) else stringResource(R.string.common_cash),
+                                 if (supplier.paymentTermsDays > 0) FushStatusTone.Warning else FushStatusTone.Success,
+                             )
+                         }
+@@ -382,14 +386,14 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         verticalAlignment = Alignment.CenterVertically,
+                     ) {
+                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                            Text("المستحق للمورد", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.suppliers_due_balance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text(partyMoney(outstanding), style = MaterialTheme.typography.titleLarge)
+                         }
+                         FushStatusPill(
+                             when {
+-                                overdue > 0.000001 -> "متأخر ${partyMoney(overdue)}"
+-                                outstanding > 0.000001 -> "التزام مفتوح"
+-                                else -> "لا يوجد مستحق"
++                                overdue > 0.000001 -> stringResource(R.string.suppliers_overdue_amount, partyMoney(overdue))
++                                outstanding > 0.000001 -> stringResource(R.string.suppliers_open_liability)
++                                else -> stringResource(R.string.suppliers_no_due)
+                             },
+                             balanceTone,
+                         )
+@@ -401,13 +405,13 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+                         verticalAlignment = Alignment.CenterVertically,
+                     ) {
+                         Text(
+-                            supplier.address.ifBlank { supplier.phone.ifBlank { "لا توجد بيانات اتصال" } },
++                            supplier.address.ifBlank { supplier.phone.ifBlank { noContact } },
+                             style = MaterialTheme.typography.bodySmall,
+                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                             modifier = Modifier.weight(1f),
+                         )
+                         Spacer(Modifier.width(10.dp))
+-                        Text("فتح ملف المورد ←", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++                        Text(stringResource(R.string.suppliers_open_profile), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                     }
+                 }
+             }
+@@ -478,7 +482,7 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+                     FushMetricCard(
+                         label = "الرصيد الحالي",
+                         value = partyMoney(currentBalance),
+-                        helper = "بالعملة الأساسية",
++                        helper = stringResource(R.string.common_base_currency),
+                         modifier = Modifier.weight(1f),
+                         tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+                     )

@@ -1,0 +1,26 @@
+diff --git a/app/src/main/res/values-ar/strings.xml b/app/src/main/res/values-ar/strings.xml
+--- a/app/src/main/res/values-ar/strings.xml
++++ b/app/src/main/res/values-ar/strings.xml
+@@ -204,4 +204,9 @@
+     <string name="theme_dark">داكن</string>
+     <string name="theme_light">فاتح</string>
+     <string name="theme_switch_to_dark">التبديل إلى الوضع الداكن</string>
+     <string name="theme_switch_to_light">التبديل إلى الوضع الفاتح</string>
++    <string name="preferences_title">المظهر واللغة</string>
++    <string name="preferences_language">اللغة</string>
++    <string name="language_arabic">العربية</string>
++    <string name="language_english">الإنجليزية</string>
++    <string name="preferences_theme">المظهر</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -204,4 +204,9 @@
+     <string name="theme_dark">Dark</string>
+     <string name="theme_light">Light</string>
+     <string name="theme_switch_to_dark">Switch to dark mode</string>
+     <string name="theme_switch_to_light">Switch to light mode</string>
++    <string name="preferences_title">Display &amp; language</string>
++    <string name="preferences_language">Language</string>
++    <string name="language_arabic">Arabic</string>
++    <string name="language_english">English</string>
++    <string name="preferences_theme">Appearance</string>

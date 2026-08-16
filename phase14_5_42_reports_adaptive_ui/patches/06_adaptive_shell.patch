@@ -1,0 +1,191 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 25c6da7..8e70cb3 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -186,59 +186,142 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                 )
+             },
+             bottomBar = {
+-                NavigationBar(
+-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+-                    tonalElevation = 2.dp,
+-                ) {
+-                    listOf(
+-                        "الرئيسية" to "ر",
+-                        "المبيعات" to "م",
+-                        "الإنتاج" to "إ",
+-                        "المخزون" to "خ",
+-                    ).forEach { (label, glyph) ->
+-                        NavigationBarItem(
+-                            selected = page == label,
+-                            onClick = { page = label },
+-                            icon = { NavGlyph(glyph, selected = page == label) },
+-                            label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+-                        )
++                BoxWithConstraints(Modifier.fillMaxWidth()) {
++                    if (maxWidth < 840.dp) {
++                        NavigationBar(
++                            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++                            tonalElevation = 2.dp,
++                        ) {
++                            listOf(
++                                "الرئيسية" to "ر",
++                                "المبيعات" to "م",
++                                "الإنتاج" to "إ",
++                                "المخزون" to "خ",
++                            ).forEach { (label, glyph) ->
++                                NavigationBarItem(
++                                    selected = page == label,
++                                    onClick = { page = label },
++                                    icon = { NavGlyph(glyph, selected = page == label) },
++                                    label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) }
++                                )
++                            }
++                            NavigationBarItem(
++                                selected = false,
++                                onClick = { scope.launch { drawerState.open() } },
++                                icon = { NavGlyph("≡") },
++                                label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
++                            )
++                        }
+                     }
+-                    NavigationBarItem(
+-                        selected = false,
+-                        onClick = { scope.launch { drawerState.open() } },
+-                        icon = { NavGlyph("≡") },
+-                        label = { Text("القائمة", style = MaterialTheme.typography.labelSmall, maxLines = 1) }
+-                    )
+                 }
+             }
+         ) { pad ->
+-            when (page) {
+-                "المبيعات" -> SalesScreen(container, user, Modifier.padding(pad))
+-                "العملاء" -> CustomersScreen(container, user, Modifier.padding(pad))
+-                "التحصيلات" -> CollectionsDetailScreen(container, Modifier.padding(pad))
+-                "الإنتاج" -> ProductionScreen(container, user, Modifier.padding(pad), onNavigate = { page = it })
+-                "الصيانة" -> MaintenanceScreen(container, user, Modifier.padding(pad))
+-                "الموظفون" -> EmployeesScreen(container, user, Modifier.padding(pad))
+-                "مناديب المبيعات" -> SalesRepresentativesScreen(container, user, Modifier.padding(pad))
+-                "المشتريات" -> PurchasesScreen(container, user, Modifier.padding(pad))
+-                "الموردون" -> SuppliersScreen(container, user, Modifier.padding(pad))
+-                "المخزون" -> AdvancedInventoryScreen(container, user, Modifier.padding(pad), onOpenMasterData = { page = "المواد والأصناف" })
+-                "الحوكمة" -> GovernanceScreen(container, user, Modifier.padding(pad))
+-                "العملات" -> CurrencyGeographyScreen(container, user, Modifier.padding(pad))
+-                "الحسابات" -> AccountingScreen(container, user, Modifier.padding(pad))
+-                "التقارير" -> ReportsScreen(container, Modifier.padding(pad))
+-                "تقارير الإنتاج" -> ReportsScreen(container, Modifier.padding(pad), initialTab = "الإنتاج")
+-                "المخاطر" -> RiskControlScreen(container, user, Modifier.padding(pad))
+-                "التخطيط" -> PlanningScreen(container, user, Modifier.padding(pad))
+-                "النسخ الاحتياطي" -> BackupRestoreScreen(container, user, Modifier.padding(pad))
+-                "المواد والأصناف" -> MasterDataScreen(container, user, Modifier.padding(pad), initialSection = "المواد والأصناف")
+-                "الوحدات" -> MasterDataScreen(container, user, Modifier.padding(pad), initialSection = "الوحدات")
+-                else -> DashboardScreen(container, modules, Modifier.padding(pad), onNavigate = { page = it })
++            BoxWithConstraints(Modifier.fillMaxSize().padding(pad)) {
++                if (maxWidth >= 840.dp) {
++                    Row(Modifier.fillMaxSize()) {
++                        FushPrimaryNavigationRail(
++                            page = page,
++                            onNavigate = { page = it },
++                            onOpenMenu = { scope.launch { drawerState.open() } }
++                        )
++                        VerticalDivider(Modifier.fillMaxHeight(), color = MaterialTheme.colorScheme.outlineVariant)
++                        HomePageContent(
++                            container = container,
++                            user = user,
++                            page = page,
++                            modules = modules,
++                            onNavigate = { page = it },
++                            modifier = Modifier.weight(1f).fillMaxHeight()
++                        )
++                    }
++                } else {
++                    HomePageContent(
++                        container = container,
++                        user = user,
++                        page = page,
++                        modules = modules,
++                        onNavigate = { page = it },
++                        modifier = Modifier.fillMaxSize()
++                    )
++                }
+             }
+         }
+     }
+ }
+ 
++
++@Composable
++private fun FushPrimaryNavigationRail(
++    page: String,
++    onNavigate: (String) -> Unit,
++    onOpenMenu: () -> Unit
++) {
++    NavigationRail(
++        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++        modifier = Modifier.fillMaxHeight()
++    ) {
++        Spacer(Modifier.height(8.dp))
++        listOf(
++            Triple("الرئيسية", "ر", "الرئيسية"),
++            Triple("المبيعات", "م", "المبيعات"),
++            Triple("الإنتاج", "إ", "الإنتاج"),
++            Triple("المخزون", "خ", "المخزون"),
++            Triple("التقارير", "ت", "التقارير")
++        ).forEach { (label, glyph, target) ->
++            NavigationRailItem(
++                selected = page == target,
++                onClick = { onNavigate(target) },
++                icon = { NavGlyph(glyph, selected = page == target) },
++                label = { Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) },
++                alwaysShowLabel = true
++            )
++        }
++        Spacer(Modifier.weight(1f))
++        NavigationRailItem(
++            selected = false,
++            onClick = onOpenMenu,
++            icon = { NavGlyph("≡") },
++            label = { Text("القائمة", style = MaterialTheme.typography.labelSmall) },
++            alwaysShowLabel = true
++        )
++        Spacer(Modifier.height(8.dp))
++    }
++}
++
++@Composable
++private fun HomePageContent(
++    container: AppContainer,
++    user: UserEntity,
++    page: String,
++    modules: List<ModuleCard>,
++    onNavigate: (String) -> Unit,
++    modifier: Modifier = Modifier
++) {
++    when (page) {
++        "المبيعات" -> SalesScreen(container, user, modifier)
++        "العملاء" -> CustomersScreen(container, user, modifier)
++        "التحصيلات" -> CollectionsDetailScreen(container, modifier)
++        "الإنتاج" -> ProductionScreen(container, user, modifier, onNavigate = onNavigate)
++        "الصيانة" -> MaintenanceScreen(container, user, modifier)
++        "الموظفون" -> EmployeesScreen(container, user, modifier)
++        "مناديب المبيعات" -> SalesRepresentativesScreen(container, user, modifier)
++        "المشتريات" -> PurchasesScreen(container, user, modifier)
++        "الموردون" -> SuppliersScreen(container, user, modifier)
++        "المخزون" -> AdvancedInventoryScreen(container, user, modifier, onOpenMasterData = { onNavigate("المواد والأصناف") })
++        "الحوكمة" -> GovernanceScreen(container, user, modifier)
++        "العملات" -> CurrencyGeographyScreen(container, user, modifier)
++        "الحسابات" -> AccountingScreen(container, user, modifier)
++        "التقارير" -> ReportsScreen(container, modifier)
++        "تقارير الإنتاج" -> ReportsScreen(container, modifier, initialTab = "الإنتاج")
++        "المخاطر" -> RiskControlScreen(container, user, modifier)
++        "التخطيط" -> PlanningScreen(container, user, modifier)
++        "النسخ الاحتياطي" -> BackupRestoreScreen(container, user, modifier)
++        "المواد والأصناف" -> MasterDataScreen(container, user, modifier, initialSection = "المواد والأصناف")
++        "الوحدات" -> MasterDataScreen(container, user, modifier, initialSection = "الوحدات")
++        else -> DashboardScreen(container, modules, modifier, onNavigate = onNavigate)
++    }
++}
++
+ @Composable
+ private fun DashboardScreen(
+     container: AppContainer,

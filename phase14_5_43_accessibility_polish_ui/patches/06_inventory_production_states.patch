@@ -1,0 +1,208 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index a32f49a..8723241 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -279,9 +279,10 @@ private fun InventoryBalances(
+ 
+         if (filtered.isEmpty()) {
+             item {
+-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+-                    Text("لا يوجد رصيد مطابق للفلاتر الحالية.", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                }
++                FushEmptyState(
++                    title = "لا يوجد رصيد مطابق للفلاتر الحالية",
++                    detail = "غيّر المخزن أو نوع الصنف أو عبارة البحث لعرض أرصدة أخرى.",
++                )
+             }
+         }
+ 
+@@ -367,7 +368,7 @@ private fun InventoryAlerts(
+         }
+         item { FushSectionHeader("إعادة الطلب", "الرصيد المتاح فقط؛ دون المنتهي أو المحجور أو الموقوف") }
+         if (reorder.isEmpty()) {
+-            item { Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أصناف عند حد إعادة الطلب أو أقل.", Modifier.fillMaxWidth().padding(14.dp)) } }
++            item { FushEmptyState("لا توجد تنبيهات إعادة طلب", "كل الأرصدة المتاحة أعلى من حدود إعادة الطلب الحالية.") }
+         }
+         items(reorder, key = { "reorder-${it.warehouseId}-${it.itemId}" }) { row ->
+             val tone = if (row.quantityBase <= 0.000000001) FushStatusTone.Danger else FushStatusTone.Warning
+@@ -386,7 +387,7 @@ private fun InventoryAlerts(
+         }
+         item { FushSectionHeader("الصلاحية", "التشغيلات المنتهية أو التي تنتهي خلال 30 يومًا") }
+         if (expiry.isEmpty()) {
+-            item { Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يومًا.", Modifier.fillMaxWidth().padding(14.dp)) } }
++            item { FushEmptyState("لا توجد تنبيهات صلاحية", "لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يومًا.") }
+         }
+         items(expiry) { row ->
+             val expired = row.expiryDate?.let { it < now } == true
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index 15e934f..0b28e53 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -15,10 +15,7 @@ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.ProductionMath
+-import com.fush.erp.ui.FushMetricCard
+-import com.fush.erp.ui.FushSectionHeader
+-import com.fush.erp.ui.FushStatusPill
+-import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.*
+ import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.export.ReportExportDocument
+ import com.fush.erp.ui.export.ReportExportTable
+@@ -121,9 +118,10 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+         }
+         if (recipes.isEmpty()) {
+             item {
+-                ElevatedCard(Modifier.fillMaxWidth()) {
+-                    Text("لا توجد وصفات إنتاج حتى الآن.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                }
++                FushEmptyState(
++                    title = "لا توجد وصفات إنتاج حتى الآن",
++                    detail = "أنشئ وصفة فعالة قبل بدء أول أمر إنتاج.",
++                )
+             }
+         }
+         items(recipes, key = { "recipe-${it.id}" }) { recipe ->
+@@ -169,13 +167,10 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+         }
+         if (filteredOrders.isEmpty()) {
+             item {
+-                ElevatedCard(Modifier.fillMaxWidth()) {
+-                    Text(
+-                        if (orders.isEmpty()) "لا توجد أوامر إنتاج حتى الآن." else "لا توجد أوامر تطابق البحث أو التصفية الحالية.",
+-                        Modifier.padding(16.dp),
+-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+-                    )
+-                }
++                FushEmptyState(
++                    title = if (orders.isEmpty()) "لا توجد أوامر إنتاج حتى الآن" else "لا توجد نتائج مطابقة",
++                    detail = if (orders.isEmpty()) "أنشئ أول أمر إنتاج بعد التأكد من وجود وصفة فعالة ومخازن جاهزة." else "غيّر البحث أو مرشح الحالة لعرض أوامر أخرى.",
++                )
+             }
+         }
+         items(filteredOrders, key = { "order-${it.id}" }) { order ->
+@@ -289,67 +284,49 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+ 
+ 
+     deleteOrder?.let { order ->
+-        AlertDialog(
+-            onDismissRequest = { deleteOrder = null },
+-            title = { Text("حذف أمر الإنتاج") },
+-            text = {
+-                Text(
+-                    if (order.status == "MATERIALS_RESERVED")
+-                        "هل تريد حذف ${order.orderNo}؟ سيتم إلغاء حجز المواد تلقائيًا لأنه لم يتم صرفها من المخزون بعد."
+-                    else
+-                        "هل تريد حذف ${order.orderNo}؟ هذا مسموح فقط قبل صرف أي مواد أو إنشاء دفعة."
+-                )
+-            },
+-            confirmButton = {
+-                Button(
+-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+-                    onClick = {
+-                        scope.launch {
+-                            try {
+-                                container.productionService.deleteOrder(order.id, user.id)
+-                                message = "تم حذف أمر الإنتاج ${order.orderNo}"
+-                                deleteOrder = null
+-                            } catch (e: Exception) {
+-                                message = e.message ?: "تعذر حذف أمر الإنتاج"
+-                                deleteOrder = null
+-                            }
+-                        }
++        FushConfirmDialog(
++            title = "حذف أمر الإنتاج",
++            detail = if (order.status == "MATERIALS_RESERVED")
++                "سيتم حذف ${order.orderNo} وإلغاء حجز المواد تلقائيًا لأنه لم يتم صرفها من المخزون بعد."
++            else
++                "سيتم حذف ${order.orderNo}. هذا مسموح فقط قبل صرف أي مواد أو إنشاء دفعة.",
++            confirmLabel = "حذف الأمر",
++            destructive = true,
++            onDismiss = { deleteOrder = null },
++            onConfirm = {
++                scope.launch {
++                    try {
++                        container.productionService.deleteOrder(order.id, user.id)
++                        message = "تم حذف أمر الإنتاج ${order.orderNo}"
++                        deleteOrder = null
++                    } catch (e: Exception) {
++                        message = e.message ?: "تعذر حذف أمر الإنتاج"
++                        deleteOrder = null
+                     }
+-                ) { Text("حذف الأمر") }
++                }
+             },
+-            dismissButton = { TextButton(onClick = { deleteOrder = null }) { Text("إلغاء") } }
+         )
+     }
+ 
+     deleteRecipe?.let { recipe ->
+-        AlertDialog(
+-            onDismissRequest = { deleteRecipe = null },
+-            title = { Text("حذف الوصفة") },
+-            text = {
+-                Text(
+-                    "هل تريد حذف ${recipe.productName} — إصدار ${recipe.versionNo}؟ " +
+-                        "إذا كانت الوصفة مستخدمة في أي أمر إنتاج فلن يسمح النظام بحذفها حفاظًا على التتبع والتكلفة."
+-                )
+-            },
+-            confirmButton = {
+-                Button(
+-                    onClick = {
+-                        scope.launch {
+-                            try {
+-                                container.productionService.deleteRecipe(recipe.id)
+-                                message = "تم حذف الوصفة ${recipe.code} إصدار ${recipe.versionNo}"
+-                                deleteRecipe = null
+-                            } catch (e: Exception) {
+-                                message = e.message ?: "تعذر حذف الوصفة"
+-                                deleteRecipe = null
+-                            }
+-                        }
++        FushConfirmDialog(
++            title = "حذف الوصفة",
++            detail = "سيتم طلب حذف ${recipe.productName} — إصدار ${recipe.versionNo}. إذا كانت الوصفة مستخدمة في أي أمر إنتاج فلن يسمح النظام بحذفها حفاظًا على التتبع والتكلفة.",
++            confirmLabel = "حذف نهائي",
++            destructive = true,
++            onDismiss = { deleteRecipe = null },
++            onConfirm = {
++                scope.launch {
++                    try {
++                        container.productionService.deleteRecipe(recipe.id)
++                        message = "تم حذف الوصفة ${recipe.code} إصدار ${recipe.versionNo}"
++                        deleteRecipe = null
++                    } catch (e: Exception) {
++                        message = e.message ?: "تعذر حذف الوصفة"
++                        deleteRecipe = null
+                     }
+-                ) { Text("حذف نهائي") }
++                }
+             },
+-            dismissButton = {
+-                TextButton(onClick = { deleteRecipe = null }) { Text("إلغاء") }
+-            }
+         )
+     }
+ 
+@@ -589,12 +566,14 @@ private fun ProductionOrderDetailDialog(
+         title = { Text("بيان الإنتاج التفصيلي") },
+         text = {
+             when {
+-                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+-                detail == null -> Column {
+-                    CircularProgressIndicator()
+-                    Spacer(Modifier.height(8.dp))
+-                    Text("جاري تحميل تفاصيل أمر الإنتاج...")
+-                }
++                error != null -> FushErrorState(
++                    title = "تعذر تحميل تفاصيل أمر الإنتاج",
++                    detail = error!!,
++                )
++                detail == null -> FushLoadingState(
++                    title = "جاري تحميل أمر الإنتاج",
++                    detail = "يتم تجهيز المواد المصروفة والمخرجات والتكلفة وبيانات الجودة.",
++                )
+                 else -> {
+                     val d = detail!!
+                     val b = d.batch

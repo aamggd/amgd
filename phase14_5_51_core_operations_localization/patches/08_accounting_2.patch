@@ -1,0 +1,73 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+index 8d9f27f..7fcd01b 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+@@ -279,35 +285,35 @@ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Mod
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                FushMetricCard("إجمالي السيولة", money(totalBalance), Modifier.weight(1f), "الرصيد الدفتري", FushStatusTone.Info)
+-                FushMetricCard("الصناديق", money(cashBalance), Modifier.weight(1f), "${balances.count { it.kind == "CASH" }} صندوق", FushStatusTone.Success)
++                FushMetricCard(stringResource(R.string.treasury_total_liquidity), money(totalBalance), Modifier.weight(1f), stringResource(R.string.treasury_book_balance), FushStatusTone.Info)
++                FushMetricCard(stringResource(R.string.treasury_cashboxes), money(cashBalance), Modifier.weight(1f), stringResource(R.string.treasury_cashbox_count, balances.count { it.kind == "CASH" }), FushStatusTone.Success)
+             }
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                FushMetricCard("البنوك", money(bankBalance), Modifier.weight(1f), "${balances.count { it.kind == "BANK" }} حساب", FushStatusTone.Info)
+-                FushMetricCard("حسابات الخزينة", balances.size.toString(), Modifier.weight(1f), "صناديق وبنوك", FushStatusTone.Neutral)
++                FushMetricCard(stringResource(R.string.treasury_banks), money(bankBalance), Modifier.weight(1f), stringResource(R.string.treasury_bank_count, balances.count { it.kind == "BANK" }), FushStatusTone.Info)
++                FushMetricCard(stringResource(R.string.treasury_accounts), balances.size.toString(), Modifier.weight(1f), stringResource(R.string.treasury_cash_and_banks), FushStatusTone.Neutral)
+             }
+         }
+         item {
+-            FushSectionHeader("إجراءات سريعة", "كل سند يُرحّل محاسبيًا وفق الحساب والطرف المحدد")
++            FushSectionHeader(stringResource(R.string.treasury_quick_actions), stringResource(R.string.treasury_quick_actions_detail))
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("سند قبض") }
+-                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("سند صرف") }
++                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text(stringResource(R.string.treasury_receipt_voucher)) }
++                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text(stringResource(R.string.treasury_payment_voucher)) }
+             }
+             Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                OutlinedButton(onClick = { voucherType = "INCOME" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("إيراد") }
+-                OutlinedButton(onClick = { voucherType = "TRANSFER" }, modifier = Modifier.weight(1f), enabled = balances.size > 1) { Text("تحويل") }
++                OutlinedButton(onClick = { voucherType = "INCOME" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text(stringResource(R.string.treasury_income)) }
++                OutlinedButton(onClick = { voucherType = "TRANSFER" }, modifier = Modifier.weight(1f), enabled = balances.size > 1) { Text(stringResource(R.string.treasury_transfer)) }
+             }
+         }
+-        item { FushSectionHeader("الحسابات النقدية", "${balances.size} حساب خزينة أو بنك") }
++        item { FushSectionHeader(stringResource(R.string.treasury_cash_accounts), stringResource(R.string.treasury_account_count, balances.size)) }
+         if (balances.isEmpty()) {
+             item {
+                 FushSystemState(
+-                    title = "لا توجد خزينة أو حساب بنكي",
+-                    detail = "أضف أول حساب خزينة أو بنك قبل تسجيل السندات والتحويلات.",
++                    title = stringResource(R.string.treasury_empty),
++                    detail = stringResource(R.string.treasury_empty_detail),
+                 )
+             }
+         }
+@@ -323,17 +329,17 @@ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Mod
+                             Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+                             Text("${row.code} • ${row.currencyCode}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+-                        FushStatusPill(if (row.kind == "BANK") "بنك" else "صندوق", if (row.kind == "BANK") FushStatusTone.Info else FushStatusTone.Success)
++                        FushStatusPill(if (row.kind == "BANK") stringResource(R.string.treasury_bank) else stringResource(R.string.treasury_cashbox), if (row.kind == "BANK") FushStatusTone.Info else FushStatusTone.Success)
+                     }
+                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Column {
+-                            Text("الرصيد الدفتري", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(stringResource(R.string.treasury_book_balance), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             Text(money(row.balanceBase), style = MaterialTheme.typography.headlineSmall)
+                         }
+                         if (row.kind == "BANK") {
+                             Column(horizontalAlignment = Alignment.End) {
+-                                Text(row.bankName.ifBlank { "حساب بنكي" }, style = MaterialTheme.typography.labelLarge)
++                                Text(row.bankName.ifBlank { stringResource(R.string.treasury_bank_account) }, style = MaterialTheme.typography.labelLarge)
+                                 if (row.accountNumber.isNotBlank()) Text(row.accountNumber, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+                         }

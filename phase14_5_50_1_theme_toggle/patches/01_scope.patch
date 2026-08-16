@@ -1,0 +1,21 @@
+diff --git a/UI_PROFESSIONALIZATION_15_1_THEME_TOGGLE_SCOPE.md b/UI_PROFESSIONALIZATION_15_1_THEME_TOGGLE_SCOPE.md
+new file mode 100644
+index 0000000..bb8b65a
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_15_1_THEME_TOGGLE_SCOPE.md
+@@ -0,0 +1,15 @@
++# Phase 14.5.50.1 — Persistent Dark / Light Theme Toggle
++
++## Scope
++- Adds a compact Dark/Light action to the app top bar.
++- Applies the selected theme immediately through the existing `FushTheme` color schemes.
++- Persists the user choice locally with Android `SharedPreferences` so it survives app restarts.
++- Uses the system dark-theme setting only as the initial default when no explicit choice has been stored.
++- Adds Arabic/English labels and accessibility descriptions for the theme action.
++
++## Safety boundary
++Presentation only. No Room schema, DAO, accounting, inventory, production, permissions, backup, or business/domain logic changes.
++
++## Branch test identity
++- versionCode 90
++- versionName `0.15.4.50.1-ui-theme-toggle`

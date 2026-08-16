@@ -1,0 +1,14 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 91
+-        versionName = "0.15.4.51-ui-core-operations-localization"
++        versionCode = 92
++        versionName = "0.15.4.51.1-ui-language-theme-controls"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }

@@ -1,0 +1,73 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -41,5 +41,7 @@ fun HomeShell(
+     user: UserEntity,
+     darkTheme: Boolean,
+     onToggleTheme: () -> Unit,
++    languageTag: String,
++    onLanguageChange: (String) -> Unit,
+     onLogout: () -> Unit,
+ ) {
+@@ -130,5 +132,61 @@ fun HomeShell(
+                     }
+                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                    Text(
++                        stringResource(R.string.preferences_title),
++                        style = MaterialTheme.typography.labelLarge,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
++                    )
++                    Text(
++                        stringResource(R.string.preferences_language),
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
++                    )
++                    Row(
++                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
++                        horizontalArrangement = Arrangement.spacedBy(8.dp),
++                    ) {
++                        FilterChip(
++                            selected = languageTag == "ar",
++                            onClick = { onLanguageChange("ar") },
++                            label = { Text(stringResource(R.string.language_arabic)) },
++                            modifier = Modifier.weight(1f),
++                        )
++                        FilterChip(
++                            selected = languageTag == "en",
++                            onClick = { onLanguageChange("en") },
++                            label = { Text(stringResource(R.string.language_english)) },
++                            modifier = Modifier.weight(1f),
++                        )
++                    }
++                    Text(
++                        stringResource(R.string.preferences_theme),
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
++                    )
++                    Row(
++                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
++                        horizontalArrangement = Arrangement.spacedBy(8.dp),
++                    ) {
++                        FilterChip(
++                            selected = !darkTheme,
++                            onClick = { if (darkTheme) onToggleTheme() },
++                            label = { Text(stringResource(R.string.theme_light)) },
++                            modifier = Modifier.weight(1f),
++                        )
++                        FilterChip(
++                            selected = darkTheme,
++                            onClick = { if (!darkTheme) onToggleTheme() },
++                            label = { Text(stringResource(R.string.theme_dark)) },
++                            modifier = Modifier.weight(1f),
++                        )
++                    }
++                    HorizontalDivider(
++                        modifier = Modifier.padding(top = 12.dp),
++                        color = MaterialTheme.colorScheme.outlineVariant,
++                    )
+                     Text(
+                         stringResource(R.string.drawer_system_sections),
+                         style = MaterialTheme.typography.labelLarge,

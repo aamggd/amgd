@@ -1,0 +1,85 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 311e1c4..785b403 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -799,57 +799,33 @@ private fun LazyListScope.customerLedgerItems(rows: List<Pair<CustomerLedgerEven
+     }
+ }
+ 
+-@Composable
+-private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
+-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-        item {
+-            val balance = rows.lastOrNull()?.second ?: 0.0
+-            FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات المورد")
+-            Spacer(Modifier.height(8.dp))
+-            FushMetricCard(
+-                label = "الرصيد المستحق",
+-                value = partyMoney(balance),
+-                helper = "المبلغ المستحق للمورد",
+-                modifier = Modifier.fillMaxWidth(),
+-                tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+-            )
+-        }
+-        if (rows.isEmpty()) {
+-            item {
+-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+-                    FushInlineState("لا توجد حركات على حساب المورد حتى الآن.")
++private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
++    item {
++        val balance = rows.lastOrNull()?.second ?: 0.0
++        FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات المورد")
++        Spacer(Modifier.height(8.dp))
++        FushMetricCard("الرصيد المستحق", partyMoney(balance), Modifier.fillMaxWidth(), helper = "المبلغ المستحق للمورد", tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
++    }
++    if (rows.isEmpty()) item { FushInlineState("لا توجد حركات على حساب المورد حتى الآن.") }
++    items(rows) { (event, balance) ->
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(partyEventLabel(event.eventType), style = MaterialTheme.typography.titleSmall)
++                        Text("${partyDate(event.eventDate)} • ${event.referenceNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    FushStatusPill("رصيد ${partyMoney(balance)}", if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
+                 }
+-            }
+-        }
+-        items(rows) { (event, balance) ->
+-            ElevatedCard(
+-                Modifier.fillMaxWidth(),
+-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-            ) {
+-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(partyEventLabel(event.eventType), style = MaterialTheme.typography.titleSmall)
+-                            Text("${partyDate(event.eventDate)} • ${event.referenceNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill("رصيد ${partyMoney(balance)}", if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f), shape = MaterialTheme.shapes.small) {
++                        Column(Modifier.padding(9.dp)) { Text("مدين", style = MaterialTheme.typography.labelSmall); Text(partyMoney(event.debitBase), style = MaterialTheme.typography.titleSmall) }
+                     }
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f), shape = MaterialTheme.shapes.small) {
+-                            Column(Modifier.padding(9.dp)) {
+-                                Text("مدين", style = MaterialTheme.typography.labelSmall)
+-                                Text(partyMoney(event.debitBase), style = MaterialTheme.typography.titleSmall)
+-                            }
+-                        }
+-                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f), shape = MaterialTheme.shapes.small) {
+-                            Column(Modifier.padding(9.dp)) {
+-                                Text("دائن", style = MaterialTheme.typography.labelSmall)
+-                                Text(partyMoney(event.creditBase), style = MaterialTheme.typography.titleSmall)
+-                            }
+-                        }
++                    Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f), shape = MaterialTheme.shapes.small) {
++                        Column(Modifier.padding(9.dp)) { Text("دائن", style = MaterialTheme.typography.labelSmall); Text(partyMoney(event.creditBase), style = MaterialTheme.typography.titleSmall) }
+                     }
+-                    if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                 }
++                if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             }
+         }
+     }

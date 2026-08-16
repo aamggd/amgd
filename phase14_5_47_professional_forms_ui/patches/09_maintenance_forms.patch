@@ -1,0 +1,120 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index f8deb8a..8bf4cbb 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -13,12 +13,7 @@ import com.fush.erp.data.entity.AssetEntity
+ import com.fush.erp.data.entity.MaintenanceWorkOrderEntity
+ import com.fush.erp.data.entity.MaintenancePlanEntity
+ import com.fush.erp.data.entity.UserEntity
+-import com.fush.erp.ui.FushMetricCard
+-import com.fush.erp.ui.FushSectionHeader
+-import com.fush.erp.ui.FushStatusPill
+-import com.fush.erp.ui.FushStatusTone
+-import com.fush.erp.ui.FushInlineState
+-import com.fush.erp.ui.FushEmptyState
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -439,6 +434,31 @@ private fun maintenanceIncidentTypeAr(value: String) = when (value) {
+     else -> value
+ }
+ 
++private fun maintenanceInspectionTypeAr(value: String) = when (value) {
++    "PRE_START" -> "قبل التشغيل"
++    "POST_BATCH" -> "بعد الدفعة"
++    "WEEKLY" -> "أسبوعي"
++    "MONTHLY" -> "شهري"
++    "SAFETY" -> "سلامة"
++    else -> value
++}
++
++private fun maintenanceResultAr(value: String) = when (value) {
++    "PASS" -> "ناجح"
++    "FAIL" -> "فشل"
++    else -> value
++}
++
++private fun maintenanceSafetyInspectionTypeAr(value: String) = when (value) {
++    "DAILY" -> "يومي"
++    "GAS" -> "غاز"
++    "FIRE_EXTINGUISHER" -> "طفايات الحريق"
++    "PPE" -> "معدات الوقاية الشخصية"
++    "EVACUATION" -> "إخلاء"
++    "OTHER" -> "أخرى"
++    else -> value
++}
++
+ @Composable
+ private fun AddAssetDialog(onDismiss: () -> Unit, onSave: (String, String, String, String, String, Boolean) -> Unit) {
+     var code by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var location by remember { mutableStateOf("") }
+@@ -448,8 +468,8 @@ private fun AddAssetDialog(onDismiss: () -> Unit, onSave: (String, String, Strin
+             OutlinedTextField(code, { code = it }, label = { Text("الكود") }, singleLine = true)
+             OutlinedTextField(name, { name = it }, label = { Text("الاسم") }, singleLine = true)
+             OutlinedTextField(location, { location = it }, label = { Text("الموقع") }, singleLine = true)
+-            StringSelectionField("النوع", type, listOf("FILLING_MACHINE","BURNER","VESSEL","MEASURING_TOOL","SAFETY_EQUIPMENT","OTHER")) { type = it }
+-            StringSelectionField("الأهمية", criticality, listOf("LOW","MEDIUM","HIGH","CRITICAL")) { criticality = it }
++            FushCodeSelectionField("النوع", type, listOf("FILLING_MACHINE","BURNER","VESSEL","MEASURING_TOOL","SAFETY_EQUIPMENT","OTHER"), ::maintenanceAssetTypeAr, modifier = Modifier.fillMaxWidth()) { type = it }
++            FushCodeSelectionField("الأهمية", criticality, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::maintenanceCriticalityAr, modifier = Modifier.fillMaxWidth()) { criticality = it }
+             Row { Checkbox(calibration, { calibration = it }); Text("يحتاج معايرة") }
+         }
+     }, confirmButton = { Button(enabled = code.isNotBlank() && name.isNotBlank(), onClick = { onSave(code,name,type,location,criticality,calibration) }) { Text("حفظ") } }, dismissButton = { TextButton(onClick=onDismiss){Text("إلغاء")} })
+@@ -461,9 +481,9 @@ private fun BreakdownDialog(assets: List<AssetEntity>, onDismiss: () -> Unit, on
+     LaunchedEffect(assets) { if (asset == null) asset = assets.firstOrNull() }
+     AlertDialog(onDismissRequest=onDismiss, title={Text("بلاغ عطل")}, text={ Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+         SelectionField("الأصل", asset?.nameAr ?: "اختر", assets, { it.nameAr }) { asset=it }
+-        StringSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL")){severity=it}
++        FushCodeSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::maintenanceSeverityAr, modifier = Modifier.fillMaxWidth()) { severity=it }
+         OutlinedTextField(desc,{desc=it},label={Text("وصف العطل")})
+-        OutlinedTextField(downtime,{downtime=it},label={Text("التوقف بالدقائق")},singleLine=true)
++        FushIntegerField(downtime,{downtime=it},"التوقف بالدقائق", modifier = Modifier.fillMaxWidth())
+     }}, confirmButton={Button(enabled=asset!=null && desc.isNotBlank() && downtime.toIntOrNull()!=null,onClick={onSave(asset!!,severity,desc,downtime.toInt())}){Text("تسجيل")}}, dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -471,8 +491,8 @@ private fun BreakdownDialog(assets: List<AssetEntity>, onDismiss: () -> Unit, on
+ private fun AssetInspectionDialog(asset: AssetEntity, onDismiss:()->Unit, onSave:(String,String,String,String,String)->Unit) {
+     var type by remember { mutableStateOf("PRE_START") }; var result by remember { mutableStateOf("PASS") }; var checklist by remember { mutableStateOf("") }; var findings by remember { mutableStateOf("") }; var action by remember { mutableStateOf("") }
+     AlertDialog(onDismissRequest=onDismiss,title={Text("فحص ${asset.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+-        StringSelectionField("الفحص",type,listOf("PRE_START","POST_BATCH","WEEKLY","MONTHLY","SAFETY")){type=it}
+-        StringSelectionField("النتيجة",result,listOf("PASS","FAIL")){result=it}
++        FushCodeSelectionField("الفحص", type, listOf("PRE_START","POST_BATCH","WEEKLY","MONTHLY","SAFETY"), ::maintenanceInspectionTypeAr, modifier = Modifier.fillMaxWidth()) { type=it }
++        FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it }
+         OutlinedTextField(checklist,{checklist=it},label={Text("نتيجة قائمة الفحص")})
+         OutlinedTextField(findings,{findings=it},label={Text("الملاحظات/النتائج")})
+         OutlinedTextField(action,{action=it},label={Text("الإجراء التصحيحي")})
+@@ -483,7 +503,7 @@ private fun AssetInspectionDialog(asset: AssetEntity, onDismiss:()->Unit, onSave
+ private fun CalibrationDialog(asset: AssetEntity,onDismiss:()->Unit,onSave:(String,String,Double?,Double?,Int?,String,String)->Unit){
+     var result by remember{mutableStateOf("PASS")}; var ref by remember{mutableStateOf("")}; var error by remember{mutableStateOf("")}; var tolerance by remember{mutableStateOf("")}; var days by remember{mutableStateOf("30")}; var cert by remember{mutableStateOf("")}; var notes by remember{mutableStateOf("")}
+     AlertDialog(onDismissRequest=onDismiss,title={Text("معايرة ${asset.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+-        StringSelectionField("النتيجة",result,listOf("PASS","FAIL")){result=it}; OutlinedTextField(ref,{ref=it},label={Text("المرجع القياسي")}); OutlinedTextField(error,{error=it},label={Text("الخطأ المقاس")},singleLine=true); OutlinedTextField(tolerance,{tolerance=it},label={Text("حد السماح")},singleLine=true); OutlinedTextField(days,{days=it},label={Text("الاستحقاق القادم بالأيام")},singleLine=true); OutlinedTextField(cert,{cert=it},label={Text("مرجع الشهادة")}); OutlinedTextField(notes,{notes=it},label={Text("ملاحظات")})
++        FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it }; OutlinedTextField(ref,{ref=it},label={Text("المرجع القياسي")}); FushDecimalField(error,{error=it},"الخطأ المقاس", modifier = Modifier.fillMaxWidth()); FushDecimalField(tolerance,{tolerance=it},"حد السماح", modifier = Modifier.fillMaxWidth()); FushIntegerField(days,{days=it},"الاستحقاق القادم بالأيام", modifier = Modifier.fillMaxWidth()); OutlinedTextField(cert,{cert=it},label={Text("مرجع الشهادة")}); OutlinedTextField(notes,{notes=it},label={Text("ملاحظات")})
+     }},confirmButton={Button(onClick={onSave(result,ref,error.toDoubleOrNull(),tolerance.toDoubleOrNull(),days.toIntOrNull(),cert,notes)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -491,7 +511,7 @@ private fun CalibrationDialog(asset: AssetEntity,onDismiss:()->Unit,onSave:(Stri
+ private fun CloseWorkOrderDialog(wo: MaintenanceWorkOrderEntity,onDismiss:()->Unit,onSave:(String,String,Double,Int,Boolean)->Unit){
+     var action by remember{mutableStateOf("")}; var tech by remember{mutableStateOf("")}; var cost by remember{mutableStateOf("0")}; var downtime by remember{mutableStateOf(wo.downtimeMinutes.toString())}; var returnService by remember{mutableStateOf(true)}
+     AlertDialog(onDismissRequest=onDismiss,title={Text("إغلاق ${wo.workOrderNo}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+-        OutlinedTextField(action,{action=it},label={Text("الإجراء المنفذ")}); OutlinedTextField(tech,{tech=it},label={Text("الفني")}); OutlinedTextField(cost,{cost=it},label={Text("التكلفة")},singleLine=true); OutlinedTextField(downtime,{downtime=it},label={Text("التوقف بالدقائق")},singleLine=true); Row{Checkbox(returnService,{returnService=it});Text("اعتماد إعادة المعدة للخدمة")}
++        OutlinedTextField(action,{action=it},label={Text("الإجراء المنفذ")}); OutlinedTextField(tech,{tech=it},label={Text("الفني")}); FushDecimalField(cost,{cost=it},"التكلفة", modifier = Modifier.fillMaxWidth()); FushIntegerField(downtime,{downtime=it},"التوقف بالدقائق", modifier = Modifier.fillMaxWidth()); Row{Checkbox(returnService,{returnService=it});Text("اعتماد إعادة المعدة للخدمة")}
+     }},confirmButton={Button(enabled=action.isNotBlank()&&cost.toDoubleOrNull()!=null&&downtime.toIntOrNull()!=null,onClick={onSave(action,tech,cost.toDouble(),downtime.toInt(),returnService)}){Text("إغلاق")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -499,7 +519,7 @@ private fun CloseWorkOrderDialog(wo: MaintenanceWorkOrderEntity,onDismiss:()->Un
+ private fun SafetyIncidentDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String,Boolean)->Unit){
+     var type by remember{mutableStateOf("NEAR_MISS")};var area by remember{mutableStateOf("")};var desc by remember{mutableStateOf("")};var impact by remember{mutableStateOf("")};var action by remember{mutableStateOf("")};var capa by remember{mutableStateOf(false)}
+     AlertDialog(onDismissRequest=onDismiss,title={Text("حادث/واقعة سلامة")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+-        StringSelectionField("النوع",type,listOf("ACCIDENT","NEAR_MISS","SPILL","FIRE","GAS_LEAK","OTHER")){type=it};OutlinedTextField(area,{area=it},label={Text("الموقع")});OutlinedTextField(desc,{desc=it},label={Text("الوصف")});OutlinedTextField(impact,{impact=it},label={Text("الإصابة/الأثر")});OutlinedTextField(action,{action=it},label={Text("الإجراء الفوري")});Row{Checkbox(capa,{capa=it});Text("يتطلب CAPA")}
++        FushCodeSelectionField("النوع", type, listOf("ACCIDENT","NEAR_MISS","SPILL","FIRE","GAS_LEAK","OTHER"), ::maintenanceIncidentTypeAr, modifier = Modifier.fillMaxWidth()) { type=it };OutlinedTextField(area,{area=it},label={Text("الموقع")});OutlinedTextField(desc,{desc=it},label={Text("الوصف")});OutlinedTextField(impact,{impact=it},label={Text("الإصابة/الأثر")});OutlinedTextField(action,{action=it},label={Text("الإجراء الفوري")});Row{Checkbox(capa,{capa=it});Text("يتطلب CAPA")}
+     }},confirmButton={Button(enabled=area.isNotBlank()&&desc.isNotBlank(),onClick={onSave(type,area,desc,impact,action,capa)}){Text("تسجيل")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 
+@@ -524,7 +544,7 @@ private fun PreventiveWorkOrderDialog(container: AppContainer, assets: List<Asse
+ private fun SafetyInspectionDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String)->Unit){
+     var area by remember{mutableStateOf("")};var type by remember{mutableStateOf("DAILY")};var result by remember{mutableStateOf("PASS")};var findings by remember{mutableStateOf("")};var action by remember{mutableStateOf("")}
+     AlertDialog(onDismissRequest=onDismiss,title={Text("فحص السلامة")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+-        OutlinedTextField(area,{area=it},label={Text("المنطقة")});StringSelectionField("نوع الفحص",type,listOf("DAILY","GAS","FIRE_EXTINGUISHER","PPE","EVACUATION","OTHER")){type=it};StringSelectionField("النتيجة",result,listOf("PASS","FAIL")){result=it};OutlinedTextField(findings,{findings=it},label={Text("النتائج")});OutlinedTextField(action,{action=it},label={Text("الإجراء التصحيحي")})
++        OutlinedTextField(area,{area=it},label={Text("المنطقة")});FushCodeSelectionField("نوع الفحص", type, listOf("DAILY","GAS","FIRE_EXTINGUISHER","PPE","EVACUATION","OTHER"), ::maintenanceSafetyInspectionTypeAr, modifier = Modifier.fillMaxWidth()) { type=it };FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it };OutlinedTextField(findings,{findings=it},label={Text("النتائج")});OutlinedTextField(action,{action=it},label={Text("الإجراء التصحيحي")})
+     }},confirmButton={Button(enabled=area.isNotBlank(),onClick={onSave(area,type,result,findings,action)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+ 

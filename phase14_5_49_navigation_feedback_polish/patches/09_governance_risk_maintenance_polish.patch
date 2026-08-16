@@ -1,0 +1,164 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+index 01781d7..97bbb1f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+@@ -55,13 +55,8 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 }
+             }
+         }
+-        message?.let {
+-            item {
+-                FushNotice(
+-                    message = it,
+-                    tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
+-                )
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+         when (tab) {
+             0 -> {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index a8a8f8b..7d1d433 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -68,10 +68,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 title = "الأصول والصيانة والسلامة",
+                 subtitle = "لوحة تشغيل المعدات: الجاهزية، الفحوص والمعايرة، الصيانة الوقائية والتصحيحية، الأعطال والسلامة."
+             )
+-            message?.let {
+-                Spacer(Modifier.height(8.dp))
+-                Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+-            }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+@@ -464,7 +461,7 @@ private fun AddAssetDialog(onDismiss: () -> Unit, onSave: (String, String, Strin
+     var code by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var location by remember { mutableStateOf("") }
+     var type by remember { mutableStateOf("OTHER") }; var criticality by remember { mutableStateOf("MEDIUM") }; var calibration by remember { mutableStateOf(false) }
+     AlertDialog(onDismissRequest = onDismiss, title = { Text("إضافة أصل/معدة") }, text = {
+-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++        FushDialogForm {
+             OutlinedTextField(code, { code = it }, label = { Text("الكود") }, singleLine = true)
+             OutlinedTextField(name, { name = it }, label = { Text("الاسم") }, singleLine = true)
+             OutlinedTextField(location, { location = it }, label = { Text("الموقع") }, singleLine = true)
+@@ -479,7 +476,7 @@ private fun AddAssetDialog(onDismiss: () -> Unit, onSave: (String, String, Strin
+ private fun BreakdownDialog(assets: List<AssetEntity>, onDismiss: () -> Unit, onSave: (AssetEntity,String,String,Int)->Unit) {
+     var asset by remember { mutableStateOf<AssetEntity?>(null) }; var severity by remember { mutableStateOf("MEDIUM") }; var desc by remember { mutableStateOf("") }; var downtime by remember { mutableStateOf("0") }
+     LaunchedEffect(assets) { if (asset == null) asset = assets.firstOrNull() }
+-    AlertDialog(onDismissRequest=onDismiss, title={Text("بلاغ عطل")}, text={ Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
++    AlertDialog(onDismissRequest=onDismiss, title={Text("بلاغ عطل")}, text={ FushDialogForm {
+         SelectionField("الأصل", asset?.nameAr ?: "اختر", assets, { it.nameAr }) { asset=it }
+         FushCodeSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::maintenanceSeverityAr, modifier = Modifier.fillMaxWidth()) { severity=it }
+         OutlinedTextField(desc,{desc=it},label={Text("وصف العطل")})
+@@ -490,7 +487,7 @@ private fun BreakdownDialog(assets: List<AssetEntity>, onDismiss: () -> Unit, on
+ @Composable
+ private fun AssetInspectionDialog(asset: AssetEntity, onDismiss:()->Unit, onSave:(String,String,String,String,String)->Unit) {
+     var type by remember { mutableStateOf("PRE_START") }; var result by remember { mutableStateOf("PASS") }; var checklist by remember { mutableStateOf("") }; var findings by remember { mutableStateOf("") }; var action by remember { mutableStateOf("") }
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("فحص ${asset.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("فحص ${asset.nameAr}")},text={FushDialogForm{
+         FushCodeSelectionField("الفحص", type, listOf("PRE_START","POST_BATCH","WEEKLY","MONTHLY","SAFETY"), ::maintenanceInspectionTypeAr, modifier = Modifier.fillMaxWidth()) { type=it }
+         FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it }
+         OutlinedTextField(checklist,{checklist=it},label={Text("نتيجة قائمة الفحص")})
+@@ -502,7 +499,7 @@ private fun AssetInspectionDialog(asset: AssetEntity, onDismiss:()->Unit, onSave
+ @Composable
+ private fun CalibrationDialog(asset: AssetEntity,onDismiss:()->Unit,onSave:(String,String,Double?,Double?,Int?,String,String)->Unit){
+     var result by remember{mutableStateOf("PASS")}; var ref by remember{mutableStateOf("")}; var error by remember{mutableStateOf("")}; var tolerance by remember{mutableStateOf("")}; var days by remember{mutableStateOf("30")}; var cert by remember{mutableStateOf("")}; var notes by remember{mutableStateOf("")}
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("معايرة ${asset.nameAr}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("معايرة ${asset.nameAr}")},text={FushDialogForm{
+         FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it }; OutlinedTextField(ref,{ref=it},label={Text("المرجع القياسي")}); FushDecimalField(error,{error=it},"الخطأ المقاس", modifier = Modifier.fillMaxWidth()); FushDecimalField(tolerance,{tolerance=it},"حد السماح", modifier = Modifier.fillMaxWidth()); FushIntegerField(days,{days=it},"الاستحقاق القادم بالأيام", modifier = Modifier.fillMaxWidth()); OutlinedTextField(cert,{cert=it},label={Text("مرجع الشهادة")}); OutlinedTextField(notes,{notes=it},label={Text("ملاحظات")})
+     }},confirmButton={Button(onClick={onSave(result,ref,error.toDoubleOrNull(),tolerance.toDoubleOrNull(),days.toIntOrNull(),cert,notes)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+@@ -510,7 +507,7 @@ private fun CalibrationDialog(asset: AssetEntity,onDismiss:()->Unit,onSave:(Stri
+ @Composable
+ private fun CloseWorkOrderDialog(wo: MaintenanceWorkOrderEntity,onDismiss:()->Unit,onSave:(String,String,Double,Int,Boolean)->Unit){
+     var action by remember{mutableStateOf("")}; var tech by remember{mutableStateOf("")}; var cost by remember{mutableStateOf("0")}; var downtime by remember{mutableStateOf(wo.downtimeMinutes.toString())}; var returnService by remember{mutableStateOf(true)}
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("إغلاق ${wo.workOrderNo}")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("إغلاق ${wo.workOrderNo}")},text={FushDialogForm{
+         OutlinedTextField(action,{action=it},label={Text("الإجراء المنفذ")}); OutlinedTextField(tech,{tech=it},label={Text("الفني")}); FushDecimalField(cost,{cost=it},"التكلفة", modifier = Modifier.fillMaxWidth()); FushIntegerField(downtime,{downtime=it},"التوقف بالدقائق", modifier = Modifier.fillMaxWidth()); Row{Checkbox(returnService,{returnService=it});Text("اعتماد إعادة المعدة للخدمة")}
+     }},confirmButton={Button(enabled=action.isNotBlank()&&cost.toDoubleOrNull()!=null&&downtime.toIntOrNull()!=null,onClick={onSave(action,tech,cost.toDouble(),downtime.toInt(),returnService)}){Text("إغلاق")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+@@ -518,7 +515,7 @@ private fun CloseWorkOrderDialog(wo: MaintenanceWorkOrderEntity,onDismiss:()->Un
+ @Composable
+ private fun SafetyIncidentDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String,Boolean)->Unit){
+     var type by remember{mutableStateOf("NEAR_MISS")};var area by remember{mutableStateOf("")};var desc by remember{mutableStateOf("")};var impact by remember{mutableStateOf("")};var action by remember{mutableStateOf("")};var capa by remember{mutableStateOf(false)}
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("حادث/واقعة سلامة")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("حادث/واقعة سلامة")},text={FushDialogForm{
+         FushCodeSelectionField("النوع", type, listOf("ACCIDENT","NEAR_MISS","SPILL","FIRE","GAS_LEAK","OTHER"), ::maintenanceIncidentTypeAr, modifier = Modifier.fillMaxWidth()) { type=it };OutlinedTextField(area,{area=it},label={Text("الموقع")});OutlinedTextField(desc,{desc=it},label={Text("الوصف")});OutlinedTextField(impact,{impact=it},label={Text("الإصابة/الأثر")});OutlinedTextField(action,{action=it},label={Text("الإجراء الفوري")});Row{Checkbox(capa,{capa=it});Text("يتطلب CAPA")}
+     }},confirmButton={Button(enabled=area.isNotBlank()&&desc.isNotBlank(),onClick={onSave(type,area,desc,impact,action,capa)}){Text("تسجيل")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+@@ -533,7 +530,7 @@ private fun PreventiveWorkOrderDialog(container: AppContainer, assets: List<Asse
+         plans = asset?.let { container.db.maintenanceDao().plansForAsset(it.id) } ?: emptyList()
+         plan = plans.firstOrNull { it.frequencyType !in setOf("BEFORE_EACH_RUN","AFTER_EACH_BATCH") } ?: plans.firstOrNull()
+     }
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("أمر صيانة وقائية")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("أمر صيانة وقائية")},text={FushDialogForm{
+         SelectionField("الأصل",asset?.nameAr?:"اختر",assets,{it.nameAr}){asset=it}
+         SelectionField("الخطة",plan?.nameAr?:"لا توجد خطة",plans,{"${it.nameAr} • ${it.frequencyType}"}){plan=it}
+         plan?.checklist?.takeIf{it.isNotBlank()}?.let{Text("قائمة الفحص: $it",style=MaterialTheme.typography.bodySmall)}
+@@ -543,7 +540,7 @@ private fun PreventiveWorkOrderDialog(container: AppContainer, assets: List<Asse
+ @Composable
+ private fun SafetyInspectionDialog(onDismiss:()->Unit,onSave:(String,String,String,String,String)->Unit){
+     var area by remember{mutableStateOf("")};var type by remember{mutableStateOf("DAILY")};var result by remember{mutableStateOf("PASS")};var findings by remember{mutableStateOf("")};var action by remember{mutableStateOf("")}
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("فحص السلامة")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("فحص السلامة")},text={FushDialogForm{
+         OutlinedTextField(area,{area=it},label={Text("المنطقة")});FushCodeSelectionField("نوع الفحص", type, listOf("DAILY","GAS","FIRE_EXTINGUISHER","PPE","EVACUATION","OTHER"), ::maintenanceSafetyInspectionTypeAr, modifier = Modifier.fillMaxWidth()) { type=it };FushCodeSelectionField("النتيجة", result, listOf("PASS","FAIL"), ::maintenanceResultAr, modifier = Modifier.fillMaxWidth()) { result=it };OutlinedTextField(findings,{findings=it},label={Text("النتائج")});OutlinedTextField(action,{action=it},label={Text("الإجراء التصحيحي")})
+     }},confirmButton={Button(enabled=area.isNotBlank(),onClick={onSave(area,type,result,findings,action)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+index 1085261..26a8380 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+@@ -63,13 +63,8 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 }
+             }
+         }
+-        message?.let {
+-            item {
+-                FushNotice(
+-                    message = it,
+-                    tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
+-                )
+-            }
++        if (message != null) {
++            item { FushOperationMessage(message, onConsumed = { message = null }) }
+         }
+         when (tab) {
+             0 -> {
+@@ -280,7 +275,7 @@ private fun AddRiskDialog(onDismiss: () -> Unit, onSave: (String,String,String,I
+ private fun AddControlDialog(risks: List<RiskEntity>, onDismiss: () -> Unit, onSave: (String,String,String,String,Long?,String,String) -> Unit) {
+     var title by remember { mutableStateOf("") }; var type by remember { mutableStateOf("PREVENTIVE") }; var frequency by remember { mutableStateOf("MONTHLY") }; var owner by remember { mutableStateOf("ADMIN") }
+     var selectedRisk by remember { mutableStateOf<RiskEntity?>(null) }; var expanded by remember { mutableStateOf(false) }; var design by remember { mutableStateOf("") }; var evidence by remember { mutableStateOf("") }
+-    AlertDialog(onDismissRequest=onDismiss, title={Text("ضابط رقابي جديد")}, text={ Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
++    AlertDialog(onDismissRequest=onDismiss, title={Text("ضابط رقابي جديد")}, text={ FushDialogForm {
+         OutlinedTextField(title,{title=it},label={Text("اسم الضابط")},singleLine=true)
+         FushCodeSelectionField("نوع الضابط", type, listOf("PREVENTIVE","DETECTIVE"), ::riskControlTypeAr, modifier = Modifier.fillMaxWidth()) { type = it }
+         FushCodeSelectionField("التكرار", frequency, listOf("DAILY","WEEKLY","MONTHLY"), ::riskFrequencyAr, modifier = Modifier.fillMaxWidth()) { frequency = it }
+@@ -295,7 +290,7 @@ private fun AddControlDialog(risks: List<RiskEntity>, onDismiss: () -> Unit, onS
+ private fun AddControlTestDialog(controls: List<InternalControlEntity>, onDismiss: () -> Unit, onSave: (Long,String,String,String,String,Long?) -> Unit) {
+     var control by remember { mutableStateOf(controls.firstOrNull()) }; var expanded by remember { mutableStateOf(false) }; var result by remember { mutableStateOf("PASS") }
+     var evidence by remember { mutableStateOf("") }; var finding by remember { mutableStateOf("") }; var severity by remember { mutableStateOf("MEDIUM") }; var due by remember { mutableStateOf("7") }
+-    AlertDialog(onDismissRequest=onDismiss, title={Text("اختبار ضابط")}, text={ Column(verticalArrangement=Arrangement.spacedBy(6.dp)) {
++    AlertDialog(onDismissRequest=onDismiss, title={Text("اختبار ضابط")}, text={ FushDialogForm {
+         Box { OutlinedButton(onClick={expanded=true}) { Text(control?.let { "${it.controlCode} — ${it.title}" } ?: "اختر الضابط") }; DropdownMenu(expanded=expanded,onDismissRequest={expanded=false}) { controls.forEach { c -> DropdownMenuItem(text={Text("${c.controlCode} — ${c.title}")},onClick={control=c;expanded=false}) } } }
+         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) { FilterChip(selected=result=="PASS",onClick={result="PASS"},label={Text("ناجح")}); FilterChip(selected=result=="FAIL",onClick={result="FAIL"},label={Text("فشل")}) }
+         OutlinedTextField(evidence,{evidence=it},label={Text("مرجع الدليل")},singleLine=true)
+@@ -307,7 +302,7 @@ private fun AddControlTestDialog(controls: List<InternalControlEntity>, onDismis
+ @Composable
+ private fun ManualExceptionDialog(onDismiss: () -> Unit, onSave: (String,String,String,Long?) -> Unit) {
+     var description by remember { mutableStateOf("") }; var severity by remember { mutableStateOf("MEDIUM") }; var owner by remember { mutableStateOf("ADMIN") }; var due by remember { mutableStateOf("7") }
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("استثناء رقابي يدوي")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("استثناء رقابي يدوي")},text={FushDialogForm{
+         OutlinedTextField(description,{description=it},label={Text("وصف الاستثناء")}); FushCodeSelectionField("الخطورة", severity, listOf("LOW","MEDIUM","HIGH","CRITICAL"), ::riskSeverityAr, modifier = Modifier.fillMaxWidth()) { severity = it }; OutlinedTextField(owner,{owner=it},label={Text("الدور المسؤول")},singleLine=true); FushIntegerField(due,{due=it},"المهلة بالأيام", modifier = Modifier.fillMaxWidth())
+     }},confirmButton={Button(enabled=description.isNotBlank(),onClick={onSave(description,severity,owner,due.toLongOrNull())}){Text("فتح")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }
+@@ -316,7 +311,7 @@ private fun ManualExceptionDialog(onDismiss: () -> Unit, onSave: (String,String,
+ private fun ReviewRiskDialog(row: RiskEntity, onDismiss: () -> Unit, onSave: (Int,Int,String,String) -> Unit) {
+     var likelihood by remember { mutableStateOf(row.residualLikelihood.toString()) }; var impact by remember { mutableStateOf(row.residualImpact.toString()) }; var status by remember { mutableStateOf(row.status) }; var mitigation by remember { mutableStateOf(row.mitigationPlan) }
+     val l=likelihood.toIntOrNull(); val i=impact.toIntOrNull(); val score=if(l in 1..5&&i in 1..5) l!!*i!! else null
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("مراجعة ${row.riskNo}")},text={Column(verticalArrangement=Arrangement.spacedBy(6.dp)){
++    AlertDialog(onDismissRequest=onDismiss,title={Text("مراجعة ${row.riskNo}")},text={FushDialogForm{
+         FushIntegerField(likelihood,{likelihood=it},"الاحتمال المتبقي 1–5", modifier = Modifier.fillMaxWidth()); FushIntegerField(impact,{impact=it},"الأثر المتبقي 1–5", modifier = Modifier.fillMaxWidth()); score?.let{Text("الدرجة المتبقية: $it/25 — ${riskBandAr(it)}")}; FushCodeSelectionField("الحالة", status, listOf("OPEN","MITIGATING","ACCEPTED","CLOSED"), ::riskStatusAr, modifier = Modifier.fillMaxWidth()) { status = it }; OutlinedTextField(mitigation,{mitigation=it},label={Text("خطة المعالجة")})
+     }},confirmButton={Button(enabled=l in 1..5&&i in 1..5,onClick={onSave(l!!,i!!,status.trim().uppercase(),mitigation)}){Text("تحديث")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
+ }

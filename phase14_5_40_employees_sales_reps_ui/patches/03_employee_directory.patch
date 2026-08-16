@@ -1,0 +1,226 @@
+From 8188a526d40cce23dbfbe35db1e1287e6e490f28 Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:06:31 +0000
+Subject: [PATCH] employee list ui
+
+---
+ .../fush/erp/ui/screens/EmployeeScreens.kt    | 165 ++++++++++++++----
+ 1 file changed, 134 insertions(+), 31 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 150952d..6433eff 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -6,10 +6,15 @@ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -33,6 +38,8 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+     var revoke by remember { mutableStateOf<EquipmentAuthorizationSummary?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
+     var selectedEmployeeId by remember { mutableStateOf<Long?>(null) }
++    var search by remember { mutableStateOf("") }
++    var statusFilter by remember { mutableStateOf("ALL") }
+     val now = System.currentTimeMillis()
+ 
+     val selectedEmployee = employees.firstOrNull { it.id == selectedEmployeeId }
+@@ -47,32 +54,118 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+         return
+     }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    val activeCount = employees.count { it.status == "ACTIVE" }
++    val productionCount = employees.count { it.department == "الإنتاج" && it.status == "ACTIVE" }
++    val expiredTrainingCount = trainings.count { it.expiresAt != null && it.expiresAt < now }
++    val authorizationRiskCount = authorizations.count { it.status != "ACTIVE" || (it.expiresAt != null && it.expiresAt < now) }
++    val competenceAlerts = expiredTrainingCount + authorizationRiskCount
++    val filteredEmployees = remember(employees, search, statusFilter) {
++        val q = search.trim().lowercase(Locale.ROOT)
++        employees.filter { employee ->
++            val statusMatches = statusFilter == "ALL" || employee.status == statusFilter
++            val searchMatches = q.isBlank() || listOf(
++                employee.code,
++                employee.fullNameAr,
++                employee.fullNameEn,
++                employee.jobTitle,
++                employee.department,
++                employee.phone
++            ).any { it.lowercase(Locale.ROOT).contains(q) }
++            statusMatches && searchMatches
++        }
++    }
++
++    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++        item {
++            FushSectionHeader(
++                title = "الموظفون والموارد البشرية",
++                subtitle = "ملف تشغيلي موحد للموظف: الوظيفة، التدريب، تصاريح المعدات، أوامر الإنتاج، المستحقات والسندات."
++            )
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("إجمالي الموظفين", employees.size.toString(), Modifier.weight(1f), helper = "كل الملفات")
++                FushMetricCard("الموظفون النشطون", activeCount.toString(), Modifier.weight(1f), helper = "متاحون للتشغيل", tone = FushStatusTone.Success)
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("فريق الإنتاج", productionCount.toString(), Modifier.weight(1f), helper = "نشط في قسم الإنتاج", tone = FushStatusTone.Info)
++                FushMetricCard(
++                    "تنبيهات الكفاءة",
++                    competenceAlerts.toString(),
++                    Modifier.weight(1f),
++                    helper = "تدريب أو تصريح يحتاج مراجعة",
++                    tone = if (competenceAlerts > 0) FushStatusTone.Warning else FushStatusTone.Success
++                )
++            }
++        }
+         item {
+-            Text("الموظفون", style = MaterialTheme.typography.headlineSmall)
+-            Text("ملفات الموظفين والأقسام والحالة، مع التدريب والتصاريح وربط المشغل بأوامر الإنتاج.")
+-            Spacer(Modifier.height(8.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                Button(onClick = { showEmployee = true }) { Text("موظف جديد") }
+-                OutlinedButton(onClick = { showCourse = true }) { Text("برنامج تدريب") }
+-                OutlinedButton(onClick = { showTraining = true }, enabled = employees.isNotEmpty() && courses.isNotEmpty()) { Text("تسجيل تدريب") }
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushSectionHeader("إجراءات الموارد البشرية", "أنشئ ملف الموظف ثم أكمل التدريب والتصريح وربط التشغيل عند الحاجة.")
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Button(onClick = { showEmployee = true }, modifier = Modifier.weight(1f)) { Text("موظف جديد") }
++                        OutlinedButton(onClick = { showCourse = true }, modifier = Modifier.weight(1f)) { Text("برنامج تدريب") }
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedButton(
++                            onClick = { showTraining = true },
++                            enabled = employees.isNotEmpty() && courses.isNotEmpty(),
++                            modifier = Modifier.weight(1f)
++                        ) { Text("تسجيل تدريب") }
++                        OutlinedButton(
++                            onClick = { showAuthorization = true },
++                            enabled = employees.isNotEmpty() && courses.isNotEmpty() && assets.isNotEmpty(),
++                            modifier = Modifier.weight(1f)
++                        ) { Text("تصريح معدة") }
++                    }
++                    Button(
++                        onClick = { showAssignment = true },
++                        enabled = employees.isNotEmpty() && orders.any { it.status !in setOf("CLOSED", "REJECTED", "CANCELLED") },
++                        modifier = Modifier.fillMaxWidth()
++                    ) { Text("تعيين موظف إنتاج / مشغل لأمر") }
++                    message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
++                }
+             }
+-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                Button(onClick = { showAuthorization = true }, enabled = employees.isNotEmpty() && courses.isNotEmpty() && assets.isNotEmpty()) { Text("تصريح معدة") }
+-                OutlinedButton(onClick = { showAssignment = true }, enabled = employees.isNotEmpty() && orders.any { it.status !in setOf("CLOSED", "REJECTED", "CANCELLED") }) { Text("تعيين مشغل لأمر") }
++        }
++        item {
++            OutlinedTextField(
++                value = search,
++                onValueChange = { search = it },
++                label = { Text("بحث بالاسم أو الكود أو القسم أو المسمى") },
++                modifier = Modifier.fillMaxWidth(),
++                singleLine = true
++            )
++        }
++        item {
++            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FilterChip(selected = statusFilter == "ALL", onClick = { statusFilter = "ALL" }, label = { Text("الكل") })
++                FilterChip(selected = statusFilter == "ACTIVE", onClick = { statusFilter = "ACTIVE" }, label = { Text("نشط") })
++                FilterChip(selected = statusFilter == "INACTIVE", onClick = { statusFilter = "INACTIVE" }, label = { Text("موقوف") })
+             }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+ 
+-        item { Text("الموظفون", style = MaterialTheme.typography.titleMedium) }
+-        items(employees, key = { it.id }) { employee ->
++        item { FushSectionHeader("دليل الموظفين", "${filteredEmployees.size} ملف مطابق للبحث والتصفية") }
++        if (filteredEmployees.isEmpty()) item { Text("لا توجد ملفات موظفين مطابقة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        items(filteredEmployees, key = { it.id }) { employee ->
+             ElevatedCard(onClick = { selectedEmployeeId = employee.id }, modifier = Modifier.fillMaxWidth()) {
+-                Column {
+-                    ListItem(
+-                        headlineContent = { Text("${employee.code} — ${employee.fullNameAr}") },
+-                        supportingContent = { Text("${employee.jobTitle} • ${employee.department} • ${if (employee.status == "ACTIVE") "نشط" else "موقوف"}${employee.phone.takeIf { it.isNotBlank() }?.let { " • $it" } ?: ""}") }
+-                    )
+-                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.End) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column(Modifier.weight(1f)) {
++                            Text(employee.fullNameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${employee.code} • ${employee.jobTitle}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(
++                            if (employee.status == "ACTIVE") "نشط" else "موقوف",
++                            if (employee.status == "ACTIVE") FushStatusTone.Success else FushStatusTone.Warning
++                        )
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Text("القسم: ${employee.department}", style = MaterialTheme.typography.bodyMedium)
++                        employee.phone.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                         TextButton(onClick = { editEmployee = employee }) { Text("تعديل") }
+                         TextButton(onClick = { selectedEmployeeId = employee.id }) { Text("فتح الملف") }
+                     }
+@@ -80,25 +173,35 @@ fun EmployeesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+             }
+         }
+ 
+-        item { Text("سجل التدريب والكفاءة", style = MaterialTheme.typography.titleMedium) }
++        item { FushSectionHeader("التدريب والكفاءة", "آخر سجلات التدريب مع إبراز السجلات المنتهية") }
++        if (trainings.isEmpty()) item { Text("لا توجد سجلات تدريب.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         items(trainings.take(30)) { row ->
++            val expired = row.expiresAt != null && row.expiresAt < now
+             ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text("${row.employeeName} — ${row.courseTitle}", style = MaterialTheme.typography.titleSmall)
+-                    Text("النتيجة: ${row.result} • ملاحظة عملية: ${if (row.practicalObserved) "نعم" else "لا"}")
+-                    Text("تاريخ التدريب: ${fmtDate(row.completedAt)} • الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "حتى الإلغاء/إعادة التدريب"}")
+-                    if (row.expiresAt != null && row.expiresAt < now) Text("منتهي", color = MaterialTheme.colorScheme.error)
++                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text("${row.employeeName} — ${row.courseTitle}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
++                        FushStatusPill(if (expired) "منتهي" else row.result, if (expired || row.result != "PASS") FushStatusTone.Warning else FushStatusTone.Success)
++                    }
++                    Text("ملاحظة عملية: ${if (row.practicalObserved) "نعم" else "لا"}", style = MaterialTheme.typography.bodySmall)
++                    Text("أكمل: ${fmtDate(row.completedAt)} • الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "مفتوحة"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                 }
+             }
+         }
+ 
+-        item { Text("تصاريح تشغيل المعدات", style = MaterialTheme.typography.titleMedium) }
++        item { FushSectionHeader("تصاريح تشغيل المعدات", "التصريح النشط يربط الموظف بالمعدة والتدريب المؤهل") }
++        if (authorizations.isEmpty()) item { Text("لا توجد تصاريح تشغيل.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         items(authorizations.take(30)) { row ->
++            val expired = row.expiresAt != null && row.expiresAt < now
++            val active = row.status == "ACTIVE" && !expired
+             ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text("${row.employeeName} — ${row.assetName}", style = MaterialTheme.typography.titleSmall)
+-                    Text("${row.authorizationNo} • تدريب: ${row.courseTitle}")
+-                    Text("الحالة: ${row.status} • الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "حتى الإلغاء"}")
++                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text("${row.employeeName} — ${row.assetName}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
++                        FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else row.status, if (active) FushStatusTone.Success else FushStatusTone.Warning)
++                    }
++                    Text("${row.authorizationNo} • تدريب: ${row.courseTitle}", style = MaterialTheme.typography.bodySmall)
++                    Text("الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "حتى الإلغاء"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     if (row.status == "ACTIVE") TextButton(onClick = { revoke = row }) { Text("إلغاء التصريح") }
+                 }
+             }
+-- 
+2.47.3

@@ -1,0 +1,40 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
+index bd42295..08aa8d9 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt
+@@ -57,7 +57,7 @@ private fun FxHistoryTab(container: AppContainer, user: UserEntity, modifier: Mo
+         item {
+             FushSectionHeader("أسعار الصرف التاريخية", "كل سعر يحتفظ بتاريخ سريانه، ويُشتق تحويل الريال القديم إلى الجديد من سعر الدولار في الطبعتين.")
+             Button(onClick = { showAdd = true }) { Text("تسجيل سعر يومي") }
+-            message?.let { FushNotice(it, tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success) }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         if (snapshots.isEmpty()) {
+             item { FushEmptyState("لا توجد لقطات صرف يومية", "سجّل أول سعر يومي للدولار بالطبعتين لتكوين سجل تاريخي قابل للتتبع.") }
+@@ -145,7 +145,7 @@ private fun ProvincePricingTab(container: AppContainer, modifier: Modifier) {
+         item {
+             FushSectionHeader("سياسات المحافظات وقوائم الأسعار", "تعز هي الأساس، ويمكن لكل محافظة تحديد العملة والنقل الافتراضي ومتطلبات سعر الصرف والرسوم.")
+             Button(enabled = product != null && policies.isNotEmpty(), onClick = { showPrice = true }) { Text("إضافة سعر محافظة") }
+-            message?.let { FushNotice(it, tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success) }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         if (policies.isEmpty()) item { FushEmptyState("لا توجد سياسات محافظات", "أضف سياسات المحافظات قبل إنشاء قوائم أسعار جغرافية.") }
+         items(policies, key = { it.code }) { p ->
+@@ -193,7 +193,7 @@ private fun ProductPriceList(container: AppContainer, product: ItemEntity) {
+     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+         Text("قائمة أسعار Fush 60 مل", style = MaterialTheme.typography.titleMedium)
+         Text("البيع يستخدم فقط القائمة الفعالة والسارية في تاريخ الفاتورة لنفس المحافظة والقناة والعملة.", style = MaterialTheme.typography.bodySmall)
+-        message?.let { FushNotice(it, tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success) }
++        FushOperationMessage(message, onConsumed = { message = null })
+         if (prices.isEmpty()) {
+             FushInlineState("لا توجد قوائم أسعار لهذا المنتج حتى الآن.")
+         }
+@@ -369,7 +369,7 @@ private fun GeographicProfitabilityTab(container: AppContainer, user: UserEntity
+             }
+             Button(onClick = { reload() }) { Text("تحديث التقرير") }
+             Text("الربح = صافي المبيعات − تكلفة البضاعة − العمولة المستحقة − النقل/الرسوم الفعلية المسجلة.", style = MaterialTheme.typography.bodySmall)
+-            message?.let { FushNotice(it, tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success) }
++            FushOperationMessage(message, onConsumed = { message = null })
+         }
+         item { Text("حسب المحافظة", style = MaterialTheme.typography.titleMedium) }
+         if (provinces.isEmpty()) item { FushInlineState("لا توجد نتائج ربحية حسب المحافظة ضمن الفترة المحددة.") }

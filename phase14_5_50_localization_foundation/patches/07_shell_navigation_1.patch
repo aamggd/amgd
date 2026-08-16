@@ -1,0 +1,39 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8147da0..bb87d68 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -1,5 +1,6 @@
+ package com.fush.erp.ui.screens
+ 
++import androidx.annotation.StringRes
+ import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+@@ -13,17 +14,26 @@ import androidx.compose.runtime.*
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.graphics.vector.ImageVector
++import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.semantics.clearAndSetSemantics
+ import androidx.compose.ui.semantics.contentDescription
+ import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.unit.dp
++import com.fush.erp.R
+ import com.fush.erp.ui.*
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import kotlinx.coroutines.launch
+ 
+-private data class ModuleCard(val title: String, val subtitle: String, val target: String, val badge: String? = null)
++private data class ModuleCard(
++    @StringRes val titleRes: Int,
++    @StringRes val subtitleRes: Int,
++    val target: String,
++    @StringRes val badgeRes: Int? = null,
++)
++
++private data class DrawerItem(@StringRes val labelRes: Int, val target: String)
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable

@@ -1,0 +1,53 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index f5c6401..6e8bf86 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -257,18 +263,18 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+                                 horizontalArrangement = Arrangement.SpaceBetween,
+                             ) {
+-                                Text("المتبقي ${salesMoney(invoice.outstandingBase)}", style = MaterialTheme.typography.labelLarge)
+-                                Text(invoice.dueDate?.let { "الاستحقاق ${salesDate(it)}" } ?: "بدون تاريخ استحقاق", style = MaterialTheme.typography.labelMedium)
++                                Text(stringResource(R.string.common_due_amount, salesMoney(invoice.outstandingBase)), style = MaterialTheme.typography.labelLarge)
++                                Text(invoice.dueDate?.let { stringResource(R.string.common_due_date, salesDate(it)) } ?: stringResource(R.string.common_no_due_date), style = MaterialTheme.typography.labelMedium)
+                             }
+                         }
+                     }
+ 
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        OutlinedButton(onClick = { detailInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("التفاصيل") }
++                        OutlinedButton(onClick = { detailInvoice = invoice }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_details)) }
+                         if (isCredit && !isPaid) {
+-                            Button(onClick = { collectInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("تحصيل") }
++                            Button(onClick = { collectInvoice = invoice }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.sales_collection)) }
+                         }
+-                        OutlinedButton(onClick = { returnInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("مرتجع") }
++                        OutlinedButton(onClick = { returnInvoice = invoice }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.common_return)) }
+                     }
+                 }
+             }
+@@ -284,9 +290,9 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+             scope.launch {
+                 try {
+                     val customer = container.salesService.createCustomer(name, phone, province, channel, currency.code, limit, days, allowCredit, rep)
+-                    message = "تمت إضافة العميل بالكود ${customer.code}"
++                    message = context.getString(R.string.sales_customer_created, customer.code)
+                     showCustomer = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر إضافة العميل" }
++                } catch (e: Exception) { message = e.message ?: context.getString(R.string.sales_customer_create_failed) }
+             }
+         }
+     }
+@@ -316,10 +322,10 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+                         salesRepName = rep,
+                         updatedBy = user.id
+                     )
+-                    message = "تم تعديل بيانات العميل ${updated.nameAr}"
++                    message = context.getString(R.string.sales_customer_updated, updated.nameAr)
+                     editCustomer = null
+                 } catch (e: Exception) {
+-                    message = e.message ?: "تعذر تعديل بيانات العميل"
++                    message = e.message ?: context.getString(R.string.sales_customer_update_failed)
+                 }
+             }
+         }

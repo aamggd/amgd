@@ -1,0 +1,231 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index ab0922f..00bb021 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+@@ -12,6 +13,10 @@ import com.fush.erp.data.entity.AssetEntity
+ import com.fush.erp.data.entity.MaintenanceWorkOrderEntity
+ import com.fush.erp.data.entity.MaintenancePlanEntity
+ import com.fush.erp.data.entity.UserEntity
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -24,8 +29,9 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+     val workOrders by container.db.maintenanceDao().observeOpenWorkOrders().collectAsState(initial = emptyList())
+     val breakdowns by container.db.maintenanceDao().observeBreakdowns().collectAsState(initial = emptyList())
+     val safetyIncidents by container.db.maintenanceDao().observeSafetyIncidents().collectAsState(initial = emptyList())
+-    val overduePlans by container.db.maintenanceDao().observeOverduePlanCount(System.currentTimeMillis()).collectAsState(initial = 0)
+-    val overdueChecks by container.db.maintenanceDao().observeOverdueEquipmentCheckCount(System.currentTimeMillis()).collectAsState(initial = 0)
++    val now = System.currentTimeMillis()
++    val overduePlans by container.db.maintenanceDao().observeOverduePlanCount(now).collectAsState(initial = 0)
++    val overdueChecks by container.db.maintenanceDao().observeOverdueEquipmentCheckCount(now).collectAsState(initial = 0)
+     var showAsset by remember { mutableStateOf(false) }
+     var showBreakdown by remember { mutableStateOf(false) }
+     var showPreventive by remember { mutableStateOf(false) }
+@@ -35,43 +41,168 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+     var showSafetyIncident by remember { mutableStateOf(false) }
+     var showSafetyInspection by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
++    var search by remember { mutableStateOf("") }
++    var statusFilter by remember { mutableStateOf("ALL") }
++    var criticalityFilter by remember { mutableStateOf("ALL") }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    val assetById = remember(assets) { assets.associateBy { it.id } }
++    val activeAssets = assets.count { it.status == "ACTIVE" }
++    val unavailableAssets = assets.count { it.status != "ACTIVE" }
++    val criticalAssets = assets.count { it.criticality == "CRITICAL" }
++    val overdueWorkOrders = workOrders.count { it.dueAt != null && it.dueAt < now }
++    val openSafety = safetyIncidents.count { it.status != "CLOSED" }
++    val recurringBreakdowns = breakdowns.count { it.recurring && it.status != "CLOSED" }
++    val totalDowntime = breakdowns.sumOf { it.downtimeMinutes }
++    val filteredAssets = remember(assets, search, statusFilter, criticalityFilter) {
++        val q = search.trim().lowercase(Locale.ROOT)
++        assets.filter { asset ->
++            val statusMatches = statusFilter == "ALL" || asset.status == statusFilter
++            val criticalityMatches = criticalityFilter == "ALL" || asset.criticality == criticalityFilter
++            val searchMatches = q.isBlank() || listOf(
++                asset.code, asset.nameAr, asset.nameEn, asset.assetType, asset.location, asset.serialNo
++            ).any { it.lowercase(Locale.ROOT).contains(q) }
++            statusMatches && criticalityMatches && searchMatches
++        }
++    }
++
++    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++        item {
++            FushSectionHeader(
++                title = "الأصول والصيانة والسلامة",
++                subtitle = "لوحة تشغيل المعدات: الجاهزية، الفحوص والمعايرة، الصيانة الوقائية والتصحيحية، الأعطال والسلامة."
++            )
++            message?.let {
++                Spacer(Modifier.height(8.dp))
++                Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
++            }
++        }
+         item {
+-            Text("الأصول والصيانة والسلامة", style = MaterialTheme.typography.headlineSmall)
+-            Text("سجل أصل → فحص وصيانة وقائية → عطل وأمر إصلاح → إعادة تشغيل معتمدة → معايرة وسلامة.")
+-            Spacer(Modifier.height(8.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { showAsset = true }) { Text("إضافة أصل") }
+-                OutlinedButton(onClick = { showBreakdown = true }, enabled = assets.isNotEmpty()) { Text("بلاغ عطل") }
+-                OutlinedButton(onClick = { showPreventive = true }, enabled = assets.isNotEmpty()) { Text("أمر وقائي") }
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("الأصول الجاهزة", activeAssets.toString(), Modifier.weight(1f), helper = "من ${assets.size} أصل", tone = FushStatusTone.Success)
++                FushMetricCard(
++                    "خارج الجاهزية", unavailableAssets.toString(), Modifier.weight(1f), helper = "متوقف أو تحت الصيانة",
++                    tone = if (unavailableAssets > 0) FushStatusTone.Warning else FushStatusTone.Success
++                )
+             }
+-            Spacer(Modifier.height(6.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                OutlinedButton(onClick = { showSafetyIncident = true }) { Text("حادث/انسكاب") }
+-                OutlinedButton(onClick = { showSafetyInspection = true }) { Text("فحص سلامة") }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    "صيانة متأخرة", (overduePlans + overdueWorkOrders).toString(), Modifier.weight(1f),
++                    helper = "خطط $overduePlans • أوامر $overdueWorkOrders",
++                    tone = if (overduePlans + overdueWorkOrders > 0) FushStatusTone.Danger else FushStatusTone.Success
++                )
++                FushMetricCard(
++                    "فحص/معايرة متأخر", overdueChecks.toString(), Modifier.weight(1f), helper = "يتطلب إجراء قبل التشغيل",
++                    tone = if (overdueChecks > 0) FushStatusTone.Danger else FushStatusTone.Success
++                )
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("أصول حرجة", criticalAssets.toString(), Modifier.weight(1f), helper = "Critical", tone = if (criticalAssets > 0) FushStatusTone.Info else FushStatusTone.Neutral)
++                FushMetricCard(
++                    "سلامة مفتوحة", openSafety.toString(), Modifier.weight(1f), helper = "أعطال متكررة $recurringBreakdowns",
++                    tone = if (openSafety > 0 || recurringBreakdowns > 0) FushStatusTone.Warning else FushStatusTone.Success
++                )
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushSectionHeader("إجراءات الصيانة والسلامة", "سجّل الأصل ثم حافظ على دورة الفحص والصيانة والإفراج عن المعدة.")
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Button(onClick = { showAsset = true }, modifier = Modifier.weight(1f)) { Text("إضافة أصل") }
++                        OutlinedButton(onClick = { showBreakdown = true }, enabled = assets.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("بلاغ عطل") }
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedButton(onClick = { showPreventive = true }, enabled = assets.isNotEmpty(), modifier = Modifier.weight(1f)) { Text("أمر وقائي") }
++                        OutlinedButton(onClick = { showSafetyInspection = true }, modifier = Modifier.weight(1f)) { Text("فحص سلامة") }
++                    }
++                    OutlinedButton(onClick = { showSafetyIncident = true }, modifier = Modifier.fillMaxWidth()) { Text("تسجيل حادث / انسكاب") }
++                    Text(
++                        "هدف التشغيل: صفر معدات متأخرة عن الفحص أو المعايرة، مع إغلاق أوامر الصيانة في موعدها.",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant
++                    )
++                }
+             }
+-            Text("أهداف الدراسة: الصيانة الوقائية ≥95%، وإغلاق أوامر الصيانة في موعدها ≥90%، وصفر معدات متأخرة عن الفحص.", style = MaterialTheme.typography.bodySmall)
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+         item {
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                MaintenanceMetric("الأصول", assets.size.toString(), Modifier.weight(1f))
+-                MaintenanceMetric("صيانة متأخرة", overduePlans.toString(), Modifier.weight(1f))
+-                MaintenanceMetric("فحص/معايرة متأخر", overdueChecks.toString(), Modifier.weight(1f))
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushSectionHeader("سجل الأصول", "ابحث عن المعدة أو صفِّ السجل حسب الجاهزية والأهمية.")
++                    OutlinedTextField(
++                        value = search,
++                        onValueChange = { search = it },
++                        label = { Text("بحث بالكود أو الاسم أو الموقع أو الرقم التسلسلي") },
++                        modifier = Modifier.fillMaxWidth(),
++                        singleLine = true
++                    )
++                    SelectionField(
++                        "الحالة",
++                        maintenanceStatusFilterAr(statusFilter),
++                        listOf("ALL", "ACTIVE", "OUT_OF_SERVICE", "UNDER_MAINTENANCE"),
++                        ::maintenanceStatusFilterAr
++                    ) { statusFilter = it }
++                    SelectionField(
++                        "الأهمية",
++                        maintenanceCriticalityFilterAr(criticalityFilter),
++                        listOf("ALL", "LOW", "MEDIUM", "HIGH", "CRITICAL"),
++                        ::maintenanceCriticalityFilterAr
++                    ) { criticalityFilter = it }
++                    Text("النتائج: ${filteredAssets.size}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
+             }
+         }
+-        item { Text("سجل الأصول", style = MaterialTheme.typography.titleMedium) }
+-        items(assets) { asset ->
++        if (filteredAssets.isEmpty()) {
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Text("لا توجد أصول مطابقة للبحث أو الفلاتر الحالية.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++            }
++        }
++        items(filteredAssets, key = { it.id }) { asset ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    Text("${asset.code} — ${asset.nameAr}", style = MaterialTheme.typography.titleMedium)
+-                    Text("${asset.location} • ${asset.assetType} • الحالة: ${assetStatusAr(asset.status)}")
+-                    Text("الأهمية: ${asset.criticality}${if (asset.calibrationRequired) " • يحتاج معايرة" else ""}")
+-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                        OutlinedButton(onClick = { inspectAsset = asset }) { Text("فحص") }
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text("${asset.code} — ${asset.nameAr}", style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                listOf(asset.location, maintenanceAssetTypeAr(asset.assetType)).filter { it.isNotBlank() }.joinToString(" • "),
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant
++                            )
++                        }
++                        Spacer(Modifier.width(10.dp))
++                        FushStatusPill(assetStatusAr(asset.status), maintenanceAssetStatusTone(asset.status))
++                    }
++                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
++                        FushStatusPill("الأهمية: ${maintenanceCriticalityAr(asset.criticality)}", maintenanceCriticalityTone(asset.criticality))
++                        if (asset.calibrationRequired) FushStatusPill("معايرة مطلوبة", FushStatusTone.Info)
++                    }
++                    if (asset.serialNo.isNotBlank()) Text("الرقم التسلسلي: ${asset.serialNo}", style = MaterialTheme.typography.bodySmall)
++                    if (asset.usageHours > 0 || asset.usageBatches > 0) {
++                        Text("الاستخدام: ${asset.usageHours} ساعة • ${asset.usageBatches} دفعة", style = MaterialTheme.typography.bodySmall)
++                    }
++                    asset.inspectionDueAt?.let {
++                        Text(
++                            "الفحص القادم: ${fmtDate(it)}${if (it < now) " • متأخر" else ""}",
++                            style = MaterialTheme.typography.bodySmall,
++                            color = if (it < now) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
++                        )
++                    }
++                    if (asset.calibrationRequired) asset.calibrationDueAt?.let {
++                        Text(
++                            "المعايرة القادمة: ${fmtDate(it)}${if (it < now) " • متأخرة" else ""}",
++                            style = MaterialTheme.typography.bodySmall,
++                            color = if (it < now) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
++                        )
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedButton(onClick = { inspectAsset = asset }, modifier = Modifier.weight(1f)) { Text("فحص") }
+                         if (asset.calibrationRequired || asset.assetType == "MEASURING_TOOL") {
+-                            OutlinedButton(onClick = { calibrateAsset = asset }) { Text("معايرة") }
++                            OutlinedButton(onClick = { calibrateAsset = asset }, modifier = Modifier.weight(1f)) { Text("معايرة") }
+                         }
+                     }
+                 }

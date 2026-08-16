@@ -1,0 +1,137 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index 3eed8fd..bf61ffb 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -982,34 +982,117 @@ private fun buildProductionReportExportDocument(
+ 
+ 
+ @Composable private fun FinanceTab(pnl: ProfitLossReport?, trial: TrialBalanceReport?, cash: CashFlowReport?) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-        item { pnl?.let { MetricGrid(listOf("الإيرادات" to money(it.revenue), "المصروفات" to money(it.expenses), "صافي الربح" to money(it.netProfit))) } }
+-        item { cash?.let { MetricGrid(listOf("رصيد افتتاحي نقدي" to money(it.openingCash), "متحصلات" to money(it.cashInflows), "مدفوعات" to money(it.cashOutflows), "رصيد ختامي" to money(it.closingCash))) } }
+-        item { trial?.let { SectionTitle("ميزان المراجعة — مدين ${money(it.totalDebitBalance)} / دائن ${money(it.totalCreditBalance)}") } }
+-        items(trial?.lines ?: emptyList()) { r -> ReportCard("${r.code} — ${r.nameAr}", r.type, listOf("مدين" to money(r.debitBalance), "دائن" to money(r.creditBalance))) }
++    val trialDifference = trial?.let { abs(it.totalDebitBalance - it.totalCreditBalance) } ?: 0.0
++    val balanced = trial == null || trialDifference < 0.01
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("التحليل المالي", "الربحية والسيولة واتزان ميزان المراجعة للفترة المحددة.")
++        }
++        item {
++            pnl?.let { report ->
++                BoxWithConstraints(Modifier.fillMaxWidth()) {
++                    if (maxWidth >= 700.dp) {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                            FushMetricCard("الإيرادات", money(report.revenue), Modifier.weight(1f), "قائمة الدخل", FushStatusTone.Info)
++                            FushMetricCard("المصروفات", money(report.expenses), Modifier.weight(1f), "قائمة الدخل", FushStatusTone.Neutral)
++                            FushMetricCard("صافي الربح", money(report.netProfit), Modifier.weight(1f), if (report.netProfit >= 0) "ربحية موجبة" else "خسارة", if (report.netProfit >= 0) FushStatusTone.Success else FushStatusTone.Danger)
++                        }
++                    } else {
++                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                            FushMetricCard("الإيرادات", money(report.revenue), Modifier.fillMaxWidth(), "قائمة الدخل", FushStatusTone.Info)
++                            FushMetricCard("المصروفات", money(report.expenses), Modifier.fillMaxWidth(), "قائمة الدخل", FushStatusTone.Neutral)
++                            FushMetricCard("صافي الربح", money(report.netProfit), Modifier.fillMaxWidth(), if (report.netProfit >= 0) "ربحية موجبة" else "خسارة", if (report.netProfit >= 0) FushStatusTone.Success else FushStatusTone.Danger)
++                        }
++                    }
++                }
++            }
++        }
++        item {
++            cash?.let {
++                FushSectionHeader("السيولة النقدية", "الحركة النقدية من الرصيد الافتتاحي حتى الرصيد الختامي.")
++                Spacer(Modifier.height(6.dp))
++                MetricGrid(listOf(
++                    "رصيد افتتاحي نقدي" to money(it.openingCash),
++                    "متحصلات" to money(it.cashInflows),
++                    "مدفوعات" to money(it.cashOutflows),
++                    "رصيد ختامي" to money(it.closingCash)
++                ))
++            }
++        }
++        item {
++            trial?.let {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
++                            Text("ميزان المراجعة", style = MaterialTheme.typography.titleMedium)
++                            FushStatusPill(if (balanced) "متزن" else "يوجد فرق", if (balanced) FushStatusTone.Success else FushStatusTone.Danger)
++                        }
++                        MetricGrid(listOf(
++                            "إجمالي المدين" to money(it.totalDebitBalance),
++                            "إجمالي الدائن" to money(it.totalCreditBalance),
++                            "الفرق" to money(trialDifference),
++                            "عدد الحسابات" to it.lines.size.toString()
++                        ))
++                    }
++                }
++            }
++        }
++        items(trial?.lines ?: emptyList()) { r ->
++            ReportCard("${r.code} — ${r.nameAr}", r.type, listOf("مدين" to money(r.debitBalance), "دائن" to money(r.creditBalance)))
++        }
+     }
+ }
+ 
+ @Composable private fun MetricGrid(metrics: List<Pair<String,String>>) {
+-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-        metrics.chunked(2).forEach { pair ->
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                pair.forEach { (k,v) -> ElevatedCard(Modifier.weight(1f)) { Column(Modifier.padding(10.dp)) { Text(v, style=MaterialTheme.typography.titleMedium); Text(k, style=MaterialTheme.typography.bodySmall) } } }
+-                if (pair.size == 1) Spacer(Modifier.weight(1f))
++    BoxWithConstraints(Modifier.fillMaxWidth()) {
++        val columns = when {
++            maxWidth >= 980.dp -> 4
++            maxWidth >= 640.dp -> 3
++            else -> 2
++        }
++        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++            metrics.chunked(columns).forEach { group ->
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    group.forEach { (k, v) ->
++                        ElevatedCard(Modifier.weight(1f)) {
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                                Text(v, style = MaterialTheme.typography.titleMedium)
++                                Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
++                    repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
++                }
+             }
+         }
+     }
+ }
+ 
+-@Composable private fun SectionTitle(text: String) { Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top=6.dp)) }
++@Composable private fun SectionTitle(text: String) {
++    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
++}
+ 
+ @Composable private fun ReportCard(title: String, subtitle: String, metrics: List<Pair<String,String>>) {
+     ElevatedCard(Modifier.fillMaxWidth()) {
+-        Column(Modifier.padding(12.dp)) {
++        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+             Text(title, style = MaterialTheme.typography.titleMedium)
+-            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall)
+-            Spacer(Modifier.height(5.dp))
+-            metrics.forEach { (k,v) -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(k, style=MaterialTheme.typography.bodySmall); Text(v, style=MaterialTheme.typography.bodyMedium) } }
++            if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            BoxWithConstraints(Modifier.fillMaxWidth()) {
++                val columns = if (maxWidth >= 700.dp) 2 else 1
++                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                    metrics.chunked(columns).forEach { group ->
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
++                            group.forEach { (k, v) ->
++                                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween) {
++                                    Text(k, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                    Text(v, style = MaterialTheme.typography.bodyMedium)
++                                }
++                            }
++                            repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
++                        }
++                    }
++                }
++            }
+         }
+     }
+ }

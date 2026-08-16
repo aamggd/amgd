@@ -1,0 +1,549 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+index 7fcd01b..495126a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+@@ -11,6 +11,7 @@ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.res.stringResource
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.R
+@@ -72,6 +73,7 @@ fun AccountingScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+ 
+ @Composable
+ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val headers by container.db.journalDao().observeHeaders().collectAsState(initial = emptyList())
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+@@ -186,12 +188,12 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+                     Text(header.description)
+                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                         FushStatusPill(header.sourceType, FushStatusTone.Info)
+-                        if (header.isReversed) FushStatusPill("معكوس", FushStatusTone.Warning)
++                        if (header.isReversed) FushStatusPill(uiContext.getString(R.string.deep_reversed_de448), FushStatusTone.Warning)
+                     }
+                     Text("التاريخ ${formatDate(header.entryDate)} • العملة ${header.currencyCode} • سعر الصرف ${header.exchangeRate}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     if (details.isNotEmpty()) {
+                         AccountingTableHeader(detailScroll, listOf(
+-                            "الكود" to 100, "الحساب" to 220, "مدين" to 120, "دائن" to 120, "ملاحظة" to 260
++                            uiContext.getString(R.string.deep_code_9fcc5) to 100, uiContext.getString(R.string.deep_account_0fd1c) to 220, uiContext.getString(R.string.deep_debit_d7104) to 120, uiContext.getString(R.string.deep_credit_d1456) to 120, uiContext.getString(R.string.deep_note_8fca5) to 260
+                         ))
+                         details.forEach { d ->
+                             AccountingTableRow(
+@@ -209,9 +211,9 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+                     val canReverse = header.sourceType in AccountingService.REVERSIBLE_SOURCE_TYPES && !header.isReversed
+                     if (canReverse) {
+                         HorizontalDivider()
+-                        OutlinedTextField(reverseReason, { reverseReason = it }, label = { Text("سبب عكس القيد") }, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium)
++                        OutlinedTextField(reverseReason, { reverseReason = it }, label = { Text(uiContext.getString(R.string.deep_entry_reversal_reason_eafcd)) }, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium)
+                     } else if (header.sourceType !in AccountingService.REVERSIBLE_SOURCE_TYPES && header.sourceType != "REVERSAL") {
+-                        Text("هذا القيد مرتبط بعملية تشغيلية ويُعكس من شاشة العملية الأصلية.", color = MaterialTheme.colorScheme.tertiary)
++                        Text(uiContext.getString(R.string.deep_this_entry_is_linked_to_an_operational_tra_2bd9f), color = MaterialTheme.colorScheme.tertiary)
+                     }
+                 }
+             },
+@@ -224,12 +226,12 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+                                 val id = container.accountingService.reverseEntry(header.id, reverseReason, user.id)
+                                 message = "تم إنشاء قيد عكسي رقم $id"
+                                 selected = null
+-                            } catch (e: Exception) { message = e.message ?: "تعذر عكس القيد" }
++                            } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_reverse_entry_616c7) }
+                         }
+-                    }) { Text("عكس القيد") }
+-                } else TextButton(onClick = { selected = null }) { Text("إغلاق") }
++                    }) { Text(uiContext.getString(R.string.deep_reverse_entry_f3d9d)) }
++                } else TextButton(onClick = { selected = null }) { Text(uiContext.getString(R.string.deep_close_5bf82)) }
+             },
+-            dismissButton = { if (header.sourceType in AccountingService.REVERSIBLE_SOURCE_TYPES && !header.isReversed) TextButton(onClick = { selected = null }) { Text("إلغاء") } }
++            dismissButton = { if (header.sourceType in AccountingService.REVERSIBLE_SOURCE_TYPES && !header.isReversed) TextButton(onClick = { selected = null }) { Text(uiContext.getString(R.string.common_cancel)) } }
+         )
+     }
+ 
+@@ -238,9 +240,9 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+             scope.launch {
+                 try {
+                     container.accountingService.addAccount(code, nameAr, nameEn, type, parent, posting)
+-                    message = "تم إنشاء الحساب"
++                    message = uiContext.getString(R.string.deep_account_created_41e8b)
+                     showAddAccount = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر إنشاء الحساب" }
++                } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_create_account_8ee27) }
+             }
+         }
+     }
+@@ -248,6 +250,7 @@ private fun JournalTab(container: AppContainer, user: UserEntity, modifier: Modi
+ 
+ @Composable
+ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val balances by container.db.accountingDao().observeTreasuryBalances().collectAsState(initial = emptyList())
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+@@ -366,9 +369,9 @@ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Mod
+             scope.launch {
+                 try {
+                     container.accountingService.addTreasuryAccount(code, name, kind, account.id, currency.code, bank, number, user.id)
+-                    message = "تمت إضافة الخزينة/البنك"
++                    message = uiContext.getString(R.string.deep_treasury_bank_account_added_88395)
+                     showAdd = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر الحفظ" }
++                } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_save_fbf3b) }
+             }
+         }
+     }
+@@ -376,6 +379,7 @@ private fun TreasuryTab(container: AppContainer, user: UserEntity, modifier: Mod
+ 
+ @Composable
+ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
+@@ -383,8 +387,8 @@ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier
+     var message by remember { mutableStateOf<String?>(null) }
+     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+         FushSectionHeader(
+-            title = "القيد اليدوي",
+-            subtitle = "استخدمه للقيود المحاسبية التي لا تنشأ من عملية تشغيلية داخل النظام",
++            title = uiContext.getString(R.string.deep_manual_journal_entry_23f35),
++            subtitle = uiContext.getString(R.string.deep_use_it_for_accounting_entries_that_do_not__96249),
+         )
+         Surface(
+             color = MaterialTheme.colorScheme.tertiaryContainer,
+@@ -392,15 +396,15 @@ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier
+             shape = MaterialTheme.shapes.medium,
+         ) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+-                Text("ضوابط قبل الترحيل", style = MaterialTheme.typography.titleSmall)
+-                Text("يجب أن يتوازن مجموع المدين والدائن. المبالغ تُدخل بعملة القيد ثم تُحوّل إلى العملة الأساسية بسعر الصرف المسجل.", style = MaterialTheme.typography.bodyMedium)
++                Text(uiContext.getString(R.string.deep_pre_posting_controls_87f2e), style = MaterialTheme.typography.titleSmall)
++                Text(uiContext.getString(R.string.deep_total_debit_and_credit_must_balance_amount_8750d), style = MaterialTheme.typography.bodyMedium)
+             }
+         }
+         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-            FushMetricCard("حسابات الترحيل", accounts.count { it.isPosting }.toString(), Modifier.weight(1f), "متاحة للقيد", FushStatusTone.Info)
+-            FushMetricCard("العملات", currencies.size.toString(), Modifier.weight(1f), "عملة معرفة", FushStatusTone.Neutral)
++            FushMetricCard(uiContext.getString(R.string.deep_posting_accounts_5069c), accounts.count { it.isPosting }.toString(), Modifier.weight(1f), uiContext.getString(R.string.deep_available_for_entry_f6d90), FushStatusTone.Info)
++            FushMetricCard(uiContext.getString(R.string.deep_currencies_4952b), currencies.size.toString(), Modifier.weight(1f), uiContext.getString(R.string.deep_defined_currency_5eeaa), FushStatusTone.Neutral)
+         }
+-        Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = MaterialTheme.shapes.medium) { Text("إنشاء قيد يدوي") }
++        Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = MaterialTheme.shapes.medium) { Text(uiContext.getString(R.string.deep_create_manual_entry_ac528)) }
+         FushOperationMessage(message, onConsumed = { message = null })
+     }
+     if (show) {
+@@ -410,7 +414,7 @@ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier
+                     val id = container.accountingService.postManualJournal(description, date, currency.code, rate, lines, user.id)
+                     message = "تم ترحيل القيد رقم $id"
+                     show = false
+-                } catch (e: Exception) { message = e.message ?: "تعذر ترحيل القيد" }
++                } catch (e: Exception) { message = e.message ?: uiContext.getString(R.string.deep_could_not_post_journal_entry_7bbb5) }
+             }
+         }
+     }
+@@ -418,6 +422,7 @@ private fun ManualJournalTab(container: AppContainer, user: UserEntity, modifier
+ 
+ @Composable
+ private fun LedgerTab(container: AppContainer, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+     val tableScroll = rememberScrollState()
+@@ -429,9 +434,9 @@ private fun LedgerTab(container: AppContainer, modifier: Modifier) {
+     LaunchedEffect(accounts) { if (account == null) account = accounts.firstOrNull { it.isPosting } }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            FushSectionHeader("دفتر الأستاذ العام", "حركة حساب محدد مع الرصيد الافتتاحي والجاري والختامي")
++            FushSectionHeader(uiContext.getString(R.string.deep_general_ledger_372e2), uiContext.getString(R.string.deep_selected_account_activity_with_opening_run_b3331))
+             Spacer(Modifier.height(6.dp))
+-            SelectionField("الحساب", account?.let { "${it.code} — ${it.nameAr}" } ?: "اختر", accounts.filter { it.isPosting }, { "${it.code} — ${it.nameAr}" }) { account = it }
++            SelectionField(uiContext.getString(R.string.deep_account_0fd1c), account?.let { "${it.code} — ${it.nameAr}" } ?: uiContext.getString(R.string.common_select), accounts.filter { it.isPosting }, { "${it.code} — ${it.nameAr}" }) { account = it }
+             DateRangeFields(from, { from = it }, to, { to = it })
+             Button(onClick = {
+                 val a = account ?: return@Button
+@@ -439,14 +444,14 @@ private fun LedgerTab(container: AppContainer, modifier: Modifier) {
+                     try { report = container.accountingService.ledger(a.id, parseStart(from), parseEnd(to)); message = null }
+                     catch (e: Exception) { message = e.message }
+                 }
+-            }) { Text("عرض الأستاذ") }
++            }) { Text(uiContext.getString(R.string.deep_show_ledger_1cf81)) }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             report?.let { Text("الرصيد الافتتاحي: ${signedBalance(it.openingBalance)}") }
+         }
+         report?.let {
+             item { AccountingTableHeader(tableScroll, listOf(
+-                "التاريخ" to 105, "رقم القيد" to 175, "البيان" to 300,
+-                "مدين" to 125, "دائن" to 125, "الرصيد" to 155
++                uiContext.getString(R.string.deep_date_d94d7) to 105, uiContext.getString(R.string.deep_entry_number_33c53) to 175, uiContext.getString(R.string.deep_description_9d5be) to 300,
++                uiContext.getString(R.string.deep_debit_d7104) to 125, uiContext.getString(R.string.deep_credit_d1456) to 125, uiContext.getString(R.string.deep_balance_f96a7) to 155
+             )) }
+         }
+         report?.lines?.let { rows -> items(rows) { r ->
+@@ -465,6 +470,7 @@ private fun LedgerTab(container: AppContainer, modifier: Modifier) {
+ 
+ @Composable
+ private fun TrialBalanceTab(container: AppContainer, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val tableScroll = rememberScrollState()
+     var asOf by remember { mutableStateOf(todayText()) }
+@@ -472,16 +478,16 @@ private fun TrialBalanceTab(container: AppContainer, modifier: Modifier) {
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+         item {
+-            FushSectionHeader("ميزان المراجعة", "تحقق من توازن الحركات والأرصدة حتى تاريخ محدد")
++            FushSectionHeader(uiContext.getString(R.string.deep_trial_balance_cd0f2), uiContext.getString(R.string.deep_verify_movement_and_balance_equality_up_to_e3b31))
+             Spacer(Modifier.height(6.dp))
+-            FushDateField(asOf, { asOf = it }, "حتى تاريخ", modifier = Modifier.fillMaxWidth())
+-            Button(onClick = { scope.launch { try { report = container.accountingService.trialBalance(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد الميزان") }
++            FushDateField(asOf, { asOf = it }, uiContext.getString(R.string.deep_as_of_date_ed2c0), modifier = Modifier.fillMaxWidth())
++            Button(onClick = { scope.launch { try { report = container.accountingService.trialBalance(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text(uiContext.getString(R.string.deep_generate_trial_balance_e3fcf)) }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         }
+         report?.let {
+             item { AccountingTableHeader(tableScroll, listOf(
+-                "الكود" to 105, "الحساب" to 240, "حركة مدين" to 135,
+-                "حركة دائن" to 135, "رصيد مدين" to 135, "رصيد دائن" to 135
++                uiContext.getString(R.string.deep_code_9fcc5) to 105, uiContext.getString(R.string.deep_account_0fd1c) to 240, uiContext.getString(R.string.deep_debit_movement_e752b) to 135,
++                uiContext.getString(R.string.deep_credit_movement_b8465) to 135, uiContext.getString(R.string.deep_debit_balance_9bd7a) to 135, uiContext.getString(R.string.deep_credit_balance_80223) to 135
+             )) }
+         }
+         report?.lines?.let { rows -> items(rows) { r ->
+@@ -497,10 +503,10 @@ private fun TrialBalanceTab(container: AppContainer, modifier: Modifier) {
+         report?.let { r -> item {
+             Surface(tonalElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                 Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+-                    Text("إجمالي الرصيد المدين", style = MaterialTheme.typography.titleSmall)
++                    Text(uiContext.getString(R.string.deep_total_debit_balance_3008e), style = MaterialTheme.typography.titleSmall)
+                     Text(money(r.totalDebitBalance), style = MaterialTheme.typography.titleSmall)
+                     Spacer(Modifier.width(12.dp))
+-                    Text("إجمالي الرصيد الدائن", style = MaterialTheme.typography.titleSmall)
++                    Text(uiContext.getString(R.string.deep_total_credit_balance_a04a7), style = MaterialTheme.typography.titleSmall)
+                     Text(money(r.totalCreditBalance), style = MaterialTheme.typography.titleSmall)
+                 }
+             }
+@@ -510,6 +516,7 @@ private fun TrialBalanceTab(container: AppContainer, modifier: Modifier) {
+ 
+ @Composable
+ private fun ProfitLossTab(container: AppContainer, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val tableScroll = rememberScrollState()
+     var from by remember { mutableStateOf(monthStartText()) }
+@@ -518,28 +525,28 @@ private fun ProfitLossTab(container: AppContainer, modifier: Modifier) {
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            FushSectionHeader("قائمة الدخل", "الإيرادات والمصروفات وصافي نتيجة الفترة")
++            FushSectionHeader(uiContext.getString(R.string.deep_income_statement_44b1b), uiContext.getString(R.string.deep_revenue_expenses_and_net_result_for_the_pe_b936f))
+             Spacer(Modifier.height(6.dp))
+             DateRangeFields(from, { from = it }, to, { to = it })
+-            Button(onClick = { scope.launch { try { report = container.accountingService.profitLoss(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد القائمة") }
++            Button(onClick = { scope.launch { try { report = container.accountingService.profitLoss(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text(uiContext.getString(R.string.deep_generate_statement_c3d6c)) }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         }
+         report?.let { r ->
+             item {
+                 AccountingSummaryRow(listOf(
+-                    "الإيرادات" to r.revenue,
+-                    "المصروفات" to r.expenses,
+-                    "صافي الربح/الخسارة" to r.netProfit
++                    uiContext.getString(R.string.deep_revenue_139fc) to r.revenue,
++                    uiContext.getString(R.string.deep_expenses_df389) to r.expenses,
++                    uiContext.getString(R.string.deep_net_profit_loss_99f0d) to r.netProfit
+                 ))
+                 Spacer(Modifier.height(6.dp))
+-                Text("تفصيل الإيرادات", style = MaterialTheme.typography.titleMedium)
+-                AccountingTableHeader(tableScroll, listOf("الحساب" to 320, "المبلغ" to 150))
++                Text(uiContext.getString(R.string.deep_revenue_details_d6837), style = MaterialTheme.typography.titleMedium)
++                AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_account_0fd1c) to 320, uiContext.getString(R.string.deep_amount_07052) to 150))
+             }
+             items(r.revenueByAccount) { (name, value) -> AccountingTableRow(tableScroll, listOf(name to 320, money(value) to 150)) }
+             item {
+                 Spacer(Modifier.height(6.dp))
+-                Text("تفصيل المصروفات", style = MaterialTheme.typography.titleMedium)
+-                AccountingTableHeader(tableScroll, listOf("الحساب" to 320, "المبلغ" to 150))
++                Text(uiContext.getString(R.string.deep_expense_details_0f1dc), style = MaterialTheme.typography.titleMedium)
++                AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_account_0fd1c) to 320, uiContext.getString(R.string.deep_amount_07052) to 150))
+             }
+             items(r.expenseByAccount) { (name, value) -> AccountingTableRow(tableScroll, listOf(name to 320, money(value) to 150)) }
+         }
+@@ -548,6 +555,7 @@ private fun ProfitLossTab(container: AppContainer, modifier: Modifier) {
+ 
+ @Composable
+ private fun BalanceSheetTab(container: AppContainer, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val tableScroll = rememberScrollState()
+     var asOf by remember { mutableStateOf(todayText()) }
+@@ -555,34 +563,34 @@ private fun BalanceSheetTab(container: AppContainer, modifier: Modifier) {
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            FushSectionHeader("قائمة المركز المالي", "الأصول والالتزامات وحقوق الملكية حتى تاريخ محدد")
++            FushSectionHeader(uiContext.getString(R.string.deep_statement_of_financial_position_d79cc), uiContext.getString(R.string.deep_assets_liabilities_and_equity_up_to_a_sele_84d79))
+             Spacer(Modifier.height(6.dp))
+-            FushDateField(asOf, { asOf = it }, "حتى تاريخ", modifier = Modifier.fillMaxWidth())
+-            Button(onClick = { scope.launch { try { report = container.accountingService.balanceSheet(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد القائمة") }
++            FushDateField(asOf, { asOf = it }, uiContext.getString(R.string.deep_as_of_date_ed2c0), modifier = Modifier.fillMaxWidth())
++            Button(onClick = { scope.launch { try { report = container.accountingService.balanceSheet(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text(uiContext.getString(R.string.deep_generate_statement_c3d6c)) }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         }
+         report?.let { r ->
+             item {
+                 AccountingSummaryRow(listOf(
+-                    "الأصول" to r.assets,
+-                    "الالتزامات" to r.liabilities,
+-                    "ربح/خسارة الفترة" to r.currentProfit
++                    uiContext.getString(R.string.deep_assets_e6d9c) to r.assets,
++                    uiContext.getString(R.string.deep_liabilities_08870) to r.liabilities,
++                    uiContext.getString(R.string.deep_period_profit_loss_ce20a) to r.currentProfit
+                 ))
+                 Spacer(Modifier.height(6.dp))
+-                Text("الأصول", style = MaterialTheme.typography.titleMedium)
+-                AccountingTableHeader(tableScroll, listOf("الحساب" to 320, "الرصيد" to 150))
++                Text(uiContext.getString(R.string.deep_assets_e6d9c), style = MaterialTheme.typography.titleMedium)
++                AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_account_0fd1c) to 320, uiContext.getString(R.string.deep_balance_f96a7) to 150))
+             }
+             items(r.assetsByAccount) { (name, value) -> AccountingTableRow(tableScroll, listOf(name to 320, money(value) to 150)) }
+             item {
+                 Spacer(Modifier.height(6.dp))
+-                Text("الالتزامات", style = MaterialTheme.typography.titleMedium)
+-                AccountingTableHeader(tableScroll, listOf("الحساب" to 320, "الرصيد" to 150))
++                Text(uiContext.getString(R.string.deep_liabilities_08870), style = MaterialTheme.typography.titleMedium)
++                AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_account_0fd1c) to 320, uiContext.getString(R.string.deep_balance_f96a7) to 150))
+             }
+             items(r.liabilitiesByAccount) { (name, value) -> AccountingTableRow(tableScroll, listOf(name to 320, money(value) to 150)) }
+             item {
+                 Spacer(Modifier.height(6.dp))
+-                Text("حقوق الملكية", style = MaterialTheme.typography.titleMedium)
+-                AccountingTableHeader(tableScroll, listOf("الحساب" to 320, "الرصيد" to 150))
++                Text(uiContext.getString(R.string.deep_equity_ffb95), style = MaterialTheme.typography.titleMedium)
++                AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_account_0fd1c) to 320, uiContext.getString(R.string.deep_balance_f96a7) to 150))
+             }
+             items(r.equityByAccount) { (name, value) -> AccountingTableRow(tableScroll, listOf(name to 320, money(value) to 150)) }
+             item {
+@@ -601,6 +609,7 @@ private fun BalanceSheetTab(container: AppContainer, modifier: Modifier) {
+ 
+ @Composable
+ private fun CashFlowTab(container: AppContainer, modifier: Modifier) {
++    val uiContext = LocalContext.current
+     val scope = rememberCoroutineScope()
+     val tableScroll = rememberScrollState()
+     var from by remember { mutableStateOf(monthStartText()) }
+@@ -608,18 +617,18 @@ private fun CashFlowTab(container: AppContainer, modifier: Modifier) {
+     var report by remember { mutableStateOf<CashFlowReport?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
+     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-        FushSectionHeader("التدفق النقدي المباشر", "المتحصلات والمدفوعات وصافي حركة السيولة خلال الفترة")
++        FushSectionHeader(uiContext.getString(R.string.deep_direct_cash_flow_db53c), uiContext.getString(R.string.deep_cash_receipts_payments_and_net_liquidity_m_4e342))
+         DateRangeFields(from, { from = it }, to, { to = it })
+-        Button(onClick = { scope.launch { try { report = container.accountingService.cashFlow(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد التدفق") }
++        Button(onClick = { scope.launch { try { report = container.accountingService.cashFlow(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text(uiContext.getString(R.string.deep_generate_cash_flow_9ad9a)) }
+         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         report?.let { r ->
+-            AccountingTableHeader(tableScroll, listOf("البند" to 300, "المبلغ" to 165))
+-            AccountingTableRow(tableScroll, listOf("رصيد النقد أول الفترة" to 300, money(r.openingCash) to 165))
+-            AccountingTableRow(tableScroll, listOf("المتحصلات النقدية" to 300, money(r.cashInflows) to 165))
+-            AccountingTableRow(tableScroll, listOf("المدفوعات النقدية" to 300, money(r.cashOutflows) to 165))
+-            AccountingTableRow(tableScroll, listOf("صافي الحركة النقدية" to 300, money(r.netCashMovement) to 165))
+-            AccountingTableRow(tableScroll, listOf("رصيد النقد آخر الفترة" to 300, money(r.closingCash) to 165))
+-            Text("التحويلات الداخلية بين الصناديق والبنوك لا تُحتسب كمتحصلات أو مدفوعات خارجية.", style = MaterialTheme.typography.bodySmall)
++            AccountingTableHeader(tableScroll, listOf(uiContext.getString(R.string.deep_item_81cf4) to 300, uiContext.getString(R.string.deep_amount_07052) to 165))
++            AccountingTableRow(tableScroll, listOf(uiContext.getString(R.string.deep_opening_cash_balance_4528b) to 300, money(r.openingCash) to 165))
++            AccountingTableRow(tableScroll, listOf(uiContext.getString(R.string.deep_cash_receipts_489b9) to 300, money(r.cashInflows) to 165))
++            AccountingTableRow(tableScroll, listOf(uiContext.getString(R.string.deep_cash_payments_2d4c7) to 300, money(r.cashOutflows) to 165))
++            AccountingTableRow(tableScroll, listOf(uiContext.getString(R.string.deep_net_cash_movement_4cdb4) to 300, money(r.netCashMovement) to 165))
++            AccountingTableRow(tableScroll, listOf(uiContext.getString(R.string.deep_closing_cash_balance_0307d) to 300, money(r.closingCash) to 165))
++            Text(uiContext.getString(R.string.deep_internal_transfers_between_cashboxes_and_b_86d91), style = MaterialTheme.typography.bodySmall)
+         }
+     }
+ }
+@@ -673,6 +682,7 @@ private fun AccountingTableRow(
+ 
+ @Composable
+ private fun AccountingSummaryRow(values: List<Pair<String, Double>>) {
++    val uiContext = LocalContext.current
+     Row(
+         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+         horizontalArrangement = Arrangement.spacedBy(8.dp)
+@@ -682,7 +692,7 @@ private fun AccountingSummaryRow(values: List<Pair<String, Double>>) {
+                 label = label,
+                 value = money(value),
+                 modifier = Modifier.width(190.dp),
+-                helper = "بالعملة الأساسية",
++                helper = uiContext.getString(R.string.deep_in_base_currency_b48ea),
+                 tone = FushStatusTone.Info,
+             )
+         }
+@@ -696,6 +706,7 @@ private fun ManualJournalDialog(
+     accounts: List<AccountEntity>, currencies: List<CurrencyEntity>, onDismiss: () -> Unit,
+     onSave: (String, Long, CurrencyEntity, Double, List<AccountingService.ManualLine>) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var description by remember { mutableStateOf("") }
+     var date by remember { mutableStateOf(todayText()) }
+     var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
+@@ -704,31 +715,31 @@ private fun ManualJournalDialog(
+     LaunchedEffect(currencies) { if (currency == null) currency = currencies.firstOrNull { it.isBase } ?: currencies.firstOrNull() }
+     AlertDialog(
+         onDismissRequest = onDismiss,
+-        title = { Text("قيد يدوي جديد") },
++        title = { Text(uiContext.getString(R.string.deep_new_manual_journal_entry_50961)) },
+         text = {
+             LazyColumn(Modifier.heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 item {
+-                    OutlinedTextField(description, { description = it }, label = { Text("البيان") }, modifier = Modifier.fillMaxWidth())
+-                    FushDateField(date, { date = it }, "التاريخ", modifier = Modifier.fillMaxWidth())
+-                    SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it; if (it.isBase) rate = "1" }
++                    OutlinedTextField(description, { description = it }, label = { Text(uiContext.getString(R.string.deep_description_9d5be)) }, modifier = Modifier.fillMaxWidth())
++                    FushDateField(date, { date = it }, uiContext.getString(R.string.deep_date_d94d7), modifier = Modifier.fillMaxWidth())
++                    SelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it; if (it.isBase) rate = "1" }
+                     OutlinedTextField(rate, { rate = it }, label = { Text("سعر الصرف إلى الريال الجديد") }, modifier = Modifier.fillMaxWidth())
+                 }
+                 items(lines, key = { it.key }) { line ->
+                     Card(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                            SelectionField("الحساب", line.account?.let { "${it.code} — ${it.nameAr}" } ?: "اختر", accounts, { "${it.code} — ${it.nameAr}" }) { a ->
++                            SelectionField(uiContext.getString(R.string.deep_account_0fd1c), line.account?.let { "${it.code} — ${it.nameAr}" } ?: uiContext.getString(R.string.common_select), accounts, { "${it.code} — ${it.nameAr}" }) { a ->
+                                 val i = lines.indexOfFirst { it.key == line.key }; if (i >= 0) lines[i] = line.copy(account = a)
+                             }
+                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                                OutlinedTextField(line.debit, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(debit=v) }, label={Text("مدين")}, modifier=Modifier.weight(1f))
+-                                OutlinedTextField(line.credit, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(credit=v) }, label={Text("دائن")}, modifier=Modifier.weight(1f))
++                                OutlinedTextField(line.debit, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(debit=v) }, label={Text(uiContext.getString(R.string.deep_debit_d7104))}, modifier=Modifier.weight(1f))
++                                OutlinedTextField(line.credit, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(credit=v) }, label={Text(uiContext.getString(R.string.deep_credit_d1456))}, modifier=Modifier.weight(1f))
+                             }
+-                            OutlinedTextField(line.memo, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(memo=v) }, label={Text("ملاحظة السطر")}, modifier=Modifier.fillMaxWidth())
+-                            if (lines.size > 2) TextButton(onClick = { lines.removeAll { it.key == line.key } }) { Text("حذف السطر") }
++                            OutlinedTextField(line.memo, { v -> val i=lines.indexOfFirst{it.key==line.key}; if(i>=0) lines[i]=line.copy(memo=v) }, label={Text(uiContext.getString(R.string.deep_line_note_93a4d))}, modifier=Modifier.fillMaxWidth())
++                            if (lines.size > 2) TextButton(onClick = { lines.removeAll { it.key == line.key } }) { Text(uiContext.getString(R.string.deep_delete_line_f4574)) }
+                         }
+                     }
+                 }
+-                item { OutlinedButton(onClick = { lines.add(UiManualLine()) }) { Text("إضافة سطر") } }
++                item { OutlinedButton(onClick = { lines.add(UiManualLine()) }) { Text(uiContext.getString(R.string.deep_add_line_b48eb)) } }
+             }
+         },
+         confirmButton = {
+@@ -736,9 +747,9 @@ private fun ManualJournalDialog(
+                 val c = currency ?: return@Button
+                 val parsed = lines.map { AccountingService.ManualLine(it.account?.id ?: 0, it.debit.toDoubleOrNull() ?: 0.0, it.credit.toDoubleOrNull() ?: 0.0, it.memo) }
+                 onSave(description, parseStart(date), c, rate.toDoubleOrNull() ?: 0.0, parsed)
+-            }, enabled = description.isNotBlank() && currency != null && rate.toDoubleOrNull() != null && lines.all { it.account != null }) { Text("ترحيل") }
++            }, enabled = description.isNotBlank() && currency != null && rate.toDoubleOrNull() != null && lines.all { it.account != null }) { Text(uiContext.getString(R.string.deep_post_b4c4c)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+@@ -755,6 +766,7 @@ private fun VoucherDialog(
+     onDismiss: () -> Unit,
+     onSave: (AccountingService.VoucherRequest) -> Unit
+ ) {
++    val uiContext = LocalContext.current
+     var source by remember { mutableStateOf<TreasuryBalanceRow?>(null) }
+     var target by remember { mutableStateOf<TreasuryBalanceRow?>(null) }
+     var offset by remember { mutableStateOf<AccountEntity?>(null) }
+@@ -792,25 +804,25 @@ private fun VoucherDialog(
+         title = { Text(voucherTitle(type)) },
+         text = {
+             Column(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                SelectionField("الخزينة", source?.nameAr ?: "اختر", treasury, { it.nameAr }) { source = it }
++                SelectionField(uiContext.getString(R.string.deep_treasury_ba3fa), source?.nameAr ?: uiContext.getString(R.string.common_select), treasury, { it.nameAr }) { source = it }
+                 if (type == "TRANSFER") {
+-                    SelectionField("إلى خزينة", target?.nameAr ?: "اختر", treasury.filter { it.id != source?.id }, { it.nameAr }) { target = it }
++                    SelectionField(uiContext.getString(R.string.deep_to_treasury_1b7ba), target?.nameAr ?: uiContext.getString(R.string.common_select), treasury.filter { it.id != source?.id }, { it.nameAr }) { target = it }
+                 } else {
+-                    SelectionField("الحساب المقابل", offset?.let { "${it.code} — ${it.nameAr}" } ?: "اختر", allowedAccounts, { "${it.code} — ${it.nameAr}" }) { offset = it }
++                    SelectionField(uiContext.getString(R.string.deep_offset_account_add92), offset?.let { "${it.code} — ${it.nameAr}" } ?: uiContext.getString(R.string.common_select), allowedAccounts, { "${it.code} — ${it.nameAr}" }) { offset = it }
+                     when (offset?.code) {
+-                        "1300" -> SelectionField("العميل — إلزامي", customer?.let { "${it.code} — ${it.nameAr}" } ?: "اختر العميل", customers, { "${it.code} — ${it.nameAr}" }) { customer = it }
+-                        "2100" -> SelectionField("المورد — إلزامي", supplier?.let { "${it.code} — ${it.nameAr}" } ?: "اختر المورد", suppliers, { "${it.code} — ${it.nameAr}" }) { supplier = it }
+-                        "2200" -> SelectionField("الموظف — إلزامي", employee?.let { "${it.code} — ${it.fullNameAr}" } ?: "اختر الموظف", employees, { "${it.code} — ${it.fullNameAr}" }) { employee = it }
+-                        "2300" -> SelectionField("مندوب المبيعات — إلزامي", salesRep?.let { "${it.code} — ${it.fullNameAr}" } ?: "اختر المندوب", salesReps, { "${it.code} — ${it.fullNameAr}" }) { salesRep = it }
++                        "1300" -> SelectionField(uiContext.getString(R.string.deep_customer_required_2b059), customer?.let { "${it.code} — ${it.nameAr}" } ?: uiContext.getString(R.string.deep_select_customer_e9df5), customers, { "${it.code} — ${it.nameAr}" }) { customer = it }
++                        "2100" -> SelectionField(uiContext.getString(R.string.deep_supplier_required_d05d9), supplier?.let { "${it.code} — ${it.nameAr}" } ?: uiContext.getString(R.string.deep_select_supplier_9a7d7), suppliers, { "${it.code} — ${it.nameAr}" }) { supplier = it }
++                        "2200" -> SelectionField(uiContext.getString(R.string.deep_employee_required_6551d), employee?.let { "${it.code} — ${it.fullNameAr}" } ?: uiContext.getString(R.string.deep_select_employee_e380b), employees, { "${it.code} — ${it.fullNameAr}" }) { employee = it }
++                        "2300" -> SelectionField(uiContext.getString(R.string.deep_sales_representative_required_adef5), salesRep?.let { "${it.code} — ${it.fullNameAr}" } ?: uiContext.getString(R.string.deep_select_representative_41dd7), salesReps, { "${it.code} — ${it.fullNameAr}" }) { salesRep = it }
+                     }
+-                    if (!partyReady) Text("لا يمكن ترحيل السند قبل تحديد الطرف المرتبط بالحساب.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
++                    if (!partyReady) Text(uiContext.getString(R.string.deep_the_voucher_cannot_be_posted_until_the_par_a6dbf), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                 }
+-                SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it; if (it.isBase) rate = "1" }
+-                OutlinedTextField(amount, { amount = it }, label = { Text("المبلغ بالعملة الأصلية") }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(rate, { rate = it }, label = { Text("سعر الصرف") }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(description, { description = it }, label = { Text("البيان") }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(reference, { reference = it }, label = { Text("رقم المرجع/المستند") }, modifier = Modifier.fillMaxWidth())
+-                FushDateField(date, { date = it }, "التاريخ", modifier = Modifier.fillMaxWidth())
++                SelectionField(uiContext.getString(R.string.deep_currency_b9357), currency?.nameAr ?: uiContext.getString(R.string.common_select), currencies, { it.nameAr }) { currency = it; if (it.isBase) rate = "1" }
++                OutlinedTextField(amount, { amount = it }, label = { Text(uiContext.getString(R.string.deep_amount_in_original_currency_b89e4)) }, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(rate, { rate = it }, label = { Text(uiContext.getString(R.string.deep_exchange_rate_fd829)) }, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(description, { description = it }, label = { Text(uiContext.getString(R.string.deep_description_9d5be)) }, modifier = Modifier.fillMaxWidth())
++                OutlinedTextField(reference, { reference = it }, label = { Text(uiContext.getString(R.string.deep_reference_document_number_ee4f7)) }, modifier = Modifier.fillMaxWidth())
++                FushDateField(date, { date = it }, uiContext.getString(R.string.deep_date_d94d7), modifier = Modifier.fillMaxWidth())
+             }
+         },
+         confirmButton = {
+@@ -834,41 +846,44 @@ private fun VoucherDialog(
+                         salesRepId = salesRep?.id
+                     )
+                 )
+-            }) { Text("ترحيل") }
++            }) { Text(uiContext.getString(R.string.deep_post_b4c4c)) }
+         },
+-        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
++        dismissButton = { TextButton(onClick = onDismiss) { Text(uiContext.getString(R.string.common_cancel)) } }
+     )
+ }
+ 
+ @Composable
+ private fun AddTreasuryDialog(accounts: List<AccountEntity>, currencies: List<CurrencyEntity>, onDismiss: () -> Unit, onSave: (String, String, String, AccountEntity, CurrencyEntity, String, String) -> Unit) {
++    val uiContext = LocalContext.current
+     var code by remember { mutableStateOf("") }; var name by remember { mutableStateOf("") }; var kind by remember { mutableStateOf("CASH") }
+     var account by remember { mutableStateOf<AccountEntity?>(null) }; var currency by remember { mutableStateOf<CurrencyEntity?>(null) }; var bank by remember { mutableStateOf("") }; var number by remember { mutableStateOf("") }
+     val assetAccounts = accounts.filter { it.isPosting && it.type == "ASSET" }
+     LaunchedEffect(assetAccounts) { if (account == null) account = assetAccounts.firstOrNull() }
+     LaunchedEffect(currencies) { if (currency == null) currency = currencies.firstOrNull { it.isBase } ?: currencies.firstOrNull() }
+-    AlertDialog(onDismissRequest=onDismiss, title={Text("إضافة خزينة أو بنك")}, text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)) {
+-        OutlinedTextField(code,{code=it},label={Text("الكود")},modifier=Modifier.fillMaxWidth()); OutlinedTextField(name,{name=it},label={Text("الاسم")},modifier=Modifier.fillMaxWidth())
+-        StringSelectionField("النوع", kind, listOf("CASH","BANK")){kind=it}; SelectionField("حساب الأستاذ", account?.let{"${it.code} — ${it.nameAr}"}?:"اختر", assetAccounts,{"${it.code} — ${it.nameAr}"}){account=it}
+-        SelectionField("العملة",currency?.nameAr?:"اختر",currencies,{it.nameAr}){currency=it}; if(kind=="BANK"){OutlinedTextField(bank,{bank=it},label={Text("اسم البنك")}); OutlinedTextField(number,{number=it},label={Text("رقم الحساب")})}
+-    }}, confirmButton={Button(enabled=code.isNotBlank()&&name.isNotBlank()&&account!=null&&currency!=null,onClick={onSave(code,name,kind,account!!,currency!!,bank,number)}){Text("حفظ")}}, dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
++    AlertDialog(onDismissRequest=onDismiss, title={Text(uiContext.getString(R.string.deep_add_treasury_or_bank_ed966))}, text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)) {
++        OutlinedTextField(code,{code=it},label={Text(uiContext.getString(R.string.deep_code_9fcc5))},modifier=Modifier.fillMaxWidth()); OutlinedTextField(name,{name=it},label={Text(uiContext.getString(R.string.deep_name_0a924))},modifier=Modifier.fillMaxWidth())
++        StringSelectionField(uiContext.getString(R.string.deep_type_03362), kind, listOf("CASH","BANK")){kind=it}; SelectionField(uiContext.getString(R.string.deep_ledger_account_75344), account?.let{"${it.code} — ${it.nameAr}"}?:uiContext.getString(R.string.common_select), assetAccounts,{"${it.code} — ${it.nameAr}"}){account=it}
++        SelectionField(uiContext.getString(R.string.deep_currency_b9357),currency?.nameAr?:uiContext.getString(R.string.common_select),currencies,{it.nameAr}){currency=it}; if(kind=="BANK"){OutlinedTextField(bank,{bank=it},label={Text(uiContext.getString(R.string.deep_bank_name_ce7dc))}); OutlinedTextField(number,{number=it},label={Text(uiContext.getString(R.string.deep_account_number_d249c))})}
++    }}, confirmButton={Button(enabled=code.isNotBlank()&&name.isNotBlank()&&account!=null&&currency!=null,onClick={onSave(code,name,kind,account!!,currency!!,bank,number)}){Text(uiContext.getString(R.string.deep_save_56ee6))}}, dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}})
+ }
+ 
+ @Composable
+ private fun AddAccountDialog(accounts: List<AccountEntity>, onDismiss: () -> Unit, onSave: (String,String,String,String,String?,Boolean)->Unit) {
++    val uiContext = LocalContext.current
+     var code by remember{mutableStateOf("")}; var ar by remember{mutableStateOf("")}; var en by remember{mutableStateOf("")}; var type by remember{mutableStateOf("ASSET")}; var parent by remember{mutableStateOf<AccountEntity?>(null)}; var posting by remember{mutableStateOf(true)}
+-    AlertDialog(onDismissRequest=onDismiss,title={Text("حساب جديد")},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
+-        OutlinedTextField(code,{code=it},label={Text("الكود")}); OutlinedTextField(ar,{ar=it},label={Text("الاسم العربي")}); OutlinedTextField(en,{en=it},label={Text("الاسم الإنجليزي")})
+-        StringSelectionField("النوع",type,listOf("ASSET","LIABILITY","EQUITY","REVENUE","EXPENSE")){type=it}; SelectionField("الحساب الأب",parent?.let{"${it.code} — ${it.nameAr}"}?:"بدون",listOf<AccountEntity?>(null)+accounts,{it?.let{"${it.code} — ${it.nameAr}"}?:"بدون"}){parent=it}
+-        Row{Checkbox(posting,{posting=it});Text("حساب ترحيل")}
+-    }},confirmButton={Button(enabled=code.isNotBlank()&&ar.isNotBlank(),onClick={onSave(code,ar,en,type,parent?.code,posting)}){Text("حفظ")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}})
++    AlertDialog(onDismissRequest=onDismiss,title={Text(uiContext.getString(R.string.deep_new_account_c712e))},text={Column(verticalArrangement=Arrangement.spacedBy(7.dp)){
++        OutlinedTextField(code,{code=it},label={Text(uiContext.getString(R.string.deep_code_9fcc5))}); OutlinedTextField(ar,{ar=it},label={Text(uiContext.getString(R.string.deep_arabic_name_0054f))}); OutlinedTextField(en,{en=it},label={Text(uiContext.getString(R.string.deep_english_name_b14d3))})
++        StringSelectionField(uiContext.getString(R.string.deep_type_03362),type,listOf("ASSET","LIABILITY","EQUITY","REVENUE","EXPENSE")){type=it}; SelectionField(uiContext.getString(R.string.deep_parent_account_566d6),parent?.let{"${it.code} — ${it.nameAr}"}?:uiContext.getString(R.string.deep_none_4a46a),listOf<AccountEntity?>(null)+accounts,{it?.let{"${it.code} — ${it.nameAr}"}?:uiContext.getString(R.string.deep_none_4a46a)}){parent=it}
++        Row{Checkbox(posting,{posting=it});Text(uiContext.getString(R.string.deep_posting_account_da281))}
++    }},confirmButton={Button(enabled=code.isNotBlank()&&ar.isNotBlank(),onClick={onSave(code,ar,en,type,parent?.code,posting)}){Text(uiContext.getString(R.string.deep_save_56ee6))}},dismissButton={TextButton(onClick=onDismiss){Text(uiContext.getString(R.string.common_cancel))}})
+ }
+ 
+ @Composable
+ private fun DateRangeFields(from: String, onFrom: (String)->Unit, to: String, onTo: (String)->Unit) {
++    val uiContext = LocalContext.current
+     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-        FushDateField(from, onFrom, "من تاريخ", modifier=Modifier.weight(1f))
+-        FushDateField(to, onTo, "إلى تاريخ", modifier=Modifier.weight(1f))
++        FushDateField(from, onFrom, uiContext.getString(R.string.deep_from_date_24ae9), modifier=Modifier.weight(1f))
++        FushDateField(to, onTo, uiContext.getString(R.string.deep_to_date_67db7), modifier=Modifier.weight(1f))
+     }
+ }
+ 

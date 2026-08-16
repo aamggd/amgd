@@ -1,0 +1,120 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 00:43:38.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 01:38:18.910454370 +0000
+@@ -277,7 +439,8 @@
+     LaunchedEffect(accounts) { if (account == null) account = accounts.firstOrNull { it.isPosting } }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            Text("دفتر الأستاذ العام", style = MaterialTheme.typography.headlineSmall)
++            FushSectionHeader("دفتر الأستاذ العام", "حركة حساب محدد مع الرصيد الافتتاحي والجاري والختامي")
++            Spacer(Modifier.height(6.dp))
+             SelectionField("الحساب", account?.let { "${it.code} — ${it.nameAr}" } ?: "اختر", accounts.filter { it.isPosting }, { "${it.code} — ${it.nameAr}" }) { account = it }
+             DateRangeFields(from, { from = it }, to, { to = it })
+             Button(onClick = {
+@@ -319,7 +482,8 @@
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+         item {
+-            Text("ميزان المراجعة", style = MaterialTheme.typography.headlineSmall)
++            FushSectionHeader("ميزان المراجعة", "تحقق من توازن الحركات والأرصدة حتى تاريخ محدد")
++            Spacer(Modifier.height(6.dp))
+             OutlinedTextField(asOf, { asOf = it }, label = { Text("حتى تاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
+             Button(onClick = { scope.launch { try { report = container.accountingService.trialBalance(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد الميزان") }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@@ -364,7 +528,8 @@
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            Text("قائمة الدخل", style = MaterialTheme.typography.headlineSmall)
++            FushSectionHeader("قائمة الدخل", "الإيرادات والمصروفات وصافي نتيجة الفترة")
++            Spacer(Modifier.height(6.dp))
+             DateRangeFields(from, { from = it }, to, { to = it })
+             Button(onClick = { scope.launch { try { report = container.accountingService.profitLoss(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد القائمة") }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@@ -400,7 +565,8 @@
+     var message by remember { mutableStateOf<String?>(null) }
+     LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item {
+-            Text("قائمة المركز المالي", style = MaterialTheme.typography.headlineSmall)
++            FushSectionHeader("قائمة المركز المالي", "الأصول والالتزامات وحقوق الملكية حتى تاريخ محدد")
++            Spacer(Modifier.height(6.dp))
+             OutlinedTextField(asOf, { asOf = it }, label = { Text("حتى تاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
+             Button(onClick = { scope.launch { try { report = container.accountingService.balanceSheet(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد القائمة") }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@@ -452,7 +618,7 @@
+     var report by remember { mutableStateOf<CashFlowReport?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
+     Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-        Text("التدفق النقدي المباشر", style = MaterialTheme.typography.headlineSmall)
++        FushSectionHeader("التدفق النقدي المباشر", "المتحصلات والمدفوعات وصافي حركة السيولة خلال الفترة")
+         DateRangeFields(from, { from = it }, to, { to = it })
+         Button(onClick = { scope.launch { try { report = container.accountingService.cashFlow(parseStart(from), parseEnd(to)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد التدفق") }
+         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+@@ -470,13 +636,19 @@
+ 
+ @Composable
+ private fun AccountingTableHeader(scroll: ScrollState, columns: List<Pair<String, Int>>) {
+-    Surface(tonalElevation = 2.dp, modifier = Modifier.fillMaxWidth()) {
+-        Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 9.dp)) {
++    Surface(
++        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
++        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
++        shape = MaterialTheme.shapes.small,
++        modifier = Modifier.fillMaxWidth(),
++    ) {
++        Row(Modifier.horizontalScroll(scroll).padding(horizontal = 8.dp, vertical = 10.dp)) {
+             columns.forEach { (title, width) ->
+                 Text(
+                     title,
+                     modifier = Modifier.width(width.dp).padding(horizontal = 4.dp),
+-                    style = MaterialTheme.typography.labelLarge
++                    style = MaterialTheme.typography.labelLarge,
++                    maxLines = 1,
+                 )
+             }
+         }
+@@ -490,18 +662,22 @@
+     onClick: (() -> Unit)? = null
+ ) {
+     val clickModifier = if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)
+-    Column(Modifier.fillMaxWidth().then(clickModifier)) {
+-        Row(Modifier.horizontalScroll(scroll).padding(horizontal = 6.dp, vertical = 9.dp)) {
++    Surface(
++        modifier = Modifier.fillMaxWidth().then(clickModifier),
++        color = MaterialTheme.colorScheme.surfaceContainerLowest,
++        shape = MaterialTheme.shapes.small,
++    ) {
++        Row(Modifier.horizontalScroll(scroll).padding(horizontal = 8.dp, vertical = 10.dp)) {
+             values.forEach { (value, width) ->
+                 Text(
+                     value.ifBlank { "—" },
+                     modifier = Modifier.width(width.dp).padding(horizontal = 4.dp),
+                     style = MaterialTheme.typography.bodySmall,
++                    color = MaterialTheme.colorScheme.onSurface,
+                     maxLines = 3
+                 )
+             }
+         }
+-        HorizontalDivider()
+     }
+ }
+ 
+@@ -512,12 +688,13 @@
+         horizontalArrangement = Arrangement.spacedBy(8.dp)
+     ) {
+         values.forEach { (label, value) ->
+-            ElevatedCard(Modifier.width(190.dp)) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Text(label, style = MaterialTheme.typography.bodySmall)
+-                    Text(money(value), style = MaterialTheme.typography.titleMedium)
+-                }
+-            }
++            FushMetricCard(
++                label = label,
++                value = money(value),
++                modifier = Modifier.width(190.dp),
++                helper = "بالعملة الأساسية",
++                tone = FushStatusTone.Info,
++            )
+         }
+     }
+ }

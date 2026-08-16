@@ -1,0 +1,36 @@
+diff --git a/UI_PROFESSIONALIZATION_16_NAVIGATION_FEEDBACK_POLISH_SCOPE.md b/UI_PROFESSIONALIZATION_16_NAVIGATION_FEEDBACK_POLISH_SCOPE.md
+new file mode 100644
+index 0000000..1c1712f
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_16_NAVIGATION_FEEDBACK_POLISH_SCOPE.md
+@@ -0,0 +1,30 @@
++# FUSH ERP Mobile — UI Professionalization 16
++## Phase 14.5.49 — Navigation, Feedback & Dialog Polish
++
++### Objective
++Remove the remaining prototype-like navigation presentation and standardize transient operation feedback without changing business behavior.
++
++### Included
++- Replace letter/glyph navigation markers with Material Compose icons for the top menu, bottom navigation, navigation rail, drawer and master-data shortcuts.
++- Use the small `material-icons-core` artifact only; do not add the full extended icon library.
++- Remove development-phase/version labels from normal operational UI surfaces.
++- Make dashboard module cards open their real destination and replace phase badges with operational category labels.
++- Add a shared Snackbar host at the app shell and route successful operation feedback through transient Snackbars while retaining errors as persistent inline notices.
++- Apply the shared feedback pattern across high-frequency sales, purchases, expenses, accounting, inventory, production, people/party, governance, risk, maintenance, planning, geography and backup screens.
++- Add a shared scrollable dialog-form container and apply it to longer risk/control and maintenance forms so fields remain reachable on smaller phones and with the software keyboard open.
++
++### Explicit safety boundary
++No Room schema/entity/migration changes. No DAO query changes. No accounting posting/reversal changes. No inventory quantity/costing changes. No sales/purchase calculations. No production/quality calculations. No employee compensation or representative commission changes. No risk scoring, maintenance service, authentication, permission or backup-service changes.
++
++### Branch identity
++- versionCode: 88
++- versionName: `0.15.4.49-ui-navigation-feedback-polish`
++
++This version is for the UI branch only. Central integration owns the final integrated versionCode/versionName, Room migration order, signing and official release.
++
++### Device verification targets
++1. Bottom navigation and large-screen rail show semantic icons instead of Arabic initials.
++2. Drawer items use consistent icons and remain readable in RTL.
++3. Dashboard unit cards are clickable and no development phase/version strings are shown in normal operational UI.
++4. Successful actions show a Snackbar and then clear; failures remain visible inline.
++5. Long maintenance/risk dialogs can be scrolled to their final fields while the keyboard is open.

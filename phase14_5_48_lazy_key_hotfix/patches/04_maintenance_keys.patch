@@ -1,0 +1,40 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index 8bf4cbb..a8a8f8b 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -159,7 +159,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 }
+             }
+         }
+-        items(filteredAssets, key = { it.id }) { asset ->
++        items(filteredAssets, key = { "maintenance-asset-${it.id}" }) { asset ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -211,7 +211,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+         if (workOrders.isEmpty()) {
+             item { FushInlineState("لا توجد أوامر صيانة مفتوحة.") }
+         }
+-        items(workOrders, key = { it.id }) { wo ->
++        items(workOrders, key = { "maintenance-work-order-${it.id}" }) { wo ->
+             val overdue = wo.dueAt != null && wo.dueAt < now
+             val asset = assetById[wo.assetId]
+             OutlinedCard(Modifier.fillMaxWidth()) {
+@@ -236,7 +236,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             FushSectionHeader("الأعطال", "إجمالي التوقف المسجل: $totalDowntime دقيقة. الأعطال المتكررة تحتاج تحليل سبب جذري.")
+         }
+         if (breakdowns.isEmpty()) item { FushInlineState("لا توجد أعطال مسجلة.", tone = FushStatusTone.Success) }
+-        items(breakdowns.take(20), key = { it.id }) { b ->
++        items(breakdowns.take(20), key = { "maintenance-breakdown-${it.id}" }) { b ->
+             OutlinedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -255,7 +255,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+         }
+         item { FushSectionHeader("السلامة", "الحوادث المفتوحة واحتياج CAPA يجب أن يظلا ظاهرين حتى الإغلاق.") }
+         if (safetyIncidents.isEmpty()) item { FushInlineState("لا توجد حوادث سلامة مسجلة.", tone = FushStatusTone.Success) }
+-        items(safetyIncidents.take(20), key = { it.id }) { incident ->
++        items(safetyIncidents.take(20), key = { "maintenance-safety-incident-${it.id}" }) { incident ->
+             OutlinedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
