@@ -42,24 +42,50 @@ sleep 10
 CANDIDATE="$GITHUB_WORKSPACE/exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
 SIGNED="$GITHUB_WORKSPACE/evidence/FushERP-Central-v102-QA-test-signed.apk"
 TEST_APK="$GITHUB_WORKSPACE/work-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+SIGNED_TEST="$GITHUB_WORKSPACE/evidence/FushERP-Central-v102-QA-test-instrumentation-signed.apk"
+APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
 test -s "$CANDIDATE"
 test -s "$TEST_APK"
 echo "${CENTRAL_CANDIDATE_SHA256}  ${CANDIDATE}" | sha256sum -c -
 
-"$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+# The merged Central candidate and the instrumentation APK must have the same signer.
+# Android enforces this before it will start instrumentation. The previous harness only
+# re-signed the target candidate and assumed Gradle's androidTest APK used the same key.
+# Sign both QA-only install artifacts explicitly with the deterministic QA signer.
+"$APKSIGNER" sign \
   --ks "$HOME/.android/debug.keystore" \
   --ks-key-alias androiddebugkey \
   --ks-pass pass:android \
   --key-pass pass:android \
   --out "$SIGNED" "$CANDIDATE"
-"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$SIGNED" \
+"$APKSIGNER" sign \
+  --ks "$HOME/.android/debug.keystore" \
+  --ks-key-alias androiddebugkey \
+  --ks-pass pass:android \
+  --key-pass pass:android \
+  --out "$SIGNED_TEST" "$TEST_APK"
+
+"$APKSIGNER" verify --verbose --print-certs "$SIGNED" \
   | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate-cert.txt"
+"$APKSIGNER" verify --verbose --print-certs "$SIGNED_TEST" \
+  | tee "$GITHUB_WORKSPACE/evidence/test-signed-instrumentation-cert.txt"
 sha256sum "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate.sha256"
+sha256sum "$SIGNED_TEST" | tee "$GITHUB_WORKSPACE/evidence/test-signed-instrumentation.sha256"
+
+TARGET_CERT="$("$APKSIGNER" verify --print-certs "$SIGNED" \
+  | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+TEST_CERT="$("$APKSIGNER" verify --print-certs "$SIGNED_TEST" \
+  | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+test -n "$TARGET_CERT"
+test -n "$TEST_CERT"
+printf 'target=%s\ninstrumentation=%s\n' "$TARGET_CERT" "$TEST_CERT" \
+  | tee "$GITHUB_WORKSPACE/evidence/instrumentation-signer-match.txt"
+test "$TARGET_CERT" = "$TEST_CERT"
 
 adb uninstall com.fush.erp.recovery.test >/dev/null 2>&1 || true
 adb uninstall "$APP_ID" >/dev/null 2>&1 || true
 adb install -r "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/apk-install.txt"
-adb install -r "$TEST_APK" | tee "$GITHUB_WORKSPACE/evidence/test-apk-install.txt"
+adb install -r "$SIGNED_TEST" | tee "$GITHUB_WORKSPACE/evidence/test-apk-install.txt"
 
 adb logcat -c
 LAUNCHER="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$SIGNED" \
