@@ -1,0 +1,286 @@
+name: Wave1 Remediation Integration
+
+on:
+  push:
+    branches: [fush/wave1-remediation-integration-run]
+    paths: ['.github/workflows/wave1-remediation-integration.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  BASE_SHA: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+  BASE_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+  EXPECTED_SCHEMA: '35'
+  EXPECTED_APP_ID: com.fush.erp.recovery
+  ACC_HANDOFF: aaec49e243bfd999c1f15171fadcc72adaf797d2
+  ACC_PATCH_SHA: 317053a67f092caef5dbcbe3646e805a887fc9158d6a12f5eaaeb59980cef169
+  ACC_ARTIFACT_ID: '9273481665'
+  PUR_HANDOFF: 292cfa4f3097f505a63c0dee5196e682a5dd1895
+  PUR_VALIDATED: 76308b1ff074094442a26ee0d8b6da6a7200cfd8
+  PUR_PATCH_SHA: 85e5272c43886018c6c57774992382609dc748a54015c72d19f2e3d6ead028e6
+  SALES_HEAD: 5e3a3cd45e6e6932e852d8b89e80f31b7188dac4
+  SALES_PATCH_SHA: 0ac7740f511ca90db092a397205da441734308d6c8109a60a4d7ae2523bf5e85
+  SALES_ARTIFACT_ID: '9273379895'
+
+jobs:
+  integrate-wave1-remediations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout orchestration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin frozen Central and official inputs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$BASE_SHA"
+          test "$(git rev-parse ${BASE_SHA}:central_source)" = "$BASE_SOURCE_TREE"
+          git cat-file -e "${ACC_HANDOFF}^{commit}"
+          git cat-file -e "${PUR_HANDOFF}^{commit}"
+          git cat-file -e "${PUR_VALIDATED}^{commit}"
+          git cat-file -e "${SALES_HEAD}^{commit}"
+          git show "${ACC_HANDOFF}:fush_accounting/handoffs/AE-ACC-011_fresh_room35_parity/OFFICIAL_PATCH_SHA256.txt" | grep -Fq "$ACC_PATCH_SHA"
+          git show "${PUR_HANDOFF}:purchases_suppliers_ae_acc_010_return/HANDOFF.md" | grep -Fq "$PUR_PATCH_SHA"
+          git show "${PUR_HANDOFF}:purchases_suppliers_ae_acc_010_return/HANDOFF.md" | grep -Fq "$PUR_VALIDATED"
+          git checkout -B wave1-remediation-work "$BASE_SHA"
+          git config user.name 'FUSH Central Wave1 Remediation'
+          git config user.email 'wave1-remediation@fush.local'
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          test "$(git rev-parse HEAD:central_source)" = "$BASE_SOURCE_TREE"
+
+      - name: Apply 1 Accounting AE-ACC-011 exact patch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ACC_ARTIFACT_ID}" --jq '.workflow_run.head_sha' | grep -Fx '5983fb5ca5509dd4a6021866afd4dd63fe67d5a5'
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ACC_ARTIFACT_ID}/zip" > /tmp/acc.zip
+          unzip -p /tmp/acc.zip ACCOUNTING_AE_ACC_011_FRESH_ROOM35_PARITY.patch > /tmp/acc.patch
+          test "$(sha256sum /tmp/acc.patch | awk '{print $1}')" = "$ACC_PATCH_SHA"
+          git apply --check /tmp/acc.patch
+          git apply /tmp/acc.patch
+          git diff --check
+          ! find central_source -type f \( -name '*.rej' -o -name '*.orig' \) -print -quit | grep -q .
+          cat > /tmp/expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/data/AccountingJournalIntegrityGuards.kt
+          central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          central_source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          central_source/app/src/main/java/com/fush/erp/domain/SalesService.kt
+          central_source/app/src/test/java/com/fush/erp/data/AccountingJournalIntegrityGuardsTest.kt
+          EOF
+          { git diff --name-only; git ls-files --others --exclude-standard; } | grep '^central_source/' | sort -u > /tmp/actual
+          sort -o /tmp/expected /tmp/expected
+          diff -u /tmp/expected /tmp/actual
+          git add central_source
+          git commit -m 'Wave1 remediation: Accounting AE-ACC-011 fresh Room35 parity'
+          echo "ACC_INTEGRATION_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Apply 2 Purchases AE-ACC-010 exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show "${PUR_VALIDATED}:purchases_suppliers_ae_acc_010_return/ae_acc_010_cash_refund.patch" > /tmp/pur.patch
+          test "$(sha256sum /tmp/pur.patch | awk '{print $1}')" = "$PUR_PATCH_SHA"
+          git apply --check --directory=central_source /tmp/pur.patch
+          git apply --directory=central_source /tmp/pur.patch
+          git diff --check
+          ! find central_source -type f \( -name '*.rej' -o -name '*.orig' \) -print -quit | grep -q .
+          cat > /tmp/expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          central_source/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
+          central_source/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt
+          EOF
+          { git diff --name-only; git ls-files --others --exclude-standard; } | grep '^central_source/' | sort -u > /tmp/actual
+          sort -o /tmp/expected /tmp/expected
+          diff -u /tmp/expected /tmp/actual
+          git add central_source
+          git commit -m 'Wave1 remediation: Purchases AE-ACC-010 cash refund eligibility bounding'
+          echo "PUR_INTEGRATION_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Apply 3 Sales AE-ACC-009 exact patch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${SALES_ARTIFACT_ID}" --jq '.workflow_run.head_sha' | grep -Fx "$SALES_HEAD"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${SALES_ARTIFACT_ID}/zip" > /tmp/sales.zip
+          unzip -p /tmp/sales.zip ae_acc_009_cash_refund_settlement.patch > /tmp/sales.patch
+          test "$(sha256sum /tmp/sales.patch | awk '{print $1}')" = "$SALES_PATCH_SHA"
+          git apply --check --directory=central_source /tmp/sales.patch
+          git apply --directory=central_source /tmp/sales.patch
+          git diff --check
+          ! find central_source -type f \( -name '*.rej' -o -name '*.orig' \) -print -quit | grep -q .
+          cat > /tmp/expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt
+          central_source/app/src/main/java/com/fush/erp/domain/CashRefundSettlementPolicy.kt
+          central_source/app/src/main/java/com/fush/erp/domain/SalesService.kt
+          central_source/app/src/test/java/com/fush/erp/domain/CashRefundSettlementPolicyTest.kt
+          EOF
+          { git diff --name-only; git ls-files --others --exclude-standard; } | grep '^central_source/' | sort -u > /tmp/actual
+          sort -o /tmp/expected /tmp/expected
+          diff -u /tmp/expected /tmp/actual
+          git add central_source
+          git commit -m 'Wave1 remediation: Sales AE-ACC-009 cash refund eligibility bounding'
+          echo "SALES_INTEGRATION_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Targeted Wave1 remediation regression gates
+        working-directory: central_source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.data.AccountingJournalIntegrityGuardsTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.AeAcc010PurchaseReturnCashRefundTest' \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
+            --tests 'com.fush.erp.domain.CashRefundSettlementPolicyTest' \
+            --tests 'com.fush.erp.domain.CustomerArMathTest' \
+            --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
+            --tests 'com.fush.erp.domain.AccountingReconciliationMathTest' \
+            --tests 'com.fush.erp.domain.TreasuryReconciliationTest'
+
+      - name: Full Unit gate
+        working-directory: central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release gate
+        working-directory: central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Schema AppID no-destructive and release package gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB=central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          MIG=central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          APP=central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' "$APP"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$MIG"
+          ! grep -R -n 'fallbackToDestructiveMigration' central_source/app/src/main central_source/app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' central_source/app/src/main/java/com/fush/erp
+          ! grep -R -nE 'Migration\(35, *36\)|FUSH_DB_SCHEMA_VERSION *= *36' central_source/app/src/main central_source/app/schemas || true
+          test -z "$(git diff --name-only "$BASE_SHA"..HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt central_source/app/schemas central_source/app/build.gradle.kts)"
+          test -z "$(git diff --name-only "$BASE_SHA"..HEAD | grep -Ei 'signing|keystore|\.jks$|\.p12$|\.keystore$' || true)"
+          APK=central_source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          BADGING="$($ANDROID_SDK_ROOT/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          $ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$APK" | tee /tmp/zipalign.txt
+
+      - name: Record QA handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          NEW_SOURCE_TREE="$(git rev-parse HEAD:central_source)"
+          mkdir -p central_integration_records
+          cat > central_integration_records/wave1-remediations-ready-for-final-qa.md <<EOF
+          # Wave1 Remediation Integration — QA Handoff
+
+          Status: **WAVE1 REMEDIATIONS INTEGRATED / READY FOR FINAL QA — NOT FINAL**
+
+          Frozen baseline Central: \`${BASE_SHA}\`
+          Baseline source tree: \`${BASE_SOURCE_TREE}\`
+
+          ## Selective exact remediations
+          1. AE-ACC-011 Accounting — patch SHA256 \`${ACC_PATCH_SHA}\` — integration commit \`${ACC_INTEGRATION_COMMIT}\`
+          2. AE-ACC-010 Purchases — patch SHA256 \`${PUR_PATCH_SHA}\` — integration commit \`${PUR_INTEGRATION_COMMIT}\`
+          3. AE-ACC-009 Sales — patch SHA256 \`${SALES_PATCH_SHA}\` — integration commit \`${SALES_INTEGRATION_COMMIT}\`
+
+          ## Resulting source
+          Source tree: \`${NEW_SOURCE_TREE}\`
+          Room schema: \`${EXPECTED_SCHEMA}\`
+          Application ID: \`${EXPECTED_APP_ID}\`
+
+          ## Gates
+          - Exact patch SHA verification: PASS
+          - git apply --check for each patch: PASS
+          - Rejects: NONE
+          - Per-patch changed-file allowlist: PASS
+          - Targeted remediation tests: PASS
+          - Full Unit: PASS
+          - assembleRelease: PASS
+          - Room 35 / migration registration: PASS
+          - App ID: PASS
+          - No destructive migration/database clear: PASS
+          - Signing configuration changed: NO
+          - Release package / zipalign: PASS
+          - Full Merge used: NO
+          - Wave2 started: NO
+
+          Next owner: Testing/QA Final Acceptance, then Final Part2C Wave1 Audit. This handoff is NOT Final PASS.
+          EOF
+          git add central_integration_records/wave1-remediations-ready-for-final-qa.md
+          git commit -m 'Central record: Wave1 remediations ready for final QA'
+          echo "NEW_SOURCE_TREE=$NEW_SOURCE_TREE" >> "$GITHUB_ENV"
+          echo "NEW_CENTRAL_HEAD=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Recheck freeze and fast-forward Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$BASE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          git push origin HEAD:refs/heads/fush/integration-current
+
+      - name: Package QA evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p qa-output
+          cp central_integration_records/wave1-remediations-ready-for-final-qa.md qa-output/HANDOFF.md
+          cp central_source/app/build/outputs/apk/release/app-release-unsigned.apk qa-output/FushERP-Wave1-Remediations-QA-unsigned.apk
+          cp /tmp/zipalign.txt qa-output/zipalign.txt
+          cat > qa-output/RESULT.txt <<EOF
+          STATUS=WAVE1 REMEDIATIONS INTEGRATED / READY FOR FINAL QA — NOT FINAL
+          CENTRAL_HEAD=${NEW_CENTRAL_HEAD}
+          SOURCE_TREE=${NEW_SOURCE_TREE}
+          ROOM_SCHEMA=${EXPECTED_SCHEMA}
+          APPLICATION_ID=${EXPECTED_APP_ID}
+          EOF
+          sha256sum qa-output/FushERP-Wave1-Remediations-QA-unsigned.apk > qa-output/APK_SHA256.txt
+
+      - name: Upload QA handoff evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Wave1-Remediations-Ready-For-Final-QA
+          path: qa-output/*
+          if-no-files-found: error
