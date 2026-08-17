@@ -114,10 +114,13 @@ jobs:
           cp qa/p1/Wave1P1ReleaseCandidateTest.kt \
             work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
 
-          # QA harness changes must remain outside exact-source.
+          # Prove QA-only changes exist in the disposable copy while exact-source remains untouched.
+          test -f work-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
+          test -f work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
+          test ! -e exact-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
+          test ! -e exact-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
+          ! cmp -s exact-source/app/build.gradle.kts work-source/app/build.gradle.kts
           diff -qr exact-source work-source > evidence/qa-harness-diff.txt || true
-          grep -Fq 'AccountingP1Migration34To35Test.kt' evidence/qa-harness-diff.txt
-          grep -Fq 'Wave1P1ReleaseCandidateTest.kt' evidence/qa-harness-diff.txt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -217,8 +220,7 @@ jobs:
             done
             test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1'
 
-            # The previous QA failure happened after sys.boot_completed but before PackageManager/
-            # ActivityManager were actually ready on the non-KVM runner. Wait for real services.
+            # Previous failure was after sys.boot_completed but before PackageManager/ActivityManager.
             wait_for_android_service package
             wait_for_android_service activity
             for i in $(seq 1 120); do
@@ -266,8 +268,7 @@ jobs:
               | grep -E 'versionCode=|versionName=' | head -5 \
               | tee "$GITHUB_WORKSPACE/evidence/apk-version.txt"
 
-            # Run QA instrumentation against the release candidate itself. This executes the
-            # MigrationTestHelper 34->35/data-preservation tests plus Wave1 cross-module scenarios.
+            # Instrument the verified release candidate itself with QA-only tests.
             adb shell pm list instrumentation | tee "$GITHUB_WORKSPACE/evidence/instrumentation-list.txt"
             set +e
             adb shell am instrument -w -r \
