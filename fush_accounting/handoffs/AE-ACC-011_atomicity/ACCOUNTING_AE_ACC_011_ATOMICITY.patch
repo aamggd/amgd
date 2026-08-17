@@ -1,0 +1,157 @@
+diff --git a/central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt b/central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+index 474aafe..e1384ea 100644
+--- a/central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
++++ b/central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+@@ -21,6 +21,16 @@ import java.util.Calendar
+ import java.util.Locale
+ import java.util.UUID
+ 
++internal object AccountingPostJournalAtomicity {
++    suspend fun <T> validateThenPersistPosted(
++        lines: List<DraftJournalLine>,
++        persistPosted: suspend () -> T
++    ): T {
++        AccountingValidator.validate(lines)
++        return persistPosted()
++    }
++}
++
+ class AccountingService(private val db: FushDatabase) {
+     data class ManualLine(
+         val accountId: Long,
+@@ -99,6 +109,20 @@ class AccountingService(private val db: FushDatabase) {
+         return rate
+     }
+ 
++    private suspend fun postJournalEntry(
++        entry: JournalEntryEntity,
++        lines: List<JournalLineEntity>
++    ): Long = db.withTransaction {
++        val validationLines = lines.map { line ->
++            DraftJournalLine(line.accountId, line.debit, line.credit)
++        }
++        AccountingPostJournalAtomicity.validateThenPersistPosted(validationLines) {
++            val entryId = db.journalDao().insertEntry(entry.copy(id = 0, status = "POSTED"))
++            db.journalDao().insertLines(lines.map { line -> line.copy(id = 0, entryId = entryId) })
++            entryId
++        }
++    }
++
+     suspend fun addAccount(
+         code: String,
+         nameAr: String,
+@@ -182,10 +206,9 @@ class AccountingService(private val db: FushDatabase) {
+             require(line.debitOriginal >= 0 && line.creditOriginal >= 0) { "لا يسمح بمبالغ سالبة" }
+             DraftJournalLine(line.accountId, line.debitOriginal * exchangeRate, line.creditOriginal * exchangeRate)
+         }
+-        AccountingValidator.validate(baseLines)
+         val entryNo = documentNo("JV")
+-        val entryId = db.journalDao().insertEntry(
+-            JournalEntryEntity(
++        postJournalEntry(
++            entry = JournalEntryEntity(
+                 entryNo = entryNo,
+                 entryDate = entryDate,
+                 description = description.trim(),
+@@ -194,12 +217,10 @@ class AccountingService(private val db: FushDatabase) {
+                 sourceType = "MANUAL",
+                 sourceId = UUID.randomUUID().toString(),
+                 createdBy = createdBy
+-            )
+-        )
+-        db.journalDao().insertLines(
+-            lines.mapIndexed { index, line ->
++            ),
++            lines = lines.mapIndexed { index, line ->
+                 JournalLineEntity(
+-                    entryId = entryId,
++                    entryId = 0,
+                     accountId = line.accountId,
+                     debit = baseLines[index].debit,
+                     credit = baseLines[index].credit,
+@@ -207,7 +228,6 @@ class AccountingService(private val db: FushDatabase) {
+                 )
+             }
+         )
+-        entryId
+     }
+ 
+     suspend fun postVoucher(request: VoucherRequest): Long = db.withTransaction {
+diff --git a/central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt b/central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt
+new file mode 100644
+index 0000000..a04a0d7
+--- /dev/null
++++ b/central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt
+@@ -0,0 +1,72 @@
++package com.fush.erp.domain
++
++import kotlinx.coroutines.runBlocking
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Assert.fail
++import org.junit.Test
++
++class AccountingPostJournalAtomicityTest {
++    @Test
++    fun aeAcc011_unbalancedJournalCannotPersistPostedStatus() = runBlocking {
++        var persistedStatus = "DRAFT"
++        var persistCalled = false
++
++        try {
++            AccountingPostJournalAtomicity.validateThenPersistPosted(
++                listOf(
++                    DraftJournalLine(accountId = 1, debit = 100.0, credit = 0.0),
++                    DraftJournalLine(accountId = 2, debit = 0.0, credit = 90.0)
++                )
++            ) {
++                persistCalled = true
++                persistedStatus = "POSTED"
++            }
++            fail("AE-ACC-011 regression: unbalanced journal reached POSTED persistence")
++        } catch (_: IllegalArgumentException) {
++            // Expected: validation aborts before the persistence callback.
++        }
++
++        assertFalse(persistCalled)
++        assertEquals("DRAFT", persistedStatus)
++    }
++
++    @Test
++    fun aeAcc011_lineIntegrityFailureCannotPersistPostedStatus() = runBlocking {
++        var persistCalled = false
++
++        try {
++            AccountingPostJournalAtomicity.validateThenPersistPosted(
++                listOf(
++                    DraftJournalLine(accountId = 1, debit = 100.0, credit = 100.0),
++                    DraftJournalLine(accountId = 2, debit = 0.0, credit = 100.0)
++                )
++            ) {
++                persistCalled = true
++            }
++            fail("AE-ACC-011 regression: invalid debit/credit line reached POSTED persistence")
++        } catch (_: IllegalArgumentException) {
++            // Expected: line-integrity validation aborts before persistence.
++        }
++
++        assertFalse(persistCalled)
++    }
++
++    @Test
++    fun balancedJournalMayEnterPostedPersistenceOnlyAfterValidation() = runBlocking {
++        var persistCalled = false
++        val result = AccountingPostJournalAtomicity.validateThenPersistPosted(
++            listOf(
++                DraftJournalLine(accountId = 1, debit = 100.0, credit = 0.0),
++                DraftJournalLine(accountId = 2, debit = 0.0, credit = 100.0)
++            )
++        ) {
++            persistCalled = true
++            42L
++        }
++
++        assertTrue(persistCalled)
++        assertEquals(42L, result)
++    }
++}
