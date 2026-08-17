@@ -1,0 +1,247 @@
+name: Build Purchases Suppliers Official AE-ACC-010 Cash Refund V2
+
+on:
+  push:
+    branches: [fush/purchases-suppliers]
+    paths:
+      - '.github/workflows/build-purchases-suppliers-ae-acc-010-cash-refund-v2.yml'
+      - 'purchases_suppliers_ae_acc_010_return/ae_acc_010_cash_refund.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+  PATCH_PATH: 'purchases_suppliers_ae_acc_010_return/ae_acc_010_cash_refund.patch'
+  PATCH_SHA256: '41d2aadb657e722385a794a7ca1940337e346109f6381d4cfbc23f2cab19d3e9'
+
+jobs:
+  validate-official-ae-acc-010:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout specialist branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin exact Central and exact patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+          echo "$PATCH_SHA256  $PATCH_PATH" | sha256sum -c -
+
+      - name: Export exact Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source output
+          mkdir -p work-source output
+          git archive "${CENTRAL_SHA}:central_source" | tar -x -C work-source
+          cd work-source
+          git init -q
+          git config user.name 'FUSH Purchases AE-ACC-010'
+          git config user.email purchases-ae-acc-010@fush.local
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+          git commit -qm 'Exact Central baseline'
+
+      - name: Verify Central safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Apply exact official AE-ACC-010 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          git apply --check "../$PATCH_PATH"
+          git apply "../$PATCH_PATH"
+          git diff --check
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            'app/src/main/java/com/fush/erp/domain/PurchaseService.kt'
+            'app/src/main/java/com/fush/erp/domain/SupplierApMath.kt'
+            'app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt'
+          )
+          printf '%s\n' "${changed[@]}" | sort > /tmp/changed.txt
+          printf '%s\n' "${expected[@]}" | sort > /tmp/expected.txt
+          diff -u /tmp/expected.txt /tmp/changed.txt
+          test -z "$(git diff --name-only -- app/src/main/java/com/fush/erp/data/FushDatabase.kt app/src/main/java/com/fush/erp/data/Migrations.kt app/src/main/java/com/fush/erp/data/AppContainer.kt app/build.gradle.kts app/schemas/)"
+
+      - name: Official AE-ACC-010 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path('work-source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt').read_text(encoding='utf-8')
+
+          def section(start, end):
+              a = text.index(start)
+              b = text.index(end, a)
+              return text[a:b]
+
+          ret = section('suspend fun postPurchaseReturn(', 'suspend fun postFullLineReturn(')
+          rev = section('suspend fun reverseSupplierPayment(', 'private suspend fun postSupplierPaymentJournalMulti(')
+
+          assert 'request.settlementType == "CASH_REFUND"' in ret
+          assert 'paidBaseForInvoice(invoice.id)' in ret
+          assert '.filter { it.settlementType == "CASH_REFUND" }' in ret
+          assert 'SupplierApMath.cashRefundableBase' in ret
+          assert 'totalBase <= refundableBase + 1e-8' in ret
+          assert ret.index('SupplierApMath.cashRefundableBase') < ret.index('val returnNo =')
+          assert ret.index('require(totalBase <= refundableBase + 1e-8)') < ret.index('insertReturn(')
+          assert ret.index('require(totalBase <= refundableBase + 1e-8)') < ret.index('insertMovement(')
+          assert ret.index('require(totalBase <= refundableBase + 1e-8)') < ret.index('postReturnJournal(')
+          assert 'returnedQuantityForLine' in ret
+
+          assert 'SupplierApMath.canReverseSupplierPayment' in rev
+          assert 'paidBaseForInvoice(invoice.id)' in rev
+          assert '.filter { it.settlementType == "CASH_REFUND" }' in rev
+          assert rev.index('SupplierApMath.canReverseSupplierPayment') < rev.index('val reversalNo =')
+          assert rev.index('SupplierApMath.canReverseSupplierPayment') < rev.index('insertSupplierPayment(')
+
+          math = Path('work-source/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt').read_text(encoding='utf-8')
+          assert 'fun cashRefundableBase(' in math
+          assert 'fun canReverseSupplierPayment(' in math
+
+          Path('output/AE_ACC_010_SOURCE_CONTRACT.txt').write_text(
+              'AE-ACC-010=PASS_SOURCE_CONTRACT\n'
+              'UNPAID_CREDIT=GUARDED\n'
+              'PARTIAL_PAID=BOUNDED_BY_NET_PAID\n'
+              'FULLY_PAID=BOUNDED_BY_INVOICE_AND_PRIOR_REFUNDS\n'
+              'DUPLICATE_CASH_REFUND=BOUNDED_BY_PRIOR_CASH_REFUNDS_AND_RETURNED_QUANTITY\n'
+              'PAYMENT_REVERSAL=BLOCKED_IF_IT_WOULD_UNBACK_EXISTING_CASH_REFUND\n',
+              encoding='utf-8'
+          )
+          PY
+
+      - name: Dedicated official AE-ACC-010 regression test
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.AeAcc010PurchaseReturnCashRefundTest'
+
+      - name: Purchases targeted tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.PurchaseMathTest' \
+            --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest' \
+            --tests 'com.fush.erp.domain.AeAcc010PurchaseReturnCashRefundTest'
+
+      - name: Cross accounting AP Treasury tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
+            --tests 'com.fush.erp.domain.PartyStatementMathTest' \
+            --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.AccountingReconciliationMathTest' \
+            --tests 'com.fush.erp.domain.AccountingReportMathTest' \
+            --tests 'com.fush.erp.domain.AccountingValidatorTest' \
+            --tests 'com.fush.erp.domain.TreasuryReconciliationTest' \
+            --tests 'com.fush.erp.domain.TreasuryReportMathTest'
+
+      - name: Full Unit regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify release and record handoff evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          git diff --binary > ../output/applied.patch
+          cd ..
+
+          APK=work-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          BADGING="$($ANDROID_SDK_ROOT/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee output/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" output/FushERP-Purchases-AE-ACC-010-Cash-Refund-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 output/FushERP-Purchases-AE-ACC-010-Cash-Refund-unsigned.apk | tee output/zipalign-verification.txt
+          sha256sum output/FushERP-Purchases-AE-ACC-010-Cash-Refund-unsigned.apk | tee output/apk.sha256
+          sha256sum "$PATCH_PATH" | tee output/exact-patch.sha256
+          test "$(sha256sum "$PATCH_PATH" | awk '{print $1}')" = "$PATCH_SHA256"
+
+          tar --exclude='./.git' -czf output/FushERP-Purchases-AE-ACC-010-Cash-Refund-Source.tgz -C work-source .
+          sha256sum output/FushERP-Purchases-AE-ACC-010-Cash-Refund-Source.tgz | tee output/source-archive.sha256
+
+          cat > output/HANDOFF_STATUS.txt <<EOF
+          DEFECT=AE-ACC-010
+          SCOPE=PurchaseService.postPurchaseReturn CASH_REFUND payment-backed bounding
+          CENTRAL_SHA=$CENTRAL_SHA
+          CENTRAL_SOURCE_TREE=$CENTRAL_SOURCE_TREE
+          ROOM_SCHEMA=$EXPECTED_SCHEMA
+          APPLICATION_ID=$EXPECTED_APP_ID
+          EXACT_PATCH_SHA256=$PATCH_SHA256
+          DEDICATED_REGRESSION=PASS
+          PURCHASES_TARGETED=PASS
+          CROSS_ACCOUNTING_AP_TREASURY=PASS
+          FULL_UNIT=PASS
+          RELEASE_BUILD=PASS
+          NO_DESTRUCTIVE_OR_FALLBACK=PASS
+          SUPPLIER_PAYMENT_ATOMICITY_RUN_31983236244=SEPARATE_IMPROVEMENT_NOT_AE_ACC_010
+          P2=NOT_STARTED
+          STATUS=FIXED / TESTED / READY FOR RE-INTEGRATION AUDIT
+          EOF
+
+      - name: Upload official AE-ACC-010 validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Purchases-Official-AE-ACC-010-Cash-Refund-V2
+          path: output/
+          if-no-files-found: error
