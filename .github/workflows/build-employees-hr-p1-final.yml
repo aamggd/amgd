@@ -1,0 +1,134 @@
+name: Build FUSH Employees HR P1 Final
+
+on:
+  push:
+    branches: [fush/employees-hr]
+    paths:
+      - '.github/workflows/build-employees-hr-p1-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p1-final:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout employees HR branch
+        uses: actions/checkout@v4
+        with:
+          path: branch-repo
+
+      - name: Checkout exact post-wave Central
+        uses: actions/checkout@v4
+        with:
+          ref: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          path: central-repo
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Reapply exact P1 patch to post-wave Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central-repo rev-parse HEAD)" = "ddae764a236cb1916a46e194ccb2d3c24ca6b919"
+          test "$(git -C central-repo rev-parse HEAD:central_source)" = "30b028b75d6463c07afd0419429f53c7937fabb1"
+          mkdir final-repo
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' central-repo/central_source/ final-repo/
+          cd final-repo
+          git init -q
+          git config user.email employees-hr@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm central-post-wave-ddae764
+          sha256sum ../branch-repo/employees_hr_p1/employees-hr-p1.patch | tee ../p1-patch.sha256
+          git apply --check ../branch-repo/employees_hr_p1/employees-hr-p1.patch
+          git apply ../branch-repo/employees_hr_p1/employees-hr-p1.patch
+          git diff --check
+          git add -A
+          CHANGED=$(git diff --cached --name-only | sort)
+          EXPECTED=$(printf '%s\n' \
+            'app/src/main/java/com/fush/erp/domain/EmployeeEntitlementType.kt' \
+            'app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt' | sort)
+          test "$CHANGED" = "$EXPECTED"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          test -z "$(git diff --cached --name-only | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/' || true)"
+          git commit -qm employees-hr-p1-entitlement-types-post-wave
+
+      - name: P1 domain tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.EmployeeEntitlementTypeTest
+
+      - name: Full unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Room migration and no-destructive checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-repo
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'Migration(34, 35)' app/src/main/java/com/fush/erp/data/Migrations.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
+          test -z "$(git diff --name-only HEAD^ HEAD | grep -E 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/' || true)"
+          mkdir -p ../output
+          cp "$APK" ../output/FushERP-Employees-HR-P1-post-wave-unsigned.apk
+          cp ../branch-repo/employees_hr_p1/employees-hr-p1.patch ../output/employees-hr-p1-exact.patch
+          cp ../p1-patch.sha256 ../output/employees-hr-p1-exact.patch.sha256
+          printf '%s\n' \
+            'branch=fush/employees-hr' \
+            'phase=P1 employee entitlement types' \
+            'status=COMPLETE / TESTED / READY FOR HANDOFF' \
+            'baseline=fush/integration-current@ddae764a236cb1916a46e194ccb2d3c24ca6b919' \
+            'centralSourceTree=30b028b75d6463c07afd0419429f53c7937fabb1' \
+            'applicationId=com.fush.erp.recovery' \
+            'roomSchema=35 inherited; P1 unchanged' \
+            'migration=P1 none; inherited Central 34->35 validated' \
+            'domainTests=PASS' \
+            'unitTests=PASS' \
+            'releaseBuild=PASS' \
+            'noDestructiveMigration=PASS' \
+            'accountingPostingLogic=unchanged' \
+            'inventoryImpact=none' \
+            'productionImpact=entitlement classification contract only' \
+            > ../output/FINAL_HANDOFF.txt
+
+      - name: Upload final P1 handoff artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Employees-HR-P1-Final-Validated
+          path: output/
+          if-no-files-found: error
