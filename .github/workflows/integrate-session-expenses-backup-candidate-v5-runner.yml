@@ -48,8 +48,9 @@ jobs:
       - name: Execute V3 run steps with exact migration object and additive UNIQUE INDEX allowed
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
+          set -uo pipefail
+          set +e
+          python3 - <<'PY' 2>&1 | tee /tmp/fush_v5_main.log
           import os, subprocess, sys
           from pathlib import Path
           try:
@@ -123,7 +124,38 @@ jobs:
               absorb_env()
           print('V5_FIXED_V3_RUN_STEPS=PASS')
           PY
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > /tmp/fush_v5_main.rc
+          exit "$rc"
+      - name: Persist V5 diagnostic evidence on orchestration branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p integration_diagnostics
+          rc="PRE_MAIN_FAILURE"
+          if test -f /tmp/fush_v5_main.rc; then rc="$(cat /tmp/fush_v5_main.rc)"; fi
+          {
+            echo "V5_EXIT_CODE=$rc"
+            echo "CENTRAL_SHA=$CENTRAL_SHA"
+            echo "CENTRAL_TREE=$CENTRAL_TREE"
+            echo "SESSION_HEAD=$SESSION_HEAD"
+            echo "EXPENSES_HEAD=$EXPENSES_HEAD"
+            echo "BACKUP_HEAD=$BACKUP_HEAD"
+            echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > integration_diagnostics/v5-last-status.txt
+          if test -f /tmp/fush_v5_main.log; then
+            tail -n 500 /tmp/fush_v5_main.log > integration_diagnostics/v5-last-log.txt
+          else
+            echo 'main log unavailable; failure occurred before main integration step' > integration_diagnostics/v5-last-log.txt
+          fi
+          git config user.name 'FUSH Central Integration Diagnostics'
+          git config user.email 'central-integration@fush.local'
+          git add integration_diagnostics/v5-last-status.txt integration_diagnostics/v5-last-log.txt
+          git commit -m "Record V5 integration diagnostic rc=$rc" || true
+          git push origin HEAD:fush/session-expenses-backup-integration-run
       - name: Upload static candidate evidence
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: FushERP-Session-Expenses-Backup-Static-Candidate-V5
