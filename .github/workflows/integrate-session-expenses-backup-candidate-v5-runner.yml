@@ -45,7 +45,7 @@ jobs:
         with:
           gradle-version: '9.4.1'
           cache-read-only: true
-      - name: Execute V3 run steps with exact migration object and additive UNIQUE INDEX allowed
+      - name: Execute V3 run steps with fixed migration parser and clean allowlists
         shell: bash
         run: |
           set -uo pipefail
@@ -95,11 +95,21 @@ jobs:
                   out.append(line)
           assert first==1 and second==1,(first,second)
           fixed='\n'.join(out)+'\n'
-          old="allowed=('CREATE TABLE IF NOT EXISTS','CREATE INDEX IF NOT EXISTS','CREATE TRIGGER IF NOT EXISTS')"
-          new="allowed=('CREATE TABLE IF NOT EXISTS','CREATE INDEX IF NOT EXISTS','CREATE UNIQUE INDEX IF NOT EXISTS','CREATE TRIGGER IF NOT EXISTS')"
-          count=fixed.count(old)
-          assert count==2,f'expected two allowed DDL tuples, got {count}'
-          fixed=fixed.replace(old,new)
+
+          old_ddl="allowed=('CREATE TABLE IF NOT EXISTS','CREATE INDEX IF NOT EXISTS','CREATE TRIGGER IF NOT EXISTS')"
+          new_ddl="allowed=('CREATE TABLE IF NOT EXISTS','CREATE INDEX IF NOT EXISTS','CREATE UNIQUE INDEX IF NOT EXISTS','CREATE TRIGGER IF NOT EXISTS')"
+          ddl_count=fixed.count(old_ddl)
+          assert ddl_count==2,f'expected two allowed DDL tuples, got {ddl_count}'
+          fixed=fixed.replace(old_ddl,new_ddl)
+
+          old_exp="{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | sort -u > /tmp/expenses.actual"
+          new_exp="{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | grep -v '^central_source/app/build/' | sort -u > /tmp/expenses.actual"
+          old_bak="{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | sort -u > /tmp/backup.actual"
+          new_bak="{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | grep -v '^central_source/app/build/' | sort -u > /tmp/backup.actual"
+          assert fixed.count(old_exp)==1, fixed.count(old_exp)
+          assert fixed.count(old_bak)==1, fixed.count(old_bak)
+          fixed=fixed.replace(old_exp,new_exp).replace(old_bak,new_bak)
+
           doc=yaml.safe_load(fixed)
           steps=doc['jobs']['integrate']['steps']
           env=os.environ.copy()
