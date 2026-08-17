@@ -1,4 +1,4 @@
-name: Validate master-data P1 on final Wave Central
+name: Validate master-data P1 on Sales P1 Central
 
 on:
   push:
@@ -21,17 +21,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify final Central ancestry and exact P1 app patch
+      - name: Verify Central ancestry, source tree, and exact P1 app patch
         shell: bash
         run: |
           set -euo pipefail
-          BASE=ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
+          BASE=ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          EXPECTED_SOURCE_TREE=30b028b75d6463c07afd0419429f53c7937fabb1
           git merge-base --is-ancestor "$BASE" HEAD
+          test "$(git rev-parse "$BASE:central_source")" = "$EXPECTED_SOURCE_TREE"
           mapfile -t APP_CHANGED < <(git diff --name-only "$BASE" HEAD -- central_source/app | sort)
           printf '%s\n' "${APP_CHANGED[@]}"
           test "${#APP_CHANGED[@]}" -eq 2
           test "${APP_CHANGED[0]}" = 'central_source/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt'
           test "${APP_CHANGED[1]}" = 'central_source/app/src/test/java/com/fush/erp/domain/AutoNumberSequencePolicyTest.kt'
+          test "$(git rev-parse HEAD:central_source/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt)" = '4224ce145965cf45e77b61b14b40b7157875d798'
+          test "$(git rev-parse HEAD:central_source/app/src/test/java/com/fush/erp/domain/AutoNumberSequencePolicyTest.kt)" = 'd1d7e05fef4c3a0a31e0e563ae953cdc9dd60e0c'
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
@@ -59,7 +63,7 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
-      - name: Domain tests and sequence concurrency contract
+      - name: Focused AutoNumber tests and concurrency reservation contract
         shell: bash
         run: |
           set -euo pipefail
@@ -131,11 +135,11 @@ jobs:
           gradle --no-daemon :app:assembleRelease
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Room and migration checks
+      - name: Room and migration preservation
         shell: bash
         run: |
           set -euo pipefail
-          BASE=ccbe1273ba5648b1e546eb5838aa4b33fcdb5d48
+          BASE=ddae764a236cb1916a46e194ccb2d3c24ca6b919
           grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
           grep -q 'val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
@@ -145,7 +149,7 @@ jobs:
           git diff --quiet "$BASE" HEAD -- central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
           git diff --quiet "$BASE" HEAD -- central_source/app/schemas
 
-      - name: No-destructive and identity checks
+      - name: App ID and no-destructive checks
         shell: bash
         run: |
           set -euo pipefail
