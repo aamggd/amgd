@@ -1,11 +1,6 @@
 name: Testing QA Lightweight Harness Qualification
 
 on:
-  push:
-    branches: [fush/testing-qa]
-    paths:
-      - 'qa/qualification/**'
-      - '.github/workflows/testing-qa-lightweight-qualification.yml'
   workflow_dispatch:
 
 permissions:
@@ -25,19 +20,37 @@ env:
 jobs:
   qualify-harness:
     name: Lightweight instrumentation qualification only
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    runs-on: [self-hosted, linux, x64, android-kvm]
+    timeout-minutes: 25
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Require real KVM acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo 'KVM=AVAILABLE' | tee evidence/emulator-acceleration.txt
+            ls -l /dev/kvm | tee -a evidence/emulator-acceleration.txt
+          else
+            cat > evidence/QA-INFRASTRUCTURE.txt <<'EOF'
+          STATUS=QA INFRASTRUCTURE / KVM UNAVAILABLE
+          ACTION=FAIL FAST; SOFTWARE EMULATOR FALLBACK DISABLED
+          FULL_FINAL_QA=NOT RUN
+          EOF
+            cat evidence/QA-INFRASTRUCTURE.txt >&2
+            exit 78
+          fi
+
       - name: Prove exact Central identity and prepare disposable test copy
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf exact-source work-source exact-central-candidate evidence
+          rm -rf exact-source work-source exact-central-candidate
           mkdir -p exact-source work-source evidence
           git fetch origin fush/integration-current
           test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
@@ -151,27 +164,11 @@ jobs:
           keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android \
             | grep -E 'SHA256:|Alias name:' | tee evidence/qa-test-signer.txt
 
-      - name: Select emulator acceleration mode
+      - name: Run accelerated lightweight qualification emulator gate only
         shell: bash
-        run: |
-          set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-          sudo udevadm control --reload-rules || true
-          sudo udevadm trigger --name-match=kvm || true
-          if [ -e /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm || true
-          fi
-          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
-            echo 'QUALIFICATION_ACCEL=on' >> "$GITHUB_ENV"
-            echo 'KVM=AVAILABLE' | tee evidence/emulator-acceleration.txt
-            ls -l /dev/kvm | tee -a evidence/emulator-acceleration.txt
-          else
-            echo 'QUALIFICATION_ACCEL=off' >> "$GITHUB_ENV"
-            echo 'KVM=UNAVAILABLE; SOFTWARE_EMULATION=ENABLED' | tee evidence/emulator-acceleration.txt
-          fi
-
-      - name: Run lightweight qualification emulator gate only
-        shell: bash
+        env:
+          BOOT_TIMEOUT_SECONDS: '420'
+          INSTRUMENT_TIMEOUT_SECONDS: '300'
         run: |
           set -euo pipefail
           AVD_NAME='fush-qa-qualification-api35'
@@ -189,7 +186,7 @@ jobs:
             -no-snapshot \
             -noaudio \
             -no-boot-anim \
-            -accel "$QUALIFICATION_ACCEL" \
+            -accel on \
             > evidence/emulator-console.txt 2>&1 &
           EMULATOR_PID=$!
           cleanup() {
@@ -200,7 +197,7 @@ jobs:
             kill "$EMULATOR_PID" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
-          sleep 10
+          sleep 5
           if kill -0 "$EMULATOR_PID" 2>/dev/null; then
             echo 'EMULATOR_PROCESS=RUNNING' | tee evidence/emulator-process.txt
           else
@@ -208,7 +205,7 @@ jobs:
             cat evidence/emulator-console.txt
             exit 1
           fi
-          timeout 1200 bash qa/qualification/run_lightweight_qualification.sh
+          bash qa/qualification/run_lightweight_qualification.sh
 
       - name: Record qualification failure only
         if: failure()
