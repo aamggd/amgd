@@ -19,16 +19,17 @@ The P1 application worktree was reconstructed from this exact Central tree. Old 
 
 ## Validated candidate
 
-- Candidate validation branch SHA: `ee5667513db7d3088d85cb964872852fec740872`
+- Candidate validation branch SHA: `b5f2dfda723ebfb50c43adba2975418766610720`
 - GitHub Actions workflow: `FUSH Inventory P1 Candidate Validation`
-- Workflow run: `31982480355`
-- Job: `95251616933`
+- Workflow run: `31983051143`
+- Job: `95253145778`
 - Result: **SUCCESS**
+- Validation order: implementation/scope guards -> targeted tests -> Full Unit -> Release -> migration/data preservation -> exact candidate patch/handoff
 - Artifact: `FushERP-Inventory-P1-Candidate`
-- Artifact ID: `9272870832`
-- Artifact ZIP SHA-256: `1ab3b63dd12846c093ac8b0cad1bcb4880034b16575be8865e368e0c82a24bf7`
+- Artifact ID: `9273040634`
+- Artifact ZIP SHA-256: `69842ee1ba7c48428c0e90cb61f12471e0ac0461a4effef424078f5166617805`
 - Exact application patch SHA-256: `e5fa0ea7aa097900140e34a0a2ebe69264bbb6d39fdcd65f5c71643db45328a1`
-- Unsigned test APK SHA-256: `a6d69c491117a8342c401316d53c055808f5c1d9a82e28707d100ff872de82c3`
+- Unsigned test APK SHA-256: `37aa72f352e62026d4055dafe851ea36b82c4f7f6ec99f6e48e42529b6820417`
 
 ## Application/test files changed by the exact patch
 
@@ -113,10 +114,10 @@ P2 UOM factor/history work was not started. P3 genealogy redesign was not starte
 
 - Exact Central baseline/tree gate: **PASS**
 - P1 changed-file scope guard: **PASS**
-- Migration/data-preservation SQLite smoke: **PASS** — `INVENTORY_P1_MIGRATION_DATA_PRESERVATION_OK`
-- Targeted tests (`StockMovementPolicyTest` + carried-forward `StockLedgerInvariantTest`): **PASS**, `BUILD SUCCESSFUL in 2m 38s`
-- Full Unit (`:app:testDebugUnitTest`): **PASS**, `BUILD SUCCESSFUL in 39s`
-- Release (`:app:assembleRelease`): **PASS**, `BUILD SUCCESSFUL in 4m 19s`
+- Targeted tests (`StockMovementPolicyTest` + carried-forward `StockLedgerInvariantTest`): **PASS**
+- Full Unit (`:app:testDebugUnitTest`): **PASS**
+- Release (`:app:assembleRelease`): **PASS**
+- Migration/data-preservation SQLite smoke after Release: **PASS** — `INVENTORY_P1_MIGRATION_DATA_PRESERVATION_OK`
 - Generated Room schema 36: **PASS**
 - Application ID `com.fush.erp.recovery`: **PASS**
 - destructive migration guard: **PASS**
@@ -146,6 +147,6 @@ Existing Central KSP/deprecation warnings remain warnings and were not changed u
 
 ## Exact integration instruction
 
-Do not merge this branch wholesale into Central. Use the validated artifact/patch from workflow run `31982480355`, artifact ID `9272870832`, and verify patch SHA-256 `e5fa0ea7aa097900140e34a0a2ebe69264bbb6d39fdcd65f5c71643db45328a1` before applying to the integration branch's accepted Central source. If Central's Room number has advanced, re-number/rebase the **provisional** migration without changing its data-preservation semantics, then rerun migration, targeted, full-unit and release gates.
+Do not merge this branch wholesale into Central. Use the validated artifact/patch from workflow run `31983051143`, artifact ID `9273040634`, and verify patch SHA-256 `e5fa0ea7aa097900140e34a0a2ebe69264bbb6d39fdcd65f5c71643db45328a1` before applying to the integration branch's accepted Central source. If Central's Room number has advanced, re-number/rebase the **provisional** migration without changing its data-preservation semantics, then rerun targeted, full-unit, release, migration/data-preservation and release-safety gates in the required order.
 
 No merge to `fush/main` or `fush/integration-current` was performed by the inventory branch. P2 has not started.
