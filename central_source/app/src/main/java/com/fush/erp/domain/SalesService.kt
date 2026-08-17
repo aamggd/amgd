@@ -192,6 +192,7 @@ class SalesService(private val db: FushDatabase) {
 
     suspend fun postSale(request: PostSaleRequest): SalePostResult = db.withTransaction {
         db.requireUserPermission(request.createdBy, SecurityPermissions.SALES_POST)
+        AccountingService(db).requirePostingPeriodOpen(request.invoiceDate)
         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع البيع غير صالح" }
         SalesMath.validateExchangeRate(request.exchangeRate)
         val customerId = CustomerMovementIdentity.requireId(request.customerId)
@@ -389,6 +390,7 @@ class SalesService(private val db: FushDatabase) {
         treasuryAccountId: Long?
     ): MultiReceiptResult {
         db.requireUserPermission(createdBy, SecurityPermissions.COLLECTION_POST)
+        AccountingService(db).requirePostingPeriodOpen(receiptDate)
         SalesMath.validateExchangeRate(exchangeRate)
         require(allocations.isNotEmpty()) { "يجب تحديد فاتورة واحدة على الأقل للتحصيل" }
         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس التحصيل" }
@@ -562,6 +564,7 @@ class SalesService(private val db: FushDatabase) {
         treasuryAccountId: Long? = null
     ): ReturnResult = db.withTransaction {
         db.requireUserPermission(createdBy, SecurityPermissions.SALES_RETURN)
+        AccountingService(db).requirePostingPeriodOpen(returnDate)
         require(settlementType in setOf("CUSTOMER_CREDIT", "CASH_REFUND")) { "نوع تسوية المرتجع غير صالح" }
         require(reason.isNotBlank()) { "سبب المرتجع مطلوب" }
         val line = requireNotNull(db.salesDao().lineById(salesLineId)) { "سطر البيع غير موجود" }

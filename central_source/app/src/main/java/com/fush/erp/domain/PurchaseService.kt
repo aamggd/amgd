@@ -68,6 +68,7 @@ class PurchaseService(private val db: FushDatabase) {
 
     suspend fun postPurchase(request: PostPurchaseRequest): Long = db.withTransaction {
         db.requireUserPermission(request.createdBy, SecurityPermissions.PURCHASE_POST)
+        AccountingService(db).requirePostingPeriodOpen(request.invoiceDate)
         require(request.paymentType in setOf("CASH", "CREDIT")) { "نوع السداد غير صالح" }
         PurchaseMath.validateExchangeRate(request.exchangeRate)
         val supplierId = SupplierMovementIdentity.requireId(request.supplierId)
@@ -154,6 +155,7 @@ class PurchaseService(private val db: FushDatabase) {
 
     suspend fun postPurchaseReturn(request: PostPurchaseReturnRequest): Long = db.withTransaction {
         db.requireUserPermission(request.createdBy, SecurityPermissions.PURCHASE_RETURN)
+        AccountingService(db).requirePostingPeriodOpen(request.returnDate)
         require(request.settlementType in setOf("SUPPLIER_CREDIT", "CASH_REFUND")) { "نوع تسوية المرتجع غير صالح" }
         require(request.reason.isNotBlank()) { "سبب المرتجع مطلوب" }
         PurchaseMath.validateReturnDraft(request.lines)
@@ -387,6 +389,7 @@ class PurchaseService(private val db: FushDatabase) {
         paymentDate: Long
     ): MultiSupplierPaymentResult {
         db.requireUserPermission(createdBy, SecurityPermissions.SUPPLIER_PAYMENT_POST)
+        AccountingService(db).requirePostingPeriodOpen(paymentDate)
         require(allocations.isNotEmpty()) { "يجب تحديد فاتورة واحدة على الأقل للدفع" }
         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس الدفعة" }
 
