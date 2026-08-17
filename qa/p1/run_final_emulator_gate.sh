@@ -16,6 +16,38 @@ wait_for_android_service() {
   return 1
 }
 
+capture_runtime_diagnostics() {
+  local prefix="$1"
+  adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/evidence/${prefix}-logcat.txt" 2>&1 || true
+  adb shell dumpsys activity processes > "$GITHUB_WORKSPACE/evidence/${prefix}-activity-processes.txt" 2>&1 || true
+  adb shell dumpsys package "$APP_ID" > "$GITHUB_WORKSPACE/evidence/${prefix}-target-package.txt" 2>&1 || true
+  adb shell dumpsys package com.fush.erp.recovery.test > "$GITHUB_WORKSPACE/evidence/${prefix}-test-package.txt" 2>&1 || true
+}
+
+run_instrumentation_class() {
+  local class_name="$1"
+  local evidence_name="$2"
+  local output="$GITHUB_WORKSPACE/evidence/${evidence_name}-instrumentation.txt"
+
+  # Isolate the two required final gates so a runner/test-process crash can be attributed
+  # without weakening coverage. Always capture diagnostics before evaluating the exit code.
+  adb logcat -c || true
+  set +e
+  adb shell am instrument -w -r \
+    -e class "$class_name" \
+    com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
+    | tee "$output"
+  local test_rc=${PIPESTATUS[0]}
+  capture_runtime_diagnostics "$evidence_name"
+  set -e
+
+  test "$test_rc" -eq 0
+  ! grep -Fq 'FAILURES!!!' "$output"
+  ! grep -Fq 'INSTRUMENTATION_FAILED' "$output"
+  ! grep -Fq 'shortMsg=Process crashed' "$output"
+  grep -Eq 'OK \([1-9][0-9]* tests?\)|INSTRUMENTATION_CODE: -1' "$output"
+}
+
 adb wait-for-device
 for i in $(seq 1 180); do
   BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
@@ -24,8 +56,7 @@ for i in $(seq 1 180); do
 done
 test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1'
 
-# The previous QA harness observed sys.boot_completed before PackageManager/ActivityManager
-# were usable on the non-KVM runner. Wait for the actual Android framework services.
+# sys.boot_completed may become true before PackageManager/ActivityManager are usable.
 wait_for_android_service package
 wait_for_android_service activity
 for i in $(seq 1 120); do
@@ -48,10 +79,7 @@ test -s "$CANDIDATE"
 test -s "$TEST_APK"
 echo "${CENTRAL_CANDIDATE_SHA256}  ${CANDIDATE}" | sha256sum -c -
 
-# The merged Central candidate and the instrumentation APK must have the same signer.
-# Android enforces this before it will start instrumentation. The previous harness only
-# re-signed the target candidate and assumed Gradle's androidTest APK used the same key.
-# Sign both QA-only install artifacts explicitly with the deterministic QA signer.
+# Sign both QA-only install artifacts with the same deterministic QA signer.
 "$APKSIGNER" sign \
   --ks "$HOME/.android/debug.keystore" \
   --ks-key-alias androiddebugkey \
@@ -98,22 +126,22 @@ adb shell pidof "$APP_ID" | tee "$GITHUB_WORKSPACE/evidence/apk-pid.txt"
 adb shell dumpsys package "$APP_ID" \
   | grep -E 'versionCode=|versionName=' | head -5 \
   | tee "$GITHUB_WORKSPACE/evidence/apk-version.txt"
+capture_runtime_diagnostics 'fresh-room35-launch'
 
-# Instrument the verified merged Central candidate itself with QA-only tests.
 adb shell pm list instrumentation | tee "$GITHUB_WORKSPACE/evidence/instrumentation-list.txt"
-set +e
-adb shell am instrument -w -r \
-  com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
-  | tee "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-TEST_RC=${PIPESTATUS[0]}
-set -e
-test "$TEST_RC" -eq 0
-! grep -Fq 'FAILURES!!!' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-! grep -Fq 'INSTRUMENTATION_FAILED' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-grep -Eq 'OK \([1-9][0-9]* tests?\)|INSTRUMENTATION_CODE: -1' \
-  "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
 
-adb logcat -d -v brief > "$GITHUB_WORKSPACE/evidence/final-logcat.txt"
+# Gate A: exact candidate fresh runtime + Wave1 Sales/Purchases/Treasury identity contracts.
+run_instrumentation_class \
+  'com.fush.erp.qa.Wave1P1ReleaseCandidateTest' \
+  'release-candidate'
+
+# Gate B: historical Room 34 -> 35 preservation and accounting guard behavior.
+run_instrumentation_class \
+  'com.fush.erp.data.AccountingP1Migration34To35Test' \
+  'migration-34-35'
+
+# Final merged logcat evidence after both successful instrumentations.
+adb logcat -d -v brief > "$GITHUB_WORKSPACE/evidence/final-logcat.txt" 2>&1 || true
 if grep -E 'FATAL EXCEPTION:.*|Process: com\.fush\.erp\.recovery,' \
   "$GITHUB_WORKSPACE/evidence/final-logcat.txt"; then
   echo 'Fatal crash detected in merged Central APK session' >&2
