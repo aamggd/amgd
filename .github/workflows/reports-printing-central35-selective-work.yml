@@ -1,0 +1,141 @@
+name: Reports Printing Central35 Selective Work
+
+on:
+  push:
+    branches: [fush/reports-printing-central35-selective]
+    paths:
+      - '.github/workflows/reports-printing-central35-selective-work.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Verify exact Central 35 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          SOURCE_TREE=30b028b75d6463c07afd0419429f53c7937fabb1
+          git merge-base --is-ancestor "$BASE" HEAD
+          test "$(git rev-parse "$BASE:central_source")" = "$SOURCE_TREE"
+          test "$(git rev-parse HEAD:central_source)" = "$SOURCE_TREE"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1' central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -q 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          ! grep -Rqs 'fallbackToDestructiveMigration' central_source/app/src/main
+
+      - name: Reconstruct historical reporting patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p refs
+          git fetch --no-tags --depth=1 origin \
+            3226dd22bf722cab192456a1382bab1368e68a7e \
+            b57068a823eba84ab46afd96e34b1e1ccaa75b7a \
+            49c33101f4f016955e545dcc666f71a564512910
+
+          P55=3226dd22bf722cab192456a1382bab1368e68a7e
+          for n in 00 01 02 03; do git show "$P55:phase14_5_55_report_export_hardening/payload/p55-part${n}.txt"; done > refs/p55.full.b64
+          echo '759c45d60504fa7ae5818af842bf386a7c7e6bad931d9133784fd4469d03634e  refs/p55.full.b64' | sha256sum -c -
+          base64 -d refs/p55.full.b64 | gzip -dc > refs/p55.patch
+          echo '4d06fc137031b7c606605ee39e7af2db22e4a14bcf4971acdff2be34782493f2  refs/p55.patch' | sha256sum -c -
+
+          P56=b57068a823eba84ab46afd96e34b1e1ccaa75b7a
+          for n in 00 01 02 03 04 05 06; do git show "$P56:phase14_5_56_direct_print_coverage/payload/v2-p56-part${n}.txt"; done > refs/p56.full.b64
+          echo 'fb673d216bf9601b25a68b8d223b3d97cac5597e7dac791a8b05b5976ee04649  refs/p56.full.b64' | sha256sum -c -
+          base64 -d refs/p56.full.b64 | gzip -dc > refs/p56.patch
+          echo 'bac9368c5c4d3a4213cbd978738263f6781e8715741fcf9d87c8af1fb106ff73  refs/p56.patch' | sha256sum -c -
+
+          P57=49c33101f4f016955e545dcc666f71a564512910
+          for n in 00 01 02 03 04 05 06 07 08; do git show "$P57:phase14_5_57_management_print_coverage/payload/p57-part${n}.txt"; done > refs/p57.full.b64
+          echo 'd3226dd671906b2385deb29503edc5c93d817e396cef38a1d0c986c11cac99e0  refs/p57.full.b64' | sha256sum -c -
+          base64 -d refs/p57.full.b64 | gzip -dc > refs/p57.patch
+          echo '4e6d2ca49116366e1d165a16d7773bdecb6ff2261514547b1569e4c77fd99984  refs/p57.patch' | sha256sum -c -
+
+      - name: Apply allow-listed deltas with rejects preserved
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work
+          cd work
+          git init -q
+          git config user.email reports-central35@fush.local
+          git config user.name 'FUSH Reports Central35'
+          git add -A
+          git commit -qm baseline
+
+          set +e
+          git apply --reject --whitespace=nowarn \
+            --include='app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/export/ReportExportLayout.kt' \
+            --include='app/src/test/java/com/fush/erp/ui/export/ReportExportLayoutTest.kt' \
+            --include='app/src/test/java/com/fush/erp/ui/export/ReportSpreadsheetExportTest.kt' \
+            ../refs/p55.patch > ../refs/p55-apply.log 2>&1
+          echo p55_rc=$? > ../refs/apply-status.txt
+
+          git apply --reject --whitespace=nowarn \
+            --include='app/src/main/java/com/fush/erp/ui/screens/DirectSectionReports.kt' \
+            --include='app/src/test/java/com/fush/erp/ui/screens/DirectSectionReportsTest.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/CollectionsDetailScreen.kt' \
+            ../refs/p56.patch > ../refs/p56-apply.log 2>&1
+          echo p56_rc=$? >> ../refs/apply-status.txt
+
+          git apply --reject --whitespace=nowarn \
+            --include='app/src/main/java/com/fush/erp/ui/screens/RemainingSectionReports.kt' \
+            --include='app/src/test/java/com/fush/erp/ui/screens/RemainingSectionReportsTest.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/PlanningScreen.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt' \
+            --include='app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt' \
+            ../refs/p57.patch > ../refs/p57-apply.log 2>&1
+          echo p57_rc=$? >> ../refs/apply-status.txt
+          set -e
+
+          find app -name '*.rej' -print | sort > ../refs/rejects.txt
+          git diff --name-status > ../refs/changed-files.txt
+          git diff --binary > ../refs/candidate-selective.patch
+          sha256sum ../refs/candidate-selective.patch > ../refs/candidate-selective.patch.sha256
+
+          mkdir -p ../snapshot
+          cp -a app/src/main/java/com/fush/erp/ui/export ../snapshot/export
+          cp -a app/src/main/java/com/fush/erp/ui/screens ../snapshot/screens
+          cp -a app/src/test/java/com/fush/erp/ui/export ../snapshot/test-export 2>/dev/null || true
+          cp -a app/src/test/java/com/fush/erp/ui/screens ../snapshot/test-screens 2>/dev/null || true
+          find app -name '*.rej' -exec cp --parents {} ../snapshot/ \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Reports-Printing-Central35-Selective-Workspace
+          path: |
+            refs/p55.patch
+            refs/p56.patch
+            refs/p57.patch
+            refs/p55-apply.log
+            refs/p56-apply.log
+            refs/p57-apply.log
+            refs/apply-status.txt
+            refs/changed-files.txt
+            refs/rejects.txt
+            refs/candidate-selective.patch
+            refs/candidate-selective.patch.sha256
+            snapshot
+          if-no-files-found: error
+          retention-days: 7
