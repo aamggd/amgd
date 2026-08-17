@@ -1,0 +1,416 @@
+name: Validate Accounting AE-ACC-011 Full Room35 Parity v2
+
+on:
+  push:
+    branches: [ fush/accounting ]
+    paths:
+      - 'fush_accounting/handoffs/AE-ACC-011_fresh_room35_parity/**'
+      - '.github/workflows/validate-accounting-ae-acc-011-fresh-room35-parity-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-full-room35-parity:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout accounting handoff branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact verified Central
+        uses: actions/checkout@v4
+        with:
+          ref: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          path: central-repo
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Exact Central baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central-repo rev-parse HEAD)" = "ddae764a236cb1916a46e194ccb2d3c24ca6b919"
+          test "$(git -C central-repo rev-parse HEAD:central_source)" = "30b028b75d6463c07afd0419429f53c7937fabb1"
+          grep -q 'applicationId = "com.fush.erp.recovery"' central-repo/central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central-repo/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f central-repo/central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          test -f central-repo/central_source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+
+      - name: Apply official AE-ACC-011 fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python fush_accounting/handoffs/AE-ACC-011_fresh_room35_parity/apply_ae_acc_011_fresh_room35_parity.py central-repo/central_source
+          git -C central-repo add -N \
+            central_source/app/src/main/java/com/fush/erp/data/AccountingJournalIntegrityGuards.kt \
+            central_source/app/src/test/java/com/fush/erp/data/AccountingJournalIntegrityGuardsTest.kt
+          git -C central-repo diff --check
+          actual="$(git -C central-repo diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            central_source/app/src/main/java/com/fush/erp/data/AccountingJournalIntegrityGuards.kt \
+            central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt \
+            central_source/app/src/main/java/com/fush/erp/data/Migrations.kt \
+            central_source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt \
+            central_source/app/src/main/java/com/fush/erp/domain/SalesService.kt \
+            central_source/app/src/test/java/com/fush/erp/data/AccountingJournalIntegrityGuardsTest.kt | sort)"
+          printf 'Changed files:\n%s\n' "$actual"
+          test "$actual" = "$expected"
+
+      - name: Genuine full exported Room34 and Room35 parity matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee "$GITHUB_WORKSPACE/ae-acc-011-full-room-parity.log"
+          import json
+          import re
+          import sqlite3
+          import textwrap
+          from pathlib import Path
+
+          root = Path('central-repo/central_source')
+          schema_dir = root / 'app/schemas/com.fush.erp.data.FushDatabase'
+          guard_path = root / 'app/src/main/java/com/fush/erp/data/AccountingJournalIntegrityGuards.kt'
+          guard_source = guard_path.read_text(encoding='utf-8')
+
+          stable_match = re.search(r'private val stableSourcesSql = """(.*?)"""\.trimIndent\(\)', guard_source, re.S)
+          assert stable_match, 'stableSourcesSql not found'
+          stable = textwrap.dedent(stable_match.group(1)).strip()
+          trigger_section = guard_source[guard_source.index('internal val triggerSql'):guard_source.index('    fun install')]
+          raw_sql = re.findall(r'"""(.*?)"""\.trimIndent\(\)', trigger_section, re.S)
+          trigger_sql = [textwrap.dedent(s).strip().replace('$stableSourcesSql', stable) for s in raw_sql]
+          assert len(trigger_sql) == 9, f'expected 9 journal guards, got {len(trigger_sql)}'
+
+          target_triggers = {
+              'trg_journal_entries_closed_period',
+              'trg_journal_stable_source_id_required_insert',
+              'trg_journal_no_duplicate_stable_source_insert',
+              'trg_journal_no_duplicate_stable_source_update',
+              'trg_posted_journal_no_update',
+              'trg_posted_journal_no_delete',
+              'trg_journal_line_sanity_insert',
+              'trg_posted_journal_line_no_update',
+              'trg_posted_journal_line_no_delete',
+          }
+          operational_sources = ['SALE','CUSTOMER_RECEIPT','SALES_RETURN','PURCHASE','SUPPLIER_PAYMENT','PURCHASE_RETURN']
+
+          def create_full_room_schema(version):
+              payload = json.loads((schema_dir / f'{version}.json').read_text(encoding='utf-8'))['database']
+              assert payload['version'] == version
+              conn = sqlite3.connect(':memory:')
+              conn.execute('PRAGMA foreign_keys=OFF')
+              for entity in payload['entities']:
+                  table = entity['tableName']
+                  conn.execute(entity['createSql'].replace('${TABLE_NAME}', table))
+              for entity in payload['entities']:
+                  table = entity['tableName']
+                  for index in entity.get('indices', []):
+                      conn.execute(index['createSql'].replace('${TABLE_NAME}', table))
+              for view in payload.get('views', []):
+                  conn.execute(view['createSql'].replace('${VIEW_NAME}', view['viewName']))
+              for query in payload.get('setupQueries', []):
+                  conn.execute(query)
+              conn.execute(f'PRAGMA user_version={version}')
+              expected_tables = {e['tableName'] for e in payload['entities']}
+              actual_tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+              missing = expected_tables - actual_tables
+              assert not missing, f'Room{version} schema missing tables: {sorted(missing)}'
+              return conn, payload
+
+          def install_guards(conn):
+              for statement in trigger_sql:
+                  conn.execute(statement)
+
+          def journal_trigger_names(conn):
+              return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'") if r[0] in target_triggers}
+
+          def default_for(sql_type):
+              t = (sql_type or '').upper()
+              if 'INT' in t:
+                  return 0
+              if any(x in t for x in ('REAL','FLOA','DOUB','NUM','DEC')):
+                  return 0.0
+              if 'BLOB' in t:
+                  return b''
+              return ''
+
+          def insert_complete(conn, table, overrides):
+              info = conn.execute(f'PRAGMA table_info(`{table}`)').fetchall()
+              cols, vals = [], []
+              for cid, name, sql_type, notnull, dflt, pk in info:
+                  if name in overrides:
+                      cols.append(name); vals.append(overrides[name]); continue
+                  if pk and 'INT' in (sql_type or '').upper():
+                      continue
+                  if dflt is not None:
+                      continue
+                  if notnull:
+                      cols.append(name); vals.append(default_for(sql_type))
+              placeholders = ','.join('?' for _ in cols)
+              quoted = ','.join(f'`{c}`' for c in cols)
+              cur = conn.execute(f'INSERT INTO `{table}` ({quoted}) VALUES ({placeholders})', vals)
+              return cur.lastrowid
+
+          def expect_block(label, fn, contains):
+              try:
+                  fn()
+              except sqlite3.IntegrityError as exc:
+                  assert contains in str(exc), (label, str(exc), contains)
+                  print(f'PASS {label}: {exc}')
+                  return
+              raise AssertionError(f'{label}: unexpectedly succeeded')
+
+          def add_closed_period(conn):
+              insert_complete(conn, 'accounting_periods', {
+                  'fiscalYear': 2026,
+                  'periodNo': 8,
+                  'nameAr': 'اختبار أغسطس',
+                  'startDate': 100,
+                  'endDate': 200,
+                  'status': 'CLOSED',
+                  'createdBy': 1,
+              })
+
+          def add_journal(conn, entry_date, status, source_type, source_id, entry_no):
+              return insert_complete(conn, 'journal_entries', {
+                  'entryNo': entry_no,
+                  'entryDate': entry_date,
+                  'description': entry_no,
+                  'currencyCode': 'YER_NEW',
+                  'exchangeRate': 1.0,
+                  'status': status,
+                  'sourceType': source_type,
+                  'sourceId': source_id,
+                  'createdBy': 1,
+              })
+
+          def add_line(conn, entry_id, debit=100.0, credit=0.0):
+              return insert_complete(conn, 'journal_lines', {
+                  'entryId': entry_id,
+                  'accountId': 1,
+                  'debit': debit,
+                  'credit': credit,
+                  'memo': '',
+              })
+
+          def run_protection_matrix(conn, prefix):
+              add_closed_period(conn)
+              for i, source_type in enumerate(operational_sources, 1):
+                  expect_block(
+                      f'{prefix} closed-period {source_type}',
+                      lambda i=i, source_type=source_type: add_journal(conn, 150, 'POSTED', source_type, f'{prefix}-closed-{i}', f'{prefix}-C-{i}'),
+                      'الفترة المحاسبية مقفلة'
+                  )
+              expect_block(
+                  f'{prefix} blank stable source id',
+                  lambda: add_journal(conn, 300, 'POSTED', 'SALE', '  ', f'{prefix}-BLANK'),
+                  'ACCOUNTING_STABLE_SOURCE_ID_REQUIRED'
+              )
+              posted_id = add_journal(conn, 300, 'POSTED', 'SALE', f'{prefix}-dup', f'{prefix}-POSTED')
+              line_id = add_line(conn, posted_id)
+              expect_block(
+                  f'{prefix} duplicate stable source',
+                  lambda: add_journal(conn, 300, 'POSTED', 'SALE', f'{prefix}-dup', f'{prefix}-DUP2'),
+                  'DUPLICATE_ACCOUNTING_POSTING'
+              )
+              expect_block(
+                  f'{prefix} POSTED header update',
+                  lambda: conn.execute("UPDATE journal_entries SET sourceId=? WHERE id=?", (f'{prefix}-changed', posted_id)),
+                  'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL'
+              )
+              expect_block(
+                  f'{prefix} POSTED header delete',
+                  lambda: conn.execute("DELETE FROM journal_entries WHERE id=?", (posted_id,)),
+                  'POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL'
+              )
+              expect_block(
+                  f'{prefix} POSTED line update',
+                  lambda: conn.execute("UPDATE journal_lines SET debit=90 WHERE id=?", (line_id,)),
+                  'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL'
+              )
+              expect_block(
+                  f'{prefix} POSTED line delete',
+                  lambda: conn.execute("DELETE FROM journal_lines WHERE id=?", (line_id,)),
+                  'POSTED_JOURNAL_LINE_IMMUTABLE_USE_REVERSAL'
+              )
+
+          # Fresh Room35: construct the complete direct Room schema exactly from 35.json.
+          fresh, room35 = create_full_room_schema(35)
+          assert journal_trigger_names(fresh) == set(), 'Room35 setupQueries unexpectedly already include journal guards'
+          install_guards(fresh)  # Mirrors the new RoomDatabase.Callback onCreate/onOpen.
+          assert journal_trigger_names(fresh) == target_triggers
+          run_protection_matrix(fresh, 'fresh35')
+          print(f"PASS genuine full fresh Room35 schema parity ({len(room35['entities'])} entities)")
+
+          # 34 -> 35: construct complete Room34 schema, preserve real rows, then execute the exact shared 34->35 guard installer.
+          upgraded, room34 = create_full_room_schema(34)
+          legacy_id = add_journal(upgraded, 50, 'POSTED', 'MANUAL', 'legacy-user-row', 'LEGACY-77')
+          legacy_line = add_line(upgraded, legacy_id, 125.0, 0.0)
+          before_entry = upgraded.execute('SELECT * FROM journal_entries WHERE id=?', (legacy_id,)).fetchone()
+          before_line = upgraded.execute('SELECT * FROM journal_lines WHERE id=?', (legacy_line,)).fetchone()
+          install_guards(upgraded)  # Mirrors MIGRATION_34_35_ACCOUNTING_P1 calling the same installer.
+          upgraded.execute('PRAGMA user_version=35')
+          assert journal_trigger_names(upgraded) == target_triggers
+          assert upgraded.execute('SELECT * FROM journal_entries WHERE id=?', (legacy_id,)).fetchone() == before_entry
+          assert upgraded.execute('SELECT * FROM journal_lines WHERE id=?', (legacy_line,)).fetchone() == before_line
+          print('PASS 34->35 existing user journal data preserved byte-for-byte at row level')
+          run_protection_matrix(upgraded, 'upgrade35')
+
+          assert journal_trigger_names(fresh) == journal_trigger_names(upgraded) == target_triggers
+          print(f"PASS full Room34->35 upgraded parity ({len(room34['entities'])} entities)")
+          print('PASS full Fresh Room35 protection parity')
+          print('PASS POSTED immutability parity')
+          PY
+
+      - name: Closed-period guards precede writes in all six operational paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee "$GITHUB_WORKSPACE/ae-acc-011-six-path-period-guards.log"
+          import re
+          from pathlib import Path
+          root = Path('central-repo/central_source/app/src/main/java/com/fush/erp/domain')
+          sales = (root / 'SalesService.kt').read_text(encoding='utf-8')
+          purchase = (root / 'PurchaseService.kt').read_text(encoding='utf-8')
+
+          def method_block(text, signature):
+              start = text.index(signature)
+              tail = text[start + len(signature):]
+              m = re.search(r'\n    (?:private )?suspend fun ', tail)
+              return text[start:] if not m else text[start:start + len(signature) + m.start()]
+
+          checks = [
+              ('SALE', sales, 'suspend fun postSale(', 'AccountingService(db).requirePostingPeriodOpen(request.invoiceDate)'),
+              ('CUSTOMER_RECEIPT', sales, 'private suspend fun postReceiptAllocationsInternal(', 'AccountingService(db).requirePostingPeriodOpen(receiptDate)'),
+              ('SALES_RETURN', sales, 'suspend fun postReturn(', 'AccountingService(db).requirePostingPeriodOpen(returnDate)'),
+              ('PURCHASE', purchase, 'suspend fun postPurchase(', 'AccountingService(db).requirePostingPeriodOpen(request.invoiceDate)'),
+              ('SUPPLIER_PAYMENT', purchase, 'private suspend fun postSupplierPaymentAllocationsInternal(', 'AccountingService(db).requirePostingPeriodOpen(paymentDate)'),
+              ('PURCHASE_RETURN', purchase, 'suspend fun postPurchaseReturn(', 'AccountingService(db).requirePostingPeriodOpen(request.returnDate)'),
+          ]
+          write_tokens = ('.insert', 'postSaleJournal(', 'postCollectionJournal(', 'postSalesReturnJournal(', 'postPurchaseJournal(', 'postSupplierPaymentJournal', 'postReturnJournal(')
+          for label, text, signature, guard in checks:
+              block = method_block(text, signature)
+              guard_pos = block.find(guard)
+              assert guard_pos >= 0, f'{label}: guard missing'
+              writes = [block.find(token) for token in write_tokens if block.find(token) >= 0]
+              assert writes, f'{label}: expected a write/posting operation for ordering proof'
+              assert guard_pos < min(writes), f'{label}: period guard is not before first persistent write'
+              print(f'PASS closed-period pre-write guard {label}')
+          PY
+
+      - name: Targeted accounting integrity tests
+        shell: bash
+        working-directory: central-repo/central_source
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.data.AccountingJournalIntegrityGuardsTest \
+            --tests com.fush.erp.domain.AccountingP1IntegrityPolicyTest \
+            --tests com.fush.erp.domain.AccountingIntegrationContractTest \
+            --tests com.fush.erp.domain.AccountingValidatorTest \
+            --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/ae-acc-011-v2-targeted.log"
+
+      - name: Full unit tests
+        shell: bash
+        working-directory: central-repo/central_source
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/ae-acc-011-v2-full-unit.log"
+
+      - name: Release build
+        working-directory: central-repo/central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Final safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=central-repo/central_source
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -z "$(git -C central-repo diff --name-only -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt)"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'AccountingJournalIntegrityGuards.install(db)' "$ROOT/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'addCallback(AccountingJournalIntegrityGuards.callback)' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' "$ROOT/app/src/main/java"
+          ! grep -R --line-number -E 'Migration\(35,[[:space:]]*[0-9]+' "$ROOT/app/src/main/java/com/fush/erp/data"
+          test -f "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+
+      - name: Exact patch and handoff evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/accounting-ae-acc-011-full-room35-v2-output"
+          mkdir -p "$OUT"
+          git -C central-repo diff --binary -- \
+            central_source/app/src/main/java/com/fush/erp/data/AccountingJournalIntegrityGuards.kt \
+            central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt \
+            central_source/app/src/main/java/com/fush/erp/data/Migrations.kt \
+            central_source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt \
+            central_source/app/src/main/java/com/fush/erp/domain/SalesService.kt \
+            central_source/app/src/test/java/com/fush/erp/data/AccountingJournalIntegrityGuardsTest.kt \
+            > "$OUT/ACCOUNTING_AE_ACC_011_FRESH_ROOM35_PARITY.patch"
+          PATCH_SHA="$(sha256sum "$OUT/ACCOUNTING_AE_ACC_011_FRESH_ROOM35_PARITY.patch" | awk '{print $1}')"
+          printf '%s  %s\n' "$PATCH_SHA" 'ACCOUNTING_AE_ACC_011_FRESH_ROOM35_PARITY.patch' > "$OUT/SHA256SUMS.txt"
+          cp "$GITHUB_WORKSPACE/ae-acc-011-full-room-parity.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/ae-acc-011-six-path-period-guards.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/ae-acc-011-v2-targeted.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/ae-acc-011-v2-full-unit.log" "$OUT/"
+          printf 'ACCOUNTING_AE_ACC_011_FRESH_ROOM35_PATCH_SHA256=%s\n' "$PATCH_SHA"
+          cat > "$OUT/BUILD-REPORT.txt" <<REPORT
+          FUSH ERP Mobile — Final Part2C Wave1 AE-ACC-011 Full Room35 Parity v2
+          Status: READY FOR AUDIT RE-INTEGRATION
+          Final audit status: NOT FINAL PASS
+          Exact Central HEAD: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          Exact Central source tree: 30b028b75d6463c07afd0419429f53c7937fabb1
+          Application ID: com.fush.erp.recovery
+          Room schema: 35 UNCHANGED
+          Fresh Room35 full exported schema protection parity: PASS
+          34->35 full exported schema upgraded DB parity: PASS
+          Existing user journal data preserved: PASS
+          Closed-period operational paths SALE/CUSTOMER_RECEIPT/SALES_RETURN/PURCHASE/SUPPLIER_PAYMENT/PURCHASE_RETURN: PASS
+          POSTED header/line immutability parity: PASS
+          Stable-source/duplicate protection parity: PASS
+          Targeted accounting integrity tests: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          No destructive migration/fallback: PASS
+          Exact functional patch SHA-256: $PATCH_SHA
+          Prior journal atomicity work: SEPARATE IMPROVEMENT / NOT AE-ACC-011 CLOSURE / EXCLUDED FROM THIS PATCH
+          P2 started: NO
+          READY FOR AUDIT RE-INTEGRATION
+          REPORT
+
+      - name: Upload official v2 AE-ACC-011 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-AE-ACC-011-Full-Room35-Ready-For-Audit-Reintegration-v2
+          path: accounting-ae-acc-011-full-room35-v2-output/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          git -C central-repo diff --check || true
+          git -C central-repo diff --name-only || true
