@@ -197,6 +197,19 @@ class PurchaseService(private val db: FushDatabase) {
 
         val totalOriginal = prepared.sumOf { it.totalOriginal }
         val totalBase = totalOriginal * invoice.exchangeRate
+        if (request.settlementType == "CASH_REFUND") {
+            val priorCashRefundBase = db.purchaseDao().returnsForInvoice(invoice.id)
+                .filter { it.settlementType == "CASH_REFUND" }
+                .sumOf { it.totalBase }
+            val netPaidBase = if (invoice.paymentType == "CREDIT") db.purchaseDao().paidBaseForInvoice(invoice.id) else invoice.totalBase
+            val refundableBase = SupplierApMath.cashRefundableBase(
+                paymentType = invoice.paymentType,
+                invoiceBase = invoice.totalBase,
+                netPaidBase = netPaidBase,
+                priorCashRefundBase = priorCashRefundBase
+            )
+            require(totalBase <= refundableBase + 1e-8) { "الاسترداد النقدي يتجاوز المبلغ المدفوع والقابل للاسترداد فعلياً لهذه الفاتورة" }
+        }
         val returnNo = numbering.nextDocumentNo("PRET", request.returnDate)
         val returnId = db.purchaseDao().insertReturn(
             PurchaseReturnEntity(
@@ -488,6 +501,21 @@ class PurchaseService(private val db: FushDatabase) {
             "لا يوجد قيد محاسبي لدفعة المورد"
         }
         require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذه الدفعة مسبقاً" }
+
+        allocations.forEach { allocation ->
+            val invoice = requireNotNull(db.purchaseDao().invoiceById(allocation.invoiceId)) { "فاتورة دفعة المورد غير موجودة" }
+            val priorCashRefundBase = db.purchaseDao().returnsForInvoice(invoice.id)
+                .filter { it.settlementType == "CASH_REFUND" }
+                .sumOf { it.totalBase }
+            val netPaidBase = db.purchaseDao().paidBaseForInvoice(invoice.id)
+            require(
+                SupplierApMath.canReverseSupplierPayment(
+                    netPaidBase = netPaidBase,
+                    reversedAllocationBase = allocation.allocatedBase,
+                    priorCashRefundBase = priorCashRefundBase
+                )
+            ) { "لا يمكن عكس دفعة المورد لأن جزءاً منها أصبح أساساً لاسترداد نقدي لمشتريات مرتجعة" }
+        }
 
         val reversalNo = numbering.nextDocumentNo("SPRV", reversalDate)
         val reversalId = db.purchaseDao().insertSupplierPayment(
