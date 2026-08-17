@@ -1,11 +1,14 @@
 package com.fush.erp.data
 
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.fush.erp.data.dao.*
 import com.fush.erp.data.entity.*
 
-const val FUSH_DB_SCHEMA_VERSION = 35
+// Audit Controls P1 — PROVISIONAL / BRANCH ONLY.
+// Central integration owns the final Room schema number during handoff integration.
+const val FUSH_DB_SCHEMA_VERSION = 36
 
 @Database(
     entities = [
@@ -108,7 +111,10 @@ const val FUSH_DB_SCHEMA_VERSION = 35
         FixedAssetDisposalEntity::class
     ],
     version = FUSH_DB_SCHEMA_VERSION,
-    exportSchema = true
+    exportSchema = true,
+    autoMigrations = [
+        AutoMigration(from = 35, to = 36)
+    ]
 )
 abstract class FushDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao

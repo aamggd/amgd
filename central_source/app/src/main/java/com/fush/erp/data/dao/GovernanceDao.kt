@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
+import com.fush.erp.data.audit.AuditEventMetadata
 import com.fush.erp.data.entity.*
 import kotlinx.coroutines.flow.Flow
 
@@ -47,7 +48,15 @@ interface GovernanceDao {
     fun observePendingApprovalCount(): Flow<Int>
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insertAudit(row: AuditEventEntity): Long
+    suspend fun insertAuditRow(row: AuditEventEntity): Long
+
+    @Query("SELECT sessionVersion FROM users WHERE id=:userId LIMIT 1")
+    suspend fun auditSessionVersion(userId: Long): Long?
+
+    suspend fun insertAudit(row: AuditEventEntity): Long {
+        val sessionVersion = auditSessionVersion(row.userId)
+        return insertAuditRow(AuditEventMetadata.enrich(row, sessionVersion))
+    }
 
     @Query("SELECT * FROM audit_events ORDER BY eventAt DESC, id DESC LIMIT 200")
     fun observeAuditEvents(): Flow<List<AuditEventEntity>>

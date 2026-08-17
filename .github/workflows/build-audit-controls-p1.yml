@@ -1,0 +1,217 @@
+name: Build FUSH Audit Controls P1
+
+on:
+  push:
+    branches:
+      - fush/audit-controls
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BASELINE_SHA: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+      PROJECT_DIR: central_source
+    steps:
+      - name: Checkout audit branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Verify exact Central baseline and P1-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$BASELINE_SHA" HEAD
+
+          test -f "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/audit/AuditEventCatalog.kt"
+          test -f "$PROJECT_DIR/app/src/test/java/com/fush/erp/domain/audit/AuditEventCatalogTest.kt"
+          git diff --quiet "$BASELINE_SHA" HEAD -- \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/audit/AuditEventCatalog.kt" \
+            "$PROJECT_DIR/app/src/test/java/com/fush/erp/domain/audit/AuditEventCatalogTest.kt"
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -q 'const val FUSH_DB_SCHEMA_VERSION = 36' "$PROJECT_DIR/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'PROVISIONAL / BRANCH ONLY' "$PROJECT_DIR/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'AutoMigration(from = 35, to = 36)' "$PROJECT_DIR/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+
+          git diff --quiet "$BASELINE_SHA" HEAD -- \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/AccountingService.kt" \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt" \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/InventoryService.kt" \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/ProductionService.kt" \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/PurchaseService.kt" \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/domain/SalesService.kt"
+
+          # P2 is not part of this patch. The immutable-audit triggers already in Central stay untouched.
+          git diff --quiet "$BASELINE_SHA" HEAD -- \
+            "$PROJECT_DIR/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+
+          if grep -R -n --include='*.kt' --include='*.kts' 'fallbackToDestructiveMigration\|fallbackToDestructiveMigrationOnDowngrade' "$PROJECT_DIR/app/src" "$PROJECT_DIR/app/build.gradle.kts"; then
+            echo "Destructive Room fallback is forbidden"
+            exit 1
+          fi
+
+      - name: Run Audit Controls P1 domain tests
+        working-directory: central_source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests "com.fush.erp.data.audit.AuditEventMetadataTest"
+
+      - name: Run full unit test suite
+        working-directory: central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release APK
+        working-directory: central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Room schema and data-preservation gates
+        shell: bash
+        working-directory: central_source
+        run: |
+          set -euo pipefail
+          SCHEMA_DIR="app/schemas/com.fush.erp.data.FushDatabase"
+          test -f "$SCHEMA_DIR/35.json"
+          test -f "$SCHEMA_DIR/36.json"
+
+          # Building P1 must not rewrite the Central 35 schema snapshot.
+          git diff --exit-code -- "$SCHEMA_DIR/35.json"
+
+          python3 - <<'PY'
+          import json
+          import sqlite3
+          import tempfile
+          from pathlib import Path
+
+          schema_dir = Path("app/schemas/com.fush.erp.data.FushDatabase")
+          old = json.loads((schema_dir / "35.json").read_text())
+          new = json.loads((schema_dir / "36.json").read_text())
+
+          def entity(doc, table):
+              for item in doc["database"]["entities"]:
+                  if item["tableName"] == table:
+                      return item
+              raise AssertionError(f"missing entity {table}")
+
+          old_audit = entity(old, "audit_events")
+          new_audit = entity(new, "audit_events")
+          old_fields = {f["columnName"]: f for f in old_audit["fields"]}
+          new_fields = {f["columnName"]: f for f in new_audit["fields"]}
+
+          assert set(old_fields).issubset(new_fields), "P1 removed/renamed an existing audit column"
+          assert len(new_fields) == len(old_fields) + 2, "P1 must add exactly sessionId and source"
+          assert set(new_fields) - set(old_fields) == {"sessionId", "source"}
+          for name in ("sessionId", "source"):
+              field = new_fields[name]
+              assert field["notNull"] is True
+              assert field["defaultValue"] == "'LEGACY_PRE_P1'", (name, field)
+
+          # Data-preservation simulation for the exact additive migration Room generates.
+          db_path = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+          con = sqlite3.connect(db_path)
+          con.execute("""
+              CREATE TABLE audit_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                  eventAt INTEGER NOT NULL,
+                  userId INTEGER NOT NULL,
+                  action TEXT NOT NULL,
+                  entityType TEXT NOT NULL,
+                  entityId TEXT NOT NULL,
+                  oldValue TEXT NOT NULL,
+                  newValue TEXT NOT NULL,
+                  reason TEXT NOT NULL,
+                  deviceInfo TEXT NOT NULL
+              )
+          """)
+          before = (7, 123456789, 4, "POST", "JOURNAL_ENTRY", "77",
+                    "status=DRAFT", "status=POSTED", "approved", "ANDROID")
+          con.execute("""
+              INSERT INTO audit_events
+              (id,eventAt,userId,action,entityType,entityId,oldValue,newValue,reason,deviceInfo)
+              VALUES (?,?,?,?,?,?,?,?,?,?)
+          """, before)
+          con.execute("ALTER TABLE audit_events ADD COLUMN sessionId TEXT NOT NULL DEFAULT 'LEGACY_PRE_P1'")
+          con.execute("ALTER TABLE audit_events ADD COLUMN source TEXT NOT NULL DEFAULT 'LEGACY_PRE_P1'")
+          after = con.execute("""
+              SELECT id,eventAt,userId,action,entityType,entityId,oldValue,newValue,reason,deviceInfo,
+                     sessionId,source
+              FROM audit_events WHERE id=7
+          """).fetchone()
+          assert after[:10] == before, "legacy audit payload changed during migration"
+          assert after[10:] == ("LEGACY_PRE_P1", "LEGACY_PRE_P1")
+          assert con.execute("SELECT COUNT(*) FROM audit_events").fetchone()[0] == 1
+          con.close()
+          print("Room 35->36 audit migration data-preservation gate: PASS")
+          PY
+
+          GENERATED="$(grep -R -l 'ALTER TABLE.*audit_events.*sessionId' app/build/generated 2>/dev/null | head -n 1 || true)"
+          test -n "$GENERATED"
+          grep -q "ALTER TABLE.*audit_events.*sessionId.*LEGACY_PRE_P1" "$GENERATED"
+          grep -q "ALTER TABLE.*audit_events.*source.*LEGACY_PRE_P1" "$GENERATED"
+
+      - name: Validate release identity and no destructive migration
+        shell: bash
+        working-directory: central_source
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "package: name='com.fush.erp.recovery'"
+          if grep -R -n --include='*.kt' --include='*.kts' 'fallbackToDestructiveMigration\|fallbackToDestructiveMigrationOnDowngrade' app/src app/build.gradle.kts; then
+            exit 1
+          fi
+
+      - name: Package exact P1 patch and validation artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audit-p1-artifact
+          git diff --binary "$BASELINE_SHA" HEAD > audit-p1-artifact/Audit-Controls-P1-Exact.patch
+          cp central_source/app/schemas/com.fush.erp.data.FushDatabase/36.json audit-p1-artifact/Room-36-PROVISIONAL-BRANCH-ONLY.json
+          cp central_source/app/build/outputs/apk/release/app-release-unsigned.apk audit-p1-artifact/FushERP-Audit-Controls-P1-unsigned.apk
+          sha256sum audit-p1-artifact/* > audit-p1-artifact/SHA256SUMS.txt
+          {
+            echo "branch=fush/audit-controls"
+            echo "baseline=$BASELINE_SHA"
+            echo "head=$GITHUB_SHA"
+            echo "applicationId=com.fush.erp.recovery"
+            echo "central_room=35"
+            echo "branch_room=36 PROVISIONAL / BRANCH ONLY"
+            echo "domain_tests=PASS"
+            echo "full_unit=PASS"
+            echo "release=PASS"
+            echo "room_migration_data_preservation=PASS"
+            echo "no_destructive_migration=PASS"
+          } > audit-p1-artifact/VALIDATION.txt
+
+      - name: Upload Audit Controls P1 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Audit-Controls-P1
+          path: audit-p1-artifact/*
+          if-no-files-found: error

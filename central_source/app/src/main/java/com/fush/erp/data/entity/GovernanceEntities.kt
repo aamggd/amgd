@@ -1,5 +1,6 @@
 package com.fush.erp.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -66,5 +67,9 @@ data class AuditEventEntity(
     val oldValue: String = "",
     val newValue: String = "",
     val reason: String = "",
-    val deviceInfo: String = "ANDROID"
+    val deviceInfo: String = "ANDROID",
+    @ColumnInfo(defaultValue = "'LEGACY_PRE_P1'")
+    val sessionId: String = "",
+    @ColumnInfo(defaultValue = "'LEGACY_PRE_P1'")
+    val source: String = "ANDROID_APP"
 )
