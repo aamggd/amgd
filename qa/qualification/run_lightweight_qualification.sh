@@ -2,6 +2,8 @@
 set -euo pipefail
 
 EVIDENCE_DIR="${GITHUB_WORKSPACE}/evidence"
+BOOT_TIMEOUT_SECONDS="${BOOT_TIMEOUT_SECONDS:-420}"
+INSTRUMENT_TIMEOUT_SECONDS="${INSTRUMENT_TIMEOUT_SECONDS:-300}"
 mkdir -p "$EVIDENCE_DIR"
 
 capture_diagnostics() {
@@ -100,16 +102,28 @@ run_instrumentation_class() {
 
   adb logcat -c || true
   set +e
-  adb shell am instrument -w -r \
-    -e class "$class_name" \
-    com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
-    > "$output" 2>&1
+  timeout --signal=TERM --kill-after=15s "${INSTRUMENT_TIMEOUT_SECONDS}s" \
+    adb shell am instrument -w -r \
+      -e class "$class_name" \
+      com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
+      > "$output" 2>&1
   local rc=$?
   set -e
 
   printf '%s\n' "$rc" > "$rc_file"
   cat "$output"
   capture_diagnostics "$evidence_name"
+
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    cat > "$EVIDENCE_DIR/${evidence_name}-timeout-status.txt" <<EOF
+STATUS=QA HARNESS TIMEOUT / AM INSTRUMENT
+TEST_CLASS=${class_name}
+TIMEOUT_SECONDS=${INSTRUMENT_TIMEOUT_SECONDS}
+EXIT_CODE=${rc}
+EOF
+    cat "$EVIDENCE_DIR/${evidence_name}-timeout-status.txt" >&2
+    return "$rc"
+  fi
 
   if [ "$rc" -ne 0 ]; then
     echo "FAIL: am instrument returned non-zero exit code ${rc} for ${class_name}" >&2
@@ -120,32 +134,48 @@ run_instrumentation_class() {
 }
 
 wait_for_android() {
-  adb wait-for-device
+  local deadline=$((SECONDS + BOOT_TIMEOUT_SECONDS))
   local booted=''
-  for _ in $(seq 1 240); do
-    booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-    if [ "$booted" = '1' ]; then
-      break
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if adb get-state >/dev/null 2>&1; then
+      booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+      if [ "$booted" = '1' ]; then
+        break
+      fi
     fi
     sleep 2
   done
+
   if [ "$booted" != '1' ]; then
-    echo 'FAIL: emulator did not reach sys.boot_completed=1' >&2
-    return 1
+    capture_diagnostics 'emulator-boot-timeout'
+    cat > "$EVIDENCE_DIR/emulator-boot-timeout-status.txt" <<EOF
+STATUS=QA HARNESS TIMEOUT / EMULATOR BOOT
+TIMEOUT_SECONDS=${BOOT_TIMEOUT_SECONDS}
+EOF
+    cat "$EVIDENCE_DIR/emulator-boot-timeout-status.txt" >&2
+    return 124
   fi
 
-  for _ in $(seq 1 180); do
+  while [ "$SECONDS" -lt "$deadline" ]; do
     local package_service
     local activity_service
     package_service="$(adb shell service check package 2>/dev/null || true)"
     activity_service="$(adb shell service check activity 2>/dev/null || true)"
     if grep -Fq 'found' <<<"$package_service" && grep -Fq 'found' <<<"$activity_service"; then
+      printf 'BOOT_QUALIFIED_SECONDS=%s\n' "$SECONDS" | tee "$EVIDENCE_DIR/emulator-boot-qualified.txt"
       return 0
     fi
     sleep 2
   done
-  echo 'FAIL: package/activity services did not become ready' >&2
-  return 1
+
+  capture_diagnostics 'emulator-service-timeout'
+  cat > "$EVIDENCE_DIR/emulator-service-timeout-status.txt" <<EOF
+STATUS=QA HARNESS TIMEOUT / ANDROID SERVICES
+TIMEOUT_SECONDS=${BOOT_TIMEOUT_SECONDS}
+EOF
+  cat "$EVIDENCE_DIR/emulator-service-timeout-status.txt" >&2
+  return 124
 }
 
 wait_for_android
@@ -243,6 +273,8 @@ Migration test body execution markers=PASS
 am instrument non-zero enforcement=ACTIVE
 FAILURES!!! rejection=ACTIVE
 Expected test-count validation=ACTIVE
+Emulator boot timeout=${BOOT_TIMEOUT_SECONDS}s
+Per-instrument timeout=${INSTRUMENT_TIMEOUT_SECONDS}s
 kotlinx-serialization test runtime=1.7.3
 Business Logic changes by QA=NONE
 Full Final QA=NOT RUN
