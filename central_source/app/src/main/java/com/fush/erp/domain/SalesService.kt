@@ -494,6 +494,14 @@ class SalesService(private val db: FushDatabase) {
         }
         require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذا التحصيل مسبقاً" }
 
+        allocations.groupBy { it.invoiceId }.forEach { (invoiceId, invoiceAllocations) ->
+            CashRefundSettlementPolicy.requireReceiptReversal(
+                netCollectedBeforeBase = db.salesDao().receivedBaseForInvoice(invoiceId),
+                reversingAllocationBase = invoiceAllocations.sumOf { it.amountBase },
+                cashRefundedBase = db.salesDao().cashRefundedBaseForInvoice(invoiceId)
+            )
+        }
+
         val reversalNo = numbering.nextDocumentNo("RCRV", reversalDate)
         val reversalId = db.salesDao().insertReceipt(
             CustomerReceiptEntity(
@@ -571,13 +579,21 @@ class SalesService(private val db: FushDatabase) {
         val invoice = requireNotNull(db.salesDao().invoiceById(line.invoiceId)) { "فاتورة البيع غير موجودة" }
         val customerId = CustomerMovementIdentity.requireId(invoice.customerId)
         val customer = requireNotNull(db.customerDao().byId(customerId)) { "العميل غير موجود" }
-        val refundTreasury = if (settlementType == "CASH_REFUND") resolveTreasury(treasuryAccountId, invoice.currencyCode) else null
         val alreadyReturned = db.salesDao().returnedQuantityForLine(line.id)
         SalesMath.validateReturn(quantity, line.quantity, alreadyReturned)
         val returnBaseQty = quantity * line.factorToBase
         val unitNetOriginal = if (line.quantity > 0.0) line.netOriginal / line.quantity else 0.0
         val totalOriginal = quantity * unitNetOriginal
         val totalBase = totalOriginal * invoice.exchangeRate
+
+        if (settlementType == "CASH_REFUND") {
+            CashRefundSettlementPolicy.requireCashRefund(
+                requestedRefundBase = totalBase,
+                netCollectedBase = db.salesDao().receivedBaseForInvoice(invoice.id),
+                cashRefundedBase = db.salesDao().cashRefundedBaseForInvoice(invoice.id)
+            )
+        }
+        val refundTreasury = if (settlementType == "CASH_REFUND") resolveTreasury(treasuryAccountId, invoice.currencyCode) else null
 
         val allocationPlan = mutableListOf<Pair<SalesAllocationEntity, Double>>()
         var remainingBase = returnBaseQty

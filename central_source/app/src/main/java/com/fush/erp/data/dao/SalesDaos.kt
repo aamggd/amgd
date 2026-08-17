@@ -189,6 +189,9 @@ interface SalesDao {
     @Query("SELECT COALESCE(SUM(totalBase), 0) FROM sales_returns WHERE salesInvoiceId = :invoiceId AND status = 'POSTED' AND settlementType = 'CUSTOMER_CREDIT'")
     suspend fun customerCreditReturnedBaseForInvoice(invoiceId: Long): Double
 
+    @Query("SELECT COALESCE(SUM(totalBase), 0) FROM sales_returns WHERE salesInvoiceId = :invoiceId AND status = 'POSTED' AND settlementType = 'CASH_REFUND'")
+    suspend fun cashRefundedBaseForInvoice(invoiceId: Long): Double
+
     @Query("""
         SELECT cr.*
         FROM customer_receipts cr
