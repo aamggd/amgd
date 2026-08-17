@@ -1,0 +1,164 @@
+name: Validate Accounting AE-ACC-011 Atomicity
+
+on:
+  push:
+    branches: [fush/accounting]
+    paths:
+      - '.github/workflows/validate-accounting-ae-acc-011-ddae764a.yml'
+      - 'fush_accounting/handoffs/AE-ACC-011_atomicity/apply_ae_acc_011_atomicity.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-ae-acc-011:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout accounting handoff branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact verified Central
+        uses: actions/checkout@v4
+        with:
+          ref: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          path: central-repo
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Exact Central baseline guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central-repo rev-parse HEAD)" = "ddae764a236cb1916a46e194ccb2d3c24ca6b919"
+          test "$(git -C central-repo rev-parse HEAD:central_source)" = "30b028b75d6463c07afd0419429f53c7937fabb1"
+          grep -q 'applicationId = "com.fush.erp.recovery"' central-repo/central_source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central-repo/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Apply AE-ACC-011 atomicity fix over exact Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          python fush_accounting/handoffs/AE-ACC-011_atomicity/apply_ae_acc_011_atomicity.py central-repo/central_source
+          git -C central-repo add -N \
+            central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt
+          git -C central-repo diff --check
+          actual="$(git -C central-repo diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt \
+            central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt | sort)"
+          printf 'Changed files:\n%s\n' "$actual"
+          test "$actual" = "$expected"
+
+      - name: AE-ACC-011 regression and accounting targeted tests
+        working-directory: central-repo/central_source
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.AccountingPostJournalAtomicityTest \
+            --tests com.fush.erp.domain.AccountingValidatorTest \
+            --tests com.fush.erp.domain.AccountingP1IntegrityPolicyTest \
+            --tests com.fush.erp.domain.AccountingIntegrationContractTest \
+            --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/accounting-ae-acc-011-targeted.log"
+
+      - name: Full unit tests
+        working-directory: central-repo/central_source
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/accounting-ae-acc-011-full-unit.log"
+
+      - name: Release build
+        working-directory: central-repo/central_source
+        shell: bash
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Safety, App ID, Room and no-destructive guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=central-repo/central_source
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test -z "$(git -C central-repo diff --name-only -- \
+            central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt \
+            central_source/app/src/main/java/com/fush/erp/data/Migrations.kt \
+            central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt)"
+          ! grep -R --line-number -E 'fallbackToDestructiveMigration|destructiveMigration' "$ROOT/app/src/main/java"
+          test -f "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -p 4 "$ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+
+      - name: Build exact functional patch and handoff evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/accounting-ae-acc-011-output"
+          mkdir -p "$OUT"
+          git -C central-repo diff --binary -- \
+            central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt \
+            central_source/app/src/test/java/com/fush/erp/domain/AccountingPostJournalAtomicityTest.kt \
+            > "$OUT/ACCOUNTING_AE_ACC_011_ATOMICITY.patch"
+          PATCH_SHA="$(sha256sum "$OUT/ACCOUNTING_AE_ACC_011_ATOMICITY.patch" | awk '{print $1}')"
+          printf '%s  %s\n' "$PATCH_SHA" 'ACCOUNTING_AE_ACC_011_ATOMICITY.patch' > "$OUT/SHA256SUMS.txt"
+          printf 'ACCOUNTING_AE_ACC_011_PATCH_SHA256=%s\n' "$PATCH_SHA"
+          echo '---BEGIN_AE_ACC_011_PATCH---'
+          cat "$OUT/ACCOUNTING_AE_ACC_011_ATOMICITY.patch"
+          echo '---END_AE_ACC_011_PATCH---'
+          cat > "$OUT/BUILD-REPORT.txt" <<REPORT
+          FUSH ERP Mobile — Accounting AE-ACC-011 Atomicity
+          Status: READY FOR AUDIT RE-INTEGRATION
+          Final audit status: NOT FINAL PASS
+          Exact Central HEAD: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          Exact Central source tree: 30b028b75d6463c07afd0419429f53c7937fabb1
+          Application ID: com.fush.erp.recovery
+          Room schema: 35 UNCHANGED
+          Migration change: NONE
+          Changed Central application files: 2
+          AE-ACC-011 regression: PASS
+          Accounting targeted tests: PASS
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          No destructive migration/fallback: PASS
+          Zipalign: PASS
+          Exact functional patch SHA-256: $PATCH_SHA
+          P2 started: NO
+          READY FOR AUDIT RE-INTEGRATION
+          REPORT
+
+      - name: Upload AE-ACC-011 audit re-integration handoff evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Accounting-AE-ACC-011-Ready-For-Audit-Reintegration
+          path: accounting-ae-acc-011-output/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Accounting-AE-ACC-011-Diagnostics
+          path: |
+            accounting-ae-acc-011-targeted.log
+            accounting-ae-acc-011-full-unit.log
+          if-no-files-found: ignore
+          retention-days: 2
