@@ -1,0 +1,232 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+--- a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
++++ b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+@@ -14,6 +14,11 @@ class PurchaseService(private val db: FushDatabase) {
+         val totalOriginal: Double
+     )
+ 
++    private data class PreparedSupplierPaymentJournal(
++        val lines: List<DraftJournalLine>,
++        val label: String
++    )
++
+ 
+     suspend fun createSupplier(
+         nameAr: String,
+@@ -321,9 +326,9 @@ class PurchaseService(private val db: FushDatabase) {
+         notes: String,
+         createdBy: Long,
+         paymentDate: Long = System.currentTimeMillis()
+-    ): SupplierPaymentResult {
++    ): SupplierPaymentResult = db.withTransaction {
+         val invoice = requireNotNull(db.purchaseDao().invoiceById(invoiceId)) { "فاتورة الشراء غير موجودة" }
+-        val result = postSupplierPaymentAllocations(
++        val result = postSupplierPaymentAllocationsInternal(
+             supplierId = supplierId,
+             treasuryAccountId = treasuryAccountId,
+             allocations = listOf(SupplierPaymentAllocationRequest(invoiceId, amountOriginal)),
+@@ -338,7 +343,7 @@ class PurchaseService(private val db: FushDatabase) {
+             paymentDate = paymentDate
+         )
+-        return SupplierPaymentResult(result.paymentId, result.paymentNo, result.allocatedBase, result.cashBase, result.fxDifferenceBase)
++        SupplierPaymentResult(result.paymentId, result.paymentNo, result.allocatedBase, result.cashBase, result.fxDifferenceBase)
+     }
+ 
+     suspend fun postSupplierPaymentAutoAllocate(
+@@ -386,6 +391,8 @@ class PurchaseService(private val db: FushDatabase) {
+         createdBy: Long,
+         paymentDate: Long
+     ): MultiSupplierPaymentResult {
++        check(db.inTransaction()) { "يجب تنفيذ دفعة المورد والقيد المحاسبي داخل معاملة قاعدة بيانات واحدة" }
++
+         db.requireUserPermission(createdBy, SecurityPermissions.SUPPLIER_PAYMENT_POST)
+         require(allocations.isNotEmpty()) { "يجب تحديد فاتورة واحدة على الأقل للدفع" }
+         require(allocations.map { it.invoiceId }.distinct().size == allocations.size) { "لا يجوز تكرار الفاتورة في نفس الدفعة" }
+@@ -423,6 +430,14 @@ class PurchaseService(private val db: FushDatabase) {
+         val totalOriginal = prepared.sumOf { it.request.amountOriginal }
+         val totalAllocatedBase = prepared.sumOf { it.split.allocatedBase }
+         val totalCashBase = prepared.sumOf { it.split.cashBase }
++        val preparedJournal = prepareSupplierPaymentJournalMulti(
++            invoiceNos = prepared.map { it.invoice.invoiceNo },
++            treasuryAccountId = treasury.accountId,
++            allocatedBase = totalAllocatedBase,
++            cashBase = totalCashBase
++        )
++
+         val paymentNo = numbering.nextDocumentNo("SPAY", paymentDate)
+         val paymentId = db.purchaseDao().insertSupplierPayment(
+             SupplierPaymentEntity(
+@@ -449,14 +464,11 @@ class PurchaseService(private val db: FushDatabase) {
+                 )
+             )
+         }
+-        postSupplierPaymentJournalMulti(
++        insertSupplierPaymentJournalMulti(
+             paymentId = paymentId,
+             paymentNo = paymentNo,
+-            invoiceNos = prepared.map { it.invoice.invoiceNo },
+             currencyCode = currencyCode,
+-            treasuryAccountId = treasury.accountId,
+-            allocatedBase = totalAllocatedBase,
+-            cashBase = totalCashBase,
+             paymentExchangeRate = paymentExchangeRate,
+             paymentDate = paymentDate,
+-            createdBy = createdBy
++            createdBy = createdBy,
++            prepared = preparedJournal
+         )
+         return MultiSupplierPaymentResult(
+             paymentId = paymentId,
+@@ -536,19 +548,12 @@ class PurchaseService(private val db: FushDatabase) {
+         )
+     }
+ 
+-    private suspend fun postSupplierPaymentJournalMulti(
+-        paymentId: Long,
+-        paymentNo: String,
++    private suspend fun prepareSupplierPaymentJournalMulti(
+         invoiceNos: List<String>,
+-        currencyCode: String,
+         treasuryAccountId: Long,
+         allocatedBase: Double,
+-        cashBase: Double,
+-        paymentExchangeRate: Double,
+-        paymentDate: Long,
+-        createdBy: Long
+-    ) {
++        cashBase: Double
++    ): PreparedSupplierPaymentJournal {
+         val payable = requireNotNull(db.accountDao().byCode("2100")) { "حساب الموردين 2100 غير موجود" }
+         val lines = mutableListOf(
+             DraftJournalLine(payable.id, allocatedBase, 0.0),
+@@ -565,7 +570,21 @@ class PurchaseService(private val db: FushDatabase) {
+         }
+         AccountingValidator.validate(lines)
+         val label = if (invoiceNos.size == 1) invoiceNos.first() else "${invoiceNos.size} فواتير: ${invoiceNos.take(3).joinToString(", ")}"
++        return PreparedSupplierPaymentJournal(lines = lines.toList(), label = label)
++    }
++
++    private suspend fun insertSupplierPaymentJournalMulti(
++        paymentId: Long,
++        paymentNo: String,
++        currencyCode: String,
++        paymentExchangeRate: Double,
++        paymentDate: Long,
++        createdBy: Long,
++        prepared: PreparedSupplierPaymentJournal
++    ) {
++        check(db.inTransaction()) { "يجب ترحيل قيد دفعة المورد داخل نفس معاملة قاعدة البيانات" }
+         val entryId = db.journalDao().insertEntry(
+             JournalEntryEntity(
+                 entryNo = "JE-$paymentNo",
+                 entryDate = paymentDate,
+-                description = "دفعة مورد $paymentNo — $label",
++                description = "دفعة مورد $paymentNo — ${prepared.label}",
+                 currencyCode = currencyCode,
+                 exchangeRate = paymentExchangeRate,
+                 sourceType = "SUPPLIER_PAYMENT",
+@@ -574,7 +593,11 @@ class PurchaseService(private val db: FushDatabase) {
+                 createdBy = createdBy
+             )
+         )
+-        db.journalDao().insertLines(lines.map { JournalLineEntity(entryId = entryId, accountId = it.accountId, debit = it.debit, credit = it.credit) })
++        db.journalDao().insertLines(
++            prepared.lines.map {
++                JournalLineEntity(entryId = entryId, accountId = it.accountId, debit = it.debit, credit = it.credit)
++            }
++        )
+     }
+ 
+     private suspend fun postSupplierPaymentJournal(
+diff --git a/app/src/test/java/com/fush/erp/domain/AeAcc010SupplierPaymentAtomicityTest.kt b/app/src/test/java/com/fush/erp/domain/AeAcc010SupplierPaymentAtomicityTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/AeAcc010SupplierPaymentAtomicityTest.kt
+@@ -0,0 +1,82 @@
++package com.fush.erp.domain
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AeAcc010SupplierPaymentAtomicityTest {
++    private val source: String by lazy {
++        val candidates = listOf(
++            File("src/main/java/com/fush/erp/domain/PurchaseService.kt"),
++            File("app/src/main/java/com/fush/erp/domain/PurchaseService.kt")
++        )
++        requireNotNull(candidates.firstOrNull { it.isFile }) {
++            "PurchaseService.kt was not found from ${File(".").absolutePath}"
++        }.readText()
++    }
++
++    @Test
++    fun aeAcc010EverySupplierPaymentEntryPointOwnsATransactionBoundary() {
++        val single = section(source, "suspend fun postSupplierPayment(", "suspend fun postSupplierPaymentAutoAllocate(")
++        val auto = section(source, "suspend fun postSupplierPaymentAutoAllocate(", "suspend fun postSupplierPaymentAllocations(")
++        val multi = section(source, "suspend fun postSupplierPaymentAllocations(", "private suspend fun postSupplierPaymentAllocationsInternal(")
++
++        assertTrue(single.contains("): SupplierPaymentResult = db.withTransaction {"))
++        assertTrue(auto.contains("): MultiSupplierPaymentResult = db.withTransaction {"))
++        assertTrue(multi.contains("): MultiSupplierPaymentResult = db.withTransaction {"))
++    }
++
++    @Test
++    fun aeAcc010JournalPreflightOccursBeforeAnyPaymentMutation() {
++        val internal = section(
++            source,
++            "private suspend fun postSupplierPaymentAllocationsInternal(",
++            "suspend fun reverseSupplierPayment("
++        )
++        val preflight = internal.indexOf("prepareSupplierPaymentJournalMulti(")
++        val numbering = internal.indexOf("numbering.nextDocumentNo(\"SPAY\"")
++        val paymentInsert = internal.indexOf("insertSupplierPayment(")
++        val allocationInsert = internal.indexOf("insertSupplierPaymentAllocation(")
++
++        assertTrue(preflight >= 0)
++        assertTrue(preflight < numbering)
++        assertTrue(preflight < paymentInsert)
++        assertTrue(preflight < allocationInsert)
++    }
++
++    @Test
++    fun aeAcc010PaymentMutationAndJournalWriteStayInOneRoomTransaction() {
++        val internal = section(
++            source,
++            "private suspend fun postSupplierPaymentAllocationsInternal(",
++            "suspend fun reverseSupplierPayment("
++        )
++        val paymentInsert = internal.indexOf("insertSupplierPayment(")
++        val allocationInsert = internal.indexOf("insertSupplierPaymentAllocation(")
++        val journalInsert = internal.indexOf("insertSupplierPaymentJournalMulti(")
++
++        assertTrue(internal.contains("check(db.inTransaction())"))
++        assertTrue(paymentInsert >= 0 && allocationInsert > paymentInsert)
++        assertTrue(journalInsert > allocationInsert)
++        assertFalse(internal.contains("launch("))
++        assertFalse(internal.contains("async("))
++    }
++
++    @Test
++    fun aeAcc010JournalPreflightIsWriteFreeAndValidatesBeforeMutation() {
++        val preflight = section(
++            source,
++            "private suspend fun prepareSupplierPaymentJournalMulti(",
++            "private suspend fun insertSupplierPaymentJournalMulti("
++        )
++        assertTrue(preflight.contains("AccountingValidator.validate(lines)"))
++        assertFalse(preflight.contains("insertSupplierPayment("))
++        assertFalse(preflight.contains("insertSupplierPaymentAllocation("))
++        assertFalse(preflight.contains("insertEntry("))
++        assertFalse(preflight.contains("insertLines("))
++    }
++
++    private fun section(text: String, start: String, end: String): String {
++        val startIndex = text.indexOf(start)
++        require(startIndex >= 0) { "Missing start marker: $start" }
++        val endIndex = text.indexOf(end, startIndex + start.length)
++        require(endIndex > startIndex) { "Missing end marker: $end" }
++        return text.substring(startIndex, endIndex)
++    }
++}
