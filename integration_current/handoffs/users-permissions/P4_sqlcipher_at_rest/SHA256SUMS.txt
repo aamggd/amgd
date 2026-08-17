@@ -1,0 +1,5 @@
+9c53618518f927ce38a6980c1c2eac7c5ca385a88f8d0116b73716c0de3f79f8  FushERP-14.5.54-Plaintext-Baseline-debug.apk
+006d4cf7df7bd388761a521d6b65d514213e959461c7fb0d96b8c8561515f1f1  FushERP-P4-SQLCipher-Central54-debug.apk
+e9cfbd6a79dd69f1221fafda1e52d6262f7e5b411f07481e483b8010a8b6cd9d  FushERP-P4-SQLCipher-Central54-release-unsigned.apk
+aa2ee3674ac476e00d22fb84595d49d79bf48bd5e43c1b9a9a8bf2acb4caca8e  P4_sqlcipher.patch
+c228030e244c913dcd08693f353a764f0b2bead76736d7d270998e819151ca68  P4_sqlcipher.patch.gz.b64
