@@ -75,7 +75,42 @@ jobs:
           PATCH=/tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.patch
           git apply --check "$PATCH"
           git apply "$PATCH"
-          # Intent-to-add makes newly created resource XML files visible to git diff without staging content.
+
+      - name: Apply latest-Central direct-text compatibility overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt')
+          s=p.read_text(encoding='utf-8')
+          old1='Text("أعمار ذمم المورد", style = MaterialTheme.typography.titleSmall)'
+          new1='Text(stringResource(R.string.p2_party_supplier_aging_title), style = MaterialTheme.typography.titleSmall)'
+          old2='Text("تنبيه مطابقة: فرق ${partyMoney(snapshot.reconciliationDifferenceBase)} بين كشف المورد والذمة المحسوبة.", Modifier.padding(9.dp), style = MaterialTheme.typography.bodySmall)'
+          new2='Text(stringResource(R.string.p2_party_supplier_reconciliation_warning, partyMoney(snapshot.reconciliationDifferenceBase)), Modifier.padding(9.dp), style = MaterialTheme.typography.bodySmall)'
+          assert s.count(old1)==1, s.count(old1)
+          assert s.count(old2)==1, s.count(old2)
+          s=s.replace(old1,new1).replace(old2,new2)
+          p.write_text(s,encoding='utf-8')
+
+          resources={
+            Path('central_source/app/src/main/res/values/p2_direct_text.xml'):[
+              '    <string name="p2_party_supplier_aging_title">Supplier Aging</string>',
+              '    <string name="p2_party_supplier_reconciliation_warning">Reconciliation warning: difference of %1$s between the supplier statement and the calculated payable balance.</string>',
+            ],
+            Path('central_source/app/src/main/res/values-ar/p2_direct_text.xml'):[
+              '    <string name="p2_party_supplier_aging_title">أعمار ذمم المورد</string>',
+              '    <string name="p2_party_supplier_reconciliation_warning">تنبيه مطابقة: فرق %1$s بين كشف المورد والذمة المحسوبة.</string>',
+            ],
+          }
+          for rp,lines in resources.items():
+              text=rp.read_text(encoding='utf-8')
+              for line in lines:
+                  key=line.split('name="',1)[1].split('"',1)[0]
+                  assert f'name="{key}"' not in text
+              text=text.replace('</resources>','\n'.join(lines)+'\n</resources>')
+              rp.write_text(text,encoding='utf-8')
+          PY
           git add -N central_source/app/src/main/res/values/p2_direct_text.xml central_source/app/src/main/res/values-ar/p2_direct_text.xml
           git diff --check "$FINAL_CENTRAL_HEAD" -- central_source
 
@@ -111,11 +146,11 @@ jobs:
           enroot=ET.parse(enp).getroot(); arroot=ET.parse(arp).getroot()
           en={x.attrib['name']:''.join(x.itertext()) for x in enroot.findall('string')}
           ar={x.attrib['name']:''.join(x.itertext()) for x in arroot.findall('string')}
-          assert len(en)==1191, len(en)
+          assert len(en)==1193, len(en)
           assert en.keys()==ar.keys()
           arabic=re.compile(r'[\u0600-\u06FF]')
           assert sum(bool(arabic.search(v)) for v in en.values()) == 0
-          assert sum(bool(arabic.search(v)) for v in ar.values()) >= 1100
+          assert sum(bool(arabic.search(v)) for v in ar.values()) >= 1102
           fmt=re.compile(r'%\d+\$[sdfoxegc]')
           for k in en:
               assert sorted(fmt.findall(en[k])) == sorted(fmt.findall(ar[k])), (k,en[k],ar[k])
@@ -200,10 +235,13 @@ jobs:
           cp /tmp/post-p2-inventory.log /tmp/final-evidence/post-p2-inventory.log
           cp ui_p2/extract/summary.json /tmp/final-evidence/post-p2-summary.json
           cp /tmp/final-changed.txt /tmp/final-evidence/changed-files.txt
+          git diff --binary "$FINAL_CENTRAL_HEAD" -- central_source > /tmp/final-evidence/p2-final-central-delta.patch
+          sha256sum /tmp/final-evidence/p2-final-central-delta.patch > /tmp/final-evidence/p2-final-central-delta.patch.sha256
           printf '%s\n' "$FINAL_CENTRAL_HEAD" > /tmp/final-evidence/central-head.txt
           printf '%s\n' "$FINAL_CENTRAL_SOURCE_TREE" > /tmp/final-evidence/central-source-tree.txt
-          printf '%s\n' "$VALIDATED_PATCH_SHA256" > /tmp/final-evidence/p2-patch-sha256.txt
+          printf '%s\n' "$VALIDATED_PATCH_SHA256" > /tmp/final-evidence/p2-original-validated-patch-sha256.txt
           printf '%s\n' "$ROOM_SCHEMA" > /tmp/final-evidence/room-schema.txt
+          printf '%s\n' 'Exact validated P2 patch + 2-string PartyScreens compatibility overlay for Central-added supplier aging UI.' > /tmp/final-evidence/compatibility-note.txt
 
       - name: Ensure Central did not move during final revalidation
         shell: bash
