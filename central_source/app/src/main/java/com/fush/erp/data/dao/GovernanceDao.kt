@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.fush.erp.data.audit.AuditEventMetadata
+import com.fush.erp.data.audit.AuditRuntimeDevice
 import com.fush.erp.data.entity.*
 import kotlinx.coroutines.flow.Flow
 
@@ -55,7 +56,13 @@ interface GovernanceDao {
 
     suspend fun insertAudit(row: AuditEventEntity): Long {
         val sessionVersion = auditSessionVersion(row.userId)
-        return insertAuditRow(AuditEventMetadata.enrich(row, sessionVersion))
+        return insertAuditRow(
+            AuditEventMetadata.enrich(
+                row = row,
+                sessionVersion = sessionVersion,
+                runtimeDeviceInfo = AuditRuntimeDevice.current()
+            )
+        )
     }
 
     @Query("SELECT * FROM audit_events ORDER BY eventAt DESC, id DESC LIMIT 200")

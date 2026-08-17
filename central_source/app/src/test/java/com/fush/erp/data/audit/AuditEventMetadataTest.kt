@@ -24,11 +24,15 @@ class AuditEventMetadataTest {
             source = ""
         )
 
-        val enriched = AuditEventMetadata.enrich(row, sessionVersion = 12)
+        val enriched = AuditEventMetadata.enrich(
+            row = row,
+            sessionVersion = 12,
+            runtimeDeviceInfo = "ANDROID;MANUFACTURER=TEST;MODEL=EMULATOR;SDK=36"
+        )
 
         assertEquals(7L, enriched.userId)
         assertEquals("ACTOR:7;SESSION_VERSION:12", enriched.sessionId)
-        assertEquals("ANDROID", enriched.deviceInfo)
+        assertEquals("ANDROID;MANUFACTURER=TEST;MODEL=EMULATOR;SDK=36", enriched.deviceInfo)
         assertEquals(1_786_910_400_000L, enriched.eventAt)
         assertEquals("JOURNAL_ENTRY", enriched.entityType)
         assertEquals("JE-77", enriched.entityId)
@@ -37,6 +41,24 @@ class AuditEventMetadataTest {
         assertEquals("approved close", enriched.reason)
         assertEquals("status=DRAFT", enriched.oldValue)
         assertEquals("status=POSTED", enriched.newValue)
+    }
+
+    @Test
+    fun `default android marker is upgraded to runtime device context`() {
+        val row = AuditEventEntity(
+            userId = 8,
+            action = "UPDATE",
+            entityType = "MASTER",
+            entityId = "15"
+        )
+
+        val enriched = AuditEventMetadata.enrich(
+            row = row,
+            sessionVersion = 2,
+            runtimeDeviceInfo = "ANDROID;MANUFACTURER=TEST;MODEL=PHONE;SDK=36"
+        )
+
+        assertEquals("ANDROID;MANUFACTURER=TEST;MODEL=PHONE;SDK=36", enriched.deviceInfo)
     }
 
     @Test
@@ -51,7 +73,11 @@ class AuditEventMetadataTest {
             source = "FILE_IMPORT"
         )
 
-        val enriched = AuditEventMetadata.enrich(row, sessionVersion = 9)
+        val enriched = AuditEventMetadata.enrich(
+            row = row,
+            sessionVersion = 9,
+            runtimeDeviceInfo = "ANDROID;MANUFACTURER=TEST;MODEL=OTHER;SDK=36"
+        )
 
         assertEquals("ANDROID_TEST_DEVICE", enriched.deviceInfo)
         assertEquals("SESSION-EXPLICIT", enriched.sessionId)

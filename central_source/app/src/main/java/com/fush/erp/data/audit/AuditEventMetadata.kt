@@ -20,9 +20,17 @@ object AuditEventMetadata {
             "ACTOR:$actorUserId;SESSION_VERSION:$sessionVersion"
         }
 
-    fun enrich(row: AuditEventEntity, sessionVersion: Long?): AuditEventEntity =
+    fun enrich(
+        row: AuditEventEntity,
+        sessionVersion: Long?,
+        runtimeDeviceInfo: String = RUNTIME_DEVICE
+    ): AuditEventEntity =
         row.copy(
-            deviceInfo = row.deviceInfo.ifBlank { RUNTIME_DEVICE },
+            deviceInfo = when {
+                row.deviceInfo.isBlank() || row.deviceInfo == RUNTIME_DEVICE ->
+                    runtimeDeviceInfo.ifBlank { RUNTIME_DEVICE }
+                else -> row.deviceInfo
+            },
             sessionId = row.sessionId.ifBlank { sessionReference(row.userId, sessionVersion) },
             source = row.source.ifBlank { RUNTIME_SOURCE }
         )
