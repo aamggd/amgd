@@ -1,0 +1,177 @@
+name: Central Unified Test v102
+
+on:
+  push:
+    branches: [fush/central-unified-test-build-v102]
+    paths:
+      - '.github/workflows/central-unified-test-v102.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ORIGIN_CENTRAL_HEAD: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  TEST_VERSION_CODE: '102'
+  TEST_VERSION_NAME: '0.15.4.55-central-sales-p1-test1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+  EXPECTED_SIGNER_SHA256: '22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586'
+
+jobs:
+  build-central-v102:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore exact current Central source and set test metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse ${ORIGIN_CENTRAL_HEAD}:central_source)" = "$CENTRAL_SOURCE_TREE"
+          test "$(git rev-parse HEAD:central_source)" = "$CENTRAL_SOURCE_TREE"
+          git diff --quiet "$ORIGIN_CENTRAL_HEAD" HEAD -- central_source
+
+          cp -a central_source release-source
+          cd release-source
+          git init -q
+          git config user.name central-release-ci
+          git config user.email central-release-ci@users.noreply.github.com
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+          git commit -qm 'Exact Central functional source'
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle.kts')
+          s = p.read_text(encoding='utf-8')
+          old_code = 'versionCode = 93'
+          old_name = 'versionName = "0.15.4.54-printing-integrated"'
+          assert s.count(old_code) == 1, s.count(old_code)
+          assert s.count(old_name) == 1, s.count(old_name)
+          s = s.replace(old_code, 'versionCode = 102', 1)
+          s = s.replace(old_name, 'versionName = "0.15.4.55-central-sales-p1-test1"', 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'versionCode = 102' app/build.gradle.kts
+          grep -Fq 'versionName = "0.15.4.55-central-sales-p1-test1"' app/build.gradle.kts
+          ! grep -Eq 'signingConfig|storeFile|storePassword|keyPassword' app/build.gradle.kts
+
+      - name: Verify Room 35 and non-destructive migration chain
+        working-directory: release-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB='app/src/main/java/com/fush/erp/data/FushDatabase.kt'
+          MIG='app/src/main/java/com/fush/erp/data/Migrations.kt'
+          SEC='app/src/main/java/com/fush/erp/data/SecurityMigrations.kt'
+          CON='app/src/main/java/com/fush/erp/data/AppContainer.kt'
+
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
+
+          for i in $(seq 1 31); do
+            j=$((i+1))
+            grep -Fq "MIGRATION_${i}_${j}" "$MIG"
+            grep -Fq "MIGRATION_${i}_${j}" "$CON"
+          done
+          grep -Fq 'MIGRATION_32_33_SECURITY = object : Migration(32, 33)' "$SEC"
+          grep -Fq 'MIGRATION_32_33_SECURITY' "$CON"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS = object : Migration(33, 34)' "$MIG"
+          grep -Fq 'MIGRATION_33_34_FIXED_ASSETS' "$CON"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$MIG"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$CON"
+
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Full Unit Tests
+        working-directory: release-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: assembleRelease
+        working-directory: release-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package version schema and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK='release-source/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+          BADGING="$(${ANDROID_HOME}/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee out/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          echo "$BADGING" | grep -Fq "versionCode='${TEST_VERSION_CODE}'"
+          echo "$BADGING" | grep -Fq "versionName='${TEST_VERSION_NAME}'"
+
+          OUTAPK="out/FushERP-Central-v${TEST_VERSION_CODE}-aligned-unsigned.apk"
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -P 16 -f -v 4 "$APK" "$OUTAPK" >/tmp/zipalign-create.log
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$OUTAPK" | tee out/zipalign-verification.txt
+          sha256sum "$OUTAPK" | tee "${OUTAPK}.sha256"
+
+      - name: Package matching source and verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOP="FushERP_Mobile_Central_v${TEST_VERSION_CODE}"
+          rm -rf "$TOP"
+          mkdir "$TOP"
+          rsync -a --exclude '.git/' --exclude '.gradle/' --exclude '**/build/' release-source/ "$TOP/"
+          zip -qr "out/FushERP-Mobile-Central-v${TEST_VERSION_CODE}-Source.zip" "$TOP"
+          sha256sum "out/FushERP-Mobile-Central-v${TEST_VERSION_CODE}-Source.zip" | tee "out/FushERP-Mobile-Central-v${TEST_VERSION_CODE}-Source.zip.sha256"
+
+          cat > out/BUILD-VERIFICATION.txt <<EOF
+          FUSH ERP Mobile — Central Unified Test Build v${TEST_VERSION_CODE}
+          Origin Central HEAD: ${ORIGIN_CENTRAL_HEAD}
+          Central source tree: ${CENTRAL_SOURCE_TREE}
+          Application ID: ${EXPECTED_APP_ID}
+          versionCode: ${TEST_VERSION_CODE}
+          versionName: ${TEST_VERSION_NAME}
+          Room schema: ${EXPECTED_SCHEMA}
+          Migrations: 1->2 through 31->32, 32->33 SECURITY, 33->34 FIXED_ASSETS, 34->35 ACCOUNTING_P1 — VERIFIED REGISTERED
+          fallbackToDestructiveMigration: ABSENT
+          destructive DB recreation guards: ABSENT
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          zipalign: PASS
+          Signing: performed locally after artifact download with permanent FUSH Recovery key only
+          Required signer SHA-256: ${EXPECTED_SIGNER_SHA256}
+          EOF
+
+      - name: Upload candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Central-v102-Candidate
+          path: out/*
+          if-no-files-found: error
