@@ -27,8 +27,8 @@ The P1 application worktree was reconstructed from this exact Central tree. Old 
 - Artifact: `FushERP-Inventory-P1-Candidate`
 - Artifact ID: `9272870832`
 - Artifact ZIP SHA-256: `1ab3b63dd12846c093ac8b0cad1bcb4880034b16575be8865e368e0c82a24bf7`
-- Exact application patch SHA-256: `4f78ee7c37b439efd9427554433433822416fd669474224cdec00fbb35b6bdc0`
-- Unsigned test APK SHA-256: `e314648845189537de75b2aa77af1b031491327954465dfa639dd4cc4bc0679c`
+- Exact application patch SHA-256: `e5fa0ea7aa097900140e34a0a2ebe69264bbb6d39fdcd65f5c71643db45328a1`
+- Unsigned test APK SHA-256: `a6d69c491117a8342c401316d53c055808f5c1d9a82e28707d100ff872de82c3`
 
 ## Application/test files changed by the exact patch
 
@@ -146,6 +146,6 @@ Existing Central KSP/deprecation warnings remain warnings and were not changed u
 
 ## Exact integration instruction
 
-Do not merge this branch wholesale into Central. Use the validated artifact/patch from workflow run `31982480355`, artifact ID `9272870832`, and verify patch SHA-256 `4f78ee7c37b439efd9427554433433822416fd669474224cdec00fbb35b6bdc0` before applying to the integration branch's accepted Central source. If Central's Room number has advanced, re-number/rebase the **provisional** migration without changing its data-preservation semantics, then rerun migration, targeted, full-unit and release gates.
+Do not merge this branch wholesale into Central. Use the validated artifact/patch from workflow run `31982480355`, artifact ID `9272870832`, and verify patch SHA-256 `e5fa0ea7aa097900140e34a0a2ebe69264bbb6d39fdcd65f5c71643db45328a1` before applying to the integration branch's accepted Central source. If Central's Room number has advanced, re-number/rebase the **provisional** migration without changing its data-preservation semantics, then rerun migration, targeted, full-unit and release gates.
 
 No merge to `fush/main` or `fush/integration-current` was performed by the inventory branch. P2 has not started.
