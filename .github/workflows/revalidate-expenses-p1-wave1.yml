@@ -1,0 +1,182 @@
+name: Revalidate FUSH Expenses P1 on Wave1 Central
+
+on:
+  push:
+    branches: [fush/expenses]
+    paths:
+      - 'phase_expenses_p1_revalidation/**'
+      - '.github/workflows/revalidate-expenses-p1-wave1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_HEAD: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+  CENTRAL_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+  EXACT_PATCH_SHA256: b74c2d5766381a4c2d14ecb664b72baed6260bc4ba6863614530ee2197972a54
+  BASE_SCHEMA: '35'
+  TARGET_SCHEMA: '36'
+  APPLICATION_ID: com.fush.erp.recovery
+
+jobs:
+  revalidate-expenses-p1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout expenses branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact Wave 1 Central
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CENTRAL_HEAD }}
+          path: central
+
+      - name: Verify exact Central identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central rev-parse HEAD)" = "$CENTRAL_HEAD"
+          test "$(git -C central rev-parse "$CENTRAL_HEAD:central_source")" = "$CENTRAL_SOURCE_TREE"
+          grep -q "const val FUSH_DB_SCHEMA_VERSION = $BASE_SCHEMA" central/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q "applicationId = \"$APPLICATION_ID\"" central/central_source/app/build.gradle.kts
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Reapply exact Expenses P1 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d phase_expenses_p1_revalidation/exact-expenses-p1.patch.gz.b64 | gzip -dc > exact-expenses-p1.patch
+          test "$(sha256sum exact-expenses-p1.patch | awk '{print $1}')" = "$EXACT_PATCH_SHA256"
+          rm -rf source
+          cp -a central/central_source source
+          cd source
+          git init -q
+          git config user.email expenses-validation@fush.local
+          git config user.name FUSH-Expenses-Validation
+          git add -A
+          git commit -qm "central-$CENTRAL_HEAD"
+          git apply --check ../exact-expenses-p1.patch
+          git apply --index ../exact-expenses-p1.patch
+          git diff --cached --check
+          git diff --cached --name-only | sort | tee ../expenses-p1-applied-files.txt
+          grep -q 'CustomerMovementIdentity.requireId(request.customerId)' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'approvedExpenseRequestId' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -q 'ExpenseWorkflowRequestEntity::class' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q "const val FUSH_DB_SCHEMA_VERSION = $TARGET_SCHEMA" app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Expenses targeted tests
+        working-directory: source
+        run: >-
+          gradle --no-daemon :app:testDebugUnitTest
+          --tests com.fush.erp.domain.ExpenseLifecyclePolicyTest
+          --tests com.fush.erp.domain.ExpenseClassificationPolicyTest
+          --tests com.fush.erp.domain.ExpenseReportAnalyticsTest
+
+      - name: Accounting Treasury integration regression
+        working-directory: source
+        run: >-
+          gradle --no-daemon :app:testDebugUnitTest
+          --tests com.fush.erp.domain.AccountingIntegrationContractTest
+          --tests com.fush.erp.domain.AccountingP1IntegrityPolicyTest
+          --tests com.fush.erp.domain.TreasuryMovementTypePolicyTest
+          --tests com.fush.erp.domain.TreasuryPartyRequirementPolicyTest
+          --tests com.fush.erp.domain.TreasuryFxMathTest
+          --tests com.fush.erp.domain.TreasuryReconciliationTest
+          --tests com.fush.erp.domain.CustomerMovementIdentityTest
+
+      - name: Full unit tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Room 35 to 36 provisional migration preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'Migration(35, 36)' source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL' source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'expense_workflow_requests' source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          test -f source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          test -f source/app/schemas/com.fush.erp.data.FushDatabase/36.json
+          DB="$RUNNER_TEMP/expenses-p1-wave1-migration.db"
+          sqlite3 "$DB" <<'SQL'
+          PRAGMA foreign_keys=ON;
+          CREATE TABLE treasury_accounts (id INTEGER PRIMARY KEY NOT NULL);
+          CREATE TABLE accounts (id INTEGER PRIMARY KEY NOT NULL);
+          CREATE TABLE central_sentinel (id INTEGER PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+          INSERT INTO treasury_accounts(id) VALUES(1);
+          INSERT INTO accounts(id) VALUES(1);
+          INSERT INTO central_sentinel(id,value) VALUES(1,'wave1-preserve-me');
+          SQL
+          sqlite3 "$DB" < phase_expenses_p1/expense_workflow_migration.sql
+          test "$(sqlite3 "$DB" "SELECT value FROM central_sentinel WHERE id=1;")" = "wave1-preserve-me"
+          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='expense_workflow_requests';")" = "1"
+          test "$(sqlite3 "$DB" "SELECT COUNT(*) FROM pragma_table_info('expense_workflow_requests') WHERE name IN ('approvalStatus','paymentStatus','journalEntryId','partyVoucherId');")" = "4"
+
+      - name: Application ID and no destructive migration checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "applicationId = \"$APPLICATION_ID\"" source/app/build.gradle.kts
+          ! grep -R -q 'fallbackToDestructiveMigration' source/app/src/main/java source/app/build.gradle.kts
+          ! sed -n '/Expenses P1 branch only/,$p' source/app/src/main/java/com/fush/erp/data/Migrations.kt | grep -Eiq 'DROP[[:space:]]+TABLE|DELETE[[:space:]]+FROM|VACUUM'
+          test -s source/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: zipalign release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.0.0/zipalign"
+          IN_APK="source/app/build/outputs/apk/release/app-release-unsigned.apk"
+          OUT_APK="source/app/build/outputs/apk/release/FushERP-Expenses-P1-Wave1-aligned-unsigned.apk"
+          "$ZIPALIGN" -f -P 16 4 "$IN_APK" "$OUT_APK"
+          "$ZIPALIGN" -c -P 16 -v 4 "$OUT_APK"
+          sha256sum "$OUT_APK" | tee expenses-p1-wave1-apk.sha256
+
+      - name: Record exact patch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' "$EXACT_PATCH_SHA256" exact-expenses-p1.patch > exact-expenses-p1.patch.sha256
+          printf 'central_head=%s\ncentral_source_tree=%s\nbase_room=%s\nprovisional_room=%s\napplication_id=%s\nexact_patch_sha256=%s\n' \
+            "$CENTRAL_HEAD" "$CENTRAL_SOURCE_TREE" "$BASE_SCHEMA" "$TARGET_SCHEMA" "$APPLICATION_ID" "$EXACT_PATCH_SHA256" \
+            > expenses-p1-wave1-validation.txt
+
+      - name: Upload revalidation handoff outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Expenses-P1-Wave1-Revalidation
+          path: |
+            source/app/build/outputs/apk/release/FushERP-Expenses-P1-Wave1-aligned-unsigned.apk
+            source/app/schemas/com.fush.erp.data.FushDatabase/36.json
+            exact-expenses-p1.patch
+            exact-expenses-p1.patch.sha256
+            expenses-p1-applied-files.txt
+            expenses-p1-wave1-apk.sha256
+            expenses-p1-wave1-validation.txt
+          if-no-files-found: error
