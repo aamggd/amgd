@@ -78,9 +78,7 @@ jobs:
             set -eu
             # Remove one diagnostic screenshot call that emits binary data through text-mode subprocess.
             sed -i '/adb("exec-out", "screencap", "-p", check=False)/d' backup_recovery_p1/runtime_probe.py
-            python3 backup_recovery_p1/runtime_probe.py \
-              /tmp/runtime-central/central_source/app/build/outputs/apk/debug/app-debug.apk \
-              /tmp/runtime-p1/central_source/app/build/outputs/apk/debug/app-debug.apk
+            python3 backup_recovery_p1/runtime_probe.py /tmp/runtime-central/central_source/app/build/outputs/apk/debug/app-debug.apk /tmp/runtime-p1/central_source/app/build/outputs/apk/debug/app-debug.apk
       - name: Show runtime classification and fatal stacktraces
         if: always()
         shell: bash
