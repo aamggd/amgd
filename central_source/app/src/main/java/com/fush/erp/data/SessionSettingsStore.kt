@@ -9,7 +9,10 @@ class SessionSettingsStore(context: Context) {
 
     fun current(): SessionTimeoutSettings = SessionPolicy.normalize(
         SessionTimeoutSettings(
-            automaticLogoutEnabled = true,
+            automaticLogoutEnabled = prefs.getBoolean(
+                KEY_AUTOMATIC_LOGOUT_ENABLED,
+                SessionPolicy.DEFAULT_AUTOMATIC_LOGOUT_ENABLED
+            ),
             idleTimeoutMinutes = prefs.getLong(KEY_IDLE_TIMEOUT_MINUTES, SessionPolicy.DEFAULT_IDLE_MINUTES),
             maxSessionMinutes = prefs.getLong(KEY_MAX_SESSION_MINUTES, SessionPolicy.DEFAULT_ABSOLUTE_MINUTES)
         )
@@ -18,7 +21,7 @@ class SessionSettingsStore(context: Context) {
     fun save(settings: SessionTimeoutSettings) {
         val safe = SessionPolicy.normalize(settings)
         prefs.edit()
-            .putBoolean(KEY_AUTOMATIC_LOGOUT_ENABLED, true)
+            .putBoolean(KEY_AUTOMATIC_LOGOUT_ENABLED, safe.automaticLogoutEnabled)
             .putLong(KEY_IDLE_TIMEOUT_MINUTES, safe.idleTimeoutMinutes)
             .putLong(KEY_MAX_SESSION_MINUTES, safe.maxSessionMinutes)
             .apply()
