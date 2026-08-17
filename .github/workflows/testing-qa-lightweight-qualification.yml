@@ -26,7 +26,7 @@ jobs:
   qualify-harness:
     name: Lightweight instrumentation qualification only
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
@@ -151,17 +151,24 @@ jobs:
           keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android \
             | grep -E 'SHA256:|Alias name:' | tee evidence/qa-test-signer.txt
 
-      - name: Enable KVM
+      - name: Select emulator acceleration mode
         shell: bash
         run: |
           set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -e /dev/kvm
-          test -r /dev/kvm
-          test -w /dev/kvm
-          ls -l /dev/kvm | tee evidence/kvm-access.txt
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm || true
+          fi
+          if [ -e /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo 'QUALIFICATION_ACCEL=on' >> "$GITHUB_ENV"
+            echo 'KVM=AVAILABLE' | tee evidence/emulator-acceleration.txt
+            ls -l /dev/kvm | tee -a evidence/emulator-acceleration.txt
+          else
+            echo 'QUALIFICATION_ACCEL=off' >> "$GITHUB_ENV"
+            echo 'KVM=UNAVAILABLE; SOFTWARE_EMULATION=ENABLED' | tee evidence/emulator-acceleration.txt
+          fi
 
       - name: Run lightweight qualification emulator gate only
         shell: bash
@@ -182,7 +189,7 @@ jobs:
             -no-snapshot \
             -noaudio \
             -no-boot-anim \
-            -accel on \
+            -accel "$QUALIFICATION_ACCEL" \
             > evidence/emulator-console.txt 2>&1 &
           EMULATOR_PID=$!
           cleanup() {
