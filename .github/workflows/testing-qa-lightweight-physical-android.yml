@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
 
       - name: Require authorized physical Android device
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
@@ -89,7 +89,7 @@ jobs:
           Get-Content evidence/physical-device-selection.txt
 
       - name: Prove exact Central identity and prepare disposable test copy
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           Remove-Item -Recurse -Force -ErrorAction SilentlyContinue exact-source, work-source, exact-archive
@@ -123,7 +123,7 @@ jobs:
           $roomHit.Line | Set-Content -Encoding utf8 evidence/room-schema.txt
 
       - name: Inject qualification-only tests and compatible Room test runtime
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $buildFile = 'work-source/app/build.gradle.kts'
@@ -172,7 +172,7 @@ jobs:
           run-id: ${{ env.CENTRAL_CANDIDATE_RUN_ID }}
 
       - name: Verify exact Central APK evidence hash
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $apk = Join-Path 'exact-central-candidate' $env:CENTRAL_CANDIDATE_APK
@@ -193,7 +193,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install required Android SDK packages only
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           cmd /c "echo y|sdkmanager --licenses >nul 2>&1"
@@ -206,7 +206,7 @@ jobs:
           gradle-version: '9.4.1'
 
       - name: Prepare deterministic QA-only signer
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $androidDir = Join-Path $env:USERPROFILE '.android'
@@ -219,15 +219,15 @@ jobs:
           (& keytool -list -v -keystore $keystore -storepass android 2>&1 | Out-String) | Set-Content -Encoding utf8 evidence/qa-test-signer.txt
 
       - name: Run physical-device lightweight qualification only
-        shell: pwsh
+        shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File qa/qualification/run_physical_device_qualification.ps1
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File qa/qualification/run_physical_device_qualification.ps1
           if ($LASTEXITCODE -ne 0) { throw "Physical-device qualification failed with exit code $LASTEXITCODE" }
 
       - name: Record qualification failure only
         if: failure()
-        shell: pwsh
+        shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path evidence | Out-Null
           if (-not (Test-Path evidence/LIGHTWEIGHT-PHYSICAL-DEVICE-QUALIFICATION-STATUS.txt)) {
