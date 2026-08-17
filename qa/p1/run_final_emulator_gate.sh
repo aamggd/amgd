@@ -24,6 +24,39 @@ capture_runtime_diagnostics() {
   adb shell dumpsys package com.fush.erp.recovery.test > "$GITHUB_WORKSPACE/evidence/${prefix}-test-package.txt" 2>&1 || true
 }
 
+ensure_android_test_runner() {
+  local build_file="$GITHUB_WORKSPACE/work-source/app/build.gradle.kts"
+  local runner_coordinate='androidx.test:runner:1.7.0'
+
+  # The prior device attempt proved the generated instrumentation manifest was wired to
+  # AndroidJUnitRunner, but that class was not packaged in the QA test APK. Patch only the
+  # disposable QA work copy, rebuild androidTest, and prove the runner class exists before install.
+  if ! grep -Fq "$runner_coordinate" "$build_file"; then
+    python3 - <<'PY'
+from pathlib import Path
+p = Path('app/build.gradle.kts')
+text = p.read_text(encoding='utf-8')
+anchor = '    androidTestImplementation("androidx.test:core-ktx:1.7.0")\n'
+line = '    androidTestImplementation("androidx.test:runner:1.7.0")\n'
+if line not in text:
+    if anchor not in text:
+        raise SystemExit('QA androidTest dependency anchor not found')
+    p.write_text(text.replace(anchor, anchor + line), encoding='utf-8')
+PY
+  fi
+
+  grep -Fn "$runner_coordinate" "$build_file" \
+    | tee "$GITHUB_WORKSPACE/evidence/android-test-runner-dependency.txt"
+  gradle --no-daemon :app:assembleDebugAndroidTest
+
+  local test_apk="$GITHUB_WORKSPACE/work-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+  test -s "$test_apk"
+  unzip -p "$test_apk" 'classes*.dex' | strings \
+    | grep -m1 -E 'androidx/test/runner/AndroidJUnitRunner|AndroidJUnitRunner' \
+    | tee "$GITHUB_WORKSPACE/evidence/android-test-runner-class.txt"
+  test -s "$GITHUB_WORKSPACE/evidence/android-test-runner-class.txt"
+}
+
 run_instrumentation_class() {
   local class_name="$1"
   local evidence_name="$2"
@@ -69,6 +102,9 @@ done
 adb shell cmd package list packages >/dev/null
 adb shell am get-current-user >/dev/null
 sleep 10
+
+cd "$GITHUB_WORKSPACE/work-source"
+ensure_android_test_runner
 
 CANDIDATE="$GITHUB_WORKSPACE/exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
 SIGNED="$GITHUB_WORKSPACE/evidence/FushERP-Central-v102-QA-test-signed.apk"
