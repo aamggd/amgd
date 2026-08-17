@@ -1,0 +1,231 @@
+name: Build Purchases Suppliers AE-ACC-010 Atomic Payment
+
+on:
+  push:
+    branches: [fush/purchases-suppliers]
+    paths:
+      - 'purchases_suppliers_ae_acc_010/ae_acc_010_atomic_supplier_payment.patch'
+      - '.github/workflows/build-purchases-suppliers-ae-acc-010.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_REPO_TREE: '3859a7186ac837ea434129a73d9056a25c29f1f3'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+  PATCH_SHA256: 'f37b4cc317e3c672fb87628bd8dc6e5e84ce32230426d5adf02349fe524f3294'
+
+jobs:
+  validate-ae-acc-010:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout specialist branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin exact Central and patch identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse ${CENTRAL_SHA}^{tree})" = "$CENTRAL_REPO_TREE"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+          echo "$PATCH_SHA256  purchases_suppliers_ae_acc_010/ae_acc_010_atomic_supplier_payment.patch" | sha256sum -c -
+
+      - name: Export exact Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source output
+          mkdir -p work-source output
+          git archive "${CENTRAL_SHA}:central_source" | tar -x -C work-source
+          cd work-source
+          git init -q
+          git config user.name 'FUSH Purchases Suppliers AE-ACC-010'
+          git config user.email purchases-suppliers@fush.local
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+          git commit -qm 'Exact Central ddae764 source'
+
+      - name: Verify Central safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Apply exact AE-ACC-010 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          git apply --check --recount ../purchases_suppliers_ae_acc_010/ae_acc_010_atomic_supplier_payment.patch
+          git apply --recount ../purchases_suppliers_ae_acc_010/ae_acc_010_atomic_supplier_payment.patch
+          git add -A
+          git diff --cached --check
+
+          cat > /tmp/expected-files <<'EOF'
+          app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          app/src/test/java/com/fush/erp/domain/AeAcc010SupplierPaymentAtomicityTest.kt
+          EOF
+          git diff --cached --name-only | sort > /tmp/actual-files
+          sort /tmp/expected-files -o /tmp/expected-files
+          diff -u /tmp/expected-files /tmp/actual-files
+
+          test "$(git diff --cached --name-only | grep -c '^app/src/main/java/com/fush/erp/data/FushDatabase.kt$' || true)" -eq 0
+          test "$(git diff --cached --name-only | grep -c '^app/src/main/java/com/fush/erp/data/Migrations.kt$' || true)" -eq 0
+          test "$(git diff --cached --name-only | grep -c '^app/src/main/java/com/fush/erp/data/AppContainer.kt$' || true)" -eq 0
+          test "$(git diff --cached --name-only | grep -c '^app/schemas/' || true)" -eq 0
+          test "$(git diff --cached --name-only | grep -c '^app/build.gradle.kts$' || true)" -eq 0
+
+          grep -Fq 'check(db.inTransaction())' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -Fq 'prepareSupplierPaymentJournalMulti' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          grep -Fq 'insertSupplierPaymentJournalMulti' app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+          git commit -qm 'AE-ACC-010 atomic supplier payment validated source'
+
+      - name: Source-order atomicity contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('work-source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt').read_text(encoding='utf-8')
+
+          def section(start, end):
+              a = p.index(start)
+              b = p.index(end, a)
+              return p[a:b]
+
+          single = section('suspend fun postSupplierPayment(', 'suspend fun postSupplierPaymentAutoAllocate(')
+          auto = section('suspend fun postSupplierPaymentAutoAllocate(', 'suspend fun postSupplierPaymentAllocations(')
+          multi = section('suspend fun postSupplierPaymentAllocations(', 'private suspend fun postSupplierPaymentAllocationsInternal(')
+          internal = section('private suspend fun postSupplierPaymentAllocationsInternal(', 'suspend fun reverseSupplierPayment(')
+          preflight = internal.index('prepareSupplierPaymentJournalMulti(')
+          number = internal.index('numbering.nextDocumentNo("SPAY"')
+          payment = internal.index('insertSupplierPayment(')
+          allocation = internal.index('insertSupplierPaymentAllocation(')
+          journal = internal.index('insertSupplierPaymentJournalMulti(')
+
+          assert '): SupplierPaymentResult = db.withTransaction {' in single
+          assert '): MultiSupplierPaymentResult = db.withTransaction {' in auto
+          assert '): MultiSupplierPaymentResult = db.withTransaction {' in multi
+          assert 'check(db.inTransaction())' in internal
+          assert 0 <= preflight < number < payment < allocation < journal
+          assert 'launch(' not in internal and 'async(' not in internal
+          PY
+
+      - name: Dedicated AE-ACC-010 regression test
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.AeAcc010SupplierPaymentAtomicityTest'
+
+      - name: Purchases targeted tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.PurchaseMathTest' \
+            --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest'
+
+      - name: Cross accounting and AP tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
+            --tests 'com.fush.erp.domain.PartyStatementMathTest' \
+            --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.AccountingReconciliationMathTest' \
+            --tests 'com.fush.erp.domain.AccountingReportMathTest' \
+            --tests 'com.fush.erp.domain.AccountingValidatorTest' \
+            --tests 'com.fush.erp.domain.TreasuryReconciliationTest' \
+            --tests 'com.fush.erp.domain.TreasuryReportMathTest'
+
+      - name: Full unit regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify Release Room AppID and no destructive path
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=work-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' work-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f work-source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' work-source/app/src/main work-source/app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' work-source/app/src/main/java/com/fush/erp
+          BADGING="$($ANDROID_SDK_ROOT/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee output/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" output/FushERP-Purchases-Suppliers-AE-ACC-010-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 output/FushERP-Purchases-Suppliers-AE-ACC-010-aligned-unsigned.apk | tee output/zipalign-verification.txt
+          (cd work-source && git archive --format=zip --output=../output/FushERP-Mobile-Purchases-Suppliers-AE-ACC-010-Source.zip HEAD)
+          sha256sum output/* > output/SHA256SUMS.txt
+          cat > output/HOTFIX_STATUS.txt <<EOF
+          DEFECT=AE-ACC-010 supplier payment atomicity
+          CENTRAL_SHA=$CENTRAL_SHA
+          CENTRAL_SOURCE_TREE=$CENTRAL_SOURCE_TREE
+          PATCH_SHA256=$PATCH_SHA256
+          APPLICATION_ID=$EXPECTED_APP_ID
+          ROOM_SCHEMA=$EXPECTED_SCHEMA
+          SCHEMA_CHANGED=NO
+          DB_MIGRATION_CHANGED=NO
+          PACKAGE_CHANGED=NO
+          DESTRUCTIVE_PATH=NO
+          DEDICATED_REGRESSION=PASS
+          PURCHASES_TARGETED=PASS
+          CROSS_ACCOUNTING_AP=PASS
+          FULL_UNIT=PASS
+          RELEASE_BUILD=PASS
+          ZIPALIGN=PASS
+          SIGNING=UNSIGNED_TEST_ARTIFACT
+          EOF
+
+      - name: Upload AE-ACC-010 validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Purchases-Suppliers-AE-ACC-010-Atomic-Payment
+          path: output/
+          if-no-files-found: error
