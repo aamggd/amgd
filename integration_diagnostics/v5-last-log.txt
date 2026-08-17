@@ -1,500 +1,481 @@
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.values.at
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.values.at
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.values
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.values.at
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab.values.s
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab_i
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/caches-jvm/lookups/lookups.tab_i.len
-+central_source/app/build/kotlin/compileDebugKotlin/cacheable/last-build.bin
-+central_source/app/build/kotlin/compileDebugKotlin/classpath-snapshot/shrunk-classpath-snapshot.bin
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/inputs/source-to-output.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/counters.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab.values.at
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab_i
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/caches-jvm/lookups/lookups.tab_i.len
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/cacheable/last-build.bin
-+central_source/app/build/kotlin/compileDebugUnitTestKotlin/classpath-snapshot/shrunk-classpath-snapshot.bin
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/outputs-generated-for-plugins.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/compilerPluginFiles/sources-referenced-by-plugins.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/inputs/source-to-output.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-attributes.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/class-fq-name-to-source.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/constants.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/internal-name-to-source.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/package-parts.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/proto.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/source-to-classes.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/subtypes.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/jvm/kotlin/supertypes.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/counters.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/file-to-id.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/id-to-file.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.keystream.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.values
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.values.at
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab.values.s
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab_i
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/caches-jvm/lookups/lookups.tab_i.len
-+central_source/app/build/kotlin/compileReleaseKotlin/cacheable/last-build.bin
-+central_source/app/build/kotlin/compileReleaseKotlin/classpath-snapshot/shrunk-classpath-snapshot.bin
-+central_source/app/build/kspCaches/debug/ap-classpath-entries.bin
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/FushDatabase_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/AccountDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/AccountingDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/AdvancedInventoryDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/CurrencyDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/CustomerDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/EmployeeDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/ExpenseDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/FixedAssetDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/GeographyDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/GovernanceDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/ItemDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/ItemUnitConversionDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/JournalDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/MaintenanceDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/NumberSequenceDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/PartyDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/PlanningDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/ProductionDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/PurchaseDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/RecipeDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/ReportDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/RiskControlDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/SalesDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/SalesRepresentativeDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/SecurityDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/StockDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/SupplierDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/UnitDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/UserDao_Impl.kt
-+central_source/app/build/kspCaches/debug/backups/kotlin/com/fush/erp/data/dao/WarehouseDao_Impl.kt
-+central_source/app/build/kspCaches/debug/caches.uptodate
-+central_source/app/build/kspCaches/debug/classpath-entries.bin
-+central_source/app/build/kspCaches/debug/classpath-structure.bin
-+central_source/app/build/kspCaches/debug/sealed
-+central_source/app/build/kspCaches/debug/sourceToOutputs
-+central_source/app/build/kspCaches/debug/symbolLookups/counters.tab
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab.keystream
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab.keystream.len
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab.len
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab.values.at
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab_i
-+central_source/app/build/kspCaches/debug/symbolLookups/file-to-id.tab_i.len
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab.keystream
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab.keystream.len
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab.len
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab.values.at
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab_i
-+central_source/app/build/kspCaches/debug/symbolLookups/id-to-file.tab_i.len
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab.keystream
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab.keystream.len
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab.len
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab.values.at
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab_i
-+central_source/app/build/kspCaches/debug/symbolLookups/lookups.tab_i.len
-+central_source/app/build/kspCaches/debug/symbols
-+central_source/app/build/kspCaches/debugUnitTest/ap-classpath-entries.bin
-+central_source/app/build/kspCaches/debugUnitTest/caches.uptodate
-+central_source/app/build/kspCaches/debugUnitTest/classpath-entries.bin
-+central_source/app/build/kspCaches/debugUnitTest/classpath-structure.bin
-+central_source/app/build/kspCaches/debugUnitTest/sealed
-+central_source/app/build/kspCaches/debugUnitTest/sourceToOutputs
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/counters.tab
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab.keystream
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab.keystream.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab.values.at
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab_i
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/file-to-id.tab_i.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab.keystream
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab.keystream.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab.values.at
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab_i
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/id-to-file.tab_i.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab.keystream
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab.keystream.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab.len
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab.values.at
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab_i
-+central_source/app/build/kspCaches/debugUnitTest/symbolLookups/lookups.tab_i.len
-+central_source/app/build/kspCaches/debugUnitTest/symbols
-+central_source/app/build/kspCaches/release/ap-classpath-entries.bin
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/FushDatabase_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/AccountDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/AccountingDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/AdvancedInventoryDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/CurrencyDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/CustomerDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/EmployeeDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/ExpenseDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/FixedAssetDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/GeographyDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/GovernanceDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/ItemDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/ItemUnitConversionDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/JournalDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/MaintenanceDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/NumberSequenceDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/PartyDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/PlanningDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/ProductionDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/PurchaseDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/RecipeDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/ReportDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/RiskControlDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/SalesDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/SalesRepresentativeDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/SecurityDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/StockDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/SupplierDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/UnitDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/UserDao_Impl.kt
-+central_source/app/build/kspCaches/release/backups/kotlin/com/fush/erp/data/dao/WarehouseDao_Impl.kt
-+central_source/app/build/kspCaches/release/caches.uptodate
-+central_source/app/build/kspCaches/release/classpath-entries.bin
-+central_source/app/build/kspCaches/release/classpath-structure.bin
-+central_source/app/build/kspCaches/release/sealed
-+central_source/app/build/kspCaches/release/sourceToOutputs
-+central_source/app/build/kspCaches/release/symbolLookups/counters.tab
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab.keystream
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab.keystream.len
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab.len
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab.values.at
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab_i
-+central_source/app/build/kspCaches/release/symbolLookups/file-to-id.tab_i.len
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab.keystream
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab.keystream.len
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab.len
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab.values.at
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab_i
-+central_source/app/build/kspCaches/release/symbolLookups/id-to-file.tab_i.len
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab.keystream
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab.keystream.len
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab.len
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab.values.at
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab_i
-+central_source/app/build/kspCaches/release/symbolLookups/lookups.tab_i.len
-+central_source/app/build/kspCaches/release/symbols
-+central_source/app/build/outputs/apk/release/app-release-unsigned.apk
-+central_source/app/build/outputs/apk/release/baselineProfiles/0/app-release-unsigned.dm
-+central_source/app/build/outputs/apk/release/baselineProfiles/1/app-release-unsigned.dm
-+central_source/app/build/outputs/apk/release/output-metadata.json
-+central_source/app/build/outputs/logs/manifest-merger-debug-report.txt
-+central_source/app/build/outputs/logs/manifest-merger-release-report.txt
-+central_source/app/build/outputs/sdk-dependencies/release/sdkDependencies.txt
-+central_source/app/build/reports/resources_config_map_file/release/resources.cfg
-+central_source/app/build/reports/tests/testDebugUnitTest/-GpoJUyo6to/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/0dqUdSr6vCk/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/0mv2ZIm-K9A/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/3oTkZE1bRXI/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/5SWXfspr0Qs/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/6o0DVSHFmoY/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/DF6U1-IdJyc/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/GAIF_dSPpbs/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/GFroBFH1DEQ/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/Gl4Rsa1HUBQ/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/JrgVWAWoK_I/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/JyLxMZm6MPQ/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/KHmrjBFl9cg/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/L7XFx1bHxY8/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/M3OJxl4trcc/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/NPkOD3Z9Is0/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/PVaJzQSQohE/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/PYeC7uVc75g/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/Rleuvk_3OoE/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/Tp8gxUYGY5I/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/U7zP0y9R6Oc/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/V-DFoJvGLr4/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/VEdWozJxLgo/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/VIrGLpnZDGI/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/Yg4sGKx6TBI/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/_3QVHLE2HyM/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/a8KFXG-2Iv8/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/aNZE8ccIf-k/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/akP6blT0cSw/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/coDLvZvx2K4/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/cq7HwpeCKPg/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/css/base-style.css
-+central_source/app/build/reports/tests/testDebugUnitTest/css/style.css
-+central_source/app/build/reports/tests/testDebugUnitTest/d8zG7Opp-e4/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/f_kcWYSL9hU/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/f_piGBx9znQ/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/gV_JZlIaOmE/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/gk-_Gef2fZY/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/hingsct6gTc/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/js/report.js
-+central_source/app/build/reports/tests/testDebugUnitTest/k-twxeBSARo/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/k6t5oaoHV_s/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/l5_HE0KDmJY/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/nFQHVMyTjqg/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/oZnvKaFVvNs/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/r94ZfEEak0g/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/s1SKt5gRx9s/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/teSW8iHNum4/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/uJWq6KG0VPg/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/uMyh2lyY9TE/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/wvdGvxTuyi8/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/y3DffWtMdIY/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/ylQMTwjiuJ4/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/zhaI6mYoCUc/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/zoSETlQf3gA/index.html
-+central_source/app/build/reports/tests/testDebugUnitTest/zya2-e3qRLA/index.html
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.backup.BackupArchiveCodecTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.backup.RestoreFileSafetyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.data.AccountingJournalIntegrityGuardsTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AccountingIntegrationContractTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AccountingP1IntegrityPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AccountingReconciliationMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AccountingReportMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AccountingValidatorTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AeAcc010PurchaseReturnCashRefundTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AgingReportMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.AutoNumberFormatTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.CashRefundSettlementPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.ControlAccountPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.CustomerArMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.CustomerMovementIdentityTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.ExpenseClassificationPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.ExpenseReportAnalyticsTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.FixedAssetMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.GeographyMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.HrRulesTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.InventoryCountMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.InventoryMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.InventoryReportMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.MaintenanceMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.MasterDataMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.MfaSecurityTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PartyStatementMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PasswordHasherTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PeriodComparisonMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PermissionCatalogTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PlanningMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.ProductionMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.PurchaseMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.ReportMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.RiskControlMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SalesMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SecurityPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SettlementAllocationMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.StockLedgerInvariantTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SupplierApMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SupplierMovementIdentityTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.SupplierProfileMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.TreasuryFxMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.TreasuryMovementTypePolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.TreasuryPartyRequirementPolicyTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.TreasuryReconciliationTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.TreasuryReportMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.WarehouseReorderMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.WarehouseTransferMathTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.domain.audit.AuditEventCatalogTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.ui.FushDesignSystemContractTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.ui.export.SpreadsheetCellValueTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/TEST-com.fush.erp.ui.screens.AccountingSectionExportTest.xml
-+central_source/app/build/test-results/testDebugUnitTest/binary/output-events.bin
-+central_source/app/build/test-results/testDebugUnitTest/binary/results-generic.bin
-+central_source/app/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin
-+central_source/app/build/tmp/compileReleaseJavaWithJavac/previous-compilation-data.bin
+
+===== V5 EXEC 4: Android SDK packages =====
+Loading package information...                                                  Loading local repository...                                                     [                                       ] 3% Loading local repository...        [                                       ] 3% Fetch remote repository...         [=                                      ] 3% Fetch remote repository...         [=                                      ] 4% Fetch remote repository...         [=                                      ] 5% Fetch remote repository...         [==                                     ] 5% Fetch remote repository...         [==                                     ] 6% Fetch remote repository...         [==                                     ] 7% Fetch remote repository...         [==                                     ] 7% Computing updates...               [===                                    ] 8% Computing updates...               [===                                    ] 10% Computing updates...              [=======================================] 100% Computing updates...             
+
+
+===== V5 EXEC 6: Pin frozen inputs =====
+From https://github.com/aamggd/amgd
+ * branch            fush/integration-current -> FETCH_HEAD
+ * branch            fush/users-permissions-session-hotfix -> FETCH_HEAD
+ * branch            fush/expenses -> FETCH_HEAD
+ * branch            fush/backup-recovery -> FETCH_HEAD
+Preparing worktree (new branch 'fush/session-expenses-backup-candidate')
+HEAD is now at ff9b2a1 Central record: Wave1 remediations ready for final QA
+
+===== V5 EXEC 7: Session exact patch / allowlist =====
+
+===== V5 EXEC 8: Session targeted =====
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:processDebugNavigationResources
+> Task :app:parseDebugLocalResources
+> Task :app:javaPreCompileDebug
+> Task :app:generateDebugRFile
+> Task :app:checkDebugAarMetadata
+> Task :app:mapDebugSourceSetPaths
+> Task :app:compileDebugNavigationResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+
+> Task :app:kspDebugKotlin
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt:115: warehouseId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt:143: unitId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt:247: warehouseId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt:276: unitId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PartyEntities.kt:26: treasuryAccountId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PartyEntities.kt:26: offsetAccountId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/dao/AccountingDao.kt:267: The DAO function return type (kotlin.collections.List<kotlin.Long?>) with the nullable type argument is meaningless because for now Room will never put a null value in a result.
+
+> Task :app:compileDebugKotlin
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/backup/BackupRestoreManager.kt:191:68 Unnecessary non-null assertion (!!) on a non-null receiver of type 'File'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt:49:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt:372:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt:692:126 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt:488:46 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt:504:46 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt:34:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt:58:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:35:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:36:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:38:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:41:31 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:299:55 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:376:64 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:449:44 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:450:45 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:555:9 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:556:9 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:795:62 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:801:26 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:518:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:621:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:875:114 Unnecessary safe call on a non-null receiver of type '(CustomerReceiptEntity) -> Unit'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:1069:407 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1714:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1718:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1722:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt:60:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt:216:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt:511:234 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt:1036:33 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt:1057:33 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:263:9 'fun TabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryTabRow and SecondaryTabRow.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:628:67 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:629:69 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:processDebugJavaRes
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:kspDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:copyRoomSchemas NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes
+> Task :app:testDebugUnitTest
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787010402938.json
+
+BUILD SUCCESSFUL in 2m 33s
+28 actionable tasks: 28 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.4.1/userguide/configuration_cache_enabling.html
+
+===== V5 EXEC 9: Session full unit =====
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:kspDebugKotlin UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:kspDebugUnitTestKotlin UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:copyRoomSchemas NO-SOURCE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787010556165.json
+
+BUILD SUCCESSFUL in 13s
+28 actionable tasks: 1 executed, 27 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.4.1/userguide/configuration_cache_enabling.html
+
+===== V5 EXEC 10: Session release and safety =====
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs
+> Task :app:generateReleaseBuildConfig
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:processReleaseNavigationResources
+> Task :app:stripReleaseDebugSymbols
+> Task :app:extractReleaseNativeSymbolTables
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:parseReleaseLocalResources
+> Task :app:javaPreCompileRelease
+> Task :app:generateReleaseRFile
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:checkReleaseAarMetadata
+> Task :app:compileReleaseNavigationResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:extractDeepLinksRelease
+> Task :app:mergeReleaseResources
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:kspReleaseKotlin
+> Task :app:processReleaseManifestForPackage
+> Task :app:mergeExtDexRelease
+
+> Task :app:kspReleaseKotlin
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt:115: warehouseId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt:143: unitId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt:247: warehouseId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt:276: unitId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PartyEntities.kt:26: treasuryAccountId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/entity/PartyEntities.kt:26: offsetAccountId column references a foreign key but it is not part of an index. This may trigger full table scans whenever parent table is modified so you are highly advised to create an index that covers this column.
+w: [ksp] /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/dao/AccountingDao.kt:267: The DAO function return type (kotlin.collections.List<kotlin.Long?>) with the nullable type argument is meaningless because for now Room will never put a null value in a result.
+
+> Task :app:mergeReleaseArtProfile
+> Task :app:processReleaseResources
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:extractProguardFiles
+> Task :app:collectReleaseDependencies
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:optimizeReleaseResources
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:compileReleaseKotlin
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/backup/BackupRestoreManager.kt:191:68 Unnecessary non-null assertion (!!) on a non-null receiver of type 'File'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt:49:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt:372:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt:692:126 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt:488:46 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt:504:46 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/GeographyScreens.kt:34:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt:58:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:35:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:36:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:38:5 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:41:31 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:299:55 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:376:64 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:449:44 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:450:45 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:555:9 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:556:9 This annotation is currently applied to the value parameter only, but in the future it will also be applied to field.
+- To opt in to applying to both value parameter and field, add '-Xannotation-default-target=param-property' to your compiler arguments.
+- To keep applying to the value parameter only, use the '@param:' annotation target.
+
+See https://youtrack.jetbrains.com/issue/KT-73255 for more details.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:795:62 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt:801:26 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:518:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:621:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:875:114 Unnecessary safe call on a non-null receiver of type '(CustomerReceiptEntity) -> Unit'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt:1069:407 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1714:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1718:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt:1722:31 Unnecessary safe call on a non-null receiver of type 'BalanceSheetReport'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt:60:13 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt:216:9 'fun ScrollableTabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., edgePadding: Dp = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryScrollableTabRow and SecondaryScrollableTabRow tab variants.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt:511:234 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt:1036:33 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt:1057:33 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes ExposedDropdownMenuAnchorType and enabled parameters.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:263:9 'fun TabRow(selectedTabIndex: Int, modifier: Modifier = ..., containerColor: Color = ..., contentColor: Color = ..., indicator: ComposableFunction1<List<TabPosition>, Unit> = ..., divider: ComposableFunction0<Unit> = ..., tabs: ComposableFunction0<Unit>): Unit' is deprecated. Replaced with PrimaryTabRow and SecondaryTabRow.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:628:67 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+w: file:///tmp/candidate/central_source/app/src/main/java/com/fush/erp/ui/screens/SecurityScreens.kt:629:69 Elvis operator (?:) always returns the left operand of non-nullable type 'Long'.
+
+> Task :app:compileReleaseJavaWithJavac
+> Task :app:dexBuilderRelease
+> Task :app:copyRoomSchemas NO-SOURCE
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:processReleaseJavaRes
+> Task :app:mergeDexRelease
+> Task :app:mergeReleaseJavaResource
+> Task :app:compileReleaseArtProfile
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1787010570128.json
+
+BUILD SUCCESSFUL in 4m 10s
+50 actionable tasks: 50 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.4.1/userguide/configuration_cache_enabling.html
+Verifying alignment of app/build/outputs/apk/release/app-release-unsigned.apk (4)...
+      87 META-INF/com/android/build/gradle/app-metadata.properties (OK - compressed)
+     208 META-INF/version-control-info.textproto (OK - compressed)
+     316 assets/dexopt/baseline.prof (OK)
+   12436 assets/dexopt/baseline.profm (OK)
+   13014 classes.dex (OK - compressed)
+ 4811796 classes2.dex (OK - compressed)
+ 8017749 classes3.dex (OK - compressed)
+10846208 lib/arm64-v8a/libandroidx.graphics.path.so (OK)
+10862592 lib/armeabi-v7a/libandroidx.graphics.path.so (OK)
+10878976 lib/x86/libandroidx.graphics.path.so (OK)
+10895360 lib/x86_64/libandroidx.graphics.path.so (OK)
+10906167 DebugProbesKt.bin (OK - compressed)
+10907028 META-INF/androidx.activity_activity-compose.version (OK)
+10907112 META-INF/androidx.activity_activity-ktx.version (OK)
+10907192 META-INF/androidx.activity_activity.version (OK)
+10907292 META-INF/androidx.annotation_annotation-experimental.version (OK)
+10907376 META-INF/androidx.arch.core_core-runtime.version (OK - compressed)
+10907512 META-INF/androidx.autofill_autofill.version (OK)
+10907608 META-INF/androidx.compose.animation_animation-core.version (OK)
+10907700 META-INF/androidx.compose.animation_animation.version (OK)
+10907800 META-INF/androidx.compose.foundation_foundation-layout.version (OK)
+10907892 META-INF/androidx.compose.foundation_foundation.version (OK)
+10907984 META-INF/androidx.compose.material3_material3.version (OK)
+10908084 META-INF/androidx.compose.material_material-icons-core.version (OK)
+10908180 META-INF/androidx.compose.material_material-ripple.version (OK)
+10908280 META-INF/androidx.compose.runtime_runtime-annotation.version (OK)
+10908376 META-INF/androidx.compose.runtime_runtime-retain.version (OK)
+10908472 META-INF/androidx.compose.runtime_runtime-saveable.version (OK)
+10908560 META-INF/androidx.compose.runtime_runtime.version (OK)
+10908648 META-INF/androidx.compose.ui_ui-geometry.version (OK)
+10908736 META-INF/androidx.compose.ui_ui-graphics.version (OK)
+10908820 META-INF/androidx.compose.ui_ui-text.version (OK)
+10908912 META-INF/androidx.compose.ui_ui-tooling-preview.version (OK)
+10908996 META-INF/androidx.compose.ui_ui-unit.version (OK)
+10909080 META-INF/androidx.compose.ui_ui-util.version (OK)
+10909156 META-INF/androidx.compose.ui_ui.version (OK)
+10909232 META-INF/androidx.core_core-ktx.version (OK)
+10909316 META-INF/androidx.core_core-viewtree.version (OK)
+10909388 META-INF/androidx.core_core.version (OK)
+10909492 META-INF/androidx.customview_customview-poolingcontainer.version (OK)
+10909580 META-INF/androidx.documentfile_documentfile.version (OK)
+10909676 META-INF/androidx.dynamicanimation_dynamicanimation.version (OK)
+10909752 META-INF/androidx.emoji2_emoji2.version (OK)
+10909836 META-INF/androidx.graphics_graphics-path.version (OK)
+10909924 META-INF/androidx.interpolator_interpolator.version (OK)
+10910020 META-INF/androidx.legacy_legacy-support-core-utils.version (OK)
+10910120 META-INF/androidx.lifecycle_lifecycle-livedata-core-ktx.version (OK)
+10910216 META-INF/androidx.lifecycle_lifecycle-livedata-core.version (OK)
+10910308 META-INF/androidx.lifecycle_lifecycle-livedata.version (OK)
+10910400 META-INF/androidx.lifecycle_lifecycle-process.version (OK)
+10910500 META-INF/androidx.lifecycle_lifecycle-runtime-compose.version (OK)
+10910596 META-INF/androidx.lifecycle_lifecycle-runtime-ktx.version (OK)
+10910688 META-INF/androidx.lifecycle_lifecycle-runtime.version (OK)
+10910788 META-INF/androidx.lifecycle_lifecycle-viewmodel-compose.version (OK)
+10910884 META-INF/androidx.lifecycle_lifecycle-viewmodel-ktx.version (OK)
+10910988 META-INF/androidx.lifecycle_lifecycle-viewmodel-savedstate.version (OK)
+10911080 META-INF/androidx.lifecycle_lifecycle-viewmodel.version (OK)
+10911156 META-INF/androidx.loader_loader.version (OK)
+10911264 META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version (OK)
+10911356 META-INF/androidx.navigation_navigation-common.version (OK)
+10911448 META-INF/androidx.navigation_navigation-compose.version (OK)
+10911540 META-INF/androidx.navigation_navigation-runtime.version (OK)
+10911644 META-INF/androidx.navigationevent_navigationevent-compose.version (OK)
+10911740 META-INF/androidx.navigationevent_navigationevent.version (OK)
+10911816 META-INF/androidx.print_print.version (OK)
+10911912 META-INF/androidx.profileinstaller_profileinstaller.version (OK)
+10911988 META-INF/androidx.room_room-ktx.version (OK)
+10912068 META-INF/androidx.room_room-runtime.version (OK)
+10912160 META-INF/androidx.savedstate_savedstate-compose.version (OK)
+10912248 META-INF/androidx.savedstate_savedstate-ktx.version (OK)
+10912332 META-INF/androidx.savedstate_savedstate.version (OK)
+10912420 META-INF/androidx.sqlite_sqlite-framework.version (OK)
+10912496 META-INF/androidx.sqlite_sqlite.version (OK)
+10912584 META-INF/androidx.startup_startup-runtime.version (OK)
+10912664 META-INF/androidx.tracing_tracing.version (OK)
+10912748 META-INF/androidx.transition_transition.version (OK)
+10912852 META-INF/androidx.versionedparcelable_versionedparcelable.version (OK)
+10912932 META-INF/androidx.window_window-core.version (OK)
+10913008 META-INF/androidx.window_window.version (OK)
+10913095 META-INF/androidx/annotation/annotation/LICENSE.txt (OK - compressed)
+10916743 META-INF/androidx/collection/collection-ktx/LICENSE.txt (OK - compressed)
+10920387 META-INF/androidx/collection/collection/LICENSE.txt (OK - compressed)
+10924042 META-INF/androidx/lifecycle/lifecycle-common-java8/LICENSE.txt (OK - compressed)
+10927691 META-INF/androidx/lifecycle/lifecycle-common/LICENSE.txt (OK - compressed)
+10931330 META-INF/androidx/room/room-common/LICENSE.txt (OK - compressed)
+10934968 META-INF/kotlinx_coroutines_android.version (OK)
+10935044 META-INF/kotlinx_coroutines_core.version (OK)
+10935141 META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler (OK - compressed)
+10935288 META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory (OK - compressed)
+10935411 kotlin/annotation/annotation.kotlin_builtins (OK - compressed)
+10936029 kotlin/collections/collections.kotlin_builtins (OK - compressed)
+10937998 kotlin/concurrent/atomics/atomics.kotlin_builtins (OK - compressed)
+10939183 kotlin/coroutines/coroutines.kotlin_builtins (OK - compressed)
+10939371 kotlin/internal/internal.kotlin_builtins (OK - compressed)
+10939789 kotlin/kotlin.kotlin_builtins (OK - compressed)
+10945358 kotlin/ranges/ranges.kotlin_builtins (OK - compressed)
+10946806 kotlin/reflect/reflect.kotlin_builtins (OK - compressed)
+10948302 AndroidManifest.xml (OK - compressed)
+10950216 res/2K.9.png (OK)
+10950481 res/4z.xml (OK - compressed)
+10950940 res/5c.png (OK)
+10951118 res/6f.xml (OK - compressed)
+10951944 res/7G.xml (OK - compressed)
+10952338 res/8K.xml (OK - compressed)
+10952646 res/9m.xml (OK - compressed)
+10952858 res/BW.xml (OK - compressed)
+10953120 res/Br.xml (OK - compressed)
+10953368 res/C_.9.png (OK)
+10953623 res/Ce.xml (OK - compressed)
+10954312 res/Ma.9.png (OK)
+10954599 res/N3.xml (OK - compressed)
+10955040 res/SN.xml (OK - compressed)
+10955568 res/U-.9.png (OK)
+10955831 res/W3.xml (OK - compressed)
+10956338 res/WU.xml (OK - compressed)
+10956803 res/Xk.xml (OK - compressed)
+10957555 res/_y.xml (OK - compressed)
+10957905 res/bX.xml (OK - compressed)
+10958609 res/c6.xml (OK - compressed)
+10958833 res/cV.xml (OK - compressed)
+10959154 res/color/vector_tint_color.xml (OK - compressed)
+10959401 res/color/vector_tint_theme_color.xml (OK - compressed)
+10959623 res/cr.xml (OK - compressed)
+10959864 res/df.xml (OK - compressed)
+10960156 res/eG.xml (OK - compressed)
+10960736 res/gK.9.png (OK)
+10960996 res/je.9.png (OK)
+10961248 res/lR.xml (OK - compressed)
+10961547 res/nz.xml (OK - compressed)
+10961844 res/o_.9.png (OK)
+10962136 res/pY.png (OK)
+10962284 res/pu.png (OK)
+10963233 res/rJ.xml (OK - compressed)
+10963692 res/s4.png (OK)
+10963832 res/sA.9.png (OK)
+10964088 res/vL.9.png (OK)
+10964356 res/wN.9.png (OK)
+10964621 res/x4.xml (OK - compressed)
+10965400 res/xa.9.png (OK)
+10965664 res/z-.9.png (OK)
+10965932 resources.arsc (OK)
+Verification successful
+[fush/session-expenses-backup-candidate e5b7a76] Central integration: Session auto-logout hotfix
+ 3 files changed, 68 insertions(+), 21 deletions(-)
+
+===== V5 EXEC 11: Verify official Expenses exact patch =====
+/tmp/expenses.patch: OK
+Preparing worktree (detached HEAD ddae764)
+HEAD is now at ddae764 Central record: Sales Customers P1 integration
+
+===== V5 EXEC 12: Expenses selective evolved apply / Room36 migration =====
+--- /tmp/expenses.files	2026-08-17 23:53:38.476769700 +0000
++++ /tmp/expenses.actual	2026-08-17 23:53:38.812918701 +0000
+@@ -1,3 +1,18 @@
++central_source/.gradle/9.4.1/checksums/checksums.lock
++central_source/.gradle/9.4.1/checksums/md5-checksums.bin
++central_source/.gradle/9.4.1/checksums/sha1-checksums.bin
++central_source/.gradle/9.4.1/executionHistory/executionHistory.bin
++central_source/.gradle/9.4.1/executionHistory/executionHistory.lock
++central_source/.gradle/9.4.1/fileChanges/last-build.bin
++central_source/.gradle/9.4.1/fileHashes/fileHashes.bin
++central_source/.gradle/9.4.1/fileHashes/fileHashes.lock
++central_source/.gradle/9.4.1/fileHashes/resourceHashesCache.bin
++central_source/.gradle/9.4.1/gc.properties
++central_source/.gradle/buildOutputCleanup/buildOutputCleanup.lock
++central_source/.gradle/buildOutputCleanup/cache.properties
++central_source/.gradle/buildOutputCleanup/outputFiles.bin
++central_source/.gradle/file-system.probe
++central_source/.gradle/vcs-1/gc.properties
  central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
  central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
  central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
 Traceback (most recent call last):
-  File "<stdin>", line 70, in <module>
+  File "<stdin>", line 80, in <module>
   File "/usr/lib/python3.12/subprocess.py", line 571, in run
     raise CalledProcessError(retcode, process.args,
-subprocess.CalledProcessError: Command '['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', 'set -euo pipefail\npython3 - <<\'PY\'\nfrom pathlib import Path\nsrc=Path(\'/tmp/expenses.patch\').read_text(encoding=\'utf-8\')\nskip={\'app/src/main/java/com/fush/erp/data/AppContainer.kt\',\'app/src/main/java/com/fush/erp/data/Migrations.kt\'}\nchunks=src.split(\'diff --git a/\')\nout=[chunks[0]]\nfor c in chunks[1:]:\n    p=c.split(\' b/\',1)[0]\n    if p not in skip:\n        out.append(\'diff --git a/\'+c)\nPath(\'/tmp/expenses.evolved.patch\').write_text(\'\'.join(out),encoding=\'utf-8\')\nPY\ngit -C /tmp/candidate apply --check --directory=central_source /tmp/expenses.evolved.patch\ngit -C /tmp/candidate apply --directory=central_source /tmp/expenses.evolved.patch\npython3 - <<\'PY\'\nimport re\nfrom pathlib import Path\napp=Path(\'/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\')\ntext=app.read_text(encoding=\'utf-8\')\nanchor=\'MIGRATION_34_35_ACCOUNTING_P1)\'\nassert text.count(anchor)==1, text.count(anchor)\ntext=text.replace(anchor,\'MIGRATION_34_35_ACCOUNTING_P1, MIGRATION_35_36_EXPENSES_P1)\',1)\nassert \'AccountingJournalIntegrityGuards.callback\' in text\napp.write_text(text,encoding=\'utf-8\')\n\nexact=Path(\'/tmp/expenses-proof/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt\').read_text(encoding=\'utf-8\')\nmarker=\'val MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL = object : Migration(35, 36) {\'\npos=exact.find(marker)\nassert pos>=0 and exact.find(marker,pos+1)<0\ndepth=0; end=None\nfor i in range(pos,len(exact)):\n    if exact[i]==\'{\': depth+=1\n    elif exact[i]==\'}\':\n        depth-=1\n        if depth==0:\n            end=i+1; break\nassert end is not None, \'Expenses 35->36 migration object did not close\'\nblock=exact[pos:end].strip()+\'\\n\'\nblock=block.replace(\'MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL\',\'MIGRATION_35_36_EXPENSES_P1\',1)\nsqls=re.findall(r\'db\\.execSQL\\("""(.*?)"""\\.trimIndent\\(\\)\\)\',block,re.S)\nassert sqls, \'no migration execSQL parsed\'\nallowed=(\'CREATE TABLE IF NOT EXISTS\',\'CREATE INDEX IF NOT EXISTS\',\'CREATE UNIQUE INDEX IF NOT EXISTS\',\'CREATE TRIGGER IF NOT EXISTS\')\nfor sql in sqls:\n    normalized=\' \'.join(sql.strip().split()).upper()\n    assert normalized.startswith(allowed), normalized[:120]\n    assert not normalized.startswith((\'DELETE \',\'UPDATE \',\'DROP \',\'ALTER \')), normalized[:120]\nmig=Path(\'/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt\')\ncurrent=mig.read_text(encoding=\'utf-8\').rstrip()+\'\\n\'\nassert \'AccountingJournalIntegrityGuards.install(db)\' in current\nassert \'MIGRATION_35_36_\' not in current\nmig.write_text(current+\'\\n\'+block,encoding=\'utf-8\')\nPY\ngit -C /tmp/candidate diff --check\ntest -z "$(find /tmp/candidate -name \'*.rej\' -print -quit)"\n{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | sort -u > /tmp/expenses.actual\ndiff -u /tmp/expenses.files /tmp/expenses.actual\ngrep -Fq \'FUSH_DB_SCHEMA_VERSION = 36\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt\ngrep -Fq \'MIGRATION_35_36_EXPENSES_P1\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\ngrep -Fq \'AccountingJournalIntegrityGuards.callback\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\n']' returned non-zero exit status 1.
+subprocess.CalledProcessError: Command '['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', 'set -euo pipefail\npython3 - <<\'PY\'\nfrom pathlib import Path\nsrc=Path(\'/tmp/expenses.patch\').read_text(encoding=\'utf-8\')\nskip={\'app/src/main/java/com/fush/erp/data/AppContainer.kt\',\'app/src/main/java/com/fush/erp/data/Migrations.kt\'}\nchunks=src.split(\'diff --git a/\')\nout=[chunks[0]]\nfor c in chunks[1:]:\n    p=c.split(\' b/\',1)[0]\n    if p not in skip:\n        out.append(\'diff --git a/\'+c)\nPath(\'/tmp/expenses.evolved.patch\').write_text(\'\'.join(out),encoding=\'utf-8\')\nPY\ngit -C /tmp/candidate apply --check --directory=central_source /tmp/expenses.evolved.patch\ngit -C /tmp/candidate apply --directory=central_source /tmp/expenses.evolved.patch\npython3 - <<\'PY\'\nimport re\nfrom pathlib import Path\napp=Path(\'/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\')\ntext=app.read_text(encoding=\'utf-8\')\nanchor=\'MIGRATION_34_35_ACCOUNTING_P1)\'\nassert text.count(anchor)==1, text.count(anchor)\ntext=text.replace(anchor,\'MIGRATION_34_35_ACCOUNTING_P1, MIGRATION_35_36_EXPENSES_P1)\',1)\nassert \'AccountingJournalIntegrityGuards.callback\' in text\napp.write_text(text,encoding=\'utf-8\')\n\nexact=Path(\'/tmp/expenses-proof/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt\').read_text(encoding=\'utf-8\')\nmarker=\'val MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL = object : Migration(35, 36) {\'\npos=exact.find(marker)\nassert pos>=0 and exact.find(marker,pos+1)<0\ndepth=0; end=None\nfor i in range(pos,len(exact)):\n    if exact[i]==\'{\': depth+=1\n    elif exact[i]==\'}\':\n        depth-=1\n        if depth==0:\n            end=i+1; break\nassert end is not None, \'Expenses 35->36 migration object did not close\'\nblock=exact[pos:end].strip()+\'\\n\'\nblock=block.replace(\'MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL\',\'MIGRATION_35_36_EXPENSES_P1\',1)\nsqls=re.findall(r\'db\\.execSQL\\("""(.*?)"""\\.trimIndent\\(\\)\\)\',block,re.S)\nassert sqls, \'no migration execSQL parsed\'\nallowed=(\'CREATE TABLE IF NOT EXISTS\',\'CREATE INDEX IF NOT EXISTS\',\'CREATE UNIQUE INDEX IF NOT EXISTS\',\'CREATE TRIGGER IF NOT EXISTS\')\nfor sql in sqls:\n    normalized=\' \'.join(sql.strip().split()).upper()\n    assert normalized.startswith(allowed), normalized[:120]\n    assert not normalized.startswith((\'DELETE \',\'UPDATE \',\'DROP \',\'ALTER \')), normalized[:120]\nmig=Path(\'/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt\')\ncurrent=mig.read_text(encoding=\'utf-8\').rstrip()+\'\\n\'\nassert \'AccountingJournalIntegrityGuards.install(db)\' in current\nassert \'MIGRATION_35_36_\' not in current\nmig.write_text(current+\'\\n\'+block,encoding=\'utf-8\')\nPY\ngit -C /tmp/candidate diff --check\ntest -z "$(find /tmp/candidate -name \'*.rej\' -print -quit)"\n{ git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | grep -v \'^central_source/app/build/\' | sort -u > /tmp/expenses.actual\ndiff -u /tmp/expenses.files /tmp/expenses.actual\ngrep -Fq \'FUSH_DB_SCHEMA_VERSION = 36\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt\ngrep -Fq \'MIGRATION_35_36_EXPENSES_P1\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\ngrep -Fq \'AccountingJournalIntegrityGuards.callback\' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt\n']' returned non-zero exit status 1.
