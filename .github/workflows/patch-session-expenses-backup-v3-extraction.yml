@@ -1,0 +1,91 @@
+name: Patch Session Expenses Backup V3 Extraction
+
+on:
+  push:
+    branches: [fush/session-expenses-backup-integration-run]
+    paths:
+      - '.github/workflows/patch-session-expenses-backup-v3-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  patch-and-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/session-expenses-backup-integration-run
+          fetch-depth: 0
+      - name: Patch only migration object extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/integrate-session-expenses-backup-candidate-v3.yml')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          out = []
+          first = second = 0
+          for line in lines:
+              stripped = line.strip()
+              indent = line[:len(line)-len(line.lstrip())]
+              if stripped.startswith("block=exact[pos:].strip()"):
+                  first += 1
+                  out.extend([
+                      indent + "depth=0; end=None",
+                      indent + "for i in range(pos,len(exact)):",
+                      indent + "    if exact[i]=='{': depth+=1",
+                      indent + "    elif exact[i]=='}':",
+                      indent + "        depth-=1",
+                      indent + "        if depth==0:",
+                      indent + "            end=i+1; break",
+                      indent + "assert end is not None, 'Expenses 35->36 migration object did not close'",
+                      indent + "block=exact[pos:end].strip()+'\\n'",
+                  ])
+              elif stripped.startswith("block=src[src.index('val MIGRATION_35_36_EXPENSES_P1'):"):
+                  second += 1
+                  out.extend([
+                      indent + "start=src.index('val MIGRATION_35_36_EXPENSES_P1')",
+                      indent + "depth=0; end=None",
+                      indent + "for i in range(start,len(src)):",
+                      indent + "    if src[i]=='{': depth+=1",
+                      indent + "    elif src[i]=='}':",
+                      indent + "        depth-=1",
+                      indent + "        if depth==0:",
+                      indent + "            end=i+1; break",
+                      indent + "assert end is not None, 'Central Expenses 35->36 migration object did not close'",
+                      indent + "block=src[start:end]",
+                  ])
+              else:
+                  out.append(line)
+          assert first == 1, f'expected one provisional extraction replacement, got {first}'
+          assert second == 1, f'expected one final extraction replacement, got {second}'
+          path.write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- .github/workflows/integrate-session-expenses-backup-candidate-v3.yml
+      - name: Commit extraction-only orchestration fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH CI Orchestration'
+          git config user.email 'ci-orchestration@fush.local'
+          git add .github/workflows/integrate-session-expenses-backup-candidate-v3.yml
+          git commit -m 'Fix V3 Expenses migration object extraction'
+          git push origin HEAD:fush/session-expenses-backup-integration-run
+      - name: Dispatch fixed V3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/integrate-session-expenses-backup-candidate-v3.yml/dispatches \
+            -d '{"ref":"fush/session-expenses-backup-integration-run"}'
