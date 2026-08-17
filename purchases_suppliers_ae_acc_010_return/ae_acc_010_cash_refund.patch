@@ -1,0 +1,160 @@
+diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+--- a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
++++ b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+@@ -204,6 +204,18 @@ class PurchaseService(private val db: FushDatabase) {
+ 
+         val totalOriginal = prepared.sumOf { it.totalOriginal }
+         val totalBase = totalOriginal * invoice.exchangeRate
++        if (request.settlementType == "CASH_REFUND") {
++            val priorCashRefundBase = db.purchaseDao().returnsForInvoice(invoice.id)
++                .filter { it.settlementType == "CASH_REFUND" }
++                .sumOf { it.totalBase }
++            val netPaidBase = if (invoice.paymentType == "CREDIT") db.purchaseDao().paidBaseForInvoice(invoice.id) else invoice.totalBase
++            val refundableBase = SupplierApMath.cashRefundableBase(
++                paymentType = invoice.paymentType,
++                invoiceBase = invoice.totalBase,
++                netPaidBase = netPaidBase,
++                priorCashRefundBase = priorCashRefundBase
++            )
++            require(totalBase <= refundableBase + 1e-8) { "الاسترداد النقدي يتجاوز المبلغ المدفوع والقابل للاسترداد فعلياً لهذه الفاتورة" }
++        }
+         val returnNo = numbering.nextDocumentNo("PRET", request.returnDate)
+         val returnId = db.purchaseDao().insertReturn(
+             PurchaseReturnEntity(
+@@ -466,6 +478,19 @@ class PurchaseService(private val db: FushDatabase) {
+         }
+         require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذه الدفعة مسبقاً" }
+ 
++        allocations.forEach { allocation ->
++            val invoice = requireNotNull(db.purchaseDao().invoiceById(allocation.invoiceId)) { "فاتورة دفعة المورد غير موجودة" }
++            val priorCashRefundBase = db.purchaseDao().returnsForInvoice(invoice.id)
++                .filter { it.settlementType == "CASH_REFUND" }
++                .sumOf { it.totalBase }
++            val netPaidBase = db.purchaseDao().paidBaseForInvoice(invoice.id)
++            require(
++                SupplierApMath.canReverseSupplierPayment(
++                    netPaidBase = netPaidBase,
++                    reversedAllocationBase = allocation.allocatedBase,
++                    priorCashRefundBase = priorCashRefundBase
++                )
++            ) { "لا يمكن عكس دفعة المورد لأن جزءاً منها أصبح أساساً لاسترداد نقدي لمشتريات مرتجعة" }
++        }
++
+         val reversalNo = numbering.nextDocumentNo("SPRV", reversalDate)
+         val reversalId = db.purchaseDao().insertSupplierPayment(
+             SupplierPaymentEntity(
+diff --git a/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt b/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
+--- a/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
++++ b/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
+@@ -14,6 +14,31 @@ object SupplierApMath {
+     fun outstandingBase(invoiceBase: Double, supplierCreditReturnsBase: Double, paidBase: Double): Double =
+         max(0.0, invoiceBase - supplierCreditReturnsBase - paidBase)
+ 
++    fun cashRefundableBase(
++        paymentType: String,
++        invoiceBase: Double,
++        netPaidBase: Double,
++        priorCashRefundBase: Double
++    ): Double {
++        require(paymentType in setOf("CASH", "CREDIT")) { "paymentType" }
++        require(invoiceBase.isFinite() && invoiceBase >= 0.0) { "invoiceBase" }
++        require(netPaidBase.isFinite() && netPaidBase >= 0.0) { "netPaidBase" }
++        require(priorCashRefundBase.isFinite() && priorCashRefundBase >= 0.0) { "priorCashRefundBase" }
++        val cashBackedBase = if (paymentType == "CASH") invoiceBase else netPaidBase.coerceAtMost(invoiceBase)
++        return max(0.0, cashBackedBase - priorCashRefundBase)
++    }
++
++    fun canReverseSupplierPayment(
++        netPaidBase: Double,
++        reversedAllocationBase: Double,
++        priorCashRefundBase: Double,
++        tolerance: Double = 1e-8
++    ): Boolean {
++        require(netPaidBase.isFinite() && netPaidBase >= 0.0) { "netPaidBase" }
++        require(reversedAllocationBase.isFinite() && reversedAllocationBase >= 0.0) { "reversedAllocationBase" }
++        require(priorCashRefundBase.isFinite() && priorCashRefundBase >= 0.0) { "priorCashRefundBase" }
++        require(tolerance.isFinite() && tolerance >= 0.0) { "tolerance" }
++        return netPaidBase - reversedAllocationBase + tolerance >= priorCashRefundBase
++    }
++
+     fun paymentSplit(amountOriginal: Double, invoiceExchangeRate: Double, paymentExchangeRate: Double): PaymentSplit {
+         require(amountOriginal > 0.0 && amountOriginal.isFinite()) { "amountOriginal" }
+         require(invoiceExchangeRate > 0.0 && invoiceExchangeRate.isFinite()) { "invoiceExchangeRate" }
+diff --git a/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt b/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt
+@@ -0,0 +1,66 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class AeAcc010PurchaseReturnCashRefundTest {
++    private val tolerance = 0.000001
++
++    @Test
++    fun unpaidCreditPurchaseHasNoCashRefundCapacity() {
++        assertEquals(
++            0.0,
++            SupplierApMath.cashRefundableBase("CREDIT", 1000.0, 0.0, 0.0),
++            tolerance
++        )
++    }
++
++    @Test
++    fun partiallyPaidPurchaseRefundIsBoundedByNetPaidAmount() {
++        assertEquals(
++            400.0,
++            SupplierApMath.cashRefundableBase("CREDIT", 1000.0, 400.0, 0.0),
++            tolerance
++        )
++        assertEquals(
++            150.0,
++            SupplierApMath.cashRefundableBase("CREDIT", 1000.0, 400.0, 250.0),
++            tolerance
++        )
++    }
++
++    @Test
++    fun fullyPaidPurchaseCanRefundOnlyUpToInvoiceCashBackedAmount() {
++        assertEquals(
++            1000.0,
++            SupplierApMath.cashRefundableBase("CREDIT", 1000.0, 1000.0, 0.0),
++            tolerance
++        )
++        assertEquals(
++            0.0,
++            SupplierApMath.cashRefundableBase("CREDIT", 1000.0, 1000.0, 1000.0),
++            tolerance
++        )
++    }
++
++    @Test
++    fun cashPurchaseUsesOriginalCashPaymentAsRefundCapacity() {
++        assertEquals(
++            700.0,
++            SupplierApMath.cashRefundableBase("CASH", 1000.0, 0.0, 300.0),
++            tolerance
++        )
++    }
++
++    @Test
++    fun paymentReversalCannotInvalidateAnExistingCashRefund() {
++        assertFalse(SupplierApMath.canReverseSupplierPayment(500.0, 500.0, 300.0))
++        assertTrue(SupplierApMath.canReverseSupplierPayment(800.0, 500.0, 300.0))
++    }
++
++    @Test
++    fun apTreasuryAndReturnedInventoryRemainReconciledForCreditPurchase() {
++        val invoiceBase = 1000.0
++        val paidBase = 400.0
++        val cashRefundBase = 300.0
++        val apOutstanding = SupplierApMath.outstandingBase(invoiceBase, 0.0, paidBase)
++        val netCashPaidAfterRefund = paidBase - cashRefundBase
++        val inventoryRemainingAfterReturn = invoiceBase - cashRefundBase
++        assertEquals(inventoryRemainingAfterReturn, apOutstanding + netCashPaidAfterRefund, tolerance)
++    }
++}
