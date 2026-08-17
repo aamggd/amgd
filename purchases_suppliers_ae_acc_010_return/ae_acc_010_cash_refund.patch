@@ -1,7 +1,7 @@
 diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
 --- a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
 +++ b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
-@@ -204,6 +204,18 @@ class PurchaseService(private val db: FushDatabase) {
+@@ -204,6 +204,19 @@ class PurchaseService(private val db: FushDatabase) {
  
          val totalOriginal = prepared.sumOf { it.totalOriginal }
          val totalBase = totalOriginal * invoice.exchangeRate
@@ -21,7 +21,7 @@ diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/
          val returnNo = numbering.nextDocumentNo("PRET", request.returnDate)
          val returnId = db.purchaseDao().insertReturn(
              PurchaseReturnEntity(
-@@ -466,6 +478,19 @@ class PurchaseService(private val db: FushDatabase) {
+@@ -466,6 +479,21 @@ class PurchaseService(private val db: FushDatabase) {
          }
          require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذه الدفعة مسبقاً" }
  
@@ -46,7 +46,7 @@ diff --git a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt b/app/src/
 diff --git a/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt b/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
 --- a/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
 +++ b/app/src/main/java/com/fush/erp/domain/SupplierApMath.kt
-@@ -14,6 +14,31 @@ object SupplierApMath {
+@@ -14,6 +14,33 @@ object SupplierApMath {
      fun outstandingBase(invoiceBase: Double, supplierCreditReturnsBase: Double, paidBase: Double): Double =
          max(0.0, invoiceBase - supplierCreditReturnsBase - paidBase)
  
@@ -84,7 +84,7 @@ diff --git a/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRef
 new file mode 100644
 --- /dev/null
 +++ b/app/src/test/java/com/fush/erp/domain/AeAcc010PurchaseReturnCashRefundTest.kt
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,73 @@
 +package com.fush.erp.domain
 +
 +import org.junit.Assert.assertEquals
