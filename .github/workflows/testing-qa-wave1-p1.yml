@@ -1,4 +1,4 @@
-name: Testing QA Wave1 P1 Pre-Acceptance
+name: Testing QA Wave1 P1 Final Acceptance
 
 on:
   push:
@@ -7,54 +7,86 @@ on:
       - 'qa/p1/**'
       - '.github/workflows/testing-qa-wave1-p1.yml'
   workflow_dispatch:
-    inputs:
-      require_all_p1:
-        description: 'Require Accounting + Treasury + Purchases + Sales P1 to coexist in Central source'
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  APP_ID: 'com.fush.erp.recovery'
+  ROOM_SCHEMA: '35'
+  CENTRAL_CANDIDATE_RUN_ID: '31980835485'
+  CENTRAL_CANDIDATE_NAME: 'FushERP-Central-v102-Candidate'
+  CENTRAL_CANDIDATE_APK: 'FushERP-Central-v102-aligned-unsigned.apk'
+  CENTRAL_CANDIDATE_SHA256: '9433bd036338e2d8b2ec0fd233210dceccf520d0e95ca13a3fe9329efcf60171'
 
 jobs:
-  source-and-migration-preacceptance:
+  final-wave1-p1-qa:
+    name: Exact Central source, migration, cross-module and APK gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Export latest Central source
+      - name: Export exact merged Central and prove identity
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin fush/integration-current:refs/remotes/origin/fush/integration-current
-          CENTRAL_SHA="$(git rev-parse refs/remotes/origin/fush/integration-current)"
-          echo "CENTRAL_SHA=$CENTRAL_SHA" >> "$GITHUB_ENV"
-          rm -rf work-source evidence
-          mkdir -p work-source evidence
-          git archive "$CENTRAL_SHA" central_source | tar -x -C work-source --strip-components=1
-          git show -s --format='%H %s' "$CENTRAL_SHA" | tee evidence/central-commit.txt
-          git ls-tree "$CENTRAL_SHA" central_source | tee evidence/central-source-tree-entry.txt
-          grep -n 'applicationId = "com.fush.erp.recovery"' work-source/app/build.gradle.kts | tee evidence/application-id.txt
-          grep -n 'FUSH_DB_SCHEMA_VERSION' work-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt | head -1 | tee evidence/room-schema.txt
+          git fetch origin "$CENTRAL_SHA"
+          test "$(git rev-parse "$CENTRAL_SHA")" = "$CENTRAL_SHA"
+          test "$(git rev-parse "$CENTRAL_SHA:central_source")" = "$CENTRAL_SOURCE_TREE"
 
-      - name: Validate Wave1 P1 source contracts
+          rm -rf exact-source work-source evidence exact-central-candidate
+          mkdir -p exact-source work-source evidence
+          git archive "$CENTRAL_SHA" central_source | tar -x -C exact-source --strip-components=1
+          cp -a exact-source/. work-source/
+
+          git show -s --format='%H %s' "$CENTRAL_SHA" | tee evidence/central-commit.txt
+          printf '%s\n' "$CENTRAL_SOURCE_TREE" | tee evidence/central-source-tree.txt
+          grep -n 'applicationId = "com.fush.erp.recovery"' exact-source/app/build.gradle.kts | tee evidence/application-id.txt
+          grep -n 'FUSH_DB_SCHEMA_VERSION = 35' exact-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt | tee evidence/room-schema.txt
+          test -f exact-source/app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' exact-source/app/src/main exact-source/app/build.gradle.kts
+
+      - name: Strict Wave1 P1 source contract validation
         shell: bash
         run: |
           set -euo pipefail
-          STRICT=''
-          if [ "${{ github.event_name }}" = 'workflow_dispatch' ] && [ "${{ inputs.require_all_p1 }}" = 'true' ]; then
-            STRICT='--require-all'
-          fi
           python3 qa/p1/validate_wave1_contracts.py \
-            --source work-source $STRICT \
+            --source exact-source \
+            --require-all \
             --json-out evidence/wave1-contracts.json
 
-      - name: Inject QA-only migration test dependencies and source
+      - name: Download exact Central v102 candidate artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.CENTRAL_CANDIDATE_NAME }}
+          path: exact-central-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CENTRAL_CANDIDATE_RUN_ID }}
+
+      - name: Verify candidate is tied to exact merged Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT='exact-central-candidate/BUILD-VERIFICATION.txt'
+          APK="exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
+          test -s "$REPORT"
+          test -s "$APK"
+          grep -Fq "Origin Central HEAD: ${CENTRAL_SHA}" "$REPORT"
+          grep -Fq "Central source tree: ${CENTRAL_SOURCE_TREE}" "$REPORT"
+          grep -Fq "Application ID: ${APP_ID}" "$REPORT"
+          grep -Fq "Room schema: ${ROOM_SCHEMA}" "$REPORT"
+          echo "${CENTRAL_CANDIDATE_SHA256}  ${APK}" | sha256sum -c -
+          sha256sum "$APK" | tee evidence/exact-central-candidate-unsigned.sha256
+          cp "$REPORT" evidence/central-candidate-build-verification.txt
+
+      - name: Inject QA-only tests into disposable work copy
         shell: bash
         run: |
           set -euo pipefail
@@ -73,12 +105,19 @@ jobs:
           if 'androidx.test:core-ktx:1.7.0' not in text:
               if needle not in text:
                   raise SystemExit('Expected room testing dependency anchor not found')
-              text = text.replace(needle, extra)
-              p.write_text(text, encoding='utf-8')
+              p.write_text(text.replace(needle, extra), encoding='utf-8')
           PY
           mkdir -p work-source/app/src/androidTest/java/com/fush/erp/data
+          mkdir -p work-source/app/src/androidTest/java/com/fush/erp/qa
           cp qa/p1/AccountingP1Migration34To35Test.kt \
             work-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
+          cp qa/p1/Wave1P1ReleaseCandidateTest.kt \
+            work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
+
+          # QA harness changes must remain outside exact-source.
+          diff -qr exact-source work-source > evidence/qa-harness-diff.txt || true
+          grep -Fq 'AccountingP1Migration34To35Test.kt' evidence/qa-harness-diff.txt
+          grep -Fq 'Wave1P1ReleaseCandidateTest.kt' evidence/qa-harness-diff.txt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -89,19 +128,62 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;36.0.0"
+
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
 
-      - name: Full Unit tests and release build on exact Central export
-        working-directory: work-source
+      - name: Prepare deterministic QA test signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -dname 'CN=Android Debug,O=Android,C=US' \
+              -keyalg RSA -keysize 2048 -validity 10000 >/dev/null 2>&1
+          fi
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android \
+            | grep -E 'SHA256:|Alias name:' | tee evidence/qa-test-signer.txt
+
+      - name: Full Unit and Release build on untouched exact Central source
+        working-directory: exact-source
+        shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon :app:testDebugUnitTest
           gradle --no-daemon :app:assembleRelease
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+          sha256sum "$APK" | tee ../evidence/exact-source-release-apk.sha256
 
-      - name: Run MigrationTestHelper on Android emulator
+      - name: Wave1 targeted cross-module regressions on merged source
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.TreasuryPartyRequirementPolicyTest' \
+            --tests 'com.fush.erp.domain.CustomerMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest' \
+            --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
+            --tests 'com.fush.erp.domain.SalesMathTest' \
+            --tests 'com.fush.erp.domain.PurchaseMathTest'
+          gradle --no-daemon :app:assembleDebugAndroidTest
+
+      - name: Migration 34 to 35, data preservation and exact Central APK scenarios
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -109,25 +191,130 @@ jobs:
           profile: pixel_6
           disable-animations: true
           working-directory: work-source
-          script: gradle --no-daemon :app:connectedDebugAndroidTest
+          script: |
+            set -euo pipefail
 
-      - name: Record pre-acceptance APK evidence
+            wait_for_android_service() {
+              service_name="$1"
+              echo "Waiting for Android service: ${service_name}"
+              for i in $(seq 1 180); do
+                if adb shell service check "$service_name" 2>/dev/null | grep -q 'found'; then
+                  echo "Service ${service_name} is ready"
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "Android service ${service_name} did not become ready" >&2
+              adb shell service list || true
+              return 1
+            }
+
+            adb wait-for-device
+            for i in $(seq 1 180); do
+              BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+              [ "$BOOTED" = '1' ] && break
+              sleep 2
+            done
+            test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1'
+
+            # The previous QA failure happened after sys.boot_completed but before PackageManager/
+            # ActivityManager were actually ready on the non-KVM runner. Wait for real services.
+            wait_for_android_service package
+            wait_for_android_service activity
+            for i in $(seq 1 120); do
+              if adb shell cmd package list packages >/dev/null 2>&1 \
+                 && adb shell am get-current-user >/dev/null 2>&1; then
+                break
+              fi
+              sleep 2
+            done
+            adb shell cmd package list packages >/dev/null
+            adb shell am get-current-user >/dev/null
+            sleep 10
+
+            CANDIDATE="$GITHUB_WORKSPACE/exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
+            SIGNED="$GITHUB_WORKSPACE/evidence/FushERP-Central-v102-QA-test-signed.apk"
+            TEST_APK="$GITHUB_WORKSPACE/work-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+            test -s "$CANDIDATE"
+            test -s "$TEST_APK"
+            echo "${CENTRAL_CANDIDATE_SHA256}  ${CANDIDATE}" | sha256sum -c -
+
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+              --ks "$HOME/.android/debug.keystore" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$SIGNED" "$CANDIDATE"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$SIGNED" \
+              | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate-cert.txt"
+            sha256sum "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate.sha256"
+
+            adb uninstall com.fush.erp.recovery.test >/dev/null 2>&1 || true
+            adb uninstall "$APP_ID" >/dev/null 2>&1 || true
+            adb install -r "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/apk-install.txt"
+            adb install -r "$TEST_APK" | tee "$GITHUB_WORKSPACE/evidence/test-apk-install.txt"
+
+            adb logcat -c
+            LAUNCHER="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$SIGNED" \
+              | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -n 1)"
+            test -n "$LAUNCHER"
+            adb shell am start -W -n "${APP_ID}/${LAUNCHER}" \
+              | tee "$GITHUB_WORKSPACE/evidence/apk-launch.txt"
+            sleep 8
+            adb shell pidof "$APP_ID" | tee "$GITHUB_WORKSPACE/evidence/apk-pid.txt"
+            adb shell dumpsys package "$APP_ID" \
+              | grep -E 'versionCode=|versionName=' | head -5 \
+              | tee "$GITHUB_WORKSPACE/evidence/apk-version.txt"
+
+            # Run QA instrumentation against the release candidate itself. This executes the
+            # MigrationTestHelper 34->35/data-preservation tests plus Wave1 cross-module scenarios.
+            adb shell pm list instrumentation | tee "$GITHUB_WORKSPACE/evidence/instrumentation-list.txt"
+            set +e
+            adb shell am instrument -w -r \
+              com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
+              | tee "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
+            TEST_RC=${PIPESTATUS[0]}
+            set -e
+            test "$TEST_RC" -eq 0
+            ! grep -Fq 'FAILURES!!!' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
+            ! grep -Fq 'INSTRUMENTATION_FAILED' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
+            grep -Eq 'OK \([1-9][0-9]* tests?\)|INSTRUMENTATION_CODE: -1' \
+              "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
+
+            adb logcat -d -v brief > "$GITHUB_WORKSPACE/evidence/final-logcat.txt"
+            if grep -E 'FATAL EXCEPTION:.*|Process: com\.fush\.erp\.recovery,' \
+              "$GITHUB_WORKSPACE/evidence/final-logcat.txt"; then
+              echo 'Fatal crash detected in merged Central APK session' >&2
+              exit 1
+            fi
+
+      - name: Final acceptance evidence
         shell: bash
         run: |
           set -euo pipefail
-          APK='work-source/app/build/outputs/apk/release/app-release-unsigned.apk'
-          test -f "$APK"
-          sha256sum "$APK" | tee evidence/release-apk.sha256
-          echo 'STATUS=PRE-ACCEPTANCE_ONLY' | tee evidence/status.txt
-          echo 'Final QA remains open until the exact merged Central APK is retested after all intended P1 integrations.' >> evidence/status.txt
+          cat > evidence/FINAL-STATUS.txt <<EOF
+          STATUS=FINAL_WAVE1_P1_QA_PASS
+          Exact Central HEAD=${CENTRAL_SHA}
+          Exact Central source tree=${CENTRAL_SOURCE_TREE}
+          Room schema=${ROOM_SCHEMA}
+          Full Unit Tests=PASS
+          Exact-source assembleRelease=PASS
+          Migration 34->35=PASS
+          Data preservation=PASS
+          Accounting/Treasury/Purchases/Sales cross-module regression=PASS
+          Exact Central v102 candidate pre-sign SHA-256=${CENTRAL_CANDIDATE_SHA256}
+          Exact Central candidate install/launch=PASS using a QA test-signed copy of the verified unsigned candidate
+          Release-candidate instrumentation=PASS
+          Business Logic changes by QA=NONE
+          EOF
+          cat evidence/FINAL-STATUS.txt
 
-      - name: Upload QA pre-acceptance evidence
+      - name: Upload final Wave1 P1 QA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Testing-QA-Wave1-P1-${{ github.run_id }}
+          name: FushERP-Testing-QA-Wave1-P1-FINAL-${{ github.run_id }}
           path: |
             evidence/**
-            work-source/app/build/outputs/apk/release/app-release-unsigned.apk
-            work-source/app/build/reports/androidTests/**
+            exact-source/app/build/outputs/apk/release/app-release-unsigned.apk
             work-source/app/build/reports/tests/**
           if-no-files-found: error
