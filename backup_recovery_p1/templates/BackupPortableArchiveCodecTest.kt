@@ -23,6 +23,7 @@ class BackupPortableArchiveCodecTest {
         assertArrayEquals(database.readBytes(), restored.readBytes())
         assertTrue(write.recoveryCode.isNotBlank())
         assertTrue(decoded.formatVersion == BackupPortableArchiveCodec.FORMAT_VERSION)
+        assertTrue(decoded.schemaVersion == 35)
     }
 
     @Test
@@ -49,12 +50,30 @@ class BackupPortableArchiveCodecTest {
     }
 
     @Test
+    fun tampered_portable_backup_is_rejected_and_partial_file_is_removed() = withFiles { database, archive, restored ->
+        database.writeText("portable-tamper-sensitive-data")
+        val deviceKey = aesKey()
+        BackupPortableArchiveCodec.writeArchive(database, archive, manifest(database), deviceKey)
+        val bytes = archive.readBytes()
+        bytes[bytes.lastIndex] = (bytes.last().toInt() xor 0x01).toByte()
+        archive.writeBytes(bytes)
+
+        val failure = runCatching {
+            FileInputStream(archive).use { BackupPortableArchiveCodec.extractAndVerify(it, restored, deviceKey) }
+        }.exceptionOrNull()
+
+        assertTrue(failure != null)
+        assertFalse(restored.exists())
+    }
+
+    @Test
     fun archive_contains_neither_plain_database_nor_recovery_secret() = withFiles { database, archive, _ ->
         val marker = "FUSH-P1-RECOVERY-SECRET-MARKER"
         database.writeText("SQLite format 3\u0000$marker")
         val write = BackupPortableArchiveCodec.writeArchive(database, archive, manifest(database), aesKey())
         val raw = archive.readBytes()
-        assertFalse(raw.startsWith(byteArrayOf('P'.code.toByte(), 'K'.code.toByte())))
+        val beginsWithZipMagic = raw.size >= 2 && raw[0] == 'P'.code.toByte() && raw[1] == 'K'.code.toByte()
+        assertFalse(beginsWithZipMagic)
         assertFalse(raw.containsBytes(marker.toByteArray()))
         assertFalse(raw.containsBytes(write.recoveryCode.toByteArray()))
         assertTrue(BufferedInputStream(FileInputStream(archive)).use(BackupPortableArchiveCodec::isPortableBackup))
@@ -78,7 +97,7 @@ class BackupPortableArchiveCodecTest {
         formatVersion = BackupPortableArchiveCodec.FORMAT_VERSION,
         packageId = "com.fush.erp.recovery",
         appVersion = "test",
-        schemaVersion = 34,
+        schemaVersion = 35,
         createdAt = 1L,
         databaseSha256 = BackupArchiveCodec.sha256(db),
         encryptionAlgorithm = BackupPortableArchiveCodec.ENCRYPTION_ALGORITHM
