@@ -82,6 +82,11 @@ jobs:
         run: |
           set -euo pipefail
           python inventory_p1/apply_p1.py work
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('work/app/src/main/java/com/fush/erp/data/Migrations.kt')
+          path.write_text(path.read_text().rstrip() + '\n')
+          PY
           cd work
           git diff --check
           grep -q 'FUSH_DB_SCHEMA_VERSION = 36' app/src/main/java/com/fush/erp/data/FushDatabase.kt
