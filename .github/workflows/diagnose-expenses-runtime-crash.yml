@@ -1,0 +1,233 @@
+name: Diagnose Expenses Add Dialog Runtime Crash
+
+on:
+  push:
+    branches: [fush/expenses]
+    paths:
+      - '.github/workflows/diagnose-expenses-runtime-crash.yml'
+      - 'phase_expenses_p1_runtime/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_HEAD: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+  CENTRAL_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+  EXACT_P1_PATCH_SHA256: b74c2d5766381a4c2d14ecb664b72baed6260bc4ba6863614530ee2197972a54
+  APPLICATION_ID: com.fush.erp.recovery
+
+jobs:
+  diagnose:
+    name: Runtime diagnostic (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [central, expenses-p1]
+
+    steps:
+      - name: Checkout expenses control branch
+        uses: actions/checkout@v4
+
+      - name: Checkout exact Central
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CENTRAL_HEAD }}
+          path: central
+
+      - name: Verify exact Central identity and prepare source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C central rev-parse HEAD)" = "$CENTRAL_HEAD"
+          test "$(git -C central rev-parse "$CENTRAL_HEAD:central_source")" = "$CENTRAL_SOURCE_TREE"
+          rm -rf source
+          cp -a central/central_source source
+          grep -q "applicationId = \"$APPLICATION_ID\"" source/app/build.gradle.kts
+          if [ "${{ matrix.variant }}" = "expenses-p1" ]; then
+            base64 -d phase_expenses_p1_revalidation/exact-expenses-p1.patch.gz.b64 | gzip -dc > exact-expenses-p1.patch
+            test "$(sha256sum exact-expenses-p1.patch | awk '{print $1}')" = "$EXACT_P1_PATCH_SHA256"
+            (
+              cd source
+              git init -q
+              git config user.email expenses-runtime@fush.local
+              git config user.name FUSH-Expenses-Runtime
+              git add -A
+              git commit -qm "exact-central"
+              git apply --check ../exact-expenses-p1.patch
+              git apply --index ../exact-expenses-p1.patch
+            )
+          fi
+          mkdir -p evidence/${{ matrix.variant }}
+          printf 'variant=%s\ncentral_head=%s\ncentral_source_tree=%s\napplication_id=%s\np1_patch_sha256=%s\n' \
+            '${{ matrix.variant }}' "$CENTRAL_HEAD" "$CENTRAL_SOURCE_TREE" "$APPLICATION_ID" "$EXACT_P1_PATCH_SHA256" \
+            > evidence/${{ matrix.variant }}/identity.txt
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK and Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Inject diagnostic-only Compose instrumentation probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('source/app/build.gradle.kts')
+          s = p.read_text()
+          needle = '    testImplementation(libs.androidx.room.testing)\n'
+          add = '''    testImplementation(libs.androidx.room.testing)\n    androidTestImplementation("androidx.test:runner:1.6.2")\n    androidTestImplementation("androidx.test:rules:1.6.1")\n    androidTestImplementation("androidx.compose.ui:ui-test-junit4")\n    debugImplementation("androidx.compose.ui:ui-test-manifest")\n'''
+          if needle not in s:
+              raise SystemExit('dependency insertion point not found')
+          p.write_text(s.replace(needle, add, 1))
+          PY
+          mkdir -p source/app/src/androidTest/java/com/fush/erp/ui/screens
+          cat > source/app/src/androidTest/java/com/fush/erp/ui/screens/ExpenseAddDialogRuntimeProbeTest.kt <<'KOTLIN'
+          package com.fush.erp.ui.screens
+
+          import android.content.Context
+          import androidx.compose.ui.test.assertIsDisplayed
+          import androidx.compose.ui.test.junit4.createComposeRule
+          import androidx.compose.ui.test.onNodeWithText
+          import androidx.compose.ui.test.performClick
+          import androidx.test.core.app.ApplicationProvider
+          import com.fush.erp.data.AppContainer
+          import com.fush.erp.data.entity.UserEntity
+          import com.fush.erp.ui.FushTheme
+          import kotlinx.coroutines.runBlocking
+          import org.junit.After
+          import org.junit.Before
+          import org.junit.Rule
+          import org.junit.Test
+
+          class ExpenseAddDialogRuntimeProbeTest {
+              @get:Rule
+              val compose = createComposeRule()
+
+              private lateinit var context: Context
+              private lateinit var container: AppContainer
+
+              @Before
+              fun setup() {
+                  context = ApplicationProvider.getApplicationContext()
+                  context.deleteDatabase("fush_erp.db")
+                  container = AppContainer(context)
+                  runBlocking { container.seedIfNeeded() }
+              }
+
+              @After
+              fun tearDown() {
+                  if (::container.isInitialized) container.db.close()
+              }
+
+              @Test
+              fun openingActualAddExpenseDialogDoesNotCrash() {
+                  val testUser = UserEntity(
+                      id = 900001,
+                      username = "runtime_probe",
+                      displayName = "Runtime Probe",
+                      passwordHash = "unused",
+                      salt = "unused",
+                      role = "ACCOUNTANT",
+                      isActive = true,
+                      mustChangePassword = false
+                  )
+                  compose.setContent {
+                      FushTheme(darkTheme = false) {
+                          ExpenseManagementTab(container = container, user = testUser)
+                      }
+                  }
+                  compose.waitForIdle()
+                  compose.onNodeWithText("تسجيل مصروف جديد", useUnmergedTree = true)
+                      .assertIsDisplayed()
+                      .performClick()
+                  compose.waitForIdle()
+                  compose.onNodeWithText("مصروف جديد", useUnmergedTree = true)
+                      .assertIsDisplayed()
+              }
+          }
+          KOTLIN
+
+      - name: Compile exact variant + diagnostic probe
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee ../evidence/${{ matrix.variant }}/build.txt
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee ../evidence/${{ matrix.variant }}/app-debug.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk ../evidence/${{ matrix.variant }}/
+
+      - name: Run Android emulator, clear logcat, open actual AddExpenseDialog, capture evidence
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set +e
+            mkdir -p evidence/${{ matrix.variant }}
+            adb wait-for-device
+            adb logcat -c
+            cd source
+            gradle --no-daemon :app:connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.ui.screens.ExpenseAddDialogRuntimeProbeTest \
+              2>&1 | tee ../evidence/${{ matrix.variant }}/instrumentation.txt
+            test_status=${PIPESTATUS[0]}
+            cd ..
+            adb logcat -d -v threadtime > evidence/${{ matrix.variant }}/logcat-full.txt
+            adb shell dumpsys activity processes > evidence/${{ matrix.variant }}/processes.txt 2>&1 || true
+            adb exec-out screencap -p > evidence/${{ matrix.variant }}/screen.png 2>/dev/null || true
+            printf 'instrumentation_exit=%s\n' "$test_status" > evidence/${{ matrix.variant }}/runtime-result.txt
+            grep -n -A120 -B10 -E 'FATAL EXCEPTION|AndroidRuntime: FATAL|Process: com\.fush\.erp' \
+              evidence/${{ matrix.variant }}/logcat-full.txt > evidence/${{ matrix.variant }}/fatal-exception.txt || true
+            grep -m1 -E '^[[:space:]]*at com\.fush\.erp\.|com\.fush\.erp\.[A-Za-z0-9_.$]+\(' \
+              evidence/${{ matrix.variant }}/fatal-exception.txt > evidence/${{ matrix.variant }}/first-fush-frame.txt || true
+            if grep -q -E 'FATAL EXCEPTION|AndroidRuntime: FATAL' evidence/${{ matrix.variant }}/logcat-full.txt; then
+              echo 'CRASH' >> evidence/${{ matrix.variant }}/runtime-result.txt
+            elif [ "$test_status" -eq 0 ]; then
+              echo 'PASS_NO_CRASH' >> evidence/${{ matrix.variant }}/runtime-result.txt
+            else
+              echo 'TEST_FAILED_WITHOUT_FATAL_MARKER' >> evidence/${{ matrix.variant }}/runtime-result.txt
+            fi
+            exit 0
+
+      - name: Summarize diagnostic result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== runtime result ==='
+          cat evidence/${{ matrix.variant }}/runtime-result.txt || true
+          echo '=== first FUSH frame ==='
+          cat evidence/${{ matrix.variant }}/first-fush-frame.txt || true
+          echo '=== fatal excerpt ==='
+          cat evidence/${{ matrix.variant }}/fatal-exception.txt || true
+
+      - name: Upload diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Expenses-Runtime-Diagnostic-${{ matrix.variant }}
+          path: evidence/${{ matrix.variant }}/
+          if-no-files-found: error
