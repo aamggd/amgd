@@ -20,7 +20,7 @@ class AccountingP1Migration34To35Test {
     )
 
     @Test
-    fun migrate34To35_preservesHistoricalPostedRows_andEnforcesNewJournalGuards() {
+    fun migrate34To35_preservesHistoricalPostedRows_andEnforcesWave1JournalGuards() {
         helper.createDatabase(DB_34_35, 34).apply {
             execSQL(
                 """INSERT INTO journal_entries
@@ -44,13 +44,18 @@ class AccountingP1Migration34To35Test {
             MIGRATION_34_35_ACCOUNTING_P1
         )
 
+        // Historical rows created before P1 must survive exactly; legacy stable-source rows with
+        // NULL sourceId are preserved rather than rewritten or destructively reset.
         db.query("SELECT COUNT(*) FROM journal_entries WHERE id IN (100,101)").use { c ->
             assertTrue(c.moveToFirst())
             assertEquals(2, c.getInt(0))
         }
-        db.query("SELECT sourceId FROM journal_entries WHERE id=100").use { c ->
+        db.query("SELECT entryNo, sourceType, sourceId, status FROM journal_entries WHERE id=100").use { c ->
             assertTrue(c.moveToFirst())
-            assertTrue(c.isNull(0))
+            assertEquals("LEG-POSTED-100", c.getString(0))
+            assertEquals("SALE", c.getString(1))
+            assertTrue(c.isNull(2))
+            assertEquals("POSTED", c.getString(3))
         }
 
         assertSqlRejected(db, "ACCOUNTING_STABLE_SOURCE_ID_REQUIRED") {
@@ -62,19 +67,34 @@ class AccountingP1Migration34To35Test {
             )
         }
 
-        db.execSQL(
-            """INSERT INTO journal_entries
-                (entryNo, entryDate, description, currencyCode, exchangeRate, sourceType, sourceId, status, createdBy, createdAt)
-                VALUES ('SALE-200-A', 2100, 'first stable event', 'YER_NEW', 1.0, 'SALE', 'sale-200', 'POSTED', 1, 2100)
-            """.trimIndent()
+        // Wave-1 cross-module accounting boundary: every stable operational source introduced or
+        // exercised by Sales/Purchases/Treasury must accept the first event and reject a duplicate.
+        val stableSources = listOf(
+            "SALE",
+            "CUSTOMER_RECEIPT",
+            "SALES_RETURN",
+            "PURCHASE",
+            "PURCHASE_RETURN",
+            "SUPPLIER_PAYMENT"
         )
-        assertSqlRejected(db, "DUPLICATE_ACCOUNTING_POSTING") {
+        stableSources.forEachIndexed { index, sourceType ->
+            val sourceId = "qa-wave1-${sourceType.lowercase()}-$index"
+            val firstNo = "QA-$index-A"
+            val duplicateNo = "QA-$index-B"
             db.execSQL(
                 """INSERT INTO journal_entries
                     (entryNo, entryDate, description, currencyCode, exchangeRate, sourceType, sourceId, status, createdBy, createdAt)
-                    VALUES ('SALE-200-B', 2101, 'duplicate stable event', 'YER_NEW', 1.0, 'SALE', 'sale-200', 'POSTED', 1, 2101)
+                    VALUES ('$firstNo', ${2100 + index}, 'first wave1 event', 'YER_NEW', 1.0, '$sourceType', '$sourceId', 'POSTED', 1, ${2100 + index})
                 """.trimIndent()
             )
+            assertSqlRejected(db, "DUPLICATE_ACCOUNTING_POSTING") {
+                db.execSQL(
+                    """INSERT INTO journal_entries
+                        (entryNo, entryDate, description, currencyCode, exchangeRate, sourceType, sourceId, status, createdBy, createdAt)
+                        VALUES ('$duplicateNo', ${2200 + index}, 'duplicate wave1 event', 'YER_NEW', 1.0, '$sourceType', '$sourceId', 'POSTED', 1, ${2200 + index})
+                    """.trimIndent()
+                )
+            }
         }
 
         assertSqlRejected(db, "POSTED_JOURNAL_IMMUTABLE_USE_REVERSAL") {
@@ -88,13 +108,13 @@ class AccountingP1Migration34To35Test {
         db.execSQL(
             """INSERT INTO journal_entries
                 (entryNo, entryDate, description, currencyCode, exchangeRate, sourceType, sourceId, status, createdBy, createdAt)
-                VALUES ('MANUAL-REPEAT-A', 2200, 'manual A', 'YER_NEW', 1.0, 'MANUAL', 'same-manual-id', 'POSTED', 1, 2200)
+                VALUES ('MANUAL-REPEAT-A', 2300, 'manual A', 'YER_NEW', 1.0, 'MANUAL', 'same-manual-id', 'POSTED', 1, 2300)
             """.trimIndent()
         )
         db.execSQL(
             """INSERT INTO journal_entries
                 (entryNo, entryDate, description, currencyCode, exchangeRate, sourceType, sourceId, status, createdBy, createdAt)
-                VALUES ('MANUAL-REPEAT-B', 2201, 'manual B', 'YER_NEW', 1.0, 'MANUAL', 'same-manual-id', 'POSTED', 1, 2201)
+                VALUES ('MANUAL-REPEAT-B', 2301, 'manual B', 'YER_NEW', 1.0, 'MANUAL', 'same-manual-id', 'POSTED', 1, 2301)
             """.trimIndent()
         )
 
