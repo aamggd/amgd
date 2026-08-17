@@ -33,12 +33,43 @@ def adb(*args, check=True):
     return run("adb", *args, check=check)
 
 
+def screenshot(name):
+    target = OUT / f"{name}.png"
+    with target.open("wb") as fh:
+        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=fh, stderr=subprocess.DEVNULL, check=False)
+
+
 def dump(name="window"):
     remote = "/sdcard/window.xml"
-    adb("shell", "uiautomator", "dump", remote)
-    local = OUT / f"{name}.xml"
-    adb("pull", remote, str(local))
-    return ET.parse(local).getroot()
+    attempts = []
+    for cmd in (
+        ("shell", "uiautomator", "dump", "--compressed", remote),
+        ("shell", "uiautomator", "dump", remote),
+    ):
+        out = adb(*cmd, check=False)
+        attempts.append(" ".join(cmd) + "\n" + out)
+        if "UI hierchary dumped to" in out or "UI hierarchy dumped to" in out:
+            local = OUT / f"{name}.xml"
+            pull = adb("pull", remote, str(local), check=False)
+            if local.exists() and local.stat().st_size > 0:
+                try:
+                    return ET.parse(local).getroot()
+                except Exception as exc:
+                    attempts.append(f"parse failed: {exc}")
+            else:
+                attempts.append(f"pull failed: {pull}")
+        time.sleep(0.5)
+    (OUT / f"{name}.dump-error.txt").write_text("\n---\n".join(attempts) + "\n", encoding="utf-8", errors="replace")
+    raise RuntimeError("uiautomator dump failed; see dump-error evidence")
+
+
+def capture_timeout_diagnostics(name, error=""):
+    screenshot(f"timeout-{name}")
+    (OUT / f"timeout-{name}.error.txt").write_text(error + "\n", encoding="utf-8", errors="replace")
+    (OUT / f"timeout-{name}.pid.txt").write_text(adb("shell", "pidof", PKG, check=False) + "\n", encoding="utf-8", errors="replace")
+    (OUT / f"timeout-{name}.activity.txt").write_text(adb("shell", "dumpsys", "activity", "activities", check=False) + "\n", encoding="utf-8", errors="replace")
+    (OUT / f"timeout-{name}.window.txt").write_text(adb("shell", "dumpsys", "window", "windows", check=False) + "\n", encoding="utf-8", errors="replace")
+    (OUT / f"timeout-{name}.logcat.txt").write_text(adb("logcat", "-d", "-v", "threadtime", check=False) + "\n", encoding="utf-8", errors="replace")
 
 
 def bounds_center(raw):
@@ -73,6 +104,7 @@ def find_node(root, texts=(), descs=(), contains=(), klass=None, enabled=None):
 def wait_node(name, timeout=30, **kwargs):
     end = time.time() + timeout
     last = None
+    last_error = ""
     while time.time() < end:
         try:
             root = dump(f"wait-{name}")
@@ -80,12 +112,13 @@ def wait_node(name, timeout=30, **kwargs):
             if n is not None:
                 return n, root
             last = root
-        except Exception:
-            pass
+        except Exception as exc:
+            last_error = str(exc)
         time.sleep(1)
     if last is not None:
         ET.ElementTree(last).write(OUT / f"timeout-{name}.xml", encoding="utf-8")
-    raise RuntimeError(f"timed out waiting for {name}")
+    capture_timeout_diagnostics(name, last_error)
+    raise RuntimeError(f"timed out waiting for {name}; last_error={last_error}")
 
 
 def tap_node(node):
@@ -227,7 +260,7 @@ def open_backup_and_capture(label):
             fatal_lines.extend(lines[max(0, i-5):min(len(lines), i+120)])
             break
     (OUT / f"{label}.fatal.txt").write_text("\n".join(fatal_lines) + ("\n" if fatal_lines else ""), encoding="utf-8")
-    adb("exec-out", "screencap", "-p", check=False)
+    screenshot(f"{label}-after-click")
     try:
         root = dump(f"{label}-after-click")
         screen_text = "\n".join((n.attrib.get("text") or "") for n in nodes(root))
