@@ -99,9 +99,6 @@ jobs:
           sort -u /tmp/allowed -o /tmp/allowed
           diff -u /tmp/allowed /tmp/changed
 
-      - name: Migration data preservation
-        run: python inventory_p1/migration_smoke.py
-
       - name: Targeted P1 tests
         working-directory: work
         run: gradle --no-daemon :app:testDebugUnitTest --tests com.fush.erp.domain.StockMovementPolicyTest --tests com.fush.erp.domain.StockLedgerInvariantTest
@@ -113,6 +110,9 @@ jobs:
       - name: Release
         working-directory: work
         run: gradle --no-daemon :app:assembleRelease
+
+      - name: Migration data preservation
+        run: python inventory_p1/migration_smoke.py
 
       - name: Release safety and exact candidate
         shell: bash
@@ -146,10 +146,10 @@ jobs:
           Application ID: com.fush.erp.recovery
           Central Room: 35
           Branch-only provisional Room: 36
-          Migration/data preservation: PASS
           Targeted tests: PASS
           Full Unit: PASS
           Release: PASS
+          Migration/data preservation: PASS
           zipalign: PASS
           destructive migration: absent
           P2+: not started
