@@ -1,0 +1,15 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index da9629b..bd29ffa 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 79
+-        versionName = "0.15.4.40-ui-employees-sales-reps"
++        versionCode = 80
++        versionName = "0.15.4.41-ui-assets-maintenance-expenses"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }

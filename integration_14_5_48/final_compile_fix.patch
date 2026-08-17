@@ -1,0 +1,53 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+index 4b28291..9832d2f 100644
+--- a/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
++++ b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+@@ -65,7 +65,6 @@ fun FushDateField(
+         placeholder = { Text(FUSH_DATE_PATTERN) },
+         singleLine = true,
+         enabled = enabled,
+-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Date),
+         trailingIcon = {
+             TextButton(
+                 onClick = { showPicker = true },
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 6988f7e..bb9df86 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -22,6 +22,8 @@ import com.fush.erp.ui.FushStatusPill
+ import com.fush.erp.ui.FushStatusTone
+ import com.fush.erp.ui.FushInlineState
+ import com.fush.erp.ui.FushEmptyState
++import com.fush.erp.ui.FushDateField
++import com.fush.erp.ui.FushDecimalField
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.*
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 2b0a57c..4242750 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -639,7 +639,7 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+             0 -> item { PartyInfoSupplier(supplier) }
+             1 -> supplierLedgerItems(running)
+             2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مشتريات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)}" }
+-            3 -> profileSimpleEntityItems(if (payments.isEmpty()) "لا توجد دفعات للمورد." else null, payments) { r -> "${partyDate(r.paymentDate)} • ${r.paymentNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
++            3 -> profileSimpleEntityItems(if (payments.isEmpty()) "لا توجد دفعات للمورد." else null, payments) { r -> "${partyDate(r.paymentDate)} • ${r.paymentNo} • ${partyMoney(r.cashAmountBase)} • ${r.treasuryName}${if (r.invoiceNo.isNotBlank()) " • ${r.invoiceNo}" else ""}" }
+             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
+             5 -> profileSimpleEntityItems(if (returns.isEmpty()) "لا توجد مرتجعات مشتريات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
+             6 -> item { AttachmentTab(container, user, customerId = null, supplierId = supplier.id, attachments = attachments, onMessage = { message=it }) }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index 34f46a9..c173a99 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -328,10 +328,6 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                     }
+                 }
+             },
+-        )
+-                    }
+-                }
+-            },
+         )
+     }
+ 

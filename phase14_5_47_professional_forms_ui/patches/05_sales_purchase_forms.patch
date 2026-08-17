@@ -1,0 +1,145 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 9f9af9e..7a3c1c9 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -459,9 +459,9 @@ private fun AddSupplierDialog(
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("كود المورد: ينشئه النظام تلقائياً عند الحفظ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                 OutlinedTextField(name, { name = it }, label = { Text("اسم المورد") }, singleLine = true)
+-                OutlinedTextField(phone, { phone = it }, label = { Text("الهاتف") }, singleLine = true)
++                FushPhoneField(phone, { phone = it }, modifier = Modifier.fillMaxWidth())
+                 SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
+-                OutlinedTextField(daysText, { daysText = it.filter { c -> c.isDigit() } }, label = { Text("مدة السداد بالأيام") }, singleLine = true)
++                FushIntegerField(daysText, { daysText = it.filter { c -> c.isDigit() } }, "مدة السداد بالأيام", modifier = Modifier.fillMaxWidth())
+             }
+         },
+         confirmButton = {
+@@ -549,10 +549,10 @@ private fun PurchaseInvoiceDialog(
+                 Text("رقم فاتورة النظام ينشأ تلقائياً عند الترحيل (PINV-YYYYMMDD-####).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                 SelectionField("المورد", supplier?.nameAr ?: "اختر", suppliers, { it.nameAr }) { supplier = it }
+                 OutlinedTextField(supplierInvoiceNo, { supplierInvoiceNo = it }, label = { Text("رقم فاتورة المورد - اختياري") }, singleLine = true)
+-                OutlinedTextField(invoiceDateText, { invoiceDateText = it }, label = { Text("تاريخ الفاتورة YYYY-MM-DD") }, singleLine = true)
++                FushDateField(invoiceDateText, { invoiceDateText = it }, "تاريخ الفاتورة", modifier = Modifier.fillMaxWidth())
+                 SelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                 SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it; if (it.isBase) exchangeRateText = "1" }
+-                OutlinedTextField(exchangeRateText, { exchangeRateText = it }, label = { Text("سعر الصرف إلى الريال الجديد") }, singleLine = true, enabled = currency?.isBase != true)
++                FushDecimalField(exchangeRateText, { exchangeRateText = it }, "سعر الصرف إلى الريال الجديد", modifier = Modifier.fillMaxWidth(), enabled = currency?.isBase != true)
+                 StringSelectionField("السداد", if (paymentType == "CASH") "نقدي" else "آجل", listOf("CASH", "CREDIT")) { paymentType = it }
+                 HorizontalDivider()
+                 Text("إضافة صنف للفاتورة", style = MaterialTheme.typography.titleMedium)
+@@ -563,8 +563,8 @@ private fun PurchaseInvoiceDialog(
+                     conversions,
+                     { c -> units.firstOrNull { it.id == c.unitId }?.nameAr ?: "وحدة" }
+                 ) { conversion = it }
+-                OutlinedTextField(quantityText, { quantityText = it }, label = { Text("الكمية") }, singleLine = true)
+-                OutlinedTextField(priceText, { priceText = it }, label = { Text("سعر الوحدة بالعملة المختارة") }, singleLine = true)
++                FushDecimalField(quantityText, { quantityText = it }, "الكمية", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(priceText, { priceText = it }, "سعر الوحدة بالعملة المختارة", modifier = Modifier.fillMaxWidth())
+                 if (loadingLastPrice) {
+                     Text("جارٍ جلب آخر سعر شراء...", style = MaterialTheme.typography.bodySmall)
+                 } else {
+@@ -605,7 +605,7 @@ private fun PurchaseInvoiceDialog(
+                     }
+                 }
+                 OutlinedTextField(lotNoText, { lotNoText = it }, label = { Text("رقم التشغيلة - اختياري") }, singleLine = true)
+-                OutlinedTextField(expiryText, { expiryText = it }, label = { Text("الصلاحية YYYY-MM-DD - اختياري") }, singleLine = true)
++                FushDateField(expiryText, { expiryText = it }, "تاريخ الصلاحية", modifier = Modifier.fillMaxWidth(), optional = true)
+                 OutlinedButton(
+                     onClick = {
+                         try {
+@@ -879,11 +879,11 @@ private fun SupplierPaymentDialog(
+                         if (compatibleTreasury.isEmpty()) {
+                             FushInlineState("لا توجد خزينة نشطة بعملة ${selected.currencyCode}. أنشئها من الحسابات أولًا.", tone = FushStatusTone.Danger)
+                         }
+-                        OutlinedTextField(amountText, { amountText = it }, label = { Text("المبلغ المدفوع (${selected.currencyCode})") }, singleLine = true)
+-                        OutlinedTextField(rateText, { rateText = it }, label = { Text("سعر الصرف بتاريخ الدفع") }, singleLine = true)
++                        FushDecimalField(amountText, { amountText = it }, "المبلغ المدفوع (${selected.currencyCode})", modifier = Modifier.fillMaxWidth())
++                        FushDecimalField(rateText, { rateText = it }, "سعر الصرف بتاريخ الدفع", modifier = Modifier.fillMaxWidth())
+                         Text("يخفّض حساب المورد بسعر الفاتورة التاريخي، وأي فرق عن سعر الدفع يسجل تلقائياً كربح/خسارة فرق عملة.", style = MaterialTheme.typography.bodySmall)
+                     }
+-                    OutlinedTextField(dateText, { dateText = it }, label = { Text("تاريخ الدفع YYYY-MM-DD") }, singleLine = true)
++                    FushDateField(dateText, { dateText = it }, "تاريخ الدفع", modifier = Modifier.fillMaxWidth())
+                     OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات - اختياري") })
+                 }
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index e4045d5..5a44837 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -552,7 +552,7 @@ private fun EditCustomerDialog(
+                 }
+                 OutlinedTextField(nameAr, { nameAr = it }, label = { Text("اسم العميل بالعربي") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(nameEn, { nameEn = it }, label = { Text("اسم العميل بالإنجليزي - اختياري") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(phone, { phone = it }, label = { Text("الهاتف") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                FushPhoneField(phone, { phone = it }, modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(address, { address = it }, label = { Text("العنوان") }, modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(province, { province = it }, label = { Text("المحافظة") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                 SalesStringSelectionField("قناة البيع", channel, listOf("DIRECT", "RETAIL", "DISTRIBUTOR_CASH", "DISTRIBUTOR_CREDIT"), ::salesChannelLabel) { channel = it }
+@@ -563,8 +563,8 @@ private fun EditCustomerDialog(
+                     Text("السماح بالبيع الآجل")
+                 }
+                 if (allowCredit) {
+-                    OutlinedTextField(limitText, { limitText = it }, label = { Text("سقف الآجل بالريال الأساسي") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+-                    OutlinedTextField(daysText, { daysText = it.filter(Char::isDigit) }, label = { Text("مدة الائتمان - من 1 إلى 30 يوماً") }, singleLine = true, modifier = Modifier.fillMaxWidth())
++                    FushDecimalField(limitText, { limitText = it }, "سقف الآجل بالريال الأساسي", modifier = Modifier.fillMaxWidth())
++                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - من 1 إلى 30 يوماً", modifier = Modifier.fillMaxWidth())
+                 } else {
+                     Text("سيتم إيقاف إنشاء فواتير آجلة جديدة لهذا العميل، ولن تتأثر الديون السابقة.", style = MaterialTheme.typography.bodySmall)
+                 }
+@@ -677,8 +677,8 @@ private fun AddCustomerDialog(
+                     Text("السماح بالبيع الآجل")
+                 }
+                 if (allowCredit) {
+-                    OutlinedTextField(limitText, { limitText = it }, label = { Text("السقف الائتماني بالريال الأساسي") }, singleLine = true)
+-                    OutlinedTextField(daysText, { daysText = it.filter(Char::isDigit) }, label = { Text("مدة الائتمان - بحد أقصى 30") }, singleLine = true)
++                    FushDecimalField(limitText, { limitText = it }, "السقف الائتماني بالريال الأساسي", modifier = Modifier.fillMaxWidth())
++                    FushIntegerField(daysText, { daysText = it.filter(Char::isDigit) }, "مدة الائتمان - بحد أقصى 30", modifier = Modifier.fillMaxWidth())
+                 }
+                 OutlinedTextField(rep, { rep = it }, label = { Text("اسم المندوب/الموزع للعمولة") }, singleLine = true)
+             }
+@@ -778,18 +778,18 @@ private fun SalesInvoiceDialog(
+                 }
+                 SalesSelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                 SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
+-                if (currency?.isBase != true) OutlinedTextField(exchangeText, { exchangeText = it }, label = { Text("سعر الصرف إلى الريال الجديد") }, singleLine = true)
++                if (currency?.isBase != true) FushDecimalField(exchangeText, { exchangeText = it }, "سعر الصرف إلى الريال الجديد", modifier = Modifier.fillMaxWidth())
+                 SalesStringSelectionField("نوع البيع", paymentType, if (customer?.allowCredit == true) listOf("CASH", "CREDIT") else listOf("CASH"), { if (it == "CASH") "نقدي" else "آجل" }) { paymentType = it }
+-                if (paymentType == "CREDIT") OutlinedTextField(creditDaysText, { creditDaysText = it.filter(Char::isDigit) }, label = { Text("أيام الائتمان") }, singleLine = true)
+-                OutlinedTextField(discountText, { discountText = it }, label = { Text("الخصم %") }, singleLine = true)
+-                OutlinedTextField(transportText, { transportText = it }, label = { Text("النقل") }, singleLine = true)
+-                OutlinedTextField(feesText, { feesText = it }, label = { Text("الرسوم/الجمارك") }, singleLine = true)
+-                OutlinedTextField(riskText, { riskText = it }, label = { Text("هامش المخاطر") }, singleLine = true)
++                if (paymentType == "CREDIT") FushIntegerField(creditDaysText, { creditDaysText = it.filter(Char::isDigit) }, "أيام الائتمان", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(discountText, { discountText = it }, "الخصم %", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(transportText, { transportText = it }, "النقل", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(feesText, { feesText = it }, "الرسوم/الجمارك", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(riskText, { riskText = it }, "هامش المخاطر", modifier = Modifier.fillMaxWidth())
+                 HorizontalDivider()
+                 Text("إضافة صنف", style = MaterialTheme.typography.titleMedium)
+                 SalesSelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { it.nameAr }) { item = it }
+                 SalesSelectionField("الوحدة", conversion?.let { c -> units.firstOrNull { it.id == c.unitId }?.nameAr } ?: "اختر", conversions, { c -> units.firstOrNull { it.id == c.unitId }?.let { "${it.nameAr} × ${salesMoneyRaw(c.factorToBase)}" } ?: "وحدة" }) { conversion = it }
+-                OutlinedTextField(quantityText, { quantityText = it }, label = { Text("الكمية") }, singleLine = true)
++                FushDecimalField(quantityText, { quantityText = it }, "الكمية", modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(
+                     value = priceText,
+                     onValueChange = { priceText = it },
+@@ -916,8 +916,8 @@ private fun ReceiptDialog(
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("${invoice.customerName} • المتبقي ${salesMoney(invoice.outstandingBase)} ريال أساسي")
+                 SalesSelectionField("عملة التحصيل", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }
+-                if (currency?.isBase != true) OutlinedTextField(rateText, { rateText = it }, label = { Text("سعر الصرف") }, singleLine = true)
+-                OutlinedTextField(amountText, { amountText = it }, label = { Text("المبلغ المحصل") }, singleLine = true)
++                if (currency?.isBase != true) FushDecimalField(rateText, { rateText = it }, "سعر الصرف", modifier = Modifier.fillMaxWidth())
++                FushDecimalField(amountText, { amountText = it }, "المبلغ المحصل", modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(notes, { notes = it }, label = { Text("ملاحظات") })
+                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+             }
+@@ -983,7 +983,7 @@ private fun SalesReturnDialog(
+                         "$itemName — ${salesMoney(row.quantity)} $unitName"
+                     }
+                 ) { line = it; quantityText = "" }
+-                OutlinedTextField(quantityText, { quantityText = it }, label = { Text("كمية المرتجع بالوحدة الأصلية") }, singleLine = true)
++                FushDecimalField(quantityText, { quantityText = it }, "كمية المرتجع بالوحدة الأصلية", modifier = Modifier.fillMaxWidth())
+                 SalesStringSelectionField("التسوية", settlement, listOf("CUSTOMER_CREDIT", "CASH_REFUND"), { if (it == "CASH_REFUND") "رد نقدي" else "إشعار دائن للعميل" }) { settlement = it }
+                 OutlinedTextField(reason, { reason = it }, label = { Text("سبب المرتجع") })
+                 Text("سيعاد المخزون إلى نفس تشغيلات البيع الأصلية، وتنعكس تكلفة المبيعات والعمولة المستحقة تلقائياً.", style = MaterialTheme.typography.bodySmall)

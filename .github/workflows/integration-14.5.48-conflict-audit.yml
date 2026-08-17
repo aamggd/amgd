@@ -1,0 +1,143 @@
+name: Audit FUSH Final Integration 14.5.48
+
+on:
+  push:
+    branches: [fush/integration-final-14.5.48]
+    paths:
+      - '.github/workflows/integration-14.5.48-conflict-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  conflict-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official baseline 14.5.38
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.38-Professional-UI-Build
+          path: artifacts/baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31858347166
+      - name: Download validated Accounting 14.5.39
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Accounting-Phase14.5.39-FX-Treasury-Validated-Build
+          path: artifacts/accounting
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865418288
+      - name: Download validated Security final
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Security-Rebase-Final-Validation
+          path: artifacts/security
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865181875
+      - name: Download validated Reports and Printing 14.5.46
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.46-Professional-Printing-Build
+          path: artifacts/reports
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31865897444
+      - name: Reconstruct sources and latest UI snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/{baseline,ui,accounting,security,reports}
+          unzip -q artifacts/baseline/FushERP-Mobile-Phase14.5.38-Professional-UI-Source.zip -d work/baseline
+          unzip -q artifacts/accounting/FushERP-Mobile-Phase14.5.39-Foreign-Currency-Treasury-Revaluation-Source.zip -d work/accounting
+          unzip -q artifacts/security/FushERP-Security-Rebase-Final-Source.zip -d work/security
+          unzip -q artifacts/reports/FushERP-Mobile-Phase14.5.46-Professional-Printing-Source.zip -d work/reports
+          BASE=$(find work/baseline -mindepth 1 -maxdepth 1 -type d | head -1)
+          cp -a "$BASE" work/ui/FushERP_Mobile_Phase5
+          UI=work/ui/FushERP_Mobile_Phase5
+          rm -rf "$UI/.git" "$UI/app/build" "$UI/.gradle" "$UI/.kotlin" "$UI/build"
+          git -C "$UI" init -q
+          git -C "$UI" config user.email integration@fush.local
+          git -C "$UI" config user.name 'FUSH Integration'
+          git -C "$UI" add -A
+          git -C "$UI" commit -qm baseline38
+          for d in \
+            phase14_5_39_production_quality_ui \
+            phase14_5_40_employees_sales_reps_ui \
+            phase14_5_41_assets_maintenance_expenses_ui \
+            phase14_5_42_reports_adaptive_ui \
+            phase14_5_43_accessibility_polish_ui \
+            phase14_5_44_final_ui_handoff \
+            phase14_5_45_inventory_scroll_hotfix \
+            phase14_5_46_scroll_profile_polish \
+            phase14_5_47_professional_forms_ui
+          do
+            echo "Applying UI handoff: $d"
+            while IFS= read -r p; do
+              echo "  -> $p"
+              git -C "$UI" apply --recount --check "$p"
+              git -C "$UI" apply --recount "$p"
+            done < <(find "$GITHUB_WORKSPACE/$d/patches" -maxdepth 1 -type f -name '*.patch' | sort -V)
+          done
+          git -C "$UI" diff --check
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$UI/app/build.gradle.kts"
+          grep -q 'versionCode = 86' "$UI/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' "$UI/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          rm -rf "$UI/.git"
+      - name: Audit three-way conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, subprocess, hashlib
+          root=pathlib.Path('work')
+          def one(path):
+              ds=[p for p in path.iterdir() if p.is_dir()]
+              assert len(ds)==1,(path,ds)
+              return ds[0]
+          base=one(root/'baseline'); ui=one(root/'ui')
+          specs={'ACCOUNTING':one(root/'accounting'),'SECURITY':one(root/'security'),'REPORTS_PRINTING':one(root/'reports')}
+          def files(d):
+              result=set()
+              for p in d.rglob('*'):
+                  if not p.is_file(): continue
+                  s=str(p)
+                  if '/build/' in s or '/.gradle/' in s or '/.kotlin/' in s or s.endswith('.apk'): continue
+                  result.add(str(p.relative_to(d)))
+              return result
+          def same(a,b):
+              return a.exists() and b.exists() and hashlib.sha256(a.read_bytes()).digest()==hashlib.sha256(b.read_bytes()).digest()
+          report=[]
+          for label,spec in specs.items():
+              changed=[]; conflicts=[]; new=[]; deleted=[]
+              for rel in sorted(files(base)|files(spec)):
+                  b=base/rel; t=spec/rel
+                  if b.exists() and t.exists() and same(b,t): continue
+                  changed.append(rel)
+                  if not b.exists() and t.exists(): new.append(rel); continue
+                  if b.exists() and not t.exists(): deleted.append(rel); continue
+                  o=ui/rel
+                  if not o.exists(): continue
+                  try:
+                      ob=o.read_bytes(); bb=b.read_bytes(); tb=t.read_bytes()
+                      if b'\0' in ob+bb+tb: continue
+                      cp=subprocess.run(['git','merge-file','-p',str(o),str(b),str(t)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                      if cp.returncode==1: conflicts.append(rel)
+                      elif cp.returncode>1: conflicts.append(rel+' [merge-error]')
+                  except Exception: conflicts.append(rel+' [exception]')
+              report += [f'## {label}',f'changed={len(changed)} new={len(new)} deleted={len(deleted)} conflicts={len(conflicts)}']
+              report += [f'CONFLICT {x}' for x in conflicts]
+              report.append('')
+          pathlib.Path('integration-conflict-audit.txt').write_text('\n'.join(report),encoding='utf-8')
+          print('\n'.join(report))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-14.5.48-Conflict-Audit
+          path: integration-conflict-audit.txt
+          retention-days: 7

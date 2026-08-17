@@ -1,0 +1,260 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt b/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+index 597b154..3a473bd 100644
+--- a/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
++++ b/app/src/main/java/com/fush/erp/ui/export/ReportExportSupport.kt
+@@ -225,8 +225,13 @@ object ReportExportSupport {
+             if (headers.isEmpty()) return emptyList()
+             val weights = headers.map { header ->
+                 when {
+-                    header.contains("البيان") || header.contains("الوصف") || header.contains("الحساب") || header.contains("الطرف") -> 1.8f
+-                    header.contains("التاريخ") || header.contains("المرجع") || header.contains("المستند") -> 1.2f
++                    header.contains("البيان") || header.contains("الوصف") || header.contains("ملاحظة") -> 2.8f
++                    header.contains("الحساب") || header.contains("الطرف") -> 2.1f
++                    header.contains("رقم القيد") || header.contains("السند") || header.contains("المستند") ||
++                        header.contains("المرجع") || header.contains("رقم الحساب") -> 1.75f
++                    header.contains("التاريخ") -> 1.25f
++                    header.contains("مدين") || header.contains("دائن") || header.contains("الرصيد") ||
++                        header.contains("المبلغ") || header.contains("الإجمالي") -> 1.2f
+                     else -> 1f
+                 }
+             }
+@@ -236,25 +241,33 @@ object ReportExportSupport {
+ 
+         fun cellLines(text: String, paint: Paint, width: Float, maxLines: Int): List<String> {
+             val all = wrapText(text.ifBlank { "—" }, paint, (width - CELL_PADDING * 2).coerceAtLeast(24f))
+-            if (all.size <= maxLines) return all
++            if (maxLines <= 0 || all.size <= maxLines) return all
+             val kept = all.take(maxLines).toMutableList()
+             val last = kept.last().trimEnd()
+             kept[kept.lastIndex] = if (last.endsWith("…")) last else "$last…"
+             return kept
+         }
+ 
++        fun lineHeight(paint: Paint): Float {
++            val metrics = paint.fontMetrics
++            return (metrics.descent - metrics.ascent + 2.5f).coerceAtLeast(paint.textSize + 2f)
++        }
++
+         fun rowHeight(cells: List<String>, widths: List<Float>, paint: Paint, maxLines: Int): Float {
+-            val lineHeight = paint.textSize + 3.5f
++            val heightPerLine = lineHeight(paint)
+             val maxCount = widths.indices.maxOfOrNull { i ->
+                 cellLines(cells.getOrElse(i) { "" }, paint, widths[i], maxLines).size
+             } ?: 1
+-            return (maxCount * lineHeight + CELL_PADDING * 2).coerceAtLeast(24f)
++            return (maxCount * heightPerLine + CELL_PADDING * 2).coerceAtLeast(24f)
+         }
+ 
+         fun drawRow(cells: List<String>, widths: List<Float>, paint: Paint, isHeader: Boolean, alternate: Boolean = false) {
+-            val height = rowHeight(cells, widths, paint, if (isHeader) 3 else 4)
++            val maxLines = if (isHeader) 4 else 12
++            val height = rowHeight(cells, widths, paint, maxLines)
+             ensure(height)
+             val canvas = page!!.canvas
++            val metrics = paint.fontMetrics
++            val heightPerLine = lineHeight(paint)
+             var right = pageWidth - MARGIN
+             for (i in widths.indices) {
+                 val width = widths[i]
+@@ -262,11 +275,14 @@ object ReportExportSupport {
+                 if (isHeader) canvas.drawRect(left, y, right, y + height, headerFill)
+                 else if (alternate) canvas.drawRect(left, y, right, y + height, alternateFill)
+                 canvas.drawRect(left, y, right, y + height, borderPaint)
+-                val lines = cellLines(cells.getOrElse(i) { "" }, paint, width, if (isHeader) 3 else 4)
+-                val lineHeight = paint.textSize + 3.5f
++                val lines = cellLines(cells.getOrElse(i) { "" }, paint, width, maxLines)
++                val saveCount = canvas.save()
++                canvas.clipRect(left + 1f, y + 1f, right - 1f, y + height - 1f)
++                val firstBaseline = y + CELL_PADDING - metrics.ascent
+                 lines.forEachIndexed { index, line ->
+-                    canvas.drawText(line, right - CELL_PADDING, y + CELL_PADDING + paint.textSize + index * lineHeight, paint)
++                    canvas.drawText(line, right - CELL_PADDING, firstBaseline + index * heightPerLine, paint)
+                 }
++                canvas.restoreToCount(saveCount)
+                 right = left
+             }
+             y += height
+@@ -285,11 +301,11 @@ object ReportExportSupport {
+                 return
+             }
+             val widths = columnWidths(table.headers)
+-            val headerHeight = rowHeight(table.headers, widths, tableHeader, 3)
++            val headerHeight = rowHeight(table.headers, widths, tableHeader, 4)
+             ensure(headerHeight + 26f)
+             drawRow(table.headers, widths, tableHeader, isHeader = true)
+             table.rows.forEachIndexed { index, row ->
+-                val height = rowHeight(row, widths, tableBody, 4)
++                val height = rowHeight(row, widths, tableBody, 12)
+                 if (y + height > pageBottom) {
+                     startPage()
+                     drawWrapped("${table.title} — تابع", small, extraAfter = 5f)
+@@ -452,29 +468,8 @@ object ReportExportSupport {
+         }
+     }
+ 
+-    private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> {
+-        if (text.isBlank()) return listOf("—")
+-        val lines = mutableListOf<String>()
+-        text.split('\n').forEach { paragraph ->
+-            val words = paragraph.split(Regex("\\s+")).filter { it.isNotBlank() }
+-            if (words.isEmpty()) {
+-                lines += ""
+-            } else {
+-                var current = ""
+-                for (word in words) {
+-                    val candidate = if (current.isBlank()) word else "$current $word"
+-                    if (paint.measureText(candidate) <= maxWidth || current.isBlank()) {
+-                        current = candidate
+-                    } else {
+-                        lines += current
+-                        current = word
+-                    }
+-                }
+-                if (current.isNotBlank()) lines += current
+-            }
+-        }
+-        return lines.ifEmpty { listOf("—") }
+-    }
++    private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> =
++        ReportTextLayout.wrap(text, maxWidth) { paint.measureText(it) }
+ 
+     private fun xmlEscape(value: String): String = value
+         .replace("&", "&amp;")
+diff --git a/app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt b/app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt
+new file mode 100644
+index 0000000..c58cb4a
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/ui/export/ReportTextLayout.kt
+@@ -0,0 +1,81 @@
++package com.fush.erp.ui.export
++
++/**
++ * Pure text-wrapping helper used by the PDF renderer.
++ *
++ * Unlike word-only wrapping, this helper also hard-wraps oversized tokens
++ * (voucher numbers, UUIDs, references, etc.) so they can never paint across
++ * neighboring table cells.
++ */
++internal object ReportTextLayout {
++    fun wrap(
++        text: String,
++        maxWidth: Float,
++        measure: (String) -> Float
++    ): List<String> {
++        if (text.isBlank()) return listOf("—")
++        val safeWidth = maxWidth.coerceAtLeast(1f)
++        val lines = mutableListOf<String>()
++
++        text.split('\n').forEach { paragraph ->
++            val words = paragraph.split(Regex("\\s+")).filter { it.isNotBlank() }
++            if (words.isEmpty()) {
++                lines += ""
++                return@forEach
++            }
++
++            var current = ""
++            for (word in words) {
++                val candidate = if (current.isBlank()) word else "$current $word"
++                if (measure(candidate) <= safeWidth) {
++                    current = candidate
++                    continue
++                }
++
++                if (current.isNotBlank()) {
++                    lines += current
++                    current = ""
++                }
++
++                if (measure(word) <= safeWidth) {
++                    current = word
++                    continue
++                }
++
++                val chunks = splitOversizedToken(word, safeWidth, measure)
++                if (chunks.isNotEmpty()) {
++                    lines += chunks.dropLast(1)
++                    current = chunks.last()
++                }
++            }
++            if (current.isNotBlank()) lines += current
++        }
++
++        return lines.ifEmpty { listOf("—") }
++    }
++
++    private fun splitOversizedToken(
++        token: String,
++        maxWidth: Float,
++        measure: (String) -> Float
++    ): List<String> {
++        if (token.isEmpty()) return listOf("")
++        val chunks = mutableListOf<String>()
++        var current = ""
++        var index = 0
++        while (index < token.length) {
++            val codePoint = token.codePointAt(index)
++            val unit = String(Character.toChars(codePoint))
++            val candidate = current + unit
++            if (current.isEmpty() || measure(candidate) <= maxWidth) {
++                current = candidate
++            } else {
++                chunks += current
++                current = unit
++            }
++            index += Character.charCount(codePoint)
++        }
++        if (current.isNotEmpty()) chunks += current
++        return chunks.ifEmpty { listOf(token) }
++    }
++}
+diff --git a/app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt b/app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt
+new file mode 100644
+index 0000000..5ed671e
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/ui/export/ReportTextLayoutTest.kt
+@@ -0,0 +1,45 @@
++package com.fush.erp.ui.export
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ReportTextLayoutTest {
++    private val unitMeasure: (String) -> Float = { it.codePointCount(0, it.length).toFloat() }
++
++    @Test
++    fun `oversized voucher token is hard wrapped within cell width`() {
++        val lines = ReportTextLayout.wrap(
++            text = "RV-20260815-033041-25566a",
++            maxWidth = 10f,
++            measure = unitMeasure
++        )
++
++        assertTrue(lines.size >= 3)
++        assertTrue(lines.all { unitMeasure(it) <= 10f })
++        assertEquals("RV-20260815-033041-25566a", lines.joinToString(""))
++    }
++
++    @Test
++    fun `arabic description and long reference never exceed width`() {
++        val lines = ReportTextLayout.wrap(
++            text = "تصحيح إنتاج الدفعة PROD-20260815-0002 بالقيد RV-20260815-033041-25566a",
++            maxWidth = 14f,
++            measure = unitMeasure
++        )
++
++        assertTrue(lines.size > 2)
++        assertTrue(lines.all { unitMeasure(it) <= 14f })
++    }
++
++    @Test
++    fun `explicit new lines remain separated`() {
++        val lines = ReportTextLayout.wrap(
++            text = "السطر الأول\nالسطر الثاني",
++            maxWidth = 50f,
++            measure = unitMeasure
++        )
++
++        assertEquals(listOf("السطر الأول", "السطر الثاني"), lines)
++    }
++}

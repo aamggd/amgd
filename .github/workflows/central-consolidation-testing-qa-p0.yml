@@ -1,0 +1,129 @@
+name: Central Consolidation - Testing QA P0
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-testing-qa-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  HANDOFF_SHA: '66fc7c8150bf2603e773e59852423cd9945fbd7e'
+  MATRIX_BLOB: '2a43efb02a27057832c92dcaedece3b5fa2a14e1'
+
+jobs:
+  integrate-testing-qa-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore and verify current Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Current Central before Testing QA P0 record"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          test -f app/src/main/java/com/fush/erp/domain/audit/AuditEventCatalog.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+      - name: Fetch exact QA P0 matrix handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/qa/P0_TEST_MATRIX.md" -o qa-p0-matrix.md
+          test "$(git hash-object qa-p0-matrix.md)" = "$MATRIX_BLOB"
+          grep -Fq 'Status: **COMPLETE / READY FOR REVIEW**' qa-p0-matrix.md
+          grep -Fq '| Application ID | `com.fush.erp.recovery` | PASS |' qa-p0-matrix.md
+          grep -Fq '| Room schema | `34` | PASS — unchanged by P0 |' qa-p0-matrix.md
+          grep -Fq 'P0 does not modify application code, Room entities, migrations, accounting logic, inventory logic, production logic, versionCode/versionName, signing configuration, or runtime behavior.' qa-p0-matrix.md
+          grep -Fq -- '- **Business Logic changed:** No.' qa-p0-matrix.md
+          grep -Fq -- '- **Migrations added:** None.' qa-p0-matrix.md
+          for section in 'Authentication / session / MFA' 'Master data' 'Sales' 'Purchases' 'Treasury / cash / bank / FX' 'Accounting / GL / periods / reconciliation' 'Expenses' 'Inventory / warehouses' 'Production / quality' 'Employees / HR' 'Reports / exports / printing' 'Backup / restore' 'Database / Room migrations'; do
+            grep -Fq "$section" qa-p0-matrix.md
+          done
+
+      - name: Domain regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Full unit tests confirmation
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks and no-op source proof
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          test "$(git write-tree)" = "$INPUT_TREE"
+
+      - name: Create validated Central QA record
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p central_integration_records
+          cp qa-p0-matrix.md central_integration_records/testing-qa-p0-test-matrix.md
+          cat > central_integration_records/testing-qa-p0.md <<EOF
+          # Central Integration Record — Testing QA P0
+          - Source handoff SHA: ${HANDOFF_SHA}
+          - Scope: QA module/risk/scenario matrix and release-gate documentation only
+          - Application source transplant: none
+          - Central source tree before/after: ${INPUT_TREE}
+          - Application ID: com.fush.erp.recovery
+          - Room schema: 34 unchanged
+          - Migrations: none
+          - Destructive migration: absent
+          - QA matrix coverage validation: PASS
+          - Domain/full unit tests: PASS
+          - Release build: PASS
+          - Result: SUCCESS / VALIDATED DOCUMENTATION HANDOFF
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_integration_records/testing-qa-p0.md central_integration_records/testing-qa-p0-test-matrix.md
+          git commit -m "Central integration: record Testing QA P0 matrix"
+          git push origin HEAD:fush/integration-current

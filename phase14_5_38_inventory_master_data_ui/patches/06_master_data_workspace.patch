@@ -1,0 +1,110 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -600,6 +600,7 @@
+     var editWarehouse by remember { mutableStateOf<WarehouseEntity?>(null) }
+     var editConversion by remember { mutableStateOf<ItemUnitConversionEntity?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
++    var search by remember { mutableStateOf("") }
+ 
+     fun runAction(block: suspend () -> String) {
+         scope.launch {
+@@ -607,28 +608,88 @@
+         }
+     }
+ 
++    val query = search.trim().lowercase()
++    val filteredItems = remember(itemsList, query) {
++        if (query.isBlank()) itemsList else itemsList.filter { item ->
++            listOf(item.nameAr, item.nameEn, item.code, itemCategoryAr(item.category)).any { it.lowercase().contains(query) }
++        }
++    }
++    val filteredUnits = remember(units, query) {
++        if (query.isBlank()) units else units.filter { unit -> listOf(unit.nameAr, unit.nameEn, unit.code).any { it.lowercase().contains(query) } }
++    }
++    val filteredWarehouses = remember(warehouses, query) {
++        if (query.isBlank()) warehouses else warehouses.filter { warehouse -> listOf(warehouse.nameAr, warehouse.nameEn, warehouse.code, warehouse.location).any { it.lowercase().contains(query) } }
++    }
++    val filteredConversions = remember(conversions, itemsList, units, query) {
++        if (query.isBlank()) conversions else conversions.filter { conversion ->
++            val item = itemsList.firstOrNull { it.id == conversion.itemId }
++            val unit = units.firstOrNull { it.id == conversion.unitId }
++            listOf(item?.nameAr.orEmpty(), item?.code.orEmpty(), unit?.nameAr.orEmpty(), unit?.code.orEmpty(), conversion.barcode.orEmpty())
++                .any { it.lowercase().contains(query) }
++        }
++    }
++
+     Column(modifier.fillMaxSize().padding(12.dp)) {
+-        Text("البيانات الأساسية", style = MaterialTheme.typography.headlineSmall)
+-        Text("الإنشاء والتعديل والتفعيل والإيقاف مسجل في سجل التدقيق. لا يمكن إيقاف مخزن أو صنف له رصيد قائم.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
++        FushSectionHeader(
++            title = "الأصناف والوحدات والمخازن",
++            subtitle = "إدارة البيانات الأساسية وحالات التفعيل وتحويلات الوحدات",
++        )
++        Spacer(Modifier.height(10.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++            FushMetricCard("الأصناف النشطة", activeItems.size.toString(), Modifier.weight(1f), "من ${itemsList.size} صنف", FushStatusTone.Info)
++            FushMetricCard("الوحدات النشطة", activeUnits.size.toString(), Modifier.weight(1f), "من ${units.size} وحدة", FushStatusTone.Neutral)
++        }
++        Spacer(Modifier.height(8.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++            FushMetricCard("المخازن النشطة", warehouses.count { it.isActive }.toString(), Modifier.weight(1f), "من ${warehouses.size} مخزن", FushStatusTone.Success)
++            FushMetricCard("تحويلات الوحدات", conversions.count { it.isActive }.toString(), Modifier.weight(1f), "تحويل نشط", FushStatusTone.Info)
++        }
++        Spacer(Modifier.height(10.dp))
++        Surface(
++            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
++            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
++            shape = MaterialTheme.shapes.medium,
++        ) {
++            Text(
++                "كل إنشاء أو تعديل أو تفعيل/إيقاف مسجل في التدقيق. لا يمكن إيقاف مخزن أو صنف له رصيد قائم.",
++                Modifier.fillMaxWidth().padding(12.dp),
++                style = MaterialTheme.typography.bodySmall,
++            )
++        }
+         Spacer(Modifier.height(8.dp))
+         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-            FilterChip(selected = section == "المواد والأصناف", onClick = { section = "المواد والأصناف" }, label = { Text("المواد") }, modifier = Modifier.weight(1f))
+-            FilterChip(selected = section == "الوحدات", onClick = { section = "الوحدات" }, label = { Text("الوحدات") }, modifier = Modifier.weight(1f))
+-            FilterChip(selected = section == "المخازن", onClick = { section = "المخازن" }, label = { Text("المخازن") }, modifier = Modifier.weight(1f))
+-            FilterChip(selected = section == "التحويلات", onClick = { section = "التحويلات" }, label = { Text("التحويلات") }, modifier = Modifier.weight(1f))
+-        }
+-        Spacer(Modifier.height(6.dp))
++            FilterChip(selected = section == "المواد والأصناف", onClick = { section = "المواد والأصناف"; search = "" }, label = { Text("المواد") }, modifier = Modifier.weight(1f))
++            FilterChip(selected = section == "الوحدات", onClick = { section = "الوحدات"; search = "" }, label = { Text("الوحدات") }, modifier = Modifier.weight(1f))
++            FilterChip(selected = section == "المخازن", onClick = { section = "المخازن"; search = "" }, label = { Text("المخازن") }, modifier = Modifier.weight(1f))
++            FilterChip(selected = section == "التحويلات", onClick = { section = "التحويلات"; search = "" }, label = { Text("التحويلات") }, modifier = Modifier.weight(1f))
++        }
++        Spacer(Modifier.height(7.dp))
+         when (section) {
+             "المواد والأصناف" -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                Button(onClick = { showItem = true }, modifier = Modifier.weight(1f), enabled = activeUnits.isNotEmpty()) { Text("إضافة مادة/صنف") }
++                Button(onClick = { showItem = true }, modifier = Modifier.weight(1f), enabled = activeUnits.isNotEmpty()) { Text("إضافة صنف") }
+                 OutlinedButton(onClick = { showConversion = true }, modifier = Modifier.weight(1f), enabled = activeItems.isNotEmpty() && activeUnits.isNotEmpty()) { Text("إضافة تحويل") }
+             }
+             "الوحدات" -> Button(onClick = { showUnit = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة وحدة جديدة") }
+             "المخازن" -> Button(onClick = { showWarehouse = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة مخزن جديد") }
+             "التحويلات" -> Button(onClick = { showConversion = true }, modifier = Modifier.fillMaxWidth(), enabled = activeItems.isNotEmpty() && activeUnits.isNotEmpty()) { Text("إضافة تحويل وحدة") }
+         }
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-        Spacer(Modifier.height(6.dp))
++        Spacer(Modifier.height(7.dp))
++        OutlinedTextField(
++            value = search,
++            onValueChange = { search = it },
++            modifier = Modifier.fillMaxWidth(),
++            label = { Text("بحث") },
++            placeholder = { Text("الاسم، الكود، الموقع أو الباركود") },
++            singleLine = true,
++            shape = MaterialTheme.shapes.medium,
++        )
++        message?.let { text ->
++            Spacer(Modifier.height(7.dp))
++            Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = MaterialTheme.shapes.medium) {
++                Text(text, Modifier.fillMaxWidth().padding(11.dp))
++            }
++        }
++        Spacer(Modifier.height(7.dp))
+ 
+         LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+             when (section) {

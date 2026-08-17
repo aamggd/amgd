@@ -1,0 +1,65 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 785b403..3b238b3 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -831,17 +831,42 @@ private fun LazyListScope.supplierLedgerItems(rows: List<Pair<SupplierLedgerEven
+     }
+ }
+ 
+-@Composable private fun VoucherList(vouchers: List<PartyVoucherEntity>, onReverse: (PartyVoucherEntity)->Unit) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+-    item { Text("سندات القبض والصرف المرتبطة بالطرف", style=MaterialTheme.typography.titleLarge); Text("السند المرحل لا يعدل أو يحذف؛ التصحيح بالعكس فقط.", style=MaterialTheme.typography.bodySmall) }
+-    if(vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الطرف.") }
+-    items(vouchers, key={it.id}) { v -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(3.dp)) { Text("${partyDate(v.voucherDate)} • ${if(v.voucherType=="RECEIPT") "سند قبض" else "سند صرف"} • ${v.voucherNo}"); Text("${v.partyNameSnapshot} • ${partyMoney(v.amountOriginal)} ${v.currencyCode}"); Text(v.description); Text("الحالة: ${if(v.status=="POSTED") "مرحل" else "معكوس"}"); if(v.status=="REVERSED") Text("سبب العكس: ${v.reversalReason}", color=MaterialTheme.colorScheme.error); if(v.status=="POSTED") OutlinedButton(onClick={onReverse(v)}) { Text("عكس السند") } } } }
+-} }
+-
+-@Composable private fun AuditTab(rows: List<AuditEventEntity>) { LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)) {
+-    item { Text("سجل التدقيق والحركات", style=MaterialTheme.typography.titleLarge) }
++private fun LazyListScope.voucherItems(vouchers: List<PartyVoucherEntity>, onReverse: (PartyVoucherEntity)->Unit) {
++    item { FushSectionHeader("السندات المرتبطة بالطرف", "السند المرحل لا يعدل أو يحذف؛ التصحيح بالعكس فقط.") }
++    if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الطرف.") }
++    items(vouchers, key={it.id}) { v ->
++        ElevatedCard(Modifier.fillMaxWidth()) {
++            Column(Modifier.padding(10.dp), verticalArrangement=Arrangement.spacedBy(3.dp)) {
++                Text("${partyDate(v.voucherDate)} • ${if(v.voucherType=="RECEIPT") "سند قبض" else "سند صرف"} • ${v.voucherNo}")
++                Text("${v.partyNameSnapshot} • ${partyMoney(v.amountOriginal)} ${v.currencyCode}")
++                Text(v.description)
++                Text("الحالة: ${if(v.status=="POSTED") "مرحل" else "معكوس"}")
++                if(v.status=="REVERSED") Text("سبب العكس: ${v.reversalReason}", color=MaterialTheme.colorScheme.error)
++                if(v.status=="POSTED") OutlinedButton(onClick={onReverse(v)}) { Text("عكس السند") }
++            }
++        }
++    }
++}
++
++private fun LazyListScope.auditItems(rows: List<AuditEventEntity>) {
++    item { FushSectionHeader("سجل التدقيق والحركات", "الأحداث والتعديلات المرتبطة بهذا الطرف") }
+     if(rows.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+-    items(rows,key={it.id}) { e -> ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(10.dp)) { Text("${partyDateTime(e.eventAt)} • ${e.action} • مستخدم #${e.userId}"); Text("${e.entityType} #${e.entityId}", style=MaterialTheme.typography.bodySmall); if(e.reason.isNotBlank()) Text(e.reason); if(e.newValue.isNotBlank()) Text(e.newValue, style=MaterialTheme.typography.bodySmall) } } }
+-} }
++    items(rows,key={it.id}) { e ->
++        ElevatedCard(Modifier.fillMaxWidth()) {
++            Column(Modifier.padding(10.dp)) {
++                Text("${partyDateTime(e.eventAt)} • ${e.action} • مستخدم #${e.userId}")
++                Text("${e.entityType} #${e.entityId}", style=MaterialTheme.typography.bodySmall)
++                if(e.reason.isNotBlank()) Text(e.reason)
++                if(e.newValue.isNotBlank()) Text(e.newValue, style=MaterialTheme.typography.bodySmall)
++            }
++        }
++    }
++}
++
++private fun <T> LazyListScope.profileSimpleEntityItems(empty: String?, rows: List<T>, text: (T)->String) {
++    if(empty!=null) item { FushInlineState(empty) }
++    items(rows) { r -> ElevatedCard(Modifier.fillMaxWidth()) { Text(text(r), Modifier.padding(10.dp)) } }
++}
+ 
+ @Composable
+ private fun AttachmentTab(container: AppContainer, user: UserEntity, customerId: Long?, supplierId: Long?, attachments: List<PartyAttachmentEntity>, onMessage:(String)->Unit) {
+@@ -882,7 +907,6 @@ private fun QuickPartyVoucherDialog(container: AppContainer, type:String, custom
+ 
+ @Composable private fun ReverseVoucherDialog(container:AppContainer,user:UserEntity,voucher:PartyVoucherEntity,onDismiss:()->Unit,onDone:(String)->Unit){ val scope=rememberCoroutineScope(); var reason by remember{mutableStateOf("")}; var error by remember{mutableStateOf<String?>(null)}; AlertDialog(onDismissRequest=onDismiss,title={Text("عكس ${voucher.voucherNo}")},text={Column{Text("سيتم إنشاء قيد عكسي ولن يحذف المستند الأصلي."); OutlinedTextField(reason,{reason=it},label={Text("سبب العكس — إلزامي")},modifier=Modifier.fillMaxWidth()); error?.let{Text(it,color=MaterialTheme.colorScheme.error)}}},confirmButton={Button(enabled=reason.isNotBlank(),onClick={scope.launch{try{val id=container.accountingService.reverseEntry(voucher.journalEntryId,reason,user.id);onDone("تم عكس السند وإنشاء القيد $id")}catch(e:Exception){error=e.message?:"تعذر العكس"}}}){Text("تأكيد العكس")}},dismissButton={TextButton(onClick=onDismiss){Text("إلغاء")}}) }
+ 
+-@Composable private fun <T> SimpleEntityList(empty:String?, rows:List<T>, text:(T)->String){ LazyColumn(verticalArrangement=Arrangement.spacedBy(6.dp)){ if(empty!=null)item{Text(empty)}; items(rows){r->ElevatedCard(Modifier.fillMaxWidth()){Text(text(r),Modifier.padding(10.dp))}} } }
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+ @Composable private fun <T> PartySelectionField(label:String,current:String,options:List<T>,optionLabel:(T)->String,onSelected:(T)->Unit){ var expanded by remember{mutableStateOf(false)}; ExposedDropdownMenuBox(expanded,onExpandedChange={expanded=!expanded}){OutlinedTextField(current,{},readOnly=true,label={Text(label)},trailingIcon={ExposedDropdownMenuDefaults.TrailingIcon(expanded)},modifier=Modifier.menuAnchor().fillMaxWidth());ExposedDropdownMenu(expanded,onDismissRequest={expanded=false}){options.forEach{o->DropdownMenuItem(text={Text(optionLabel(o))},onClick={onSelected(o);expanded=false})}}} }

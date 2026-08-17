@@ -1,0 +1,149 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 54b92f7..fe1006f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -9,12 +9,17 @@ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.AccountingService
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.*
+@@ -95,51 +100,101 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+             ).any { it.contains(search.trim(), true) })
+     }
+     val total = filtered.sumOf { it.amountBase }
++    val averageExpense = if (filtered.isEmpty()) 0.0 else total / filtered.size
++    val maintenanceSpend = filtered.filter { it.costCenterCode == "MAINTENANCE" }.sumOf { it.amountBase }
+     val byAccount = filtered.groupBy { it.expenseAccountName }.mapValues { it.value.sumOf { r -> r.amountBase } }.toList().sortedByDescending { it.second }
+     val byCenter = filtered.groupBy { it.costCenterName }.mapValues { it.value.sumOf { r -> r.amountBase } }.toList().sortedByDescending { it.second }
++    val topAccount = byAccount.firstOrNull()
++    val topCenter = byCenter.firstOrNull()
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+-                Column {
+-                    Text("المصروفات ومراكز التكلفة", style = MaterialTheme.typography.headlineSmall)
+-                    Text("الحساب يحدد طبيعة المصروف، والأبعاد تحدد الموظف والقسم والمرجع دون تضخيم شجرة الحسابات.", style = MaterialTheme.typography.bodySmall)
++            FushSectionHeader(
++                title = "المصروفات التشغيلية ومراكز التكلفة",
++                subtitle = "تابع المصروف حسب الحساب والقسم والموظف والمندوب والطرف والمرجع، مع بقاء القيد المحاسبي هو مصدر الحقيقة."
++            )
++            message?.let {
++                Spacer(Modifier.height(8.dp))
++                Text(it, color = MaterialTheme.colorScheme.primary)
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("إجمالي المصروف", expenseMoney(total), Modifier.weight(1f), helper = "حسب الفلاتر الحالية", tone = FushStatusTone.Info)
++                FushMetricCard("عدد الحركات", filtered.size.toString(), Modifier.weight(1f), helper = "سند مصروف مرحّل")
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("متوسط الحركة", expenseMoney(averageExpense), Modifier.weight(1f), helper = "إجمالي ÷ عدد الحركات")
++                FushMetricCard(
++                    "مصروف الصيانة", expenseMoney(maintenanceSpend), Modifier.weight(1f), helper = "مركز تكلفة الصيانة",
++                    tone = if (maintenanceSpend > 0) FushStatusTone.Warning else FushStatusTone.Neutral
++                )
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushSectionHeader("إجراء جديد", "سند المصروف يربط الحساب بالخزينة والأبعاد التشغيلية دون إضافة حسابات فرعية غير ضرورية.")
++                    Button(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("تسجيل مصروف جديد") }
+                 }
+-                Button(onClick = { showAdd = true }) { Text("مصروف جديد") }
+             }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+         item {
+-            Card(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    Text("فلاتر التقرير", style = MaterialTheme.typography.titleMedium)
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++                    FushSectionHeader("الفلاتر والتحليل", "يمكن الجمع بين أكثر من بُعد للوصول إلى تكلفة عملية أو موظف أو فرع محدد.")
+                     ExpenseNullableSelectionField("حساب المصروف", accountFilter, expenseAccounts, { "${it.code} — ${it.nameAr}" }) { accountFilter = it }
++                    ExpenseNullableSelectionField("مركز التكلفة / القسم", centerFilter, EXPENSE_COST_CENTERS, { it.second }) { centerFilter = it }
+                     ExpenseNullableSelectionField("الموظف", employeeFilter, employees, { "${it.code} — ${it.fullNameAr}" }) { employeeFilter = it }
+                     ExpenseNullableSelectionField("مندوب المبيعات", repFilter, salesReps, { "${it.code} — ${it.fullNameAr}" }) { repFilter = it }
+-                    ExpenseNullableSelectionField("مركز التكلفة / القسم", centerFilter, EXPENSE_COST_CENTERS, { it.second }) { centerFilter = it }
+                     ExpenseNullableSelectionField("نوع المرجع", referenceFilter, EXPENSE_REFERENCE_TYPES, { it.second }) { referenceFilter = it }
+                     ExpenseNullableSelectionField("العميل", customerFilter, customers, { "${it.code} — ${it.nameAr}" }) { customerFilter = it }
+                     ExpenseNullableSelectionField("المورد", supplierFilter, suppliers, { "${it.code} — ${it.nameAr}" }) { supplierFilter = it }
+-                    OutlinedTextField(organizationFilter, { organizationFilter = it }, label = { Text("الفرع / المنشأة") }, modifier = Modifier.fillMaxWidth())
+-                    OutlinedTextField(search, { search = it }, label = { Text("بحث في البيان أو المرجع أو الطرف") }, modifier = Modifier.fillMaxWidth())
+-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                        OutlinedTextField(from, { from = it }, label = { Text("من YYYY-MM-DD") }, modifier = Modifier.weight(1f))
+-                        OutlinedTextField(to, { to = it }, label = { Text("إلى YYYY-MM-DD") }, modifier = Modifier.weight(1f))
++                    OutlinedTextField(organizationFilter, { organizationFilter = it }, label = { Text("الفرع / المنشأة") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
++                    OutlinedTextField(search, { search = it }, label = { Text("بحث في البيان أو المرجع أو الطرف") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedTextField(from, { from = it }, label = { Text("من YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
++                        OutlinedTextField(to, { to = it }, label = { Text("إلى YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
+                     }
+                     OutlinedButton(onClick = {
+-                        accountFilter=null; employeeFilter=null; repFilter=null; customerFilter=null; supplierFilter=null
+-                        centerFilter=null; referenceFilter=null; organizationFilter=""; search=""; from=""; to=""
+-                    }) { Text("مسح الفلاتر") }
++                        accountFilter = null; employeeFilter = null; repFilter = null; customerFilter = null; supplierFilter = null
++                        centerFilter = null; referenceFilter = null; organizationFilter = ""; search = ""; from = ""; to = ""
++                    }, modifier = Modifier.fillMaxWidth()) { Text("مسح الفلاتر") }
+                 }
+             }
+         }
+         item {
+-            Card(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Text("ملخص المصروفات", style = MaterialTheme.typography.titleMedium)
+-                    Text("الإجمالي: ${expenseMoney(total)}")
+-                    if (byAccount.isNotEmpty()) Text("حسب النوع: " + byAccount.joinToString(" • ") { "${it.first}: ${expenseMoney(it.second)}" }, style = MaterialTheme.typography.bodySmall)
+-                    if (byCenter.isNotEmpty()) Text("حسب مركز التكلفة: " + byCenter.joinToString(" • ") { "${it.first}: ${expenseMoney(it.second)}" }, style = MaterialTheme.typography.bodySmall)
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    FushSectionHeader("أكبر بنود الصرف", "قراءة سريعة للحساب ومركز التكلفة الأكثر استهلاكًا ضمن النطاق الحالي.")
++                    topAccount?.let {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                            Column(Modifier.weight(1f)) {
++                                Text("أكبر حساب", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                Text(it.first, style = MaterialTheme.typography.titleSmall)
++                            }
++                            Text(expenseMoney(it.second), style = MaterialTheme.typography.titleMedium)
++                        }
++                    } ?: Text("لا توجد بيانات مصروفات ضمن الفلاتر الحالية.", color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    topCenter?.let {
++                        HorizontalDivider()
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                            Column(Modifier.weight(1f)) {
++                                Text("أكبر مركز تكلفة", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                                Text(it.first, style = MaterialTheme.typography.titleSmall)
++                            }
++                            Text(expenseMoney(it.second), style = MaterialTheme.typography.titleMedium)
++                        }
++                    }
++                    if (byAccount.size > 1) {
++                        Text(
++                            "أعلى الحسابات: " + byAccount.take(3).joinToString(" • ") { "${it.first}: ${expenseMoney(it.second)}" },
++                            style = MaterialTheme.typography.bodySmall,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant
++                        )
++                    }
+                 }
+             }
+         }

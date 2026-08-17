@@ -1,0 +1,104 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index 0ae096a..f4c27b4 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -167,8 +167,13 @@ private fun SalesRepresentativeProfile(
+     var message by remember { mutableStateOf<String?>(null) }
+     val tabs = listOf("الملف", "العملاء", "المبيعات", "العمولات", "السندات", "التدقيق")
+ 
+-    Column(modifier.fillMaxSize()) {
+-        ElevatedCard(Modifier.fillMaxWidth().padding(12.dp)) {
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
++        verticalArrangement = Arrangement.spacedBy(10.dp),
++    ) {
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                     OutlinedButton(onClick = onBack) { Text("رجوع") }
+@@ -186,8 +191,10 @@ private fun SalesRepresentativeProfile(
+                 message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+             }
+         }
++        }
+ 
+-        Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+                     "العمولة المستحقة",
+@@ -203,13 +210,15 @@ private fun SalesRepresentativeProfile(
+                 FushMetricCard("المرتجعات", "${repMoney(returnsBase)} ر.ي", Modifier.weight(1f), helper = "تؤثر على العمولة", tone = if (returnsBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Neutral)
+             }
+         }
++        }
+ 
++        item {
+         ScrollableTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 10.dp)) {
+             tabs.forEachIndexed { i, title -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(title) }) }
+         }
+-        Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+-            when (tab) {
+-                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        }
++        when (tab) {
++                0 -> {
+                     item { FushSectionHeader("بيانات المندوب", "الهوية، نوع الارتباط، النطاق ونسبة العمولة الافتراضية") }
+                     item {
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -237,7 +246,7 @@ private fun SalesRepresentativeProfile(
+                         }
+                     }
+                 }
+-                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                1 -> {
+                     item { FushSectionHeader("العملاء التابعون", "${customers.size} عميل مرتبط بالمندوب") }
+                     if (customers.isEmpty()) item { FushInlineState("لا يوجد عملاء مرتبطون بهذا المندوب.") }
+                     items(customers, key = { it.id }) { c ->
+@@ -249,7 +258,7 @@ private fun SalesRepresentativeProfile(
+                         }
+                     }
+                 }
+-                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                2 -> {
+                     item { FushSectionHeader("فواتير المبيعات", "الفواتير المرتبطة بهوية المندوب الثابتة") }
+                     if (invoices.isEmpty()) item { FushInlineState("لا توجد فواتير مرتبطة بهذا المندوب.") }
+                     items(invoices, key = { it.id }) { inv ->
+@@ -262,7 +271,7 @@ private fun SalesRepresentativeProfile(
+                         }
+                     }
+                 }
+-                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                3 -> {
+                     item { FushSectionHeader("سجل العمولات", "العمولة تستحق بعد التحصيل وتُخفض بالعكس أو المرتجع حسب قواعد النظام") }
+                     item {
+                         FushMetricCard(
+@@ -288,7 +297,7 @@ private fun SalesRepresentativeProfile(
+                         }
+                     }
+                 }
+-                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                4 -> {
+                     item { FushSectionHeader("سندات عمولة المندوب", "كل سند مرتبط بالمندوب؛ السند المرحل يُصحح بالعكس ولا يُحذف") }
+                     if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا المندوب.") }
+                     items(vouchers, key = { it.id }) { v ->
+@@ -305,7 +314,7 @@ private fun SalesRepresentativeProfile(
+                         }
+                     }
+                 }
+-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                else -> {
+                     item { FushSectionHeader("سجل التدقيق", "الأحداث والتعديلات المرتبطة بملف المندوب") }
+                     if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+                     items(audits, key = { it.id }) { a ->
+@@ -319,7 +328,6 @@ private fun SalesRepresentativeProfile(
+                     }
+                 }
+             }
+-        }
+     }
+ 
+     if (showEdit) {

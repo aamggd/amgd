@@ -1,0 +1,127 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+index 3207256..0e5b9d0 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+@@ -27,41 +27,49 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+     val pendingApprovals = approvals.count { it.status == "PENDING" }
+     val activeChanges = changes.count { it.status == "SUBMITTED" || it.status == "DRAFT" }
+ 
+-    Column(modifier.fillMaxSize().padding(12.dp)) {
+-        FushSectionHeader(
+-            title = "الحوكمة والتدقيق",
+-            subtitle = "الوثائق المضبوطة، إدارة التغيير، الموافقات وفصل المهام مع سجل تدقيق غير قابل للحذف من الواجهة.",
+-        )
+-        Spacer(Modifier.height(10.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            FushMetricCard("الوثائق", documents.size.toString(), Modifier.weight(1f), helper = "الإصدارات المسجلة")
+-            FushMetricCard("تغييرات نشطة", activeChanges.toString(), Modifier.weight(1f), helper = "مسودة أو مرسلة", tone = if (activeChanges > 0) FushStatusTone.Warning else FushStatusTone.Success)
+-        }
+-        Spacer(Modifier.height(8.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            FushMetricCard("موافقات معلقة", pendingApprovals.toString(), Modifier.weight(1f), helper = "تحتاج قرارًا", tone = if (pendingApprovals > 0) FushStatusTone.Warning else FushStatusTone.Success)
+-            FushMetricCard("أحداث التدقيق", audit.size.toString(), Modifier.weight(1f), helper = "آخر الأحداث المحملة")
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(12.dp),
++        verticalArrangement = Arrangement.spacedBy(10.dp),
++    ) {
++        item {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushSectionHeader(
++                    title = "الحوكمة والتدقيق",
++                    subtitle = "الوثائق المضبوطة، إدارة التغيير، الموافقات وفصل المهام مع سجل تدقيق غير قابل للحذف من الواجهة.",
++                )
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    FushMetricCard("الوثائق", documents.size.toString(), Modifier.weight(1f), helper = "الإصدارات المسجلة")
++                    FushMetricCard("تغييرات نشطة", activeChanges.toString(), Modifier.weight(1f), helper = "مسودة أو مرسلة", tone = if (activeChanges > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    FushMetricCard("موافقات معلقة", pendingApprovals.toString(), Modifier.weight(1f), helper = "تحتاج قرارًا", tone = if (pendingApprovals > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushMetricCard("أحداث التدقيق", audit.size.toString(), Modifier.weight(1f), helper = "آخر الأحداث المحملة")
++                }
++            }
+         }
+-        Spacer(Modifier.height(10.dp))
+-        ScrollableTabRow(selectedTabIndex = tab) {
+-            listOf("الوثائق", "التغييرات", "الموافقات", "التدقيق").forEachIndexed { index, title ->
+-                Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
++        item {
++            ScrollableTabRow(selectedTabIndex = tab) {
++                listOf("الوثائق", "التغييرات", "الموافقات", "التدقيق").forEachIndexed { index, title ->
++                    Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
++                }
+             }
+         }
+         message?.let {
+-            FushNotice(
+-                message = it,
+-                modifier = Modifier.padding(vertical = 6.dp),
+-                tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
+-            )
++            item {
++                FushNotice(
++                    message = it,
++                    tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
++                )
++            }
+         }
+         when (tab) {
+-            0 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++            0 -> {
+                 item { Button(onClick = { showDocument = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("وثيقة / إجراء جديد") } }
+                 if (documents.isEmpty()) item {
+                     FushEmptyState("لا توجد وثائق مضبوطة", "أنشئ أول وثيقة أو إجراء ليظهر سجل الإصدارات وحالة الاعتماد هنا.")
+                 }
+-                items(documents) { d ->
++                items(documents, key = { it.id }) { d ->
+                     ListItem(
+                         headlineContent = { Text("${d.documentCode} — ${d.titleAr}") },
+                         supportingContent = { Text("الإصدار ${d.versionNo} • ${d.category} • ${d.status}") },
+@@ -79,12 +87,12 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                     )
+                 }
+             }
+-            1 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++            1 -> {
+                 item { Button(onClick = { showChange = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("طلب تغيير جديد") } }
+                 if (changes.isEmpty()) item {
+                     FushEmptyState("لا توجد طلبات تغيير", "طلبات التغيير المقترحة والمعتمدة ستظهر هنا مع أثرها وحالتها.")
+                 }
+-                items(changes) { c ->
++                items(changes, key = { it.id }) { c ->
+                     ListItem(
+                         headlineContent = { Text("${c.requestNo} — ${c.subject}") },
+                         supportingContent = { Text("${c.changeType} • ${c.status}\n${c.reason}") },
+@@ -102,8 +110,11 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                     )
+                 }
+             }
+-            2 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                items(approvals) { a ->
++            2 -> {
++                if (approvals.isEmpty()) item {
++                    FushEmptyState("لا توجد موافقات", "لا توجد طلبات موافقة مسجلة أو معلقة حاليًا.")
++                }
++                items(approvals, key = { it.id }) { a ->
+                     ListItem(
+                         headlineContent = { Text(a.title) },
+                         supportingContent = { Text("${a.referenceType} #${a.referenceId} • ${a.status} • مطلوب: ${a.requestedRole}") },
+@@ -119,16 +130,13 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                         }
+                     )
+                 }
+-                if (approvals.isEmpty()) item {
+-                    FushEmptyState("لا توجد موافقات", "لا توجد طلبات موافقة مسجلة أو معلقة حاليًا.")
+-                }
+             }
+-            else -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++            else -> {
+                 item { FushInlineState("آخر 200 حدث. لا يوجد حذف من الواجهة.", tone = FushStatusTone.Info) }
+                 if (audit.isEmpty()) item {
+                     FushEmptyState("لا توجد أحداث تدقيق", "ستظهر هنا عمليات الإنشاء والاعتماد والرفض والتغييرات المسجلة.")
+                 }
+-                items(audit) { e ->
++                items(audit, key = { it.id }) { e ->
+                     ListItem(
+                         headlineContent = { Text("${e.action} • ${e.entityType} #${e.entityId}") },
+                         supportingContent = { Text("المستخدم ${e.userId} • ${e.reason}\n${e.oldValue} → ${e.newValue}") }

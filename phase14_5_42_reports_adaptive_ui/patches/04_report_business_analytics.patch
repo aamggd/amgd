@@ -1,0 +1,86 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index 6f0ed77..3eed8fd 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -285,8 +285,26 @@ private fun ReportTabContent(
+     val gross200 = large200.sumOf { it.grossQtyBase }
+     val returned200 = large200.sumOf { it.returnedQtyBase }
+     val net200 = large200.sumOf { it.netQtyBase }
++    val grossSales = customers.sumOf { it.grossSalesBase }
++    val returns = customers.sumOf { it.returnsBase }
++    val collections = customers.sumOf { it.collectionsBase }
++    val outstanding = customers.sumOf { it.outstandingBase }
++    val provinceProfit = provinces.sumOf { it.profitBase }
++    val commissionNet = commissions.sumOf { it.netCommissionBase }
+ 
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("تحليل المبيعات", "المبيعات والتحصيل والذمم والربحية الجغرافية في لوحة واحدة.")
++            Spacer(Modifier.height(8.dp))
++            MetricGrid(listOf(
++                "إجمالي المبيعات" to money(grossSales),
++                "المرتجعات" to money(returns),
++                "التحصيل" to money(collections),
++                "الرصيد المستحق" to money(outstanding),
++                "ربح المحافظات" to money(provinceProfit),
++                "صافي العمولات" to money(commissionNet)
++            ))
++        }
+         item {
+             SectionTitle("كميات المنتجات المباعة")
+             MetricGrid(listOf(
+@@ -321,8 +339,26 @@ private fun ReportTabContent(
+ }
+ 
+ @Composable private fun PurchasesTab(rows: List<SupplierPurchaseReportRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++    val gross = rows.sumOf { it.grossPurchasesBase }
++    val returns = rows.sumOf { it.returnsBase }
++    val net = rows.sumOf { it.netPurchasesBase }
++    val invoices = rows.sumOf { it.invoiceCount }
++    val topSupplier = rows.maxByOrNull { it.netPurchasesBase }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("تحليل المشتريات", "حجم الشراء والمرتجعات وتركيز الإنفاق على الموردين خلال الفترة.")
++            Spacer(Modifier.height(8.dp))
++            MetricGrid(listOf(
++                "إجمالي المشتريات" to money(gross),
++                "المرتجعات" to money(returns),
++                "صافي المشتريات" to money(net),
++                "عدد الفواتير" to invoices.toString(),
++                "عدد الموردين" to rows.size.toString(),
++                "أكبر مورد" to (topSupplier?.supplierName ?: "—")
++            ))
++        }
+         item { SectionTitle("المشتريات حسب المورد") }
++        if (rows.isEmpty()) item { Text("لا توجد مشتريات في الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         items(rows) { r -> ReportCard(r.supplierName, "${r.invoiceCount} فاتورة", listOf(
+             "الإجمالي" to money(r.grossPurchasesBase), "المرتجع" to money(r.returnsBase), "الصافي" to money(r.netPurchasesBase)
+         )) }
+@@ -331,8 +367,23 @@ private fun ReportTabContent(
+ 
+ @Composable private fun InventoryTab(rows: List<InventoryValuationReportRow>) {
+     val total = rows.sumOf { it.inventoryValueBase }
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-        item { MetricGrid(listOf("إجمالي قيمة المخزون" to money(total), "عدد الأصناف" to rows.size.toString())) }
++    val reorder = rows.count { it.reorderLevel > 0 && it.quantityBase <= it.reorderLevel }
++    val zeroStock = rows.count { it.quantityBase <= 0.0 }
++    val topValue = rows.maxByOrNull { it.inventoryValueBase }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("تحليل المخزون", "قيمة المخزون، الأصناف التي تحتاج إعادة طلب، وتركيز رأس المال في المخزون.")
++            Spacer(Modifier.height(8.dp))
++            MetricGrid(listOf(
++                "إجمالي قيمة المخزون" to money(total),
++                "عدد الأصناف" to rows.size.toString(),
++                "إعادة طلب" to reorder.toString(),
++                "رصيد صفري/سالب" to zeroStock.toString(),
++                "أعلى قيمة مخزون" to (topValue?.itemName ?: "—"),
++                "قيمته" to money(topValue?.inventoryValueBase ?: 0.0)
++            ))
++        }
++        if (rows.isEmpty()) item { Text("لا توجد أرصدة مخزون متاحة للتقرير.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         items(rows) { r -> ReportCard("${r.itemName} — ${r.code}", r.baseUnitName, listOf(
+             "الرصيد" to qty(r.quantityBase), "القيمة" to money(r.inventoryValueBase),
+             "إعادة الطلب" to qty(r.reorderLevel), "الحالة" to if (r.reorderLevel > 0 && r.quantityBase <= r.reorderLevel) "إعادة طلب" else "طبيعي"

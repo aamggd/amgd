@@ -1,0 +1,33 @@
+# FUSH ERP Mobile — UI Professionalization 11
+
+## Phase
+14.5.44 — Final UI Consistency & Integration Handoff
+
+## Branch version
+- versionCode: 83 — TEST / BRANCH ONLY
+- versionName: `0.15.4.44-ui-final-consistency`
+- The central integration chat remains responsible for the final integrated versionCode/versionName.
+
+## Scope
+- Complete the visual consistency pass across secondary ERP workspaces that still used legacy presentation patterns.
+- Add a reusable compact inline state/notice surface for nested empty, warning, success and error context.
+- Professionalize Governance & Audit with executive KPIs, consistent messaging and empty states.
+- Professionalize Risk & Internal Control with KPI cards, consistent empty states and clearer control/test/exception guidance.
+- Align Planning & Seasonality headings, error presentation and no-result/history states with the shared design system.
+- Align Currency & Geography headings, price/FX/profitability empty states and operation messages with the shared design system.
+- Replace remaining raw “no data / no balance / no rows” text surfaces across inventory, maintenance, expenses, party profiles, employee profiles, sales representatives, sales, purchases, production and reports.
+- Preserve phone/tablet adaptive behavior introduced in 14.5.42 and accessibility semantics introduced in 14.5.43.
+
+## Safety boundary
+Presentation and accessibility only. No Room entity/schema/migration, DAO query, accounting posting/reversal, sales/purchase posting, inventory quantity/costing, production transition, quality acceptance, compensation/commission, geographic pricing calculation, planning formula, risk-control service rule, governance approval rule, authentication or backup behavior is intentionally changed.
+
+## Integration rule
+Apply after Phase 14.5.43. Do not replace the central integration baseline with this branch as a whole; apply the ordered patch package onto the current unified source and resolve only UI-file conflicts while preserving newer accounting/security migrations and business logic.
+
+## Validation target
+- Ordered patches pass `git apply --check` over verified 14.5.43 UI source.
+- Resulting changed files match the Phase 14.5.44 working source exactly.
+- `git diff --check` clean.
+- No conflict markers.
+- No changes under `data/` or `domain/`.
+- Full Android/Compose build, unit tests, instrumentation/TalkBack, large-font and upgrade/install testing remain central integration gates.
