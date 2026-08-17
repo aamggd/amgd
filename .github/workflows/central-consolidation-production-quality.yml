@@ -1,0 +1,121 @@
+name: Central Consolidation - Production Quality
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-production-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: '2145e3d2206f7c9c00d0e516028afe5f1935595a'
+  HANDOFF_SHA: '8b476663137e513bfe854d2ab7da490a58ef5f8e'
+  PATCH_BLOB: 'ff7efb77d046c68f9a2aca49328a933882358f0b'
+
+jobs:
+  integrate-production-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Cumulative Central before Production Quality"
+          test -f app/src/main/java/com/fush/erp/domain/StockLedgerInvariant.kt
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Fetch exact validated Production Quality P0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/production_quality_p0/production-quality-p0.patch" -o production-quality.patch
+          test "$(git hash-object production-quality.patch)" = "$PATCH_BLOB"
+          cd work-source
+          git apply --check ../production-quality.patch
+          git apply ../production-quality.patch
+          git diff --check
+          grep -q 'updateRecipeStatus' app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+          ! grep -q 'suspend fun updateRecipe(row: RecipeEntity)' app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+          grep -q 'val frozenMaterials = components.map' app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          grep -q 'ProductionMath.validateBomIntegrity' app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          git add -A
+          git commit -qm "Integrate Production Quality P0"
+          echo "production_source_tree=$(git write-tree)" | tee ../production-source-tree.txt
+
+      - name: Production domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.ProductionMathTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          grep -q 'ProductionMath.validateBomIntegrity' central_source/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+          test -f central_source/app/src/main/java/com/fush/erp/domain/StockLedgerInvariant.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source production-source-tree.txt
+          git commit -m "Central integration: add Production Quality P0"
+          git push origin HEAD:fush/integration-current
