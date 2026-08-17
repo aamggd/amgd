@@ -12,20 +12,30 @@ permissions:
   contents: read
 
 env:
-  BASE_CENTRAL_HEAD: '2cb8da801fc54aec8c1f0d6a83588f097ca85117'
-  BASE_SOURCE_TREE: '7733c6570357eb813f7e05e5093752ea26788749'
+  BASE_CENTRAL_HEAD: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  BASE_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
   APP_ID: 'com.fush.erp.recovery'
+  ROOM_SCHEMA: '35'
 
 jobs:
   localize-direct-text:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout P2 work branch
         uses: actions/checkout@v4
         with:
           ref: fush/ui-professional-redesign-p2
           fetch-depth: 0
+
+      - name: Fetch and materialize exact Central baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_CENTRAL_HEAD"
+          test "$(git rev-parse "$BASE_CENTRAL_HEAD:central_source")" = "$BASE_SOURCE_TREE"
+          git checkout "$BASE_CENTRAL_HEAD" -- central_source
+          test "$(git write-tree >/dev/null 2>&1; git rev-parse "$BASE_CENTRAL_HEAD:central_source")" = "$BASE_SOURCE_TREE"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -49,15 +59,22 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
+      - name: Restore resumable translation cache
+        uses: actions/cache@v4
+        with:
+          path: ui_p2/generated/translation_cache.json
+          key: ui-p2-translation-${{ env.BASE_SOURCE_TREE }}-${{ github.run_id }}
+          restore-keys: |
+            ui-p2-translation-${{ env.BASE_SOURCE_TREE }}-
+
       - name: Guard exact requested Central baseline
         shell: bash
         run: |
           set -euo pipefail
-          git merge-base --is-ancestor "$BASE_CENTRAL_HEAD" HEAD
           test "$(git rev-parse "$BASE_CENTRAL_HEAD:central_source")" = "$BASE_SOURCE_TREE"
           grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
-          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -Fq "FUSH_DB_SCHEMA_VERSION = $ROOM_SCHEMA" central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "central_source/app/schemas/com.fush.erp.data.FushDatabase/$ROOM_SCHEMA.json"
           ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
 
       - name: Record protected-tree hashes before P2
@@ -69,6 +86,8 @@ jobs:
 
       - name: Generate direct Text localization resources
         shell: bash
+        env:
+          FUSH_TRANSLATION_MIN_INTERVAL: '1.0'
         run: |
           set -euo pipefail
           python3 ui_p2/tools/localize_direct_text.py
@@ -95,13 +114,12 @@ jobs:
           print('P2_RESOURCE_PAIRS',len(em))
           PY
 
-      - name: Stage and enforce P2-only changed-file allowlist
+      - name: Enforce P2-only changed-file allowlist
         shell: bash
         run: |
           set -euo pipefail
-          git add -A central_source ui_p2/generated
-          git diff --cached --check
-          git diff --cached --name-only > /tmp/changed.txt
+          git diff --check "$BASE_CENTRAL_HEAD" -- central_source
+          git diff --name-only "$BASE_CENTRAL_HEAD" -- central_source > /tmp/changed.txt
           cat /tmp/changed.txt
           python3 - <<'PY'
           from pathlib import Path
@@ -112,13 +130,13 @@ jobs:
               ) or p in {
                 'central_source/app/src/main/res/values/p2_direct_text.xml',
                 'central_source/app/src/main/res/values-ar/p2_direct_text.xml',
-              } or p.startswith('ui_p2/generated/')
+              }
               if not ok: bad.append(p)
           assert not bad, f'Unexpected P2 changed files: {bad}'
           PY
           sha256sum -c /tmp/protected-before.sha256
           sha256sum -c /tmp/build-before.sha256
-          ! git diff --cached --name-only | grep -E '^central_source/app/src/main/java/com/fush/erp/(data|domain)/|^central_source/app/schemas/|^central_source/app/build.gradle.kts$'
+          ! git diff --name-only "$BASE_CENTRAL_HEAD" -- central_source | grep -E '^central_source/app/src/main/java/com/fush/erp/(data|domain)/|^central_source/app/schemas/|^central_source/app/build.gradle.kts$'
 
       - name: Unit tests
         working-directory: central_source
@@ -136,10 +154,11 @@ jobs:
           test -s "$APK"
           grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='com.fush.erp.recovery'"
-          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 34' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f central_source/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -Fq "FUSH_DB_SCHEMA_VERSION = $ROOM_SCHEMA" central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "central_source/app/schemas/com.fush.erp.data.FushDatabase/$ROOM_SCHEMA.json"
           ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          mkdir -p ui_p2/generated
           sha256sum "$APK" | tee ui_p2/generated/release-apk.sha256
 
       - name: Measure remaining hard-coded UI candidates
@@ -148,19 +167,29 @@ jobs:
           set -euo pipefail
           python3 ui_p2/tools/extract_localization.py > ui_p2/generated/post_direct_inventory.log
           cp ui_p2/extract/summary.json ui_p2/generated/post_direct_summary.json
-          git add -A ui_p2/generated
-          git diff --cached --check
 
       - name: Create validated delivery patch
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ui_p2/generated
-          git diff --cached --binary -- central_source > ui_p2/generated/p2_direct_text.patch
+          git diff --binary "$BASE_CENTRAL_HEAD" -- central_source > ui_p2/generated/p2_direct_text.patch
           test -s ui_p2/generated/p2_direct_text.patch
           sha256sum ui_p2/generated/p2_direct_text.patch | tee ui_p2/generated/p2_direct_text.patch.sha256
-          git diff --cached --name-only -- central_source > ui_p2/generated/p2_direct_text.changed-files.txt
-          git diff --cached --stat -- central_source > ui_p2/generated/p2_direct_text.stat.txt
+          git diff --name-only "$BASE_CENTRAL_HEAD" -- central_source > ui_p2/generated/p2_direct_text.changed-files.txt
+          git diff --stat "$BASE_CENTRAL_HEAD" -- central_source > ui_p2/generated/p2_direct_text.stat.txt
+          printf '%s\n' "$BASE_CENTRAL_HEAD" > ui_p2/generated/base-central-head.txt
+          printf '%s\n' "$BASE_SOURCE_TREE" > ui_p2/generated/base-central-source-tree.txt
+          printf '%s\n' "$ROOM_SCHEMA" > ui_p2/generated/base-room-schema.txt
+
+      - name: Reject stale Central completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_REMOTE_HEAD="$(git ls-remote origin refs/heads/fush/integration-current | awk '{print $1}')"
+          echo "validated_base=$BASE_CENTRAL_HEAD"
+          echo "current_remote=$CURRENT_REMOTE_HEAD"
+          test "$CURRENT_REMOTE_HEAD" = "$BASE_CENTRAL_HEAD"
 
       - name: Upload P2 direct localization evidence
         uses: actions/upload-artifact@v4
@@ -175,6 +204,9 @@ jobs:
             ui_p2/generated/p2_direct_text.patch.sha256
             ui_p2/generated/p2_direct_text.changed-files.txt
             ui_p2/generated/p2_direct_text.stat.txt
+            ui_p2/generated/base-central-head.txt
+            ui_p2/generated/base-central-source-tree.txt
+            ui_p2/generated/base-room-schema.txt
             central_source/app/src/main/res/values/p2_direct_text.xml
             central_source/app/src/main/res/values-ar/p2_direct_text.xml
           if-no-files-found: error
