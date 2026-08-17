@@ -23,6 +23,18 @@ fail_if_pattern() {
   fi
 }
 
+require_pattern() {
+  local pattern="$1"
+  local file="$2"
+  local label="$3"
+  if grep -Fq "$pattern" "$file"; then
+    return 0
+  else
+    echo "FAIL: ${label}: missing '${pattern}' in ${file}" >&2
+    return 1
+  fi
+}
+
 validate_instrumentation_output() {
   local output="$1"
   local expected_count="$2"
@@ -31,15 +43,8 @@ validate_instrumentation_output() {
   fail_if_pattern 'FAILURES!!!' "$output" 'JUnit reported failures'
   fail_if_pattern 'INSTRUMENTATION_FAILED' "$output" 'instrumentation framework failure'
   fail_if_pattern 'shortMsg=Process crashed' "$output" 'instrumentation process crash'
-
-  if ! grep -Fq "OK (${expected_count} tests)" "$output"; then
-    echo "FAIL: expected exact JUnit summary OK (${expected_count} tests)" >&2
-    return 1
-  fi
-  if ! grep -Fq 'INSTRUMENTATION_CODE: -1' "$output"; then
-    echo 'FAIL: missing successful terminal INSTRUMENTATION_CODE: -1' >&2
-    return 1
-  fi
+  require_pattern "OK (${expected_count} tests)" "$output" 'exact JUnit summary'
+  require_pattern 'INSTRUMENTATION_CODE: -1' "$output" 'successful terminal instrumentation code'
 
   python3 - "$output" "$expected_count" "$expected_methods_csv" <<'PY'
 from pathlib import Path
@@ -158,14 +163,12 @@ gradle --no-daemon :app:dependencyInsight \
   --dependency kotlinx-serialization-json \
   | tee "$EVIDENCE_DIR/dependency-kotlinx-serialization-json.txt"
 
-if ! grep -Fq 'org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3' "$EVIDENCE_DIR/dependency-kotlinx-serialization-core.txt"; then
-  echo 'FAIL: debugAndroidTestRuntimeClasspath is not pinned to kotlinx-serialization-core 1.7.3' >&2
-  exit 1
-fi
-if ! grep -Fq 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3' "$EVIDENCE_DIR/dependency-kotlinx-serialization-json.txt"; then
-  echo 'FAIL: debugAndroidTestRuntimeClasspath is not pinned to kotlinx-serialization-json 1.7.3' >&2
-  exit 1
-fi
+require_pattern 'org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3' \
+  "$EVIDENCE_DIR/dependency-kotlinx-serialization-core.txt" \
+  'debugAndroidTestRuntimeClasspath serialization core pin'
+require_pattern 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3' \
+  "$EVIDENCE_DIR/dependency-kotlinx-serialization-json.txt" \
+  'debugAndroidTestRuntimeClasspath serialization json pin'
 
 CANDIDATE="$GITHUB_WORKSPACE/exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
 TEST_APK="$GITHUB_WORKSPACE/work-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
@@ -225,10 +228,7 @@ for marker in \
   'BODY_START:migrate32To35_validatesCompleteSecurityFixedAssetAccountingChain_withoutDestructiveReset' \
   'MIGRATION_CHAIN_EXECUTED:32->35' \
   'BODY_PASS:migrate32To35_validatesCompleteSecurityFixedAssetAccountingChain_withoutDestructiveReset'; do
-  if ! grep -Fq "$marker" "$MIGRATION_LOG"; then
-    echo "FAIL: migration test body evidence marker missing: ${marker}" >&2
-    exit 1
-  fi
+  require_pattern "$marker" "$MIGRATION_LOG" 'migration test body evidence marker'
 done
 
 cat > "$EVIDENCE_DIR/LIGHTWEIGHT-QUALIFICATION-STATUS.txt" <<EOF
