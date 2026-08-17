@@ -17,3 +17,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Print exact patch SHA-256
         run: sha256sum purchases_suppliers_ae_acc_010_return/ae_acc_010_cash_refund.patch
+
+# rerun after patch format repair
