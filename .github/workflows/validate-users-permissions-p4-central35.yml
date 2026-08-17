@@ -1,0 +1,230 @@
+name: Validate Users Permissions P4 SQLCipher on Central Room35
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fush/users-permissions]
+    paths:
+      - 'security_central_35/**'
+      - '.github/workflows/validate-users-permissions-p4-central35.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: users-permissions-p4-central35
+  cancel-in-progress: true
+
+jobs:
+  validate-p4-central35:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      CENTRAL_COMMIT: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+      CENTRAL_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+      EXPECTED_APP_ID: com.fush.erp.recovery
+      EXPECTED_ROOM_SCHEMA: '35'
+    steps:
+      - name: Checkout users-permissions branch with full object history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned Central identities and extract exact source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CENTRAL_COMMIT^{commit}"
+          git cat-file -e "$CENTRAL_SOURCE_TREE^{tree}"
+          mkdir -p central-tree p4-out
+          git archive "$CENTRAL_SOURCE_TREE" | tar -x -C central-tree
+          DB_FILE="$(find central-tree -path '*/app/src/main/java/com/fush/erp/data/FushDatabase.kt' -type f -print -quit)"
+          test -n "$DB_FILE"
+          PROJECT_ROOT="${DB_FILE%/app/src/main/java/com/fush/erp/data/FushDatabase.kt}"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          grep -Eq 'FUSH_DB_SCHEMA_VERSION\s*=\s*35\b' "$DB_FILE"
+          grep -q 'applicationId = "com.fush.erp.recovery"' "$PROJECT_ROOT/app/build.gradle.kts"
+          grep -R -Eq 'Migration\(34\s*,\s*35\)' "$PROJECT_ROOT/app/src/main/java/com/fush/erp/data"
+          ! grep -R -n 'fallbackToDestructiveMigration' "$PROJECT_ROOT/app/src/main"
+          cp -a "$PROJECT_ROOT" baseline-plain
+
+      - name: Re-establish P4 functionally on current Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          rm -rf .git app/build .gradle .kotlin
+          git init -q
+          git config user.name security-p4-ci
+          git config user.email security-p4-ci@users.noreply.github.com
+          git add .
+          git commit -qm central-room35-baseline
+          cd "$GITHUB_WORKSPACE"
+          python3 security_central_35/P4_rebase_apply_v2.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --project-root "$PROJECT_ROOT" \
+            --out "$GITHUB_WORKSPACE/p4-out"
+          cd "$PROJECT_ROOT"
+          git diff --check
+          test "$(git diff --name-only | wc -l)" -eq 7
+          ! git diff --name-only | grep -Eq 'FushDatabase.kt|Migrations.kt|SecurityMigrations.kt|app/schemas/'
+          grep -Eq 'FUSH_DB_SCHEMA_VERSION\s*=\s*35\b' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -R -Eq 'Migration\(34\s*,\s*35\)' app/src/main/java/com/fush/erp/data
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -z "$(find . -type f \( -name '*.p12' -o -name '*.jks' -o -name '*.keystore' \) -print -quit)"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK and emulator image
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'emulator' 'system-images;android-35;google_apis;x86_64'
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Build exact plaintext Central debug APK
+        working-directory: baseline-plain
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../p4-out/baseline-debug-build.log
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../p4-out/FushERP-Central-Room35-Plaintext-debug.apk
+
+      - name: Run security regression suite
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest \
+            --tests '*Security*' \
+            --tests '*Permission*' \
+            --tests '*Mfa*' \
+            --tests '*Session*' \
+            --tests '*Authorization*' \
+            --tests '*HomeShellNavigationTest' \
+            --tests '*DatabaseEncryptionManagerTest' \
+            2>&1 | tee "$GITHUB_WORKSPACE/p4-out/security-regression.log"
+
+      - name: Run full Unit tests
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee "$GITHUB_WORKSPACE/p4-out/full-unit.log"
+
+      - name: Build P4 release and debug APKs
+        working-directory: ${{ env.PROJECT_ROOT }}
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease :app:assembleDebug 2>&1 | tee "$GITHUB_WORKSPACE/p4-out/release-build.log"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "$GITHUB_WORKSPACE/p4-out/FushERP-P4-SQLCipher-Central35-release-unsigned.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/p4-out/FushERP-P4-SQLCipher-Central35-debug.apk"
+
+      - name: Verify APK identity and SQLCipher native libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          CAND="$PROJECT_ROOT/app/build/outputs/apk/release/app-release-unsigned.apk"
+          unzip -l "$CAND" | grep -q 'lib/arm64-v8a/libsqlcipher.so'
+          unzip -l "$CAND" | grep -q 'lib/x86_64/libsqlcipher.so'
+          aapt dump badging "$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk" | grep -q "package: name='com.fush.erp.recovery'"
+          aapt dump badging baseline-plain/app/build/outputs/apk/debug/app-debug.apk | grep -q "package: name='com.fush.erp.recovery'"
+          apksigner verify --print-certs baseline-plain/app/build/outputs/apk/debug/app-debug.apk > p4-out/baseline-debug-cert.txt
+          apksigner verify --print-certs "$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk" > p4-out/p4-debug-cert.txt
+          grep 'Signer #1 certificate SHA-256 digest:' p4-out/baseline-debug-cert.txt | sed 's/.*digest: //' > /tmp/base-cert
+          grep 'Signer #1 certificate SHA-256 digest:' p4-out/p4-debug-cert.txt | sed 's/.*digest: //' > /tmp/p4-cert
+          diff -u /tmp/base-cert /tmp/p4-cert
+
+      - name: Boot emulator and run encrypted DB migration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo chmod 666 /dev/kvm || true
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/android-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          echo no | avdmanager create avd --force --name fush-p4-room35 --package 'system-images;android-35;google_apis;x86_64' --device 'pixel_6' --path "$ANDROID_AVD_HOME/fush-p4-room35.avd"
+          nohup "$ANDROID_HOME/emulator/emulator" -avd fush-p4-room35 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > p4-out/emulator.log 2>&1 &
+          EMU_PID=$!
+          trap 'kill "$EMU_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 90); do
+            kill -0 "$EMU_PID" 2>/dev/null || { cat p4-out/emulator.log; exit 1; }
+            adb devices | grep -q '^emulator-' && break
+            sleep 2
+          done
+          timeout 60s adb wait-for-device
+          booted=''
+          for i in $(seq 1 90); do
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            [ "$booted" = '1' ] && break
+            sleep 2
+          done
+          test "$booted" = '1'
+          cd "$PROJECT_ROOT"
+          timeout 900s gradle --no-daemon --stacktrace :app:connectedDebugAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.backup.DatabaseEncryptionInstrumentedTest \
+            2>&1 | tee "$GITHUB_WORKSPACE/p4-out/encrypted-db-migration-emulator.log"
+
+      - name: Exercise actual APK install-replace path on emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$GITHUB_WORKSPACE/p4-out/FushERP-Central-Room35-Plaintext-debug.apk"
+          CAND="$GITHUB_WORKSPACE/p4-out/FushERP-P4-SQLCipher-Central35-debug.apk"
+          adb uninstall com.fush.erp.recovery >/dev/null 2>&1 || true
+          adb install "$BASE" | tee p4-out/actual-upgrade-install-baseline.log
+          adb shell monkey -p com.fush.erp.recovery -c android.intent.category.LAUNCHER 1 >/dev/null
+          sleep 5
+          adb shell run-as com.fush.erp.recovery test -f databases/fush_erp.db
+          BASE_HEADER="$(adb exec-out run-as com.fush.erp.recovery sh -c 'head -c 16 databases/fush_erp.db' | xxd -p -c 32 | tr -d '\r\n')"
+          test "$BASE_HEADER" = '53514c69746520666f726d6174203300'
+          adb install -r "$CAND" | tee p4-out/actual-upgrade-install-candidate.log
+          adb shell am force-stop com.fush.erp.recovery
+          adb shell monkey -p com.fush.erp.recovery -c android.intent.category.LAUNCHER 1 >/dev/null
+          sleep 8
+          adb shell pidof com.fush.erp.recovery
+          adb shell run-as com.fush.erp.recovery test -f databases/fush_erp.db
+          ENC_HEADER="$(adb exec-out run-as com.fush.erp.recovery sh -c 'head -c 16 databases/fush_erp.db' | xxd -p -c 32 | tr -d '\r\n')"
+          test "$ENC_HEADER" != '53514c69746520666f726d6174203300'
+          printf 'baseline_header=%s\nencrypted_header=%s\n' "$BASE_HEADER" "$ENC_HEADER" > p4-out/actual-upgrade-db-header.txt
+
+      - name: Package candidate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f p4-out/P4_SQLCipher_Central35.patch ]; then
+            (cd p4-out && sha256sum P4_SQLCipher_Central35.patch *.apk 2>/dev/null || true) > p4-out/SHA256SUMS.txt
+          fi
+          cat > p4-out/STATUS.txt <<'EOF'
+          P4 STATUS: CANDIDATE / NOT DONE
+          Central logical Room schema: 35 (unchanged)
+          Application ID: com.fush.erp.recovery
+          Emulator CI is not the Physical Android Device gate.
+          Do not mark READY until a real-device plaintext->encrypted upgrade test passes with data/login/operations preserved.
+          No signing keystore is created or included by this workflow.
+          EOF
+
+      - name: Upload Central35 P4 candidate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Users-Permissions-P4-SQLCipher-Central35-Candidate
+          path: p4-out/*
+          if-no-files-found: error
