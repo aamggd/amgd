@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -20,6 +22,9 @@ REPORT = Path('ui_p2/generated/direct_text_report.json')
 CACHE = Path('ui_p2/generated/translation_cache.json')
 ARABIC_RE = re.compile(r'[\u0600-\u06FF]')
 IDENT_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+MIN_REQUEST_INTERVAL = max(0.0, float(os.environ.get('FUSH_TRANSLATION_MIN_INTERVAL', '1.0')))
+_LAST_REQUEST_AT = 0.0
+_NEW_TRANSLATIONS = 0
 
 GLOSSARY = {
     'المحاسبة والخزينة': 'Accounting & Treasury',
@@ -71,6 +76,26 @@ def save_cache(cache):
     CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=2, sort_keys=True), encoding='utf-8')
 
 
+def wait_for_request_slot():
+    global _LAST_REQUEST_AT
+    if MIN_REQUEST_INTERVAL <= 0:
+        return
+    now = time.monotonic()
+    remaining = MIN_REQUEST_INTERVAL - (now - _LAST_REQUEST_AT)
+    if remaining > 0:
+        time.sleep(remaining)
+    _LAST_REQUEST_AT = time.monotonic()
+
+
+def store_translation(cache: dict, key: str, value: str) -> str:
+    global _NEW_TRANSLATIONS
+    cache[key] = value
+    _NEW_TRANSLATIONS += 1
+    if _NEW_TRANSLATIONS % 5 == 0:
+        save_cache(cache)
+    return value
+
+
 def translate(text: str, source: str, target: str, cache: dict) -> str:
     text = text.strip()
     if not text:
@@ -79,25 +104,41 @@ def translate(text: str, source: str, target: str, cache: dict) -> str:
     if key in cache:
         return cache[key]
     if source == 'ar' and target == 'en' and text in GLOSSARY:
-        cache[key] = GLOSSARY[text]
-        return cache[key]
+        return store_translation(cache, key, GLOSSARY[text])
+
     params = urllib.parse.urlencode({'client':'gtx','sl':source,'tl':target,'dt':'t','q':text})
     url = 'https://translate.googleapis.com/translate_a/single?' + params
     last = None
-    for attempt in range(7):
+    for attempt in range(10):
         try:
+            wait_for_request_slot()
             req = urllib.request.Request(url, headers={'User-Agent':'Mozilla/5.0 FUSH-UI-P2'})
-            with urllib.request.urlopen(req, timeout=25) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.load(resp)
             result = ''.join(part[0] for part in data[0] if part and part[0]).strip()
             if result:
-                cache[key] = result
-                if len(cache) % 50 == 0:
-                    save_cache(cache)
-                return result
+                return store_translation(cache, key, result)
+            last = RuntimeError('empty translation response')
+        except urllib.error.HTTPError as exc:
+            last = exc
+            save_cache(cache)
+            retry_after = exc.headers.get('Retry-After') if exc.headers else None
+            if exc.code in (403, 429, 500, 502, 503, 504):
+                try:
+                    wait = float(retry_after) if retry_after else min(120.0, 12.0 * (attempt + 1))
+                except ValueError:
+                    wait = min(120.0, 12.0 * (attempt + 1))
+                print(f'translation provider HTTP {exc.code}; waiting {wait:.1f}s before retry {attempt + 2}/10', flush=True)
+                time.sleep(wait)
+                continue
+            raise
         except Exception as exc:
             last = exc
-            time.sleep(min(8, 0.75 * (attempt + 1)))
+            save_cache(cache)
+            wait = min(45.0, 2.0 * (attempt + 1))
+            print(f'translation provider error {type(exc).__name__}; waiting {wait:.1f}s before retry {attempt + 2}/10', flush=True)
+            time.sleep(wait)
+    save_cache(cache)
     raise RuntimeError(f'translation failed for {text!r}: {last}')
 
 
@@ -215,11 +256,9 @@ def mask_placeholders(template: str):
 
 def translate_template(ar: str, cache: dict):
     masked, tokens = mask_placeholders(ar)
-    # Preserve newlines but translate as natural text.
     masked_for_translation = masked.replace('\n', ' ZXQNLQXZ ')
     en = translate(masked_for_translation, 'ar', 'en', cache) if ARABIC_RE.search(masked_for_translation) else masked_for_translation
     en = en.replace('ZXQNLQXZ', '\n').replace('ZxqnLqxz', '\n')
-    # Translation may alter token case/spacing; normalize robustly.
     compact = re.sub(r'\s+', ' ', en)
     for token, placeholder in tokens:
         variants = {token, token.lower(), token.capitalize(), token.replace('Q','q').replace('X','x').replace('Z','z')}
@@ -230,7 +269,6 @@ def translate_template(ar: str, cache: dict):
                 replaced = True
                 break
         if not replaced:
-            # Fall back to segment translation to guarantee placeholder integrity.
             parts = re.split(r'(%\d+\$s)', ar)
             out=[]
             for p in parts:
@@ -288,57 +326,57 @@ def key_for(path: Path, ar_template: str):
     digest = hashlib.sha1(ar_template.encode('utf-8')).hexdigest()[:10]
     return f'p2_{stem}_{digest}'
 
+
 cache = load_cache()
 existing = read_existing_ar_map()
 resources = {}  # key -> (en, ar)
 changed_files = []
 replacements = 0
-skipped = []
 
-for path in sorted(UI_ROOT.rglob('*.kt')):
-    if path.name.endswith('.orig'):
-        continue
-    src = path.read_text(encoding='utf-8')
-    matches = find_direct_text_strings(src)
-    if not matches:
-        continue
-    edits = []
-    for start, end, segments, call_start in matches:
-        ar_template, args = make_template(segments)
-        if not ar_template.strip():
+try:
+    for path in sorted(UI_ROOT.rglob('*.kt')):
+        if path.name.endswith('.orig'):
             continue
-        # Do not localize strings that are only punctuation/numbers/interpolation.
-        visible_letters = re.search(r'[A-Za-z\u0600-\u06FF]', ar_template)
-        if not visible_letters:
+        src = path.read_text(encoding='utf-8')
+        matches = find_direct_text_strings(src)
+        if not matches:
             continue
-        existing_key = existing.get(ar_template) if not args else None
-        key = existing_key or key_for(path, ar_template)
-        if not existing_key and key not in resources:
-            if ARABIC_RE.search(ar_template):
-                en = translate_template(ar_template, cache)
-                ar = ar_template
-            else:
-                en = ar_template
-                masked, toks = mask_placeholders(ar_template)
-                ar = translate(masked, 'en', 'ar', cache)
-                for tok, ph in toks:
-                    ar = ar.replace(tok, ph).replace(tok.lower(), ph)
-            resources[key] = (en, ar)
-        call = f'stringResource(R.string.{key}'
-        if args:
-            call += ', ' + ', '.join(args)
-        call += ')'
-        edits.append((start, end, call))
-    if not edits:
-        continue
-    for start, end, repl in reversed(edits):
-        src = src[:start] + repl + src[end:]
-        replacements += 1
-    src = ensure_imports(src)
-    path.write_text(src, encoding='utf-8')
-    changed_files.append(str(path.relative_to(ROOT)))
-
-save_cache(cache)
+        edits = []
+        for start, end, segments, call_start in matches:
+            ar_template, args = make_template(segments)
+            if not ar_template.strip():
+                continue
+            visible_letters = re.search(r'[A-Za-z\u0600-\u06FF]', ar_template)
+            if not visible_letters:
+                continue
+            existing_key = existing.get(ar_template) if not args else None
+            key = existing_key or key_for(path, ar_template)
+            if not existing_key and key not in resources:
+                if ARABIC_RE.search(ar_template):
+                    en = translate_template(ar_template, cache)
+                    ar = ar_template
+                else:
+                    en = ar_template
+                    masked, toks = mask_placeholders(ar_template)
+                    ar = translate(masked, 'en', 'ar', cache)
+                    for tok, ph in toks:
+                        ar = ar.replace(tok, ph).replace(tok.lower(), ph)
+                resources[key] = (en, ar)
+            call = f'stringResource(R.string.{key}'
+            if args:
+                call += ', ' + ', '.join(args)
+            call += ')'
+            edits.append((start, end, call))
+        if not edits:
+            continue
+        for start, end, repl in reversed(edits):
+            src = src[:start] + repl + src[end:]
+            replacements += 1
+        src = ensure_imports(src)
+        path.write_text(src, encoding='utf-8')
+        changed_files.append(str(path.relative_to(ROOT)))
+finally:
+    save_cache(cache)
 
 OUT_EN.parent.mkdir(parents=True, exist_ok=True)
 OUT_AR.parent.mkdir(parents=True, exist_ok=True)
@@ -352,7 +390,6 @@ def write_xml(path, language_index):
 write_xml(OUT_EN,0)
 write_xml(OUT_AR,1)
 
-# Post-scan direct Text literals.
 remaining = 0
 remaining_files = {}
 for path in sorted(UI_ROOT.rglob('*.kt')):
@@ -368,6 +405,8 @@ REPORT.write_text(json.dumps({
     'replacements': replacements,
     'new_resource_pairs': len(resources),
     'translation_cache_entries': len(cache),
+    'new_translations_this_run': _NEW_TRANSLATIONS,
+    'translation_min_interval_seconds': MIN_REQUEST_INTERVAL,
     'changed_files': changed_files,
     'remaining_direct_text_literals': remaining,
     'remaining_files': remaining_files,
