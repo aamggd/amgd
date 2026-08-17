@@ -2,6 +2,11 @@ name: Testing QA Lightweight Qualification - Physical Android Device
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fush/testing-qa
+    paths:
+      - 'qa/qualification/physical-device-trigger.txt'
 
 permissions:
   contents: read
