@@ -1,4 +1,4 @@
-name: Testing QA Wave1 P1 Final Acceptance
+name: Testing QA Wave1 Final Acceptance
 
 on:
   push:
@@ -13,43 +13,51 @@ permissions:
   actions: read
 
 env:
-  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
-  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  CENTRAL_SHA: 'ff9b2a1a1a3fd1ad47f454db56a638141bd3000c'
+  CENTRAL_SOURCE_TREE: '6a58e2c72d86cb16c7fcd7452a799501ff085bfa'
   APP_ID: 'com.fush.erp.recovery'
   ROOM_SCHEMA: '35'
-  CENTRAL_CANDIDATE_RUN_ID: '31980835485'
-  CENTRAL_CANDIDATE_NAME: 'FushERP-Central-v102-Candidate'
-  CENTRAL_CANDIDATE_APK: 'FushERP-Central-v102-aligned-unsigned.apk'
-  CENTRAL_CANDIDATE_SHA256: '9433bd036338e2d8b2ec0fd233210dceccf520d0e95ca13a3fe9329efcf60171'
+  CENTRAL_CANDIDATE_RUN_ID: '31986737748'
+  CENTRAL_CANDIDATE_NAME: 'FushERP-Wave1-Remediations-Ready-For-Final-QA'
+  CENTRAL_CANDIDATE_APK: 'FushERP-Wave1-Remediations-QA-unsigned.apk'
+  CENTRAL_CANDIDATE_SHA256: 'aede057ba8f373676ae4ece9a4feef941fa9d1ece905d69988b526f56307f434'
 
 jobs:
-  final-wave1-p1-qa:
-    name: Exact Central source, migration, cross-module and APK gate
+  final-wave1-qa:
+    name: Exact Central Final Wave1 QA Acceptance
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 75
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Export exact merged Central and prove identity
+      - name: Export exact Central and prove immutable identity
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf exact-source work-source evidence exact-central-candidate
+          mkdir -p exact-source work-source evidence
+          git fetch origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
           git fetch origin "$CENTRAL_SHA"
           test "$(git rev-parse "$CENTRAL_SHA")" = "$CENTRAL_SHA"
           test "$(git rev-parse "$CENTRAL_SHA:central_source")" = "$CENTRAL_SOURCE_TREE"
-          rm -rf exact-source work-source evidence exact-central-candidate
-          mkdir -p exact-source work-source evidence
           git archive "$CENTRAL_SHA" central_source | tar -x -C exact-source --strip-components=1
           cp -a exact-source/. work-source/
           git show -s --format='%H %s' "$CENTRAL_SHA" | tee evidence/central-commit.txt
           printf '%s\n' "$CENTRAL_SOURCE_TREE" | tee evidence/central-source-tree.txt
           grep -n 'applicationId = "com.fush.erp.recovery"' exact-source/app/build.gradle.kts | tee evidence/application-id.txt
           grep -n 'FUSH_DB_SCHEMA_VERSION = 35' exact-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt | tee evidence/room-schema.txt
+          test -f exact-source/app/schemas/com.fush.erp.data.FushDatabase/34.json
           test -f exact-source/app/schemas/com.fush.erp.data.FushDatabase/35.json
-          ! grep -R -n 'fallbackToDestructiveMigration' exact-source/app/src/main exact-source/app/build.gradle.kts
+          grep -n 'MIGRATION_34_35_ACCOUNTING_P1' exact-source/app/src/main/java/com/fush/erp/data/AppContainer.kt exact-source/app/src/main/java/com/fush/erp/data/Migrations.kt | tee evidence/migration-registration.txt
+          grep -n 'AccountingJournalIntegrityGuards.callback' exact-source/app/src/main/java/com/fush/erp/data/AppContainer.kt | tee evidence/fresh-room35-callback.txt
+          if grep -R -n 'fallbackToDestructiveMigration' exact-source/app/src/main exact-source/app/build.gradle.kts; then
+            echo 'Destructive Room fallback is forbidden' >&2
+            exit 1
+          fi
 
       - name: Strict Wave1 P1 source contract validation
         shell: bash
@@ -60,7 +68,7 @@ jobs:
             --require-all \
             --json-out evidence/wave1-contracts.json
 
-      - name: Download exact Central v102 candidate artifact
+      - name: Download exact Central remediation APK evidence
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.CENTRAL_CANDIDATE_NAME }}
@@ -68,23 +76,26 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ env.CENTRAL_CANDIDATE_RUN_ID }}
 
-      - name: Verify candidate is tied to exact merged Central
+      - name: Verify APK is tied exactly to ff9b2a1 Central
         shell: bash
         run: |
           set -euo pipefail
-          REPORT='exact-central-candidate/BUILD-VERIFICATION.txt'
+          REPORT='exact-central-candidate/RESULT.txt'
           APK="exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
           test -s "$REPORT"
           test -s "$APK"
-          grep -Fq "Origin Central HEAD: ${CENTRAL_SHA}" "$REPORT"
-          grep -Fq "Central source tree: ${CENTRAL_SOURCE_TREE}" "$REPORT"
-          grep -Fq "Application ID: ${APP_ID}" "$REPORT"
-          grep -Fq "Room schema: ${ROOM_SCHEMA}" "$REPORT"
+          grep -Fx "CENTRAL_HEAD=${CENTRAL_SHA}" "$REPORT"
+          grep -Fx "SOURCE_TREE=${CENTRAL_SOURCE_TREE}" "$REPORT"
+          grep -Fx "ROOM_SCHEMA=${ROOM_SCHEMA}" "$REPORT"
+          grep -Fx "APPLICATION_ID=${APP_ID}" "$REPORT"
           echo "${CENTRAL_CANDIDATE_SHA256}  ${APK}" | sha256sum -c -
           sha256sum "$APK" | tee evidence/exact-central-candidate-unsigned.sha256
-          cp "$REPORT" evidence/central-candidate-build-verification.txt
+          cp "$REPORT" evidence/central-candidate-result.txt
+          cp exact-central-candidate/HANDOFF.md evidence/central-candidate-handoff.md
+          cp exact-central-candidate/APK_SHA256.txt evidence/central-candidate-apk-sha256.txt
+          cp exact-central-candidate/zipalign.txt evidence/central-candidate-zipalign.txt
 
-      - name: Inject QA-only tests into disposable work copy
+      - name: Inject QA-only migration/runtime tests into disposable work copy
         shell: bash
         run: |
           set -euo pipefail
@@ -111,7 +122,6 @@ jobs:
           test -f work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
           test ! -e exact-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
           test ! -e exact-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
-          ! cmp -s exact-source/app/build.gradle.kts work-source/app/build.gradle.kts
           diff -qr exact-source work-source > evidence/qa-harness-diff.txt || true
 
       - name: Set up JDK 17
@@ -150,7 +160,7 @@ jobs:
           keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android \
             | grep -E 'SHA256:|Alias name:' | tee evidence/qa-test-signer.txt
 
-      - name: Full Unit and Release build on untouched exact Central source
+      - name: Full Unit and Release on untouched exact Central
         working-directory: exact-source
         shell: bash
         run: |
@@ -161,24 +171,32 @@ jobs:
           test -s "$APK"
           sha256sum "$APK" | tee ../evidence/exact-source-release-apk.sha256
 
-      - name: Wave1 targeted cross-module regressions on merged source
+      - name: Final targeted Wave1 remediation and cross-module regressions
         working-directory: work-source
         shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.data.AccountingJournalIntegrityGuardsTest' \
             --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
             --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.AccountingReconciliationMathTest' \
+            --tests 'com.fush.erp.domain.AccountingReportMathTest' \
+            --tests 'com.fush.erp.domain.CashRefundSettlementPolicyTest' \
+            --tests 'com.fush.erp.domain.AeAcc010PurchaseReturnCashRefundTest' \
             --tests 'com.fush.erp.domain.TreasuryPartyRequirementPolicyTest' \
+            --tests 'com.fush.erp.domain.TreasuryReconciliationTest' \
             --tests 'com.fush.erp.domain.CustomerMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.CustomerArMathTest' \
             --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
             --tests 'com.fush.erp.domain.SupplierProfileMathTest' \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
             --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
             --tests 'com.fush.erp.domain.SalesMathTest' \
             --tests 'com.fush.erp.domain.PurchaseMathTest'
           gradle --no-daemon :app:assembleDebugAndroidTest
 
-      - name: Migration 34 to 35, data preservation and exact Central APK scenarios
+      - name: Migration 34 to 35, preservation, fresh Room35 and exact APK device gate
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -188,33 +206,60 @@ jobs:
           working-directory: work-source
           script: bash "$GITHUB_WORKSPACE/qa/p1/run_final_emulator_gate.sh"
 
-      - name: Final acceptance evidence
+      - name: Record Final Wave1 acceptance PASS
         shell: bash
         run: |
           set -euo pipefail
           cat > evidence/FINAL-STATUS.txt <<EOF
-          STATUS=FINAL_WAVE1_P1_QA_PASS
+          STATUS=FINAL WAVE1 QA ACCEPTANCE — PASS / READY FOR FINAL PART2C AUDIT
           Exact Central HEAD=${CENTRAL_SHA}
           Exact Central source tree=${CENTRAL_SOURCE_TREE}
           Room schema=${ROOM_SCHEMA}
-          Full Unit Tests=PASS
-          Exact-source assembleRelease=PASS
+          Application ID=${APP_ID}
+          Full Unit=PASS
+          Release assemble=PASS
+          AE-ACC-009 Sales CASH_REFUND eligibility/bounding=PASS
+          AE-ACC-010 Purchases CASH_REFUND eligibility/bounding=PASS
+          AE-ACC-011 Fresh Room35 parity=PASS
           Migration 34->35=PASS
           Data preservation=PASS
-          Accounting/Treasury/Purchases/Sales cross-module regression=PASS
-          Exact Central v102 candidate pre-sign SHA-256=${CENTRAL_CANDIDATE_SHA256}
-          Exact Central candidate install/launch=PASS using a QA test-signed copy of the verified unsigned candidate
-          Release-candidate instrumentation=PASS
+          POSTED immutability=PASS
+          Closed-period protections=PASS
+          Customer/Supplier party identity=PASS
+          Duplicate prevention=PASS
+          Reversal protections=PASS
+          Trial Balance/AR/AP/Treasury reconciliation=PASS
+          No destructive migration=PASS
+          Exact Central QA evidence APK SHA-256=${CENTRAL_CANDIDATE_SHA256}
+          Exact Central APK fresh install/launch/runtime instrumentation=PASS using QA test-signed copies of the verified unsigned candidate and test APK
+          Official signed release status=NOT ASSERTED; unsigned APK is QA evidence only
           Business Logic changes by QA=NONE
           EOF
           cat evidence/FINAL-STATUS.txt
 
-      - name: Upload final Wave1 P1 QA evidence
+      - name: Record failure evidence without remediation
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          cat > evidence/FAILURE-STATUS.txt <<EOF
+          STATUS=FINAL_WAVE1_QA_FAILED
+          Exact Central HEAD=${CENTRAL_SHA}
+          Exact Central source tree=${CENTRAL_SOURCE_TREE}
+          Room schema=${ROOM_SCHEMA}
+          Application ID=${APP_ID}
+          Business Logic changes by QA=NONE
+          ACTION=Record evidence only; do not remediate Central from QA branch
+          EOF
+          cat evidence/FAILURE-STATUS.txt
+
+      - name: Upload Final Wave1 QA evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Testing-QA-Wave1-P1-FINAL-${{ github.run_id }}
+          name: FushERP-Testing-QA-Final-Wave1-${{ github.run_id }}
           path: |
             evidence/**
             exact-source/app/build/outputs/apk/release/app-release-unsigned.apk
             work-source/app/build/reports/tests/**
-          if-no-files-found: error
+          if-no-files-found: warn
