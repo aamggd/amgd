@@ -1,0 +1,129 @@
+name: Integrate Session Expenses Backup Candidate V4 Runner
+
+on:
+  push:
+    branches: [fush/session-expenses-backup-integration-run]
+    paths:
+      - '.github/workflows/integrate-session-expenses-backup-candidate-v4-runner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CENTRAL_SHA: 'ff9b2a1a1a3fd1ad47f454db56a638141bd3000c'
+  CENTRAL_TREE: '6a58e2c72d86cb16c7fcd7452a799501ff085bfa'
+  SESSION_HEAD: 'ed8ff6014927c40273f2c9055ae13b91573d2d68'
+  EXPENSES_HEAD: 'd09dd863c429ad2bac2b6defd714b7d09122e884'
+  EXPENSES_BASE: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  EXPENSES_SHA: 'b74c2d5766381a4c2d14ecb664b72baed6260bc4ba6863614530ee2197972a54'
+  BACKUP_HEAD: '1e936b81807dbe374b7836ef639adfb768f8c49c'
+  APP_ID: 'com.fush.erp.recovery'
+  CANDIDATE_BRANCH: 'fush/session-expenses-backup-candidate'
+
+jobs:
+  execute-fixed-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/session-expenses-backup-integration-run
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Execute V3 run steps with migration-object extraction corrected in memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from pathlib import Path
+          try:
+              import yaml
+          except Exception:
+              subprocess.run([sys.executable, '-m', 'pip', 'install', '--quiet', 'pyyaml'], check=True)
+              import yaml
+
+          wf = Path('.github/workflows/integrate-session-expenses-backup-candidate-v3.yml')
+          lines = wf.read_text(encoding='utf-8').splitlines()
+          out=[]; first=second=0
+          for line in lines:
+              stripped=line.strip(); indent=line[:len(line)-len(line.lstrip())]
+              if stripped.startswith("block=exact[pos:].strip()"):
+                  first += 1
+                  out.extend([
+                      indent+"depth=0; end=None",
+                      indent+"for i in range(pos,len(exact)):",
+                      indent+"    if exact[i]=='{': depth+=1",
+                      indent+"    elif exact[i]=='}':",
+                      indent+"        depth-=1",
+                      indent+"        if depth==0:",
+                      indent+"            end=i+1; break",
+                      indent+"assert end is not None, 'Expenses 35->36 migration object did not close'",
+                      indent+"block=exact[pos:end].strip()+'\\n'",
+                  ])
+              elif stripped.startswith("block=src[src.index('val MIGRATION_35_36_EXPENSES_P1'):"):
+                  second += 1
+                  out.extend([
+                      indent+"start=src.index('val MIGRATION_35_36_EXPENSES_P1')",
+                      indent+"depth=0; end=None",
+                      indent+"for i in range(start,len(src)):",
+                      indent+"    if src[i]=='{': depth+=1",
+                      indent+"    elif src[i]=='}':",
+                      indent+"        depth-=1",
+                      indent+"        if depth==0:",
+                      indent+"            end=i+1; break",
+                      indent+"assert end is not None, 'Central Expenses 35->36 migration object did not close'",
+                      indent+"block=src[start:end]",
+                  ])
+              else:
+                  out.append(line)
+          assert first==1 and second==1, (first,second)
+          fixed='\n'.join(out)+'\n'
+          doc=yaml.safe_load(fixed)
+          steps=doc['jobs']['integrate']['steps']
+          env=os.environ.copy()
+          gh_env=Path('/tmp/fush_v4_github_env'); gh_env.write_text('',encoding='utf-8')
+          env['GITHUB_ENV']=str(gh_env)
+          consumed=0
+          def absorb_env():
+              global consumed
+              rows=gh_env.read_text(encoding='utf-8').splitlines()
+              for row in rows[consumed:]:
+                  if '=' in row:
+                      k,v=row.split('=',1); env[k]=v
+              consumed=len(rows)
+          for index, step in enumerate(steps,1):
+              if 'run' not in step:
+                  continue
+              name=step.get('name',f'run-{index}')
+              cwd=step.get('working-directory', env.get('GITHUB_WORKSPACE', os.getcwd()))
+              print(f'\n===== V4 EXEC {index}: {name} =====', flush=True)
+              local_env=env.copy()
+              for k,v in (step.get('env') or {}).items():
+                  local_env[str(k)]=str(v)
+              subprocess.run(['bash','--noprofile','--norc','-e','-o','pipefail','-c',step['run']], cwd=cwd, env=local_env, check=True)
+              absorb_env()
+          print('V4_FIXED_V3_RUN_STEPS=PASS')
+          PY
+      - name: Upload static candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Session-Expenses-Backup-Static-Candidate-V4
+          path: /tmp/evidence/
+          if-no-files-found: error
+          retention-days: 14
