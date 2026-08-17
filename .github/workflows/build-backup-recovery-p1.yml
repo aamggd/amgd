@@ -12,8 +12,9 @@ jobs:
   validate-p1:
     runs-on: ubuntu-latest
     env:
-      CENTRAL_BASE: 2cb8da801fc54aec8c1f0d6a83588f097ca85117
-      EXPECTED_SCHEMA: '34'
+      CENTRAL_BASE: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+      EXPECTED_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+      EXPECTED_SCHEMA: '35'
     steps:
       - name: Checkout branch payload
         uses: actions/checkout@v4
@@ -37,15 +38,20 @@ jobs:
         with:
           gradle-version: '9.4.1'
           cache-read-only: true
-      - name: Materialize exact Central baseline
+      - name: Materialize exact Central 35 baseline
         shell: bash
         run: |
           set -euo pipefail
           git cat-file -e "$CENTRAL_BASE^{commit}"
+          ACTUAL_SOURCE_TREE=$(git rev-parse "${CENTRAL_BASE}:central_source")
+          test "$ACTUAL_SOURCE_TREE" = "$EXPECTED_SOURCE_TREE"
           git worktree add --detach /tmp/p1-implementation "$CENTRAL_BASE"
           git worktree add --detach /tmp/p1-exact "$CENTRAL_BASE"
           grep -q 'applicationId = "com.fush.erp.recovery"' /tmp/p1-implementation/central_source/app/build.gradle.kts
           grep -q "FUSH_DB_SCHEMA_VERSION = $EXPECTED_SCHEMA" /tmp/p1-implementation/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "/tmp/p1-implementation/central_source/app/schemas/com.fush.erp.data.FushDatabase/$EXPECTED_SCHEMA.json"
+          grep -q 'val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' /tmp/p1-implementation/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1).build()' /tmp/p1-implementation/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
       - name: Apply P1 functional transformation and generate Exact Patch
         shell: bash
         run: |
@@ -70,7 +76,7 @@ jobs:
             central_source/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt \
             central_source/app/src/test/java/com/fush/erp/backup/BackupPortableArchiveCodecTest.kt | sort)
           test "$changed" = "$expected"
-      - name: Reapply Exact Patch on clean Central
+      - name: Reapply Exact Patch on clean Central 35
         shell: bash
         run: |
           set -euo pipefail
@@ -80,12 +86,21 @@ jobs:
           grep -q 'AES-256-GCM+DUAL-WRAPPED-DEK' /tmp/p1-exact/central_source/app/src/main/java/com/fush/erp/backup/BackupPortableArchiveCodec.kt
           grep -q 'RecoveryCodeRequiredException' /tmp/p1-exact/central_source/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
           grep -q 'applicationId = "com.fush.erp.recovery"' /tmp/p1-exact/central_source/app/build.gradle.kts
-      - name: Domain tests - Backup Recovery P1
+          grep -q "FUSH_DB_SCHEMA_VERSION = $EXPECTED_SCHEMA" /tmp/p1-exact/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+      - name: Targeted tests - Backup Recovery P1
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/p1-exact/central_source
-          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.backup.BackupPortableArchiveCodecTest' --tests 'com.fush.erp.backup.BackupArchiveCodecTest'
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.backup.BackupPortableArchiveCodecTest'
+      - name: Backup Restore regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/p1-exact/central_source
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.backup.BackupArchiveCodecTest' \
+            --tests 'com.fush.erp.backup.RestoreFileSafetyTest'
       - name: Full unit tests
         shell: bash
         run: |
@@ -99,7 +114,7 @@ jobs:
           cd /tmp/p1-exact/central_source
           gradle --no-daemon :app:assembleRelease
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
-      - name: Room migration and no-destructive guards
+      - name: Room data preservation and no-destructive guards
         shell: bash
         run: |
           set -euo pipefail
@@ -107,10 +122,14 @@ jobs:
           grep -q 'applicationId = "com.fush.erp.recovery"' "$SRC/app/build.gradle.kts"
           grep -q "FUSH_DB_SCHEMA_VERSION = $EXPECTED_SCHEMA" "$SRC/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
           test -f "$SRC/app/schemas/com.fush.erp.data.FushDatabase/$EXPECTED_SCHEMA.json"
+          grep -q 'val MIGRATION_34_35_ACCOUNTING_P1 = object : Migration(34, 35)' "$SRC/app/src/main/java/com/fush/erp/data/Migrations.kt"
+          grep -q 'MIGRATION_34_35_ACCOUNTING_P1).build()' "$SRC/app/src/main/java/com/fush/erp/data/AppContainer.kt"
           ! grep -R -q 'fallbackToDestructiveMigration' "$SRC/app/src/main/java" "$SRC/app/build.gradle.kts"
-          git -C /tmp/p1-exact diff --name-only "$CENTRAL_BASE" -- central_source/app/src/main/java/com/fush/erp/data central_source/app/schemas | tee /tmp/room-diff.txt
-          test ! -s /tmp/room-diff.txt
-          ! grep -R -qE 'deleteDatabase\(|DROP[[:space:]]+TABLE' "$SRC/app/src/main/java/com/fush/erp/backup"
+          git -C /tmp/p1-exact diff --name-only "$CENTRAL_BASE" -- central_source/app/src/main/java/com/fush/erp/data central_source/app/schemas | tee /tmp/room-data-diff.txt
+          test ! -s /tmp/room-data-diff.txt
+          git -C /tmp/p1-exact diff --quiet "$CENTRAL_BASE" -- central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          grep -q 'KEY_ALIAS = "fush_backup_master_v1"' "$SRC/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt"
+          ! git -C /tmp/p1-exact diff "$CENTRAL_BASE" -- central_source/app/src/main/java/com/fush/erp/backup | grep '^+' | grep -qE 'deleteDatabase\(|dbFile\.delete\(|DROP[[:space:]]+TABLE'
       - name: Record validation summary
         shell: bash
         run: |
@@ -119,17 +138,21 @@ jobs:
           {
             echo '## Backup/Recovery P1 validation'
             echo "- Central baseline: $CENTRAL_BASE"
-            echo "- Room schema: $EXPECTED_SCHEMA unchanged by P1"
+            echo "- Central source tree: $EXPECTED_SOURCE_TREE"
+            echo "- Room schema: $EXPECTED_SCHEMA (P1 unchanged; Accounting 34->35 migration preserved)"
             echo "- Exact patch SHA-256: $PATCH_SHA"
-            echo '- Domain tests: PASS'
+            echo '- Targeted P1 tests: PASS'
+            echo '- Backup/Restore regression: PASS'
             echo '- Full unit: PASS'
             echo '- Release build: PASS (unsigned test APK)'
-            echo '- Room/no-destructive guards: PASS'
+            echo '- Room/data preservation: PASS'
+            echo '- Existing Android Keystore alias preserved; no new keystore introduced: PASS'
+            echo '- No destructive migration / DB deletion introduced by P1: PASS'
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload P1 validation artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-Backup-Recovery-P1-VALIDATION
+          name: FushERP-Backup-Recovery-P1-VALIDATION-CENTRAL35
           path: |
             /tmp/p1-exact/central_source/app/build/outputs/apk/release/app-release-unsigned.apk
             backup-recovery-p1-exact.patch
