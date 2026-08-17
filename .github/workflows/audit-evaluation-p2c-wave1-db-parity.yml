@@ -1,0 +1,124 @@
+name: Audit P2C Wave1 DB Integrity Parity
+
+on:
+  push:
+    branches: [fush/audit-evaluation]
+    paths:
+      - '.github/workflows/audit-evaluation-p2c-wave1-db-parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+
+jobs:
+  db-integrity-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pin and export exact Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+          mkdir -p work-source output
+          git archive "${CENTRAL_SHA}:central_source" | tar -x -C work-source
+
+      - name: Compare upgraded DB guards with fresh Room 35 creation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('work-source')
+          migrations = (root/'app/src/main/java/com/fush/erp/data/Migrations.kt').read_text(encoding='utf-8')
+          app_container = (root/'app/src/main/java/com/fush/erp/data/AppContainer.kt').read_text(encoding='utf-8')
+          fush_db = (root/'app/src/main/java/com/fush/erp/data/FushDatabase.kt').read_text(encoding='utf-8')
+          schema = (root/'app/schemas/com.fush.erp.data.FushDatabase/35.json').read_text(encoding='utf-8')
+          sales = (root/'app/src/main/java/com/fush/erp/domain/SalesService.kt').read_text(encoding='utf-8')
+          purchase = (root/'app/src/main/java/com/fush/erp/domain/PurchaseService.kt').read_text(encoding='utf-8')
+          accounting = (root/'app/src/main/java/com/fush/erp/domain/AccountingService.kt').read_text(encoding='utf-8')
+
+          guards = {
+              'CLOSED_PERIOD': 'trg_journal_entries_closed_period',
+              'POSTED_ENTRY_UPDATE': 'trg_posted_journal_no_update',
+              'POSTED_ENTRY_DELETE': 'trg_posted_journal_no_delete',
+              'POSTED_LINE_UPDATE': 'trg_posted_journal_line_no_update',
+              'POSTED_LINE_DELETE': 'trg_posted_journal_line_no_delete',
+              'STABLE_SOURCE_REQUIRED': 'trg_journal_stable_source_id_required_insert',
+              'DUPLICATE_STABLE_SOURCE': 'trg_journal_no_duplicate_stable_source_insert',
+          }
+
+          def section(text, start, end):
+              a = text.index(start)
+              b = text.index(end, a) if end else len(text)
+              return text[a:b]
+
+          service_sections = {
+              'SALE': section(sales, 'suspend fun postSale(', 'suspend fun postReceipt('),
+              'CUSTOMER_RECEIPT': section(sales, 'private suspend fun postReceiptAllocationsInternal(', 'suspend fun reverseReceipt('),
+              'SALES_RETURN': section(sales, 'suspend fun postReturn(', 'suspend fun invoiceOutstandingBase('),
+              'PURCHASE': section(purchase, 'suspend fun postPurchase(', 'data class PostPurchaseReturnRequest('),
+              'SUPPLIER_PAYMENT': section(purchase, 'private suspend fun postSupplierPaymentAllocationsInternal(', 'suspend fun reverseSupplierPayment('),
+              'PURCHASE_RETURN': section(purchase, 'suspend fun postPurchaseReturn(', 'suspend fun postFullLineReturn('),
+              'GENERIC_TREASURY_VOUCHER': section(accounting, 'suspend fun postVoucher(', 'suspend fun reverseEntry('),
+          }
+
+          fresh_sources = schema + '\n' + app_container + '\n' + fush_db
+          rows = []
+          for label, token in guards.items():
+              rows.append((label, token in migrations, token in fresh_sources))
+
+          missing_service_period = [name for name,text in service_sections.items() if 'requirePostingPeriodOpen' not in text]
+          upgraded_closed = 'trg_journal_entries_closed_period' in migrations
+          fresh_closed = 'trg_journal_entries_closed_period' in fresh_sources
+
+          # Return-settlement source contracts.
+          sret = service_sections['SALES_RETURN']
+          pret = service_sections['PURCHASE_RETURN']
+          sales_cash_basis = ('CASH_REFUND' in sret and
+                              ('receivedBaseForInvoice' in sret or 'invoiceOutstandingBase' in sret or 'paymentType == "CASH"' in sret))
+          purchase_cash_basis = ('CASH_REFUND' in pret and
+                                 ('paidBaseForInvoice' in pret or 'supplierPayment' in pret or 'paymentType == "CASH"' in pret))
+
+          fresh_immutability = all(token in fresh_sources for key,token in guards.items() if key.startswith('POSTED_'))
+          fresh_duplicate = (guards['STABLE_SOURCE_REQUIRED'] in fresh_sources and guards['DUPLICATE_STABLE_SOURCE'] in fresh_sources)
+
+          out = Path('output/P2C_WAVE1_DB_PARITY_FINDINGS.txt')
+          with out.open('w', encoding='utf-8') as f:
+              f.write('CENTRAL_SHA=ddae764a236cb1916a46e194ccb2d3c24ca6b919\n')
+              f.write('CENTRAL_SOURCE_TREE=30b028b75d6463c07afd0419429f53c7937fabb1\n')
+              for label, migrated, fresh in rows:
+                  f.write(f'{label}_IN_MIGRATIONS={"YES" if migrated else "NO"}\n')
+                  f.write(f'{label}_IN_FRESH_CREATE_PATH={"YES" if fresh else "NO"}\n')
+              f.write('PERIOD_GUARD_MISSING_SERVICE_PATHS=' + ','.join(missing_service_period) + '\n')
+              f.write('AE-ACC-009=' + ('PASS_SOURCE_CONTRACT' if sales_cash_basis else 'FAIL') + '\n')
+              f.write('AE-ACC-010=' + ('PASS_SOURCE_CONTRACT' if purchase_cash_basis else 'FAIL') + '\n')
+              if missing_service_period and upgraded_closed and not fresh_closed:
+                  f.write('AE-ACC-011=FAIL_FRESH_DB_INTEGRITY_PARITY\n')
+                  f.write('AE-ACC-011_UPGRADED_DB=PROTECTED_BY_MIGRATION_TRIGGER\n')
+              elif not missing_service_period:
+                  f.write('AE-ACC-011=PASS_SOURCE_GUARDS\n')
+              else:
+                  f.write('AE-ACC-011=REVIEW_REQUIRED\n')
+              f.write('POSTED_IMMUTABILITY_FRESH_DB=' + ('PASS' if fresh_immutability else 'FAIL_INTEGRITY_PARITY') + '\n')
+              f.write('DUPLICATE_PREVENTION_FRESH_DB=' + ('PASS' if fresh_duplicate else 'FAIL_INTEGRITY_PARITY') + '\n')
+              f.write('NOTE=Findings are audit evidence only; this workflow does not modify production source.\n')
+          print(out.read_text(encoding='utf-8'))
+          PY
+
+      - name: Upload DB parity evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-P2C-Wave1-DB-Integrity-Parity
+          path: output/
+          if-no-files-found: error
