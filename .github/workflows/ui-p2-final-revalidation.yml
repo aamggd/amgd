@@ -1,0 +1,220 @@
+name: UI P2 Final Revalidation
+
+on:
+  push:
+    branches: [fush/ui-professional-redesign-p2]
+    paths:
+      - '.github/workflows/ui-p2-final-revalidation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FINAL_CENTRAL_HEAD: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  FINAL_CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  VALIDATED_ARTIFACT_RUN_ID: '31980046836'
+  VALIDATED_PATCH_SHA256: '50b83114006c91ebaefbf20a7700cc68d49d0dc1857b96a14d5d2e6f428a7753'
+  APP_ID: 'com.fush.erp.recovery'
+  ROOM_SCHEMA: '35'
+
+jobs:
+  final-revalidation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout work branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/ui-professional-redesign-p2
+          fetch-depth: 0
+
+      - name: Fetch exact latest Central
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$FINAL_CENTRAL_HEAD"
+          test "$(git rev-parse "$FINAL_CENTRAL_HEAD:central_source")" = "$FINAL_CENTRAL_SOURCE_TREE"
+          git checkout "$FINAL_CENTRAL_HEAD" -- central_source
+
+      - name: Download exact validated UI P2 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-UI-P2-Direct-Localization-Validation
+          path: /tmp/ui-p2-validated
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: aamggd/amgd
+          run-id: ${{ env.VALIDATED_ARTIFACT_RUN_ID }}
+
+      - name: Verify exact validated patch identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH=/tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.patch
+          test -s "$PATCH"
+          ACTUAL="$(sha256sum "$PATCH" | awk '{print $1}')"
+          echo "validated_patch_sha256=$ACTUAL"
+          test "$ACTUAL" = "$VALIDATED_PATCH_SHA256"
+          grep -Fq "$VALIDATED_PATCH_SHA256" /tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.patch.sha256
+
+      - name: Record protected Central state
+        shell: bash
+        run: |
+          set -euo pipefail
+          find central_source/app/src/main/java/com/fush/erp/data central_source/app/src/main/java/com/fush/erp/domain central_source/app/schemas -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/protected-before.sha256
+          sha256sum central_source/app/build.gradle.kts central_source/app/src/main/AndroidManifest.xml > /tmp/platform-before.sha256
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' central_source/app/build.gradle.kts
+          grep -Fq "FUSH_DB_SCHEMA_VERSION = $ROOM_SCHEMA" central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "central_source/app/schemas/com.fush.erp.data.FushDatabase/$ROOM_SCHEMA.json"
+
+      - name: Apply exact validated UI P2 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH=/tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.patch
+          git apply --check "$PATCH"
+          git apply "$PATCH"
+          git diff --check "$FINAL_CENTRAL_HEAD" -- central_source
+
+      - name: Verify patch scope and no Business Logic / Room changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "$FINAL_CENTRAL_HEAD" -- central_source | tee /tmp/final-changed.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          expected = set(Path('/tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.changed-files.txt').read_text().splitlines())
+          actual = set(Path('/tmp/final-changed.txt').read_text().splitlines())
+          assert actual == expected, f'changed-file mismatch\nmissing={sorted(expected-actual)}\nextra={sorted(actual-expected)}'
+          bad=[p for p in actual if not (
+              (p.startswith('central_source/app/src/main/java/com/fush/erp/ui/') and p.endswith('.kt')) or
+              p in {'central_source/app/src/main/res/values/p2_direct_text.xml','central_source/app/src/main/res/values-ar/p2_direct_text.xml'}
+          )]
+          assert not bad, f'non-UI P2 files changed: {bad}'
+          PY
+          sha256sum -c /tmp/protected-before.sha256
+          sha256sum -c /tmp/platform-before.sha256
+          ! git diff --name-only "$FINAL_CENTRAL_HEAD" -- central_source | grep -E '^central_source/app/src/main/java/com/fush/erp/(data|domain)/|^central_source/app/schemas/|^central_source/app/build.gradle.kts$|^central_source/app/src/main/AndroidManifest.xml$'
+
+      - name: Verify Arabic / English resource parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, xml.etree.ElementTree as ET
+          enp=Path('central_source/app/src/main/res/values/p2_direct_text.xml')
+          arp=Path('central_source/app/src/main/res/values-ar/p2_direct_text.xml')
+          enroot=ET.parse(enp).getroot(); arroot=ET.parse(arp).getroot()
+          en={x.attrib['name']:''.join(x.itertext()) for x in enroot.findall('string')}
+          ar={x.attrib['name']:''.join(x.itertext()) for x in arroot.findall('string')}
+          assert len(en)==1191, len(en)
+          assert en.keys()==ar.keys()
+          arabic=re.compile(r'[\u0600-\u06FF]')
+          assert sum(bool(arabic.search(v)) for v in en.values()) == 0
+          assert sum(bool(arabic.search(v)) for v in ar.values()) >= 1100
+          fmt=re.compile(r'%\d+\$[sdfoxegc]')
+          for k in en:
+              assert sorted(fmt.findall(en[k])) == sorted(fmt.findall(ar[k])), (k,en[k],ar[k])
+          print('resource_pairs',len(en))
+          print('english_with_arabic',0)
+          print('arabic_values_with_arabic',sum(bool(arabic.search(v)) for v in ar.values()))
+          PY
+
+      - name: Verify RTL / LTR support remains intact
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'android:supportsRtl="true"' central_source/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:localeConfig="@xml/locales_config"' central_source/app/src/main/AndroidManifest.xml
+          grep -Fq '<locale android:name="ar" />' central_source/app/src/main/res/xml/locales_config.xml
+          grep -Fq '<locale android:name="en" />' central_source/app/src/main/res/xml/locales_config.xml
+          ! git diff "$FINAL_CENTRAL_HEAD" -- central_source | grep -E '^\+.*(LayoutDirection\.(Rtl|Ltr)|LocalLayoutDirection)'
+
+      - name: Verify direct Text localization completion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 ui_p2/tools/extract_localization.py > /tmp/post-p2-inventory.log
+          python3 - <<'PY'
+          import json
+          p=json.load(open('ui_p2/extract/summary.json',encoding='utf-8'))
+          print(p['totals'])
+          assert p['totals']['direct_text_occurrences'] == 0, p['totals']
+          assert p['totals']['unique_direct_text'] == 0, p['totals']
+          PY
+
+      - name: Verify Room / migrations unchanged and no destructive migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "FUSH_DB_SCHEMA_VERSION = $ROOM_SCHEMA" central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f "central_source/app/schemas/com.fush.erp.data.FushDatabase/$ROOM_SCHEMA.json"
+          grep -R -Fq 'MIGRATION_34_35_ACCOUNTING_P1' central_source/app/src/main/java/com/fush/erp/data
+          ! grep -R -nE 'fallbackToDestructiveMigration|deleteDatabase\(|clearAllTables\(' central_source/app/src/main central_source/app/build.gradle.kts
+          sha256sum -c /tmp/protected-before.sha256
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Full Unit Tests
+        working-directory: central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release Build
+        working-directory: central_source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Final release / app ID / zipalign guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=central_source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -n1 | grep -Fq "name='$APP_ID'"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          mkdir -p /tmp/final-evidence
+          sha256sum "$APK" | tee /tmp/final-evidence/release-apk.sha256
+          cp /tmp/post-p2-inventory.log /tmp/final-evidence/post-p2-inventory.log
+          cp ui_p2/extract/summary.json /tmp/final-evidence/post-p2-summary.json
+          cp /tmp/final-changed.txt /tmp/final-evidence/changed-files.txt
+          printf '%s\n' "$FINAL_CENTRAL_HEAD" > /tmp/final-evidence/central-head.txt
+          printf '%s\n' "$FINAL_CENTRAL_SOURCE_TREE" > /tmp/final-evidence/central-source-tree.txt
+          printf '%s\n' "$VALIDATED_PATCH_SHA256" > /tmp/final-evidence/p2-patch-sha256.txt
+          printf '%s\n' "$ROOM_SCHEMA" > /tmp/final-evidence/room-schema.txt
+
+      - name: Ensure Central did not move during final revalidation
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT="$(git ls-remote origin refs/heads/fush/integration-current | awk '{print $1}')"
+          echo "expected=$FINAL_CENTRAL_HEAD"
+          echo "current=$CURRENT"
+          test "$CURRENT" = "$FINAL_CENTRAL_HEAD"
+
+      - name: Upload Final P2 Revalidation Evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-UI-P2-Final-Revalidation
+          path: /tmp/final-evidence
+          if-no-files-found: error
