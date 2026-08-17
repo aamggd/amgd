@@ -1,0 +1,19 @@
+name: Diagnose AE-ACC-010 Patch SHA
+
+on:
+  push:
+    branches: [fush/purchases-suppliers]
+    paths:
+      - '.github/workflows/diagnose-ae-acc-010-patch-sha.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checksum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print exact patch SHA-256
+        run: sha256sum purchases_suppliers_ae_acc_010_return/ae_acc_010_cash_refund.patch
