@@ -77,61 +77,61 @@ new file mode 100644
 +            runCatching { parse(code) }.isSuccess
 +    }
 +}
-+diff --git a/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt b/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt
-+new file mode 100644
-+--- /dev/null
-++++ b/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt
-+@@ -0,0 +1,53 @@
-++package com.fush.erp.domain
-++
-++import org.junit.Assert.assertEquals
-++import org.junit.Assert.assertFalse
-++import org.junit.Assert.assertTrue
-++import org.junit.Assert.fail
-++import org.junit.Test
-++
-++class EmployeeEntitlementTypeTest {
-++
-++    @Test fun p1_defines_exactly_the_six_required_entitlement_types() {
-++        assertEquals(
-++            linkedSetOf("PRODUCTION", "SALARY", "COMMISSION", "ALLOWANCE", "ADVANCE", "DEDUCTION"),
-++            EmployeeEntitlementType.canonicalCodes
-++        )
-++    }
-++
-++    @Test fun parser_normalizes_case_and_whitespace_without_name_based_identity() {
-++        assertEquals(EmployeeEntitlementType.PRODUCTION, EmployeeEntitlementType.parse(" production "))
-++        assertEquals(EmployeeEntitlementType.SALARY, EmployeeEntitlementType.parse("salary"))
-++        assertTrue(EmployeeEntitlementType.isSupported("CoMmIsSiOn"))
-++        assertFalse(EmployeeEntitlementType.isSupported("employee name"))
-++    }
-++
-++    @Test fun production_and_commission_require_traceable_operational_sources() {
-++        assertTrue(EmployeeEntitlementType.PRODUCTION.requiresOperationalSource)
-++        assertTrue(EmployeeEntitlementType.COMMISSION.requiresOperationalSource)
-++
-++        assertFalse(EmployeeEntitlementType.SALARY.requiresOperationalSource)
-++        assertFalse(EmployeeEntitlementType.ALLOWANCE.requiresOperationalSource)
-++        assertFalse(EmployeeEntitlementType.ADVANCE.requiresOperationalSource)
-++        assertFalse(EmployeeEntitlementType.DEDUCTION.requiresOperationalSource)
-++    }
-++
-++    @Test fun advances_and_deductions_reduce_payable_while_earnings_increase_it() {
-++        assertTrue(EmployeeEntitlementType.PRODUCTION.increasesPayable)
-++        assertTrue(EmployeeEntitlementType.SALARY.increasesPayable)
-++        assertTrue(EmployeeEntitlementType.COMMISSION.increasesPayable)
-++        assertTrue(EmployeeEntitlementType.ALLOWANCE.increasesPayable)
-++
-++        assertFalse(EmployeeEntitlementType.ADVANCE.increasesPayable)
-++        assertFalse(EmployeeEntitlementType.DEDUCTION.increasesPayable)
-++    }
-++
-++    @Test fun unknown_entitlement_type_is_rejected() {
-++        try {
-++            EmployeeEntitlementType.parse("BONUS")
-++            fail("Unknown entitlement type must be rejected")
-++        } catch (_: IllegalArgumentException) {
-++            // Expected.
-++        }
-++    }
-++}
+diff --git a/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt b/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/fush/erp/domain/EmployeeEntitlementTypeTest.kt
+@@ -0,0 +1,53 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Assert.fail
++import org.junit.Test
++
++class EmployeeEntitlementTypeTest {
++
++    @Test fun p1_defines_exactly_the_six_required_entitlement_types() {
++        assertEquals(
++            linkedSetOf("PRODUCTION", "SALARY", "COMMISSION", "ALLOWANCE", "ADVANCE", "DEDUCTION"),
++            EmployeeEntitlementType.canonicalCodes
++        )
++    }
++
++    @Test fun parser_normalizes_case_and_whitespace_without_name_based_identity() {
++        assertEquals(EmployeeEntitlementType.PRODUCTION, EmployeeEntitlementType.parse(" production "))
++        assertEquals(EmployeeEntitlementType.SALARY, EmployeeEntitlementType.parse("salary"))
++        assertTrue(EmployeeEntitlementType.isSupported("CoMmIsSiOn"))
++        assertFalse(EmployeeEntitlementType.isSupported("employee name"))
++    }
++
++    @Test fun production_and_commission_require_traceable_operational_sources() {
++        assertTrue(EmployeeEntitlementType.PRODUCTION.requiresOperationalSource)
++        assertTrue(EmployeeEntitlementType.COMMISSION.requiresOperationalSource)
++
++        assertFalse(EmployeeEntitlementType.SALARY.requiresOperationalSource)
++        assertFalse(EmployeeEntitlementType.ALLOWANCE.requiresOperationalSource)
++        assertFalse(EmployeeEntitlementType.ADVANCE.requiresOperationalSource)
++        assertFalse(EmployeeEntitlementType.DEDUCTION.requiresOperationalSource)
++    }
++
++    @Test fun advances_and_deductions_reduce_payable_while_earnings_increase_it() {
++        assertTrue(EmployeeEntitlementType.PRODUCTION.increasesPayable)
++        assertTrue(EmployeeEntitlementType.SALARY.increasesPayable)
++        assertTrue(EmployeeEntitlementType.COMMISSION.increasesPayable)
++        assertTrue(EmployeeEntitlementType.ALLOWANCE.increasesPayable)
++
++        assertFalse(EmployeeEntitlementType.ADVANCE.increasesPayable)
++        assertFalse(EmployeeEntitlementType.DEDUCTION.increasesPayable)
++    }
++
++    @Test fun unknown_entitlement_type_is_rejected() {
++        try {
++            EmployeeEntitlementType.parse("BONUS")
++            fail("Unknown entitlement type must be rejected")
++        } catch (_: IllegalArgumentException) {
++            // Expected.
++        }
++    }
++}
