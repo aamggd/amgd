@@ -1,0 +1,101 @@
+name: Backup Recovery Runtime Crash Probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [fush/backup-recovery]
+    paths:
+      - '.github/workflows/backup-recovery-runtime-probe.yml'
+      - 'backup_recovery_p1/runtime_probe.py'
+permissions:
+  contents: read
+jobs:
+  runtime-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CENTRAL_BASE: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+      EXPECTED_SOURCE_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
+      EXPECTED_SCHEMA: '35'
+      RUNTIME_OUT: ${{ github.workspace }}/runtime-evidence
+    steps:
+      - name: Checkout backup branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Materialize exact Central and exact P1 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "$CENTRAL_BASE^{commit}"
+          test "$(git rev-parse "${CENTRAL_BASE}:central_source")" = "$EXPECTED_SOURCE_TREE"
+          git worktree add --detach /tmp/runtime-central "$CENTRAL_BASE"
+          git worktree add --detach /tmp/runtime-p1 "$CENTRAL_BASE"
+          grep -q 'applicationId = "com.fush.erp.recovery"' /tmp/runtime-central/central_source/app/build.gradle.kts
+          grep -q "FUSH_DB_SCHEMA_VERSION = $EXPECTED_SCHEMA" /tmp/runtime-central/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          python3 backup_recovery_p1/apply_p1.py /tmp/runtime-p1
+          git -C /tmp/runtime-p1 diff --check
+          git -C /tmp/runtime-p1 diff --quiet "$CENTRAL_BASE" -- central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          grep -q 'KEY_ALIAS = "fush_backup_master_v1"' /tmp/runtime-p1/central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+      - name: Build exact Central and P1 debug APKs for emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd /tmp/runtime-central/central_source && gradle --no-daemon :app:assembleDebug)
+          (cd /tmp/runtime-p1/central_source && gradle --no-daemon :app:assembleDebug)
+          test -s /tmp/runtime-central/central_source/app/build/outputs/apk/debug/app-debug.apk
+          test -s /tmp/runtime-p1/central_source/app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p runtime-evidence
+          sha256sum /tmp/runtime-central/central_source/app/build/outputs/apk/debug/app-debug.apk | tee runtime-evidence/central-debug.apk.sha256
+          sha256sum /tmp/runtime-p1/central_source/app/build/outputs/apk/debug/app-debug.apk | tee runtime-evidence/p1-debug.apk.sha256
+      - name: Emulator runtime probe - Central then P1 over preserved Test DB
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            # Remove one diagnostic screenshot call that emits binary data through text-mode subprocess.
+            sed -i '/adb("exec-out", "screencap", "-p", check=False)/d' backup_recovery_p1/runtime_probe.py
+            python3 backup_recovery_p1/runtime_probe.py \
+              /tmp/runtime-central/central_source/app/build/outputs/apk/debug/app-debug.apk \
+              /tmp/runtime-p1/central_source/app/build/outputs/apk/debug/app-debug.apk
+      - name: Show runtime classification and fatal stacktraces
+        if: always()
+        shell: bash
+        run: |
+          echo '=== classification ==='
+          cat runtime-evidence/classification.txt 2>/dev/null || true
+          echo '=== Central FATAL ==='
+          cat runtime-evidence/central-before.fatal.txt 2>/dev/null || true
+          echo '=== P1 FATAL ==='
+          cat runtime-evidence/p1-before.fatal.txt 2>/dev/null || true
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Backup-Recovery-RUNTIME-PROBE
+          path: runtime-evidence/
+          if-no-files-found: warn
+          retention-days: 30
