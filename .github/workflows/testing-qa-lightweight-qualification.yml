@@ -26,7 +26,7 @@ jobs:
   qualify-harness:
     name: Lightweight instrumentation qualification only
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - name: Checkout QA branch
         uses: actions/checkout@v4
@@ -129,7 +129,7 @@ jobs:
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "emulator" \
-            "system-images;android-35;google_apis;x86_64"
+            "system-images;android-35;default;x86_64"
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
@@ -178,7 +178,7 @@ jobs:
           echo no | avdmanager create avd \
             --force \
             --name "$AVD_NAME" \
-            --package 'system-images;android-35;google_apis;x86_64' \
+            --package 'system-images;android-35;default;x86_64' \
             --device 'pixel_6'
           adb kill-server || true
           adb start-server
@@ -200,7 +200,15 @@ jobs:
             kill "$EMULATOR_PID" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
-          bash qa/qualification/run_lightweight_qualification.sh
+          sleep 10
+          if kill -0 "$EMULATOR_PID" 2>/dev/null; then
+            echo 'EMULATOR_PROCESS=RUNNING' | tee evidence/emulator-process.txt
+          else
+            echo 'EMULATOR_PROCESS=EXITED_BEFORE_ADB' | tee evidence/emulator-process.txt
+            cat evidence/emulator-console.txt
+            exit 1
+          fi
+          timeout 1200 bash qa/qualification/run_lightweight_qualification.sh
 
       - name: Record qualification failure only
         if: failure()
