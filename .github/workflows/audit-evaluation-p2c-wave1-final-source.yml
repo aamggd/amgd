@@ -1,0 +1,254 @@
+name: Audit P2C Wave1 Final Integrated Source
+
+on:
+  push:
+    branches: [fush/audit-evaluation]
+    paths:
+      - '.github/workflows/audit-evaluation-p2c-wave1-final-source.yml'
+      - 'audit_evaluation/tests/CrossModuleP1ContractAuditTest.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_REPO_TREE: '3859a7186ac837ea434129a73d9056a25c29f1f3'
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+
+jobs:
+  final-source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout audit branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin exact integrated Central identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse ${CENTRAL_SHA}^{tree})" = "$CENTRAL_REPO_TREE"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+
+      - name: Export exact integrated Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source output
+          mkdir -p work-source output
+          git archive "${CENTRAL_SHA}:central_source" | tar -x -C work-source
+          cd work-source
+          git init -q
+          git config user.name 'FUSH Audit P2C Final'
+          git config user.email audit-p2c-final@fush.local
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+          git commit -qm 'Exact integrated Central Wave1 source'
+
+      - name: Verify integrated P1 identities schema and non-destructive safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'AccountingP1IntegrityPolicy' app/src/main/java/com/fush/erp/domain/AccountingP1IntegrityPolicy.kt
+          grep -Fq 'TreasuryPartyRequirementPolicy.requireValidSelection' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          grep -Fq 'supplierVoucherAdjustmentAt' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -Fq 'sp.supplierId=p.supplierId' app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          grep -Fq 'CustomerMovementIdentity.requireId' app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -Fq 'CustomerMovementIdentity.requireId' app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Audit AE-ACC-009 AE-ACC-010 AE-ACC-011 source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          sales = Path('work-source/app/src/main/java/com/fush/erp/domain/SalesService.kt').read_text(encoding='utf-8')
+          purchase = Path('work-source/app/src/main/java/com/fush/erp/domain/PurchaseService.kt').read_text(encoding='utf-8')
+          accounting = Path('work-source/app/src/main/java/com/fush/erp/domain/AccountingService.kt').read_text(encoding='utf-8')
+
+          def section(text, start, end):
+              a = text.index(start)
+              b = text.index(end, a) if end else len(text)
+              return text[a:b]
+
+          s_sale = section(sales, 'suspend fun postSale(', 'suspend fun postReceipt(')
+          s_collect = section(sales, 'private suspend fun postReceiptAllocationsInternal(', 'suspend fun reverseReceipt(')
+          s_return = section(sales, 'suspend fun postReturn(', 'suspend fun invoiceOutstandingBase(')
+          p_purchase = section(purchase, 'suspend fun postPurchase(', 'data class PostPurchaseReturnRequest(')
+          p_return = section(purchase, 'suspend fun postPurchaseReturn(', 'suspend fun postFullLineReturn(')
+          p_payment = section(purchase, 'private suspend fun postSupplierPaymentAllocationsInternal(', 'suspend fun reverseSupplierPayment(')
+          a_voucher = section(accounting, 'suspend fun postVoucher(', 'suspend fun reverseEntry(')
+
+          # AE-ACC-009: a cash refund for a credit sale must be tied to actual collected cash,
+          # not merely selected by the caller while AR remains open.
+          sales_refund_has_cash_basis = (
+              'CASH_REFUND' in s_return and
+              ('receivedBaseForInvoice' in s_return or 'invoiceOutstandingBase' in s_return or 'paymentType == "CASH"' in s_return) and
+              ('require(' in s_return)
+          )
+
+          # AE-ACC-010: supplier cash refund must be tied to amount actually paid rather than an
+          # unpaid credit invoice that should settle through supplier credit.
+          purchase_refund_has_cash_basis = (
+              'CASH_REFUND' in p_return and
+              ('paidBaseForInvoice' in p_return or 'paymentType == "CASH"' in p_return or 'supplierPayment' in p_return) and
+              ('require(' in p_return)
+          )
+
+          period_checks = {
+              'SALE': 'requirePostingPeriodOpen' in s_sale,
+              'CUSTOMER_RECEIPT': 'requirePostingPeriodOpen' in s_collect,
+              'SALES_RETURN': 'requirePostingPeriodOpen' in s_return,
+              'PURCHASE': 'requirePostingPeriodOpen' in p_purchase,
+              'SUPPLIER_PAYMENT': 'requirePostingPeriodOpen' in p_payment,
+              'PURCHASE_RETURN': 'requirePostingPeriodOpen' in p_return,
+              'GENERIC_TREASURY_VOUCHER': 'requirePostingPeriodOpen' in a_voucher,
+          }
+
+          findings = []
+          if not sales_refund_has_cash_basis:
+              findings.append(('AE-ACC-009', 'FAIL', 'SalesService.postReturn accepts CASH_REFUND without a source-level collected-cash/outstanding-AR settlement guard.'))
+          else:
+              findings.append(('AE-ACC-009', 'PASS_SOURCE_CONTRACT', 'Sales return cash-refund path contains a collected-cash/AR settlement guard.'))
+
+          if not purchase_refund_has_cash_basis:
+              findings.append(('AE-ACC-010', 'FAIL', 'PurchaseService.postPurchaseReturn accepts CASH_REFUND without a source-level paid-cash/outstanding-AP settlement guard.'))
+          else:
+              findings.append(('AE-ACC-010', 'PASS_SOURCE_CONTRACT', 'Purchase return cash-refund path contains a paid-cash/AP settlement guard.'))
+
+          missing = [k for k,v in period_checks.items() if not v]
+          if missing:
+              findings.append(('AE-ACC-011', 'FAIL', 'Missing pre-write posting-period guard in: ' + ', '.join(missing)))
+          else:
+              findings.append(('AE-ACC-011', 'PASS_SOURCE_CONTRACT', 'All required Wave1 posting paths contain posting-period guards.'))
+
+          out = Path('output/WAVE1_SOURCE_FINDINGS.txt')
+          with out.open('w', encoding='utf-8') as f:
+              f.write(f'CENTRAL_SHA={Path("/dev/null").name and "ddae764a236cb1916a46e194ccb2d3c24ca6b919"}\n')
+              f.write('CENTRAL_SOURCE_TREE=30b028b75d6463c07afd0419429f53c7937fabb1\n')
+              for key, status, note in findings:
+                  f.write(f'{key}={status}\n{key}_NOTE={note}\n')
+              for key,value in period_checks.items():
+                  f.write(f'PERIOD_GUARD_{key}={"PASS" if value else "FAIL"}\n')
+
+          print(out.read_text(encoding='utf-8'))
+          PY
+
+      - name: Inject audit-only cross-module contract test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work-source/app/src/test/java/com/fush/erp/audit
+          cp audit_evaluation/tests/CrossModuleP1ContractAuditTest.kt \
+            work-source/app/src/test/java/com/fush/erp/audit/CrossModuleP1ContractAuditTest.kt
+
+      - name: Run focused Accounting Treasury Purchases Sales integrity tests
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.audit.CrossModuleP1ContractAuditTest' \
+            --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest' \
+            --tests 'com.fush.erp.domain.AccountingReconciliationMathTest' \
+            --tests 'com.fush.erp.domain.AccountingReportMathTest' \
+            --tests 'com.fush.erp.domain.CustomerArMathTest' \
+            --tests 'com.fush.erp.domain.CustomerMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SalesMathTest' \
+            --tests 'com.fush.erp.domain.PurchaseMathTest' \
+            --tests 'com.fush.erp.domain.SettlementAllocationMathTest' \
+            --tests 'com.fush.erp.domain.SupplierApMathTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierProfileMathTest' \
+            --tests 'com.fush.erp.domain.TreasuryMovementTypePolicyTest' \
+            --tests 'com.fush.erp.domain.TreasuryPartyRequirementPolicyTest' \
+            --tests 'com.fush.erp.domain.TreasuryReconciliationTest' \
+            --tests 'com.fush.erp.domain.TreasuryReportMathTest'
+
+      - name: Run full Unit regression suite
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build exact integrated Central source release
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate release and record non-final APK status
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=work-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          BADGING="$($ANDROID_SDK_ROOT/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee output/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" output/FushERP-P2C-Wave1-FINAL-SOURCE-NOT-FINAL-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 output/FushERP-P2C-Wave1-FINAL-SOURCE-NOT-FINAL-unsigned.apk | tee output/zipalign-verification.txt
+          sha256sum output/FushERP-P2C-Wave1-FINAL-SOURCE-NOT-FINAL-unsigned.apk | tee output/source-built-apk.sha256
+
+          cat > output/FINAL_SOURCE_STATUS.txt <<EOF
+          PHASE=Final Part 2C Wave1 Audit
+          CENTRAL_SHA=$CENTRAL_SHA
+          CENTRAL_REPO_TREE=$CENTRAL_REPO_TREE
+          CENTRAL_SOURCE_TREE=$CENTRAL_SOURCE_TREE
+          APPLICATION_ID=$EXPECTED_APP_ID
+          ROOM_SCHEMA=$EXPECTED_SCHEMA
+          ACCOUNTING_P1=INTEGRATED
+          TREASURY_P1=INTEGRATED
+          PURCHASES_P1=INTEGRATED
+          SALES_P1=INTEGRATED
+          FOCUSED_TESTS=PASS
+          FULL_UNIT=PASS
+          ASSEMBLE_RELEASE=PASS
+          ZIPALIGN=PASS
+          EXACT_FINAL_SIGNED_CENTRAL_APK=NOT_AVAILABLE_TO_THIS_AUDIT_RUN
+          ANDROID_FINAL_APK_INSTALL_LAUNCH=NOT_RUN
+          FINAL_STATUS=FINAL APK RETEST REQUIRED / NOT FINAL
+          EOF
+          cat output/WAVE1_SOURCE_FINDINGS.txt >> output/FINAL_SOURCE_STATUS.txt
+
+      - name: Upload Final Part 2C Wave1 source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-P2C-Wave1-FINAL-SOURCE-AUDIT-NOT-FINAL
+          path: output/
+          if-no-files-found: error
