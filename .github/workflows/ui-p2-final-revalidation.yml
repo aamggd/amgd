@@ -75,6 +75,8 @@ jobs:
           PATCH=/tmp/ui-p2-validated/ui_p2/generated/p2_direct_text.patch
           git apply --check "$PATCH"
           git apply "$PATCH"
+          # Intent-to-add makes newly created resource XML files visible to git diff without staging content.
+          git add -N central_source/app/src/main/res/values/p2_direct_text.xml central_source/app/src/main/res/values-ar/p2_direct_text.xml
           git diff --check "$FINAL_CENTRAL_HEAD" -- central_source
 
       - name: Verify patch scope and no Business Logic / Room changes
