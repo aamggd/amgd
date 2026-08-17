@@ -16,8 +16,8 @@ jobs:
   validate-p1-final:
     runs-on: ubuntu-latest
     env:
-      CENTRAL_HEAD: ac1b93bbb7117ec1ec3a8aa6a35ba79b9fd6d922
-      CENTRAL_TREE: af291928524bafffea73c07439008a5236813289
+      CENTRAL_HEAD: ddae764a236cb1916a46e194ccb2d3c24ca6b919
+      CENTRAL_TREE: 30b028b75d6463c07afd0419429f53c7937fabb1
       PATCH_SHA256: fe62719a8b1d44b133145ef552329a6c3c9c7d3fa93fa619289170f2b0abae8a
     steps:
       - name: Checkout production-quality branch
@@ -47,7 +47,7 @@ jobs:
           gradle-version: '9.4.1'
           cache-read-only: true
 
-      - name: Restore exact latest post-wave Central source
+      - name: Restore exact post-Sales Central source
         shell: bash
         run: |
           set -euo pipefail
@@ -93,12 +93,20 @@ jobs:
           grep -q 'referenceType = "PRODUCTION_ISSUE"' app/src/main/java/com/fush/erp/domain/ProductionService.kt
           grep -q 'quantityBase = -allocation.quantityBase' app/src/main/java/com/fush/erp/domain/ProductionService.kt
 
-      - name: P1 domain tests
+      - name: Targeted Production Quality tests
         working-directory: final-repo
         run: |
           gradle --no-daemon :app:testDebugUnitTest \
             --tests 'com.fush.erp.domain.ProductionIssueLotAllocatorTest' \
-            --tests 'com.fush.erp.domain.ProductionMathTest'
+            --tests 'com.fush.erp.domain.ProductionMathTest' \
+            --tests 'com.fush.erp.domain.StockLedgerInvariantTest'
+
+      - name: Accounting integration regression
+        working-directory: final-repo
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.AccountingIntegrationContractTest' \
+            --tests 'com.fush.erp.domain.AccountingP1IntegrityPolicyTest'
 
       - name: Full unit tests
         working-directory: final-repo
@@ -108,7 +116,7 @@ jobs:
         working-directory: final-repo
         run: gradle --no-daemon :app:assembleRelease
 
-      - name: Room migration and no-destructive checks
+      - name: Room migration preservation and no-destructive checks
         shell: bash
         run: |
           set -euo pipefail
@@ -122,6 +130,14 @@ jobs:
           ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java app/build.gradle.kts
           ! grep -E -q 'DROP TABLE|DELETE FROM sqlite_master|fallbackToDestructiveMigration' ../production_quality_p1/production-quality-p1.patch
 
+      - name: Zipalign verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=final-repo/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+
       - name: Package final branch-only artifacts
         shell: bash
         run: |
@@ -130,13 +146,13 @@ jobs:
           APK=app/build/outputs/apk/release/app-release-unsigned.apk
           test -s "$APK"
           mkdir -p ../output
-          cp "$APK" ../output/FushERP-ProductionQuality-P1-final-branch-only-unsigned.apk
+          cp "$APK" ../output/FushERP-ProductionQuality-P1-post-sales-central-unsigned.apk
           git diff --cached --binary > ../output/production-quality-p1-exact.patch
           sha256sum ../output/* > ../output/SHA256SUMS.txt
 
       - name: Upload final branch-only artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FushERP-ProductionQuality-P1-Final
+          name: FushERP-ProductionQuality-P1-PostSales-Handoff
           path: output/*
           if-no-files-found: error
