@@ -1,0 +1,38 @@
+name: Package Reports Printing Central35 Baseline
+
+on:
+  push:
+    branches: [fush/reports-printing-central35-handoff]
+    paths:
+      - '.github/workflows/package-reports-printing-central35-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 3
+      - name: Verify and package exact baseline source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=ddae764a236cb1916a46e194ccb2d3c24ca6b919
+          SOURCE_TREE=30b028b75d6463c07afd0419429f53c7937fabb1
+          test "$(git rev-parse "$BASE:central_source")" = "$SOURCE_TREE"
+          test "$(git rev-parse HEAD:central_source)" = "$SOURCE_TREE"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          tar -czf reports-printing-central35-baseline.tar.gz central_source
+          sha256sum reports-printing-central35-baseline.tar.gz > reports-printing-central35-baseline.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Reports-Printing-Central35-Exact-Baseline
+          path: |
+            reports-printing-central35-baseline.tar.gz
+            reports-printing-central35-baseline.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
