@@ -1,0 +1,86 @@
+name: Build Sales Customers Receipt Atomicity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CENTRAL_SHA: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  CENTRAL_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+
+jobs:
+  validate-receipt-atomicity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout owner branch
+        uses: actions/checkout@v4
+        with:
+          ref: fush/sales-customers
+          fetch-depth: 0
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Restore exact Central and apply separate receipt hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work-source central-export output
+          mkdir central-export output
+          git archive "${CENTRAL_SHA}" central_source | tar -x -C central-export
+          mv central-export/central_source work-source
+          cd work-source
+          git init -q
+          git config user.name sales-customers-receipt-atomicity-ci
+          git config user.email sales-customers-receipt-atomicity-ci@users.noreply.github.com
+          git add -A
+          test "$(git write-tree)" = "${CENTRAL_TREE}"
+          git commit -qm "Exact Central before receipt atomicity hardening"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          python3 "$GITHUB_WORKSPACE/sales_customers_receipt_atomicity/apply_fix.py"
+          git diff --check
+      - name: Targeted receipt tests
+        working-directory: work-source
+        run: |
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests com.fush.erp.domain.CustomerReceiptAtomicityPolicyTest \
+            --tests com.fush.erp.domain.CustomerArMathTest \
+            --tests com.fush.erp.domain.OperationalReversalMathTest \
+            --tests com.fush.erp.domain.AccountingReconciliationMathTest \
+            --tests com.fush.erp.domain.TreasuryReconciliationTest
+      - name: Full unit
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Release
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Safety gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work-source
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
