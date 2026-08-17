@@ -40,12 +40,10 @@ jobs:
           git fetch origin "$CENTRAL_SHA"
           test "$(git rev-parse "$CENTRAL_SHA")" = "$CENTRAL_SHA"
           test "$(git rev-parse "$CENTRAL_SHA:central_source")" = "$CENTRAL_SOURCE_TREE"
-
           rm -rf exact-source work-source evidence exact-central-candidate
           mkdir -p exact-source work-source evidence
           git archive "$CENTRAL_SHA" central_source | tar -x -C exact-source --strip-components=1
           cp -a exact-source/. work-source/
-
           git show -s --format='%H %s' "$CENTRAL_SHA" | tee evidence/central-commit.txt
           printf '%s\n' "$CENTRAL_SOURCE_TREE" | tee evidence/central-source-tree.txt
           grep -n 'applicationId = "com.fush.erp.recovery"' exact-source/app/build.gradle.kts | tee evidence/application-id.txt
@@ -95,13 +93,11 @@ jobs:
           p = Path('work-source/app/build.gradle.kts')
           text = p.read_text(encoding='utf-8')
           needle = '    testImplementation(libs.androidx.room.testing)\n'
-          extra = (
-              needle
+          extra = (needle
               + '    androidTestImplementation(libs.junit)\n'
               + '    androidTestImplementation(libs.androidx.room.testing)\n'
               + '    androidTestImplementation("androidx.test:core-ktx:1.7.0")\n'
-              + '    androidTestImplementation("androidx.test.ext:junit-ktx:1.3.0")\n'
-          )
+              + '    androidTestImplementation("androidx.test.ext:junit-ktx:1.3.0")\n')
           if 'androidx.test:core-ktx:1.7.0' not in text:
               if needle not in text:
                   raise SystemExit('Expected room testing dependency anchor not found')
@@ -109,12 +105,8 @@ jobs:
           PY
           mkdir -p work-source/app/src/androidTest/java/com/fush/erp/data
           mkdir -p work-source/app/src/androidTest/java/com/fush/erp/qa
-          cp qa/p1/AccountingP1Migration34To35Test.kt \
-            work-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
-          cp qa/p1/Wave1P1ReleaseCandidateTest.kt \
-            work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
-
-          # Prove QA-only changes exist in the disposable copy while exact-source remains untouched.
+          cp qa/p1/AccountingP1Migration34To35Test.kt work-source/app/src/androidTest/java/com/fush/erp/data/
+          cp qa/p1/Wave1P1ReleaseCandidateTest.kt work-source/app/src/androidTest/java/com/fush/erp/qa/
           test -f work-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
           test -f work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt
           test ! -e exact-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt
@@ -194,100 +186,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           working-directory: work-source
-          script: |
-            set -euo pipefail
-
-            wait_for_android_service() {
-              service_name="$1"
-              echo "Waiting for Android service: ${service_name}"
-              for i in $(seq 1 180); do
-                if adb shell service check "$service_name" 2>/dev/null | grep -q 'found'; then
-                  echo "Service ${service_name} is ready"
-                  return 0
-                fi
-                sleep 2
-              done
-              echo "Android service ${service_name} did not become ready" >&2
-              adb shell service list || true
-              return 1
-            }
-
-            adb wait-for-device
-            for i in $(seq 1 180); do
-              BOOTED="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-              [ "$BOOTED" = '1' ] && break
-              sleep 2
-            done
-            test "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = '1'
-
-            # Previous failure was after sys.boot_completed but before PackageManager/ActivityManager.
-            wait_for_android_service package
-            wait_for_android_service activity
-            for i in $(seq 1 120); do
-              if adb shell cmd package list packages >/dev/null 2>&1 \
-                 && adb shell am get-current-user >/dev/null 2>&1; then
-                break
-              fi
-              sleep 2
-            done
-            adb shell cmd package list packages >/dev/null
-            adb shell am get-current-user >/dev/null
-            sleep 10
-
-            CANDIDATE="$GITHUB_WORKSPACE/exact-central-candidate/${CENTRAL_CANDIDATE_APK}"
-            SIGNED="$GITHUB_WORKSPACE/evidence/FushERP-Central-v102-QA-test-signed.apk"
-            TEST_APK="$GITHUB_WORKSPACE/work-source/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-            test -s "$CANDIDATE"
-            test -s "$TEST_APK"
-            echo "${CENTRAL_CANDIDATE_SHA256}  ${CANDIDATE}" | sha256sum -c -
-
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
-              --ks "$HOME/.android/debug.keystore" \
-              --ks-key-alias androiddebugkey \
-              --ks-pass pass:android \
-              --key-pass pass:android \
-              --out "$SIGNED" "$CANDIDATE"
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$SIGNED" \
-              | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate-cert.txt"
-            sha256sum "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/test-signed-candidate.sha256"
-
-            adb uninstall com.fush.erp.recovery.test >/dev/null 2>&1 || true
-            adb uninstall "$APP_ID" >/dev/null 2>&1 || true
-            adb install -r "$SIGNED" | tee "$GITHUB_WORKSPACE/evidence/apk-install.txt"
-            adb install -r "$TEST_APK" | tee "$GITHUB_WORKSPACE/evidence/test-apk-install.txt"
-
-            adb logcat -c
-            LAUNCHER="$($ANDROID_HOME/build-tools/36.0.0/aapt dump badging "$SIGNED" \
-              | sed -n "s/launchable-activity: name='\([^']*\)'.*/\1/p" | head -n 1)"
-            test -n "$LAUNCHER"
-            adb shell am start -W -n "${APP_ID}/${LAUNCHER}" \
-              | tee "$GITHUB_WORKSPACE/evidence/apk-launch.txt"
-            sleep 8
-            adb shell pidof "$APP_ID" | tee "$GITHUB_WORKSPACE/evidence/apk-pid.txt"
-            adb shell dumpsys package "$APP_ID" \
-              | grep -E 'versionCode=|versionName=' | head -5 \
-              | tee "$GITHUB_WORKSPACE/evidence/apk-version.txt"
-
-            # Instrument the verified release candidate itself with QA-only tests.
-            adb shell pm list instrumentation | tee "$GITHUB_WORKSPACE/evidence/instrumentation-list.txt"
-            set +e
-            adb shell am instrument -w -r \
-              com.fush.erp.recovery.test/androidx.test.runner.AndroidJUnitRunner \
-              | tee "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-            TEST_RC=${PIPESTATUS[0]}
-            set -e
-            test "$TEST_RC" -eq 0
-            ! grep -Fq 'FAILURES!!!' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-            ! grep -Fq 'INSTRUMENTATION_FAILED' "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-            grep -Eq 'OK \([1-9][0-9]* tests?\)|INSTRUMENTATION_CODE: -1' \
-              "$GITHUB_WORKSPACE/evidence/release-candidate-instrumentation.txt"
-
-            adb logcat -d -v brief > "$GITHUB_WORKSPACE/evidence/final-logcat.txt"
-            if grep -E 'FATAL EXCEPTION:.*|Process: com\.fush\.erp\.recovery,' \
-              "$GITHUB_WORKSPACE/evidence/final-logcat.txt"; then
-              echo 'Fatal crash detected in merged Central APK session' >&2
-              exit 1
-            fi
+          script: bash "$GITHUB_WORKSPACE/qa/p1/run_final_emulator_gate.sh"
 
       - name: Final acceptance evidence
         shell: bash
