@@ -122,7 +122,8 @@ def force_arabic_preferences():
     xml = OUT / "fush_ui_preferences.xml"
     xml.write_text('<?xml version="1.0" encoding="utf-8" standalone="yes" ?>\n<map>\n<string name="language_tag">ar</string>\n<boolean name="dark_theme" value="false" />\n</map>\n', encoding="utf-8")
     adb("push", str(xml), "/data/local/tmp/fush_ui_preferences.xml")
-    adb("shell", "run-as", PKG, "sh", "-c", "mkdir -p shared_prefs && cp /data/local/tmp/fush_ui_preferences.xml shared_prefs/fush_ui_preferences.xml")
+    adb("shell", "run-as", PKG, "mkdir", "-p", "shared_prefs")
+    adb("shell", "run-as", PKG, "cp", "/data/local/tmp/fush_ui_preferences.xml", "shared_prefs/fush_ui_preferences.xml")
 
 
 def launch():
