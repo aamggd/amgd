@@ -1,0 +1,315 @@
+name: Integrate Session Expenses Backup Candidate V2
+
+on:
+  push:
+    branches: [fush/session-expenses-backup-integration-run]
+    paths:
+      - '.github/workflows/integrate-session-expenses-backup-candidate-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CENTRAL_SHA: 'ff9b2a1a1a3fd1ad47f454db56a638141bd3000c'
+  CENTRAL_SOURCE_TREE: '6a58e2c72d86cb16c7fcd7452a799501ff085bfa'
+  SESSION_HEAD: 'ed8ff6014927c40273f2c9055ae13b91573d2d68'
+  EXPENSES_HEAD: 'd09dd863c429ad2bac2b6defd714b7d09122e884'
+  EXPENSES_BASE: 'ddae764a236cb1916a46e194ccb2d3c24ca6b919'
+  EXPENSES_PATCH_SHA: 'b74c2d5766381a4c2d14ecb664b72baed6260bc4ba6863614530ee2197972a54'
+  BACKUP_HEAD: '1e936b81807dbe374b7836ef639adfb768f8c49c'
+  APP_ID: 'com.fush.erp.recovery'
+  CANDIDATE_BRANCH: 'fush/session-expenses-backup-candidate'
+
+jobs:
+  controlled-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Pin frozen Central and owner heads
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin fush/integration-current fush/users-permissions-session-hotfix fush/expenses fush/backup-recovery
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-parse ${CENTRAL_SHA}:central_source)" = "$CENTRAL_SOURCE_TREE"
+          test "$(git rev-parse origin/fush/users-permissions-session-hotfix)" = "$SESSION_HEAD"
+          test "$(git rev-parse origin/fush/expenses)" = "$EXPENSES_HEAD"
+          test "$(git rev-parse origin/fush/backup-recovery)" = "$BACKUP_HEAD"
+          test -z "$(git ls-remote --heads origin refs/heads/${CANDIDATE_BRANCH})"
+          git worktree add -b "$CANDIDATE_BRANCH" /tmp/candidate "$CENTRAL_SHA"
+          git -C /tmp/candidate config user.name 'FUSH Central Integration'
+          git -C /tmp/candidate config user.email 'central-integration@fush.local'
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' /tmp/candidate/central_source/app/build.gradle.kts
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'AccountingJournalIntegrityGuards.callback' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' /tmp/candidate/central_source/app/src/main /tmp/candidate/central_source/app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' /tmp/candidate/central_source/app/src/main/java/com/fush/erp
+
+      - name: 1 Session exact selective patch and allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/session.expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/data/SessionSettingsStore.kt
+          central_source/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          central_source/app/src/test/java/com/fush/erp/domain/SecurityPolicyTest.kt
+          EOF
+          sort -o /tmp/session.expected /tmp/session.expected
+          git diff --binary "$CENTRAL_SHA" "$SESSION_HEAD" -- $(cat /tmp/session.expected) > /tmp/session.patch
+          test -s /tmp/session.patch
+          git -C /tmp/candidate apply --check /tmp/session.patch
+          git -C /tmp/candidate apply /tmp/session.patch
+          git -C /tmp/candidate diff --check
+          test -z "$(find /tmp/candidate -name '*.rej' -print -quit)"
+          git -C /tmp/candidate diff --name-only HEAD | sort > /tmp/session.actual
+          diff -u /tmp/session.expected /tmp/session.actual
+          git -C /tmp/candidate diff --quiet HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt central_source/app/src/main/java/com/fush/erp/data/Migrations.kt central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt central_source/app/schemas central_source/app/build.gradle.kts
+      - name: 1 Session targeted
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SecurityPolicyTest'
+      - name: 1 Session full unit
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: 1 Session release schema AppID safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/candidate/central_source
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'AccountingJournalIntegrityGuards.callback' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          cd /tmp/candidate
+          git diff --quiet "$CENTRAL_SHA" -- central_source/app/build.gradle.kts
+          git add $(cat /tmp/session.expected)
+          git commit -m 'Central integration: Session auto-logout hotfix'
+          echo "SESSION_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: 2 Verify official Expenses exact patch identity and allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show "${EXPENSES_HEAD}:phase_expenses_p1_revalidation/exact-expenses-p1.patch.gz.b64" | base64 -d | gzip -d > /tmp/expenses.patch
+          echo "$EXPENSES_PATCH_SHA  /tmp/expenses.patch" | sha256sum -c -
+          git worktree add --detach /tmp/expenses-proof "$EXPENSES_BASE"
+          git -C /tmp/expenses-proof apply --check --directory=central_source /tmp/expenses.patch
+          git -C /tmp/expenses-proof apply --directory=central_source /tmp/expenses.patch
+          git -C /tmp/expenses-proof diff --check
+          cat >/tmp/expenses.expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          central_source/app/src/main/java/com/fush/erp/data/Migrations.kt
+          central_source/app/src/main/java/com/fush/erp/data/dao/ExpenseWorkflowDao.kt
+          central_source/app/src/main/java/com/fush/erp/data/entity/ExpenseWorkflowEntity.kt
+          central_source/app/src/main/java/com/fush/erp/domain/AccountingService.kt
+          central_source/app/src/main/java/com/fush/erp/domain/ExpenseWorkflowService.kt
+          central_source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          central_source/app/src/test/java/com/fush/erp/domain/ExpenseLifecyclePolicyTest.kt
+          EOF
+          sort -o /tmp/expenses.expected /tmp/expenses.expected
+          { git -C /tmp/expenses-proof diff --name-only; git -C /tmp/expenses-proof ls-files --others --exclude-standard; } | sort -u > /tmp/expenses.proof.actual
+          diff -u /tmp/expenses.expected /tmp/expenses.proof.actual
+
+      - name: 2 Expenses selective apply on evolved Central and Central-owned Room36 migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/expenses.patch').read_text(encoding='utf-8')
+          skip={'app/src/main/java/com/fush/erp/data/AppContainer.kt','app/src/main/java/com/fush/erp/data/Migrations.kt'}
+          chunks=src.split('diff --git a/')
+          out=[chunks[0]]
+          for c in chunks[1:]:
+              p=c.split(' b/',1)[0]
+              if p not in skip: out.append('diff --git a/'+c)
+          Path('/tmp/expenses.evolved.patch').write_text(''.join(out),encoding='utf-8')
+          PY
+          git -C /tmp/candidate apply --check --directory=central_source /tmp/expenses.evolved.patch
+          git -C /tmp/candidate apply --directory=central_source /tmp/expenses.evolved.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          app=Path('/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt')
+          s=app.read_text(encoding='utf-8')
+          anchor='MIGRATION_34_35_ACCOUNTING_P1)'
+          assert s.count(anchor)==1, s.count(anchor)
+          s=s.replace(anchor,'MIGRATION_34_35_ACCOUNTING_P1, MIGRATION_35_36_EXPENSES_P1)',1)
+          assert 'AccountingJournalIntegrityGuards.callback' in s
+          app.write_text(s,encoding='utf-8')
+          exact=Path('/tmp/expenses-proof/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt').read_text(encoding='utf-8')
+          marker='val MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL = object : Migration(35, 36) {'
+          pos=exact.find(marker); assert pos>=0 and exact.find(marker,pos+1)<0
+          block=exact[pos:].strip()+'\n'
+          block=block.replace('MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL','MIGRATION_35_36_EXPENSES_P1',1)
+          upper=block.upper()
+          for bad in ('DELETE FROM','DROP TABLE','ALTER TABLE','UPDATE '): assert bad not in upper, bad
+          mig=Path('/tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/Migrations.kt')
+          cur=mig.read_text(encoding='utf-8').rstrip()+'\n'
+          assert 'AccountingJournalIntegrityGuards.install(db)' in cur
+          assert 'MIGRATION_35_36_' not in cur
+          mig.write_text(cur+'\n'+block,encoding='utf-8')
+          PY
+          git -C /tmp/candidate diff --check
+          test -z "$(find /tmp/candidate -name '*.rej' -print -quit)"
+          { git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | sort -u > /tmp/expenses.actual
+          diff -u /tmp/expenses.expected /tmp/expenses.actual
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 36' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'MIGRATION_35_36_EXPENSES_P1' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          ! grep -Fq 'MIGRATION_35_36_EXPENSE_WORKFLOW_PROVISIONAL' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+      - name: 2 Expenses targeted
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.ExpenseLifecyclePolicyTest' --tests 'com.fush.erp.domain.*Expense*'
+      - name: 2 Expenses full unit
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: 2 Expenses release Room35-36 data preservation AppID safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/candidate/central_source
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 36' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'MIGRATION_35_36_EXPENSES_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'AccountingJournalIntegrityGuards.callback' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'AccountingJournalIntegrityGuards.install(db)' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          test -f app/schemas/com.fush.erp.data.FushDatabase/36.json
+          python3 - <<'PY'
+          import json,re,sqlite3
+          from pathlib import Path
+          root=Path('/tmp/candidate/central_source')
+          p=json.loads((root/'app/schemas/com.fush.erp.data.FushDatabase/35.json').read_text(encoding='utf-8'))['database']
+          db=sqlite3.connect(':memory:'); db.execute('PRAGMA foreign_keys=OFF')
+          for e in p['entities']: db.execute(e['createSql'].replace('${TABLE_NAME}',e['tableName']))
+          for e in p['entities']:
+              for i in e.get('indices',[]): db.execute(i['createSql'].replace('${TABLE_NAME}',e['tableName']))
+          for q in p.get('setupQueries',[]): db.execute(q)
+          before={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          src=(root/'app/src/main/java/com/fush/erp/data/Migrations.kt').read_text(encoding='utf-8')
+          block=src[src.index('val MIGRATION_35_36_EXPENSES_P1'):]
+          up=block.upper()
+          for bad in ('DELETE FROM','DROP TABLE','ALTER TABLE','UPDATE '): assert bad not in up,bad
+          sqls=re.findall(r'db\.execSQL\("""(.*?)"""\.trimIndent\(\)\)',block,re.S)
+          assert sqls
+          for sql in sqls: db.execute(sql.strip())
+          after={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert before <= after
+          assert 'expense_workflow_requests' in after
+          assert 'expense_attachments' in after
+          schema36=json.loads((root/'app/schemas/com.fush.erp.data.FushDatabase/36.json').read_text(encoding='utf-8'))['database']
+          assert schema36['version']==36 and len(schema36['entities'])==98
+          assert 'expense_workflow_requests' in {e['tableName'] for e in schema36['entities']}
+          print('ROOM35_TO_36_ADDITIVE_DATA_PRESERVATION=PASS')
+          PY
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          cd /tmp/candidate
+          git diff --quiet "$CENTRAL_SHA" -- central_source/app/build.gradle.kts
+          git add $(cat /tmp/expenses.expected) central_source/app/schemas/com.fush.erp.data.FushDatabase/36.json
+          git commit -m 'Central integration: Expenses P1 runtime-safe Room36'
+          echo "EXPENSES_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: 3 Backup Recovery deterministic selective apply and allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/backup-owner && mkdir -p /tmp/backup-owner
+          git archive "$BACKUP_HEAD" backup_recovery_p1 | tar -x -C /tmp/backup-owner
+          python3 /tmp/backup-owner/backup_recovery_p1/apply_p1.py /tmp/candidate
+          git -C /tmp/candidate diff --check
+          test -z "$(find /tmp/candidate -name '*.rej' -print -quit)"
+          cat >/tmp/backup.expected <<'EOF'
+          central_source/app/src/main/java/com/fush/erp/backup/BackupPortableArchiveCodec.kt
+          central_source/app/src/main/java/com/fush/erp/backup/BackupRestoreManager.kt
+          central_source/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
+          central_source/app/src/test/java/com/fush/erp/backup/BackupPortableArchiveCodecTest.kt
+          EOF
+          sort -o /tmp/backup.expected /tmp/backup.expected
+          { git -C /tmp/candidate diff --name-only HEAD; git -C /tmp/candidate ls-files --others --exclude-standard; } | sort -u > /tmp/backup.actual
+          diff -u /tmp/backup.expected /tmp/backup.actual
+          grep -Fq 'KEY_ALIAS = "fush_backup_master_v1"' /tmp/candidate/central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          git -C /tmp/candidate diff --quiet "$CENTRAL_SHA" -- central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          git -C /tmp/candidate diff --quiet HEAD -- central_source/app/src/main/java/com/fush/erp/data/FushDatabase.kt central_source/app/src/main/java/com/fush/erp/data/Migrations.kt central_source/app/src/main/java/com/fush/erp/data/AppContainer.kt central_source/app/schemas central_source/app/build.gradle.kts
+      - name: 3 Backup targeted
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.backup.BackupPortableArchiveCodecTest' --tests 'com.fush.erp.backup.BackupArchiveCodecTest' --tests 'com.fush.erp.backup.RestoreFileSafetyTest'
+      - name: 3 Backup full unit
+        working-directory: /tmp/candidate/central_source
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: 3 Backup release schema AppID alias safety and candidate push
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/candidate/central_source
+          gradle --no-daemon :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 36' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -Fq 'MIGRATION_35_36_EXPENSES_P1' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'AccountingJournalIntegrityGuards.callback' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -Fq 'KEY_ALIAS = "fush_backup_master_v1"' app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+          cd /tmp/candidate
+          git diff --quiet "$CENTRAL_SHA" -- central_source/app/build.gradle.kts
+          git add $(cat /tmp/backup.expected)
+          git commit -m 'Central integration: Backup Recovery P1 portable runtime fix'
+          echo "BACKUP_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git fetch --no-tags origin fush/integration-current
+          test "$(git rev-parse origin/fush/integration-current)" = "$CENTRAL_SHA"
+          test "$(git rev-list --count ${CENTRAL_SHA}..HEAD)" -eq 3
+          test -z "$(git status --porcelain)"
+          mkdir -p /tmp/evidence
+          {
+            echo "BASE_CENTRAL=$CENTRAL_SHA"
+            echo "SESSION_COMMIT=$SESSION_COMMIT"
+            echo "EXPENSES_COMMIT=$EXPENSES_COMMIT"
+            echo "BACKUP_COMMIT=$BACKUP_COMMIT"
+            echo "CANDIDATE_HEAD=$(git rev-parse HEAD)"
+            echo "CANDIDATE_SOURCE_TREE=$(git rev-parse HEAD:central_source)"
+            echo "ROOM_SCHEMA=36"
+            echo "MIGRATION=MIGRATION_35_36_EXPENSES_P1"
+            echo "APPLICATION_ID=$APP_ID"
+            echo "EXPENSES_EXACT_PATCH_SHA256=$EXPENSES_PATCH_SHA"
+            echo "KEY_ALIAS=fush_backup_master_v1"
+            echo "SESSION_TARGETED_FULL_RELEASE=PASS"
+            echo "EXPENSES_TARGETED_FULL_RELEASE=PASS"
+            echo "BACKUP_TARGETED_FULL_RELEASE=PASS"
+            echo "NO_DESTRUCTIVE=PASS"
+            echo "STATUS=STATIC_GATES_PASS_RUNTIME_REQUIRED"
+          } | tee /tmp/evidence/CANDIDATE.txt
+          cp central_source/app/build/outputs/apk/release/app-release-unsigned.apk /tmp/evidence/FushERP-Session-Expenses-Backup-candidate-unsigned.apk
+          git push origin HEAD:"refs/heads/${CANDIDATE_BRANCH}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Session-Expenses-Backup-Static-Candidate-V2
+          path: /tmp/evidence/
+          if-no-files-found: error
+          retention-days: 14
