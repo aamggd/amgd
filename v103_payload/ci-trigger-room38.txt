@@ -1,0 +1,1 @@
+Use actual uploaded-source Room schema 38; preserve migrations 35->36->37->38.
