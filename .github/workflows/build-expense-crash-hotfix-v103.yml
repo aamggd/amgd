@@ -1,0 +1,149 @@
+name: Build Exact v103 Expense Crash Hotfix
+
+on:
+  push:
+    branches: [agent/expense-crash-hotfix-v103-exact]
+    paths:
+      - '.github/workflows/build-expense-crash-hotfix-v103.yml'
+      - 'v103_payload/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  PAYLOAD_SHA256: '5ef57f5a729066b5301ae37517160f4e22b4396682dc9435450d2cc93f023745'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_VERSION_CODE: '103'
+  EXPECTED_ROOM_SCHEMA: '35'
+  EXPECTED_SIGNER_SHA256: '22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout isolated hotfix branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Record Actions run id
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p v103_ci
+          printf '%s\n' "$GITHUB_RUN_ID" > v103_ci/run-id.txt
+          printf '%s\n' "$GITHUB_SHA" > v103_ci/run-sha.txt
+          git add v103_ci/run-id.txt v103_ci/run-sha.txt
+          git commit -m "Record v103 build run $GITHUB_RUN_ID [skip ci]"
+          git push origin HEAD:agent/expense-crash-hotfix-v103-exact
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Verify exact Central baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f central_source/settings.gradle.kts
+          cp -a central_source release-source
+          cd release-source
+          git init -q
+          git config user.name v103-build-audit
+          git config user.email v103-build-audit@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "Central source tree: $TREE"
+          test "$TREE" = "$CENTRAL_SOURCE_TREE"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Reconstruct and apply exact v103 runtime delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d v103_payload/runtime-delta.tar.xz.b64 > runtime-delta.tar.xz
+          echo "$PAYLOAD_SHA256  runtime-delta.tar.xz" | sha256sum -c -
+          tar -xJf runtime-delta.tar.xz -C release-source
+          grep -q 'versionCode = 103' release-source/app/build.gradle.kts
+          grep -q 'central-expense-entry-hotfix1' release-source/app/build.gradle.kts
+          grep -q 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'expenseScreenSafeFlow' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          test -f release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseFlowSafety.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' release-source/app/src/main
+
+      - name: Compile Kotlin debug
+        working-directory: release-source
+        run: gradle --no-daemon :app:compileDebugKotlin
+
+      - name: Run full unit tests
+        working-directory: release-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release APK
+        working-directory: release-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate release identity and alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=release-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='$EXPECTED_APP_ID'"
+          echo "$BADGING" | grep -q "versionCode='$EXPECTED_VERSION_CODE'"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+
+      - name: Prepare signing input and exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/apksigner/lib
+          cp release-source/app/build/outputs/apk/release/app-release-unsigned.apk out/FushERP-Central-v103-ExpenseCrashHotfix-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -P 16 -f -v 4 \
+            out/FushERP-Central-v103-ExpenseCrashHotfix-unsigned.apk \
+            out/FushERP-Central-v103-ExpenseCrashHotfix-unsigned-aligned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" out/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" out/apksigner/lib/apksigner.jar
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" out/aapt
+          chmod +x out/apksigner/apksigner out/aapt
+          (cd release-source && zip -qr ../out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-ExactSource.zip .)
+          sha256sum out/FushERP-Central-v103-ExpenseCrashHotfix-unsigned-aligned.apk > out/FushERP-Central-v103-ExpenseCrashHotfix-unsigned-aligned.apk.sha256
+          sha256sum out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-ExactSource.zip > out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-ExactSource.zip.sha256
+          printf 'Expected production signer SHA-256: %s\n' "$EXPECTED_SIGNER_SHA256" > out/EXPECTED-SIGNER-SHA256.txt
+
+      - name: Upload v103 signing artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Central-v103-ExpenseCrashHotfix-Candidate
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
