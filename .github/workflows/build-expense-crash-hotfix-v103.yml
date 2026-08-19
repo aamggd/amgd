@@ -7,7 +7,9 @@ on:
       - '.github/workflows/build-expense-crash-hotfix-v103.yml'
       - 'v103_payload/**'
   pull_request:
-    branches: [fush/central-unified-test-build-v102]
+    branches:
+      - fush/central-unified-test-build-v102
+      - agent/expense-crash-hotfix-v103-ci-base
     paths:
       - '.github/workflows/build-expense-crash-hotfix-v103.yml'
       - 'v103_payload/**'
