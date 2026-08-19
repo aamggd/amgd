@@ -16,6 +16,7 @@ env:
   PAYLOAD_SHA256: '5ef57f5a729066b5301ae37517160f4e22b4396682dc9435450d2cc93f023745'
   EXPECTED_APP_ID: 'com.fush.erp.recovery'
   EXPECTED_VERSION_CODE: '103'
+  EXPECTED_ROOM_SCHEMA: '38'
 
 jobs:
   build:
@@ -75,7 +76,13 @@ jobs:
           grep -q 'versionCode = 103' release-source/app/build.gradle.kts
           grep -q 'central-expense-entry-hotfix1' release-source/app/build.gradle.kts
           grep -q 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 35' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 38' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'Migration(35, 36)' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBMigrations.kt
+          grep -q 'Migration(36, 37)' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBMigrations.kt
+          grep -q 'Migration(37, 38)' release-source/app/src/main/java/com/fush/erp/data/InventoryCostLayerSupport.kt
+          grep -q 'MIGRATION_35_36_ACCOUNTING_PRECISION' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt
+          grep -q 'MIGRATION_36_37_JOURNAL_LINE_SEMANTICS' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt
+          grep -q 'MIGRATION_37_38_INVENTORY_COST_LAYERS' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt
           grep -q 'expenseScreenSafeFlow' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
           test -f release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseFlowSafety.kt
           ! grep -R -n 'fallbackToDestructiveMigration' release-source/app/src/main
@@ -102,6 +109,7 @@ jobs:
           echo "$BADGING"
           echo "$BADGING" | grep -q "name='$EXPECTED_APP_ID'"
           echo "$BADGING" | grep -q "versionCode='$EXPECTED_VERSION_CODE'"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 38' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
 
       - name: Prepare signing input and exact source
