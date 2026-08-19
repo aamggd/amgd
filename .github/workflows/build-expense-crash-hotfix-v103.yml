@@ -14,6 +14,7 @@ permissions:
 env:
   CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
   PAYLOAD_SHA256: '5ef57f5a729066b5301ae37517160f4e22b4396682dc9435450d2cc93f023745'
+  TESTS_PAYLOAD_SHA256: 'bcb7d5d1a7801cbe9cccd894176014ada62a172c13e151bcb15f16e4f020b2cc'
   EXPECTED_APP_ID: 'com.fush.erp.recovery'
   EXPECTED_VERSION_CODE: '103'
   EXPECTED_ROOM_SCHEMA: '38'
@@ -65,7 +66,7 @@ jobs:
           test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
           ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
 
-      - name: Reconstruct and apply exact v103 runtime delta
+      - name: Reconstruct and apply exact v103 source deltas
         shell: bash
         run: |
           set -euo pipefail
@@ -73,6 +74,12 @@ jobs:
           base64 -d runtime-delta.b64 > runtime-delta.tar.xz
           echo "$PAYLOAD_SHA256  runtime-delta.tar.xz" | sha256sum -c -
           tar -xJf runtime-delta.tar.xz -C release-source
+
+          base64 -d v103_payload/tests-exact.tar.xz.b64 > tests-exact.tar.xz
+          echo "$TESTS_PAYLOAD_SHA256  tests-exact.tar.xz" | sha256sum -c -
+          rm -rf release-source/app/src/test
+          tar -xJf tests-exact.tar.xz -C release-source
+
           grep -q 'versionCode = 103' release-source/app/build.gradle.kts
           grep -q 'central-expense-entry-hotfix1' release-source/app/build.gradle.kts
           grep -q 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
@@ -85,6 +92,8 @@ jobs:
           grep -q 'MIGRATION_37_38_INVENTORY_COST_LAYERS' release-source/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt
           grep -q 'expenseScreenSafeFlow' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
           test -f release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseFlowSafety.kt
+          grep -q 'stableAutomaticEventsHaveAReversalPathOrAreTerminalReversalEvents' release-source/app/src/test/java/com/fush/erp/domain/AccountingP1IntegrityPolicyTest.kt
+          grep -q 'assertTrue("SALES_COMMISSION" in safe)' release-source/app/src/test/java/com/fush/erp/domain/AccountingIntegrationContractTest.kt
           ! grep -R -n 'fallbackToDestructiveMigration' release-source/app/src/main
 
       - name: Compile Kotlin debug
