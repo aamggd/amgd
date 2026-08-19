@@ -6,6 +6,11 @@ on:
     paths:
       - '.github/workflows/build-expense-crash-hotfix-v103.yml'
       - 'v103_payload/**'
+  pull_request:
+    branches: [fush/central-unified-test-build-v102]
+    paths:
+      - '.github/workflows/build-expense-crash-hotfix-v103.yml'
+      - 'v103_payload/**'
   workflow_dispatch:
 
 permissions:
@@ -82,7 +87,6 @@ jobs:
           grep -q 'FUSH_DB_SCHEMA_VERSION = 35' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q 'expenseScreenSafeFlow' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
           test -f release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseFlowSafety.kt
-          grep -q 'AccountingWaveBRoomBootstrap' release-source/app/src/main/java/com/fush/erp/data/FushErpApplication.kt 2>/dev/null || true
           ! grep -R -n 'fallbackToDestructiveMigration' release-source/app/src/main
 
       - name: Compile Kotlin debug
