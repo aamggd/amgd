@@ -1,15 +1,19 @@
 name: Build Expense Crash Hotfix v103
 
 on:
+  push:
+    branches: [agent/expense-crash-hotfix-v103-build]
+    paths:
+      - '.github/workflows/build-expense-hotfix-v103.yml'
+      - 'expense_v103_hotfix/**'
   pull_request:
     branches: [fush/central-unified-test-build-v102]
     paths:
       - '.github/workflows/build-expense-hotfix-v103.yml'
       - 'expense_v103_hotfix/**'
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   TEST_VERSION_CODE: '103'
@@ -54,33 +58,21 @@ jobs:
         run: |
           set -euo pipefail
           cp -a central_source release-source
-
-          cat \
-            expense_v103_hotfix/ExpenseScreens.part00.b64 \
-            expense_v103_hotfix/ExpenseScreens.part01.b64 \
-            expense_v103_hotfix/ExpenseScreens.part02.b64 \
-            expense_v103_hotfix/ExpenseScreens.part03.b64 \
-            expense_v103_hotfix/ExpenseScreens.part04.b64 \
-            expense_v103_hotfix/ExpenseScreens.part05.b64 \
-            | tr -d '\r\n' > /tmp/ExpenseScreens.b64
+          cat expense_v103_hotfix/ExpenseScreens.part00.b64 expense_v103_hotfix/ExpenseScreens.part01.b64 expense_v103_hotfix/ExpenseScreens.part02.b64 expense_v103_hotfix/ExpenseScreens.part03.b64 expense_v103_hotfix/ExpenseScreens.part04.b64 expense_v103_hotfix/ExpenseScreens.part05.b64 | tr -d '\r\n' > /tmp/ExpenseScreens.b64
           base64 -d /tmp/ExpenseScreens.b64 > release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
-
           ACTUAL_EXPENSE_SHA256="$(sha256sum release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt | awk '{print $1}')"
           echo "ExpenseScreens SHA-256: ${ACTUAL_EXPENSE_SHA256}"
           test "$ACTUAL_EXPENSE_SHA256" = "$EXPECTED_EXPENSE_SHA256"
-
-          python3 - <<'PY'
+          python3 - <<'PY2'
           from pathlib import Path
           import re
           p = Path('release-source/app/build.gradle.kts')
           s = p.read_text(encoding='utf-8')
-          s2, n1 = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 103', s, count=1)
-          s3, n2 = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.15.4.55-central-expense-entry-hotfix1"', s2, count=1)
-          assert n1 == 1, n1
-          assert n2 == 1, n2
-          p.write_text(s3, encoding='utf-8')
-          PY
-
+          s, n1 = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 103', s, count=1)
+          s, n2 = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.15.4.55-central-expense-entry-hotfix1"', s, count=1)
+          assert n1 == 1 and n2 == 1, (n1, n2)
+          p.write_text(s, encoding='utf-8')
+          PY2
           grep -Fq 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
           grep -Fq 'versionCode = 103' release-source/app/build.gradle.kts
           grep -Fq 'versionName = "0.15.4.55-central-expense-entry-hotfix1"' release-source/app/build.gradle.kts
@@ -88,7 +80,7 @@ jobs:
           grep -Fq 'ExpenseAddDialogHost(' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
           grep -Fq 'rememberLauncherForActivityResult' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
 
-      - name: Verify Room 35 and non-destructive migration chain
+      - name: Verify Room 35 and non-destructive migrations
         working-directory: release-source
         shell: bash
         run: |
@@ -97,7 +89,6 @@ jobs:
           MIG='app/src/main/java/com/fush/erp/data/Migrations.kt'
           SEC='app/src/main/java/com/fush/erp/data/SecurityMigrations.kt'
           CON='app/src/main/java/com/fush/erp/data/AppContainer.kt'
-
           grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
           test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
           grep -Fq '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
@@ -127,7 +118,6 @@ jobs:
           echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
           echo "$BADGING" | grep -Fq "versionCode='${TEST_VERSION_CODE}'"
           echo "$BADGING" | grep -Fq "versionName='${TEST_VERSION_NAME}'"
-
           OUTAPK="out/FushERP-Central-v103-ExpenseCrashHotfix-aligned-unsigned.apk"
           ${ANDROID_HOME}/build-tools/36.0.0/zipalign -P 16 -f -v 4 "$APK" "$OUTAPK" >/tmp/zipalign-create.log
           ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$OUTAPK" | tee out/zipalign-verification.txt
@@ -144,7 +134,6 @@ jobs:
           rsync -a --exclude '.git/' --exclude '.gradle/' --exclude '**/build/' release-source/ "$TOP/"
           zip -qr out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip "$TOP"
           sha256sum out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip | tee out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip.sha256
-
           cat > out/BUILD-VERIFICATION.txt <<EOF
           FUSH ERP Mobile — Expense Crash Hotfix v103
           Application ID: ${EXPECTED_APP_ID}
@@ -164,3 +153,22 @@ jobs:
           name: FushERP-Central-v103-ExpenseCrashHotfix
           path: out/*
           if-no-files-found: error
+
+      - name: Publish build outputs on hotfix branch
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p releases-hotfix-v103
+          cp out/FushERP-Central-v103-ExpenseCrashHotfix-aligned-unsigned.apk releases-hotfix-v103/
+          cp out/FushERP-Central-v103-ExpenseCrashHotfix-aligned-unsigned.apk.sha256 releases-hotfix-v103/
+          cp out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip releases-hotfix-v103/
+          cp out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip.sha256 releases-hotfix-v103/
+          cp out/BUILD-VERIFICATION.txt releases-hotfix-v103/
+          cp out/aapt-badging.txt releases-hotfix-v103/
+          cp out/apksigner.jar releases-hotfix-v103/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add releases-hotfix-v103
+          git commit -m "Publish v103 expense hotfix candidate [skip ci]"
+          git push
