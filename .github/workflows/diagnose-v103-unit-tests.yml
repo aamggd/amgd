@@ -1,0 +1,105 @@
+name: Diagnose v103 Unit Tests
+
+on:
+  pull_request:
+    branches: [agent/expense-crash-hotfix-v103-ci-base]
+    paths:
+      - '.github/workflows/diagnose-v103-unit-tests.yml'
+      - 'v103_payload/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CENTRAL_SOURCE_TREE: '30b028b75d6463c07afd0419429f53c7937fabb1'
+  PAYLOAD_SHA256: '5ef57f5a729066b5301ae37517160f4e22b4396682dc9435450d2cc93f023745'
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Reconstruct exact v103 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source release-source
+          cd release-source
+          git init -q
+          git add -A
+          test "$(git write-tree)" = "$CENTRAL_SOURCE_TREE"
+          cd ..
+          cat v103_payload/runtime-delta-part-*.b64 | tr -d '\r\n' > runtime-delta.b64
+          base64 -d runtime-delta.b64 > runtime-delta.tar.xz
+          echo "$PAYLOAD_SHA256  runtime-delta.tar.xz" | sha256sum -c -
+          tar -xJf runtime-delta.tar.xz -C release-source
+          grep -q 'versionCode = 103' release-source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 38' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'expenseScreenSafeFlow' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+      - name: Run full unit tests with diagnostics
+        id: tests
+        working-directory: release-source
+        continue-on-error: true
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace --info
+      - name: Build compact failure summary
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p diagnostics
+          find release-source/app/build/test-results/testDebugUnitTest -type f -name 'TEST-*.xml' -print > diagnostics/xml-files.txt 2>/dev/null
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          out=[]
+          for p in glob.glob('release-source/app/build/test-results/testDebugUnitTest/TEST-*.xml'):
+              try:
+                  root=ET.parse(p).getroot()
+              except Exception as e:
+                  out.append(f'XML_PARSE_ERROR {p}: {e}')
+                  continue
+              for tc in root.findall('.//testcase'):
+                  fail=tc.find('failure')
+                  err=tc.find('error')
+                  node=fail if fail is not None else err
+                  if node is not None:
+                      out.append(f"FAIL {tc.get('classname')} :: {tc.get('name')}")
+                      out.append((node.get('message') or '').strip())
+                      text=(node.text or '').strip()
+                      if text:
+                          out.extend(text.splitlines()[:80])
+                      out.append('---')
+          open('diagnostics/failures.txt','w',encoding='utf-8').write('\n'.join(out) if out else 'NO_XML_FAILURES_FOUND\n')
+          PY
+          cat diagnostics/failures.txt
+      - name: Upload unit-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-v103-UnitTest-Diagnostics
+          path: |
+            diagnostics/*
+            release-source/app/build/test-results/testDebugUnitTest/**
+            release-source/app/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Enforce unit-test gate
+        if: always()
+        shell: bash
+        run: test '${{ steps.tests.outcome }}' = 'success'
