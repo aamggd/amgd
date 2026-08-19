@@ -1,0 +1,166 @@
+name: Build Expense Crash Hotfix v103
+
+on:
+  pull_request:
+    branches: [fush/central-unified-test-build-v102]
+    paths:
+      - '.github/workflows/build-expense-hotfix-v103.yml'
+      - 'expense_v103_hotfix/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TEST_VERSION_CODE: '103'
+  TEST_VERSION_NAME: '0.15.4.55-central-expense-entry-hotfix1'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_SCHEMA: '35'
+  EXPECTED_EXPENSE_SHA256: '5a9a0e0b41e86812073e824eb8f564e8d29e0dcbd44d321ba8c45a2561efe8b8'
+
+jobs:
+  build-expense-hotfix-v103:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout hotfix branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore v102 Central source and apply exact Expenses hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source release-source
+
+          cat \
+            expense_v103_hotfix/ExpenseScreens.part00.b64 \
+            expense_v103_hotfix/ExpenseScreens.part01.b64 \
+            expense_v103_hotfix/ExpenseScreens.part02.b64 \
+            expense_v103_hotfix/ExpenseScreens.part03.b64 \
+            expense_v103_hotfix/ExpenseScreens.part04.b64 \
+            expense_v103_hotfix/ExpenseScreens.part05.b64 \
+            | tr -d '\r\n' > /tmp/ExpenseScreens.b64
+          base64 -d /tmp/ExpenseScreens.b64 > release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+
+          ACTUAL_EXPENSE_SHA256="$(sha256sum release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt | awk '{print $1}')"
+          echo "ExpenseScreens SHA-256: ${ACTUAL_EXPENSE_SHA256}"
+          test "$ACTUAL_EXPENSE_SHA256" = "$EXPECTED_EXPENSE_SHA256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('release-source/app/build.gradle.kts')
+          s = p.read_text(encoding='utf-8')
+          s2, n1 = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 103', s, count=1)
+          s3, n2 = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.15.4.55-central-expense-entry-hotfix1"', s2, count=1)
+          assert n1 == 1, n1
+          assert n2 == 1, n2
+          p.write_text(s3, encoding='utf-8')
+          PY
+
+          grep -Fq 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
+          grep -Fq 'versionCode = 103' release-source/app/build.gradle.kts
+          grep -Fq 'versionName = "0.15.4.55-central-expense-entry-hotfix1"' release-source/app/build.gradle.kts
+          grep -Fq 'private fun <T> Flow<T>.expenseScreenSafeFlow(' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -Fq 'ExpenseAddDialogHost(' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -Fq 'rememberLauncherForActivityResult' release-source/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+
+      - name: Verify Room 35 and non-destructive migration chain
+        working-directory: release-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB='app/src/main/java/com/fush/erp/data/FushDatabase.kt'
+          MIG='app/src/main/java/com/fush/erp/data/Migrations.kt'
+          SEC='app/src/main/java/com/fush/erp/data/SecurityMigrations.kt'
+          CON='app/src/main/java/com/fush/erp/data/AppContainer.kt'
+
+          grep -Fq 'FUSH_DB_SCHEMA_VERSION = 35' "$DB"
+          test -f app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq '"version": 35' app/schemas/com.fush.erp.data.FushDatabase/35.json
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$MIG"
+          grep -Fq 'MIGRATION_34_35_ACCOUNTING_P1' "$CON"
+          grep -Fq 'MIGRATION_32_33_SECURITY' "$SEC"
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+
+      - name: Full Unit Tests
+        working-directory: release-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: assembleRelease
+        working-directory: release-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify package version and zipalign
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK='release-source/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$APK"
+          BADGING="$(${ANDROID_HOME}/build-tools/36.0.0/aapt dump badging "$APK" | head -n 1)"
+          echo "$BADGING" | tee out/aapt-badging.txt
+          echo "$BADGING" | grep -Fq "name='${EXPECTED_APP_ID}'"
+          echo "$BADGING" | grep -Fq "versionCode='${TEST_VERSION_CODE}'"
+          echo "$BADGING" | grep -Fq "versionName='${TEST_VERSION_NAME}'"
+
+          OUTAPK="out/FushERP-Central-v103-ExpenseCrashHotfix-aligned-unsigned.apk"
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -P 16 -f -v 4 "$APK" "$OUTAPK" >/tmp/zipalign-create.log
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 "$OUTAPK" | tee out/zipalign-verification.txt
+          sha256sum "$OUTAPK" | tee "${OUTAPK}.sha256"
+          cp ${ANDROID_HOME}/build-tools/36.0.0/lib/apksigner.jar out/apksigner.jar
+
+      - name: Package matching source and verification report
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOP='FushERP_Mobile_Central_v103_ExpenseCrashHotfix'
+          rm -rf "$TOP"
+          mkdir "$TOP"
+          rsync -a --exclude '.git/' --exclude '.gradle/' --exclude '**/build/' release-source/ "$TOP/"
+          zip -qr out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip "$TOP"
+          sha256sum out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip | tee out/FushERP-Mobile-Central-v103-ExpenseCrashHotfix-Source.zip.sha256
+
+          cat > out/BUILD-VERIFICATION.txt <<EOF
+          FUSH ERP Mobile — Expense Crash Hotfix v103
+          Application ID: ${EXPECTED_APP_ID}
+          versionCode: ${TEST_VERSION_CODE}
+          versionName: ${TEST_VERSION_NAME}
+          Room schema: ${EXPECTED_SCHEMA}
+          ExpenseScreens SHA-256: ${EXPECTED_EXPENSE_SHA256}
+          Full Unit Tests: PASS
+          assembleRelease: PASS
+          zipalign: PASS
+          Signing: NOT performed in GitHub Actions; sign locally with permanent FUSH Recovery P12 only.
+          EOF
+
+      - name: Upload v103 candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Central-v103-ExpenseCrashHotfix
+          path: out/*
+          if-no-files-found: error
