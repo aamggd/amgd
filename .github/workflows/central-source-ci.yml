@@ -59,6 +59,22 @@ jobs:
         working-directory: central_source
         run: gradle --no-daemon :app:assembleDebug
 
+      - name: Record APK checksum
+        shell: bash
+        run: |
+          sha256sum central_source/app/build/outputs/apk/debug/app-debug.apk \
+            > central_source/app/build/outputs/apk/debug/app-debug.apk.sha256
+
+      - name: Upload tested Central APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Central-debug-${{ github.sha }}
+          path: |
+            central_source/app/build/outputs/apk/debug/app-debug.apk
+            central_source/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Reject uncommitted Room schema drift
         shell: bash
         run: git diff --exit-code -- central_source/app/schemas
