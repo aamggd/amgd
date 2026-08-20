@@ -1,0 +1,39 @@
+name: Fix customer statement Compose compatibility
+
+on:
+  push:
+    branches:
+      - agent/customer-statement-pdf-20260821
+    paths:
+      - '.github/workflows/fix-customer-statement-weight.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove invalid weight import
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('central_source/app/src/main/java/com/fush/erp/ui/screens/CustomerStatementExport.kt')
+          text = p.read_text(encoding='utf-8')
+          bad = 'import androidx.compose.foundation.layout.weight\n'
+          if bad in text:
+              p.write_text(text.replace(bad, '', 1), encoding='utf-8')
+      - name: Commit compatibility fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- central_source/app/src/main/java/com/fush/erp/ui/screens/CustomerStatementExport.kt; then
+            echo 'Already fixed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add central_source/app/src/main/java/com/fush/erp/ui/screens/CustomerStatementExport.kt
+          git commit -m 'Fix customer statement Compose weight compatibility'
+          git push origin HEAD:agent/customer-statement-pdf-20260821
