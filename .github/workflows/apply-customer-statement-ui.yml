@@ -70,3 +70,5 @@ jobs:
                   central_source/app/src/main/java/com/fush/erp/ui/screens/CustomerStatementExport.kt
           git commit -m 'Wire professional customer statement export into customer profile'
           git push origin HEAD:agent/customer-statement-pdf-20260821
+
+# trigger: 2026-08-21
