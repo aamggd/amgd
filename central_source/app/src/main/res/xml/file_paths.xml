@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-files-path name="external_files" path="." />
-    <cache-path name="report_share" path="report-share/" />
+    <cache-path
+        name="report_share"
+        path="report-share/" />
+    <external-files-path
+        name="report_exports"
+        path="Download/FushERP/" />
+    <external-files-path
+        name="backup_exports"
+        path="Documents/FushERP/Backups/" />
 </paths>
