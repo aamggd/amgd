@@ -101,6 +101,14 @@ interface ExpenseDao {
     """)
     suspend fun reportRows(fromDate: Long, toDate: Long): List<ExpenseReportRow>
 
+    /**
+     * Live historical expense stream used by the expense screen and its exports.
+     *
+     * A reversed expense remains visible at its original posting date, while a
+     * synthetic negative row is emitted at the reversal date. This mirrors
+     * [reportRows] so the UI, exports and dated reports share the same audit
+     * semantics instead of silently dropping reversed vouchers.
+     */
     @Query("""
         SELECT ed.id AS expenseId,
                pv.id AS voucherId,
@@ -135,8 +143,44 @@ interface ExpenseDao {
         FROM expense_dimensions ed
         JOIN party_vouchers pv ON pv.id=ed.partyVoucherId
         JOIN accounts a ON a.id=pv.offsetAccountId
-        WHERE pv.voucherType='EXPENSE' AND pv.status='POSTED'
-        ORDER BY pv.voucherDate DESC, pv.id DESC
+        WHERE pv.voucherType='EXPENSE' AND pv.status IN ('POSTED','REVERSED')
+        UNION ALL
+        SELECT -ed.id AS expenseId,
+               pv.id AS voucherId,
+               'REV-' || pv.voucherNo AS voucherNo,
+               COALESCE(pv.reversedAt,0) AS voucherDate,
+               a.id AS expenseAccountId,
+               a.code AS expenseAccountCode,
+               a.nameAr AS expenseAccountName,
+               -pv.amountBase AS amountBase,
+               'عكس: ' || pv.reversalReason AS description,
+               pv.currencyCode AS currencyCode,
+               -pv.amountOriginal AS amountOriginal,
+               ed.paymentMethodSnapshot AS paymentMethod,
+               ed.employeeId AS employeeId,
+               ed.employeeNameSnapshot AS employeeName,
+               ed.salesRepId AS salesRepId,
+               ed.salesRepNameSnapshot AS salesRepName,
+               ed.costCenterCode AS costCenterCode,
+               ed.costCenterNameSnapshot AS costCenterName,
+               ed.organizationUnit AS organizationUnit,
+               ed.referenceType AS referenceType,
+               ed.referenceId AS referenceId,
+               ed.referenceNo AS referenceNo,
+               ed.referenceLabelSnapshot AS referenceLabel,
+               ed.customerId AS customerId,
+               ed.customerNameSnapshot AS customerName,
+               ed.supplierId AS supplierId,
+               ed.supplierNameSnapshot AS supplierName,
+               ed.itemId AS itemId,
+               ed.itemNameSnapshot AS itemName,
+               0 AS attachmentCount
+        FROM expense_dimensions ed
+        JOIN party_vouchers pv ON pv.id=ed.partyVoucherId
+        JOIN accounts a ON a.id=pv.offsetAccountId
+        WHERE pv.voucherType='EXPENSE' AND pv.status='REVERSED'
+          AND pv.reversedAt IS NOT NULL
+        ORDER BY voucherDate DESC, voucherId DESC
     """)
     fun observeReportRows(): Flow<List<ExpenseReportRow>>
 
