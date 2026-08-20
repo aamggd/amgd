@@ -525,7 +525,20 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
         }
         when (tab) {
             0 -> item { PartyInfoCustomer(customer) }
-            1 -> customerLedgerItems(running)
+            1 -> {
+    item {
+        CustomerStatementExportPanel(
+            customer = customer,
+            events = events,
+            invoices = invoices,
+            receipts = receipts,
+            returns = returns,
+            vouchers = vouchers,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    customerLedgerItems(running)
+}
             2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مبيعات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") "نقدي" else "آجل"}" }
             3 -> customerReceiptItems(receipts)
             4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
