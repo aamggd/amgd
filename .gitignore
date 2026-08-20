@@ -1,0 +1,6 @@
+# Patch/editor leftovers
+*.orig
+*.rej
+
+# Local OS noise
+.DS_Store
