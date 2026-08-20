@@ -22,7 +22,7 @@ class ExpenseAttachmentStorage(context: Context) {
         val sizeBytes: Long
     )
 
-    fun import(sourceUri: Uri, displayName: String): StoredAttachment {
+    fun storeFrom(sourceUri: Uri, displayName: String): StoredAttachment {
         val directory = File(appContext.filesDir, DIRECTORY_NAME)
         require(directory.exists() || directory.mkdirs()) { "تعذر إنشاء مجلد مرفقات المصروفات" }
 
