@@ -60,6 +60,14 @@ class ExpenseAttachmentStorage(context: Context) {
         }
     }
 
+    /**
+     * Compatibility bridge for the current Compose caller. `storeFrom` is the
+     * canonical API name; Kotlin permits this escaped declaration while the
+     * call remains source-compatible as `.import(...)`.
+     */
+    @Deprecated("Use storeFrom", ReplaceWith("storeFrom(sourceUri, displayName)"))
+    fun `import`(sourceUri: Uri, displayName: String): StoredAttachment = storeFrom(sourceUri, displayName)
+
     fun resolveManagedFile(uri: String): File? {
         val fileName = managedFileName(uri) ?: return null
         val directory = File(appContext.filesDir, DIRECTORY_NAME)
