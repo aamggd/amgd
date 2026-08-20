@@ -1,6 +1,6 @@
 package com.fush.erp.ui.screens
 
-import android.content.Intent
+import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +17,7 @@ import com.fush.erp.data.AppContainer
 import com.fush.erp.data.entity.*
 import com.fush.erp.domain.AccountingService
 import com.fush.erp.domain.ExpenseClassificationPolicy
+import com.fush.erp.storage.ExpenseAttachmentStorage
 import com.fush.erp.ui.export.ReportExportActions
 import com.fush.erp.ui.FushMetricCard
 import com.fush.erp.ui.FushSectionHeader
@@ -27,7 +28,9 @@ import com.fush.erp.ui.FushEmptyState
 import com.fush.erp.ui.FushDateField
 import com.fush.erp.ui.FushDecimalField
 import com.fush.erp.ui.FushOperationMessage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -37,7 +40,6 @@ private val EXPENSE_REFERENCE_TYPES = ExpenseClassificationPolicy.referenceTypes
 
 @Composable
 fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
-    val scope = rememberCoroutineScope()
     val rows by container.db.expenseDao().observeReportRows().collectAsState(initial = emptyList())
     val repContribution by container.db.expenseDao().observeSalesRepContribution().collectAsState(initial = emptyList())
     val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
@@ -275,14 +277,14 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
             productionOrders = productionOrders,
             onDismiss = { showAdd = false }
         ) { request ->
-            scope.launch {
-                try {
-                    val id = container.accountingService.postVoucher(request.copy(createdBy = user.id))
-                    message = "تم ترحيل المصروف والقيد رقم $id"
-                    showAdd = false
-                } catch (e: Exception) {
-                    message = e.message ?: "تعذر ترحيل المصروف"
-                }
+            try {
+                val id = container.accountingService.postVoucher(request.copy(createdBy = user.id))
+                message = "تم ترحيل المصروف والقيد رقم $id"
+                showAdd = false
+                Result.success(id)
+            } catch (e: Exception) {
+                message = e.message ?: "تعذر ترحيل المصروف"
+                Result.failure(e)
             }
         }
     }
@@ -302,9 +304,11 @@ private fun AddExpenseDialog(
     purchaseInvoices: List<PurchaseInvoiceSummary>,
     productionOrders: List<ProductionOrderSummary>,
     onDismiss: () -> Unit,
-    onSave: (AccountingService.VoucherRequest) -> Unit
+    onSave: suspend (AccountingService.VoucherRequest) -> Result<Long>
 ) {
     val context = LocalContext.current
+    val dialogScope = rememberCoroutineScope()
+    val attachmentStorage = remember(context) { ExpenseAttachmentStorage(context) }
     var source by remember { mutableStateOf<TreasuryBalanceRow?>(treasury.firstOrNull()) }
     var account by remember { mutableStateOf<AccountEntity?>(null) }
     var currency by remember { mutableStateOf<CurrencyEntity?>(null) }
@@ -328,6 +332,8 @@ private fun AddExpenseDialog(
     var attachmentUri by remember { mutableStateOf("") }
     var attachmentName by remember { mutableStateOf("") }
     var attachmentMime by remember { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    var dialogMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(source?.currencyCode, currencies) {
         source?.let { s ->
@@ -343,13 +349,15 @@ private fun AddExpenseDialog(
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+        if (uri != null && !submitting) {
             attachmentUri = uri.toString()
-            attachmentMime = context.contentResolver.getType(uri).orEmpty()
-            attachmentName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                if (c.moveToFirst()) c.getString(0) else null
-            }.orEmpty().ifBlank { "مرفق مصروف" }
+            attachmentMime = runCatching { context.contentResolver.getType(uri).orEmpty() }.getOrDefault("")
+            attachmentName = runCatching {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+            }.getOrNull().orEmpty().ifBlank { "مرفق مصروف" }
+            dialogMessage = null
         }
     }
 
@@ -366,11 +374,12 @@ private fun AddExpenseDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         title = { Text("مصروف جديد") },
         text = {
             LazyColumn(Modifier.heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 item {
+                    dialogMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                     ExpenseSelectionField("طريقة الدفع / الخزينة أو البنك", source, treasury, { "${it.nameAr} — ${it.kind}" }) { source = it }
                     ExpenseSelectionField("نوع المصروف / حساب المصروف", account, accounts, { "${it.code} — ${it.nameAr}" }) { account = it }
                     ExpenseSelectionField("العملة", currency, currencies, { it.nameAr }) { currency=it; if(it.isBase) rate="1" }
@@ -413,15 +422,30 @@ private fun AddExpenseDialog(
                 }
                 item {
                     Text("المرفق", style=MaterialTheme.typography.titleSmall)
-                    OutlinedButton(onClick={ picker.launch(arrayOf("application/pdf", "image/*")) }) { Text(if(attachmentName.isBlank()) "إرفاق فاتورة / سند" else "تغيير المرفق") }
-                    attachmentName.takeIf { it.isNotBlank() }?.let { Text(it, style=MaterialTheme.typography.bodySmall) }
+                    OutlinedButton(
+                        enabled = !submitting,
+                        onClick={ picker.launch(arrayOf("application/pdf", "image/*")) }
+                    ) { Text(if(attachmentName.isBlank()) "إرفاق فاتورة / سند" else "تغيير المرفق") }
+                    attachmentName.takeIf { it.isNotBlank() }?.let {
+                        Text("$it — سيُحفظ داخل التطبيق عند ترحيل المصروف", style=MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
-                enabled = source != null && account != null && currency != null && center != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true && description.isNotBlank() && refReady,
+                enabled = !submitting && source != null && account != null && currency != null && center != null && amount.toDoubleOrNull()?.let { it > 0 } == true && rate.toDoubleOrNull()?.let { it > 0 } == true && description.isNotBlank() && refReady,
                 onClick = {
+                    if (submitting) return@Button
+                    val selectedSource = source ?: return@Button
+                    val selectedAccount = account ?: return@Button
+                    val selectedCurrency = currency ?: return@Button
+                    val selectedCenter = center ?: return@Button
+                    val amountValue = amount.toDoubleOrNull() ?: return@Button
+                    val rateValue = rate.toDoubleOrNull() ?: return@Button
+                    val attachmentSource = attachmentUri
+                    val attachmentDisplayName = attachmentName
+                    val attachmentMimeType = attachmentMime
                     val refId = when(refType.first) {
                         "SALES_INVOICE" -> salesInvoice?.id
                         "PURCHASE_INVOICE" -> purchaseInvoice?.id
@@ -440,40 +464,72 @@ private fun AddExpenseDialog(
                         "PRODUCTION_ORDER" -> productionOrder?.productName.orEmpty()
                         else -> referenceLabel
                     }
-                    onSave(
-                        AccountingService.VoucherRequest(
-                            type="EXPENSE",
-                            treasuryAccountId=source!!.id,
-                            offsetAccountId=account!!.id,
-                            amountOriginal=amount.toDouble(),
-                            currencyCode=currency!!.code,
-                            exchangeRate=rate.toDouble(),
-                            description=description,
-                            referenceNo=refNoResolved,
-                            voucherDate=expenseParseStart(date),
-                            createdBy=0L,
-                            expenseContext=AccountingService.ExpenseContext(
-                                employeeId=employee?.id,
-                                salesRepId=salesRep?.id,
-                                costCenterCode=requireNotNull(center).first,
-                                organizationUnit=organizationUnit,
-                                referenceType=refType.first,
-                                referenceId=refId,
-                                referenceNo=refNoResolved,
-                                referenceLabel=refLabelResolved,
-                                customerId=customer?.id,
-                                supplierId=supplier?.id,
-                                itemId=item?.id,
-                                attachment=attachmentUri.takeIf { it.isNotBlank() }?.let {
-                                    AccountingService.ExpenseAttachmentInput(attachmentName, attachmentMime, it)
+                    submitting = true
+                    dialogMessage = null
+                    dialogScope.launch {
+                        var managedAttachmentUri: String? = null
+                        try {
+                            managedAttachmentUri = attachmentSource.takeIf { it.isNotBlank() }?.let { sourceUri ->
+                                withContext(Dispatchers.IO) {
+                                    attachmentStorage.import(Uri.parse(sourceUri), attachmentDisplayName).uri
                                 }
+                            }
+                            val request = AccountingService.VoucherRequest(
+                                type="EXPENSE",
+                                treasuryAccountId=selectedSource.id,
+                                offsetAccountId=selectedAccount.id,
+                                amountOriginal=amountValue,
+                                currencyCode=selectedCurrency.code,
+                                exchangeRate=rateValue,
+                                description=description,
+                                referenceNo=refNoResolved,
+                                voucherDate=expenseParseStart(date),
+                                createdBy=0L,
+                                expenseContext=AccountingService.ExpenseContext(
+                                    employeeId=employee?.id,
+                                    salesRepId=salesRep?.id,
+                                    costCenterCode=selectedCenter.first,
+                                    organizationUnit=organizationUnit,
+                                    referenceType=refType.first,
+                                    referenceId=refId,
+                                    referenceNo=refNoResolved,
+                                    referenceLabel=refLabelResolved,
+                                    customerId=customer?.id,
+                                    supplierId=supplier?.id,
+                                    itemId=item?.id,
+                                    attachment=managedAttachmentUri?.let {
+                                        AccountingService.ExpenseAttachmentInput(attachmentDisplayName, attachmentMimeType, it)
+                                    }
+                                )
                             )
-                        )
-                    )
+                            val result = onSave(request)
+                            if (result.isFailure) {
+                                managedAttachmentUri?.let { uri ->
+                                    withContext(Dispatchers.IO) { attachmentStorage.deleteManaged(uri) }
+                                }
+                                dialogMessage = result.exceptionOrNull()?.message ?: "تعذر ترحيل المصروف"
+                            }
+                        } catch (e: Exception) {
+                            managedAttachmentUri?.let { uri ->
+                                runCatching { withContext(Dispatchers.IO) { attachmentStorage.deleteManaged(uri) } }
+                            }
+                            dialogMessage = e.message ?: "تعذر حفظ مرفق المصروف"
+                        } finally {
+                            submitting = false
+                        }
+                    }
                 }
-            ) { Text("ترحيل المصروف") }
+            ) {
+                if (submitting) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("جارٍ الحفظ...")
+                } else Text("ترحيل المصروف")
+            }
         },
-        dismissButton = { TextButton(onClick=onDismiss) { Text("إلغاء") } }
+        dismissButton = {
+            TextButton(enabled = !submitting, onClick=onDismiss) { Text("إلغاء") }
+        }
     )
 }
 
