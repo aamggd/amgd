@@ -1,0 +1,65 @@
+name: FUSH v112 split validated cache
+
+on:
+  pull_request:
+    branches: [fush/v112-ci-base2]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download previously validated cache artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FUSH-v112-gradle-dependency-cache
+          path: cache-in
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 32537779282
+      - name: Verify and split cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd cache-in
+          test -s v112-gradle-caches.tar.xz
+          sha256sum -c v112-gradle-caches.tar.xz.sha256
+          split -b 300M -d -a 2 v112-gradle-caches.tar.xz ../v112-gradle-caches.part-
+          cd ..
+          ls -lh v112-gradle-caches.part-*
+          test -f v112-gradle-caches.part-00
+          test -f v112-gradle-caches.part-01
+          cp cache-in/v112-gradle-caches.tar.xz.sha256 .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-existing-cache-part-00
+          path: v112-gradle-caches.part-00
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-existing-cache-part-01
+          path: v112-gradle-caches.part-01
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-existing-cache-part-02
+          path: v112-gradle-caches.part-02
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-existing-cache-checksum
+          path: v112-gradle-caches.tar.xz.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
