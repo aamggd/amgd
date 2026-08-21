@@ -46,6 +46,8 @@ jobs:
             :app:compileDebugUnitTestKotlin \
             :app:compileDebugAndroidTestKotlin \
             --stacktrace
+          gradle --no-daemon --max-workers=2 :app:dependencies --configuration kotlinBuildToolsApiClasspath >/tmp/v112-kotlin-build-tools-deps.txt
+          cat /tmp/v112-kotlin-build-tools-deps.txt
       - name: Package isolated Gradle cache
         shell: bash
         run: |
