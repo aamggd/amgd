@@ -1,6 +1,9 @@
 name: FUSH Offline Build Kit
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/offline-build-kit.yml'
   push:
     branches:
       - agent/customer-statement-pdf-20260821
