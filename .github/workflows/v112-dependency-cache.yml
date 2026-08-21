@@ -1,0 +1,50 @@
+name: FUSH v112 dependency cache export
+
+on:
+  pull_request:
+    branches: [fush/v112-toolchain-target]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Resolve exact v112 plugins and dependencies
+        working-directory: ci/v112/deps_project
+        run: |
+          gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:testDebugUnitTest --stacktrace
+      - name: Package Gradle dependency cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          du -sh "$HOME/.gradle/caches" || true
+          tar -C "$HOME/.gradle" -cJf v112-gradle-caches.tar.xz caches
+          sha256sum v112-gradle-caches.tar.xz > v112-gradle-caches.tar.xz.sha256
+          ls -lh v112-gradle-caches.tar.xz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-gradle-dependency-cache
+          path: |
+            v112-gradle-caches.tar.xz
+            v112-gradle-caches.tar.xz.sha256
+          if-no-files-found: error
+          retention-days: 1
