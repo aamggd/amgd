@@ -1,14 +1,11 @@
 name: FUSH v112 dependency cache export
 
 on:
-  push:
-    branches: [fush/v112-role-permissions-build]
-    paths:
-      - '.github/workflows/v112-dependency-cache.yml'
-      - 'ci/v112/deps_project/**'
+  pull_request:
+    branches: [fush/v112-ci-base2]
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 jobs:
@@ -51,15 +48,3 @@ jobs:
             v112-gradle-caches.tar.xz.sha256
           if-no-files-found: error
           retention-days: 1
-      - name: Publish successful run id marker
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p ci/v112/runs
-          printf 'run_id=%s\nhead_sha=%s\nstatus=SUCCESS\nartifact=FUSH-v112-gradle-dependency-cache\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" > "ci/v112/runs/deps-${GITHUB_RUN_ID}.txt"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "ci/v112/runs/deps-${GITHUB_RUN_ID}.txt"
-          git commit -m "Record v112 dependency cache run ${GITHUB_RUN_ID} [skip ci]"
-          git pull --rebase origin fush/v112-role-permissions-build
-          git push origin HEAD:fush/v112-role-permissions-build
