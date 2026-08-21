@@ -1,6 +1,9 @@
 name: APK Binary Port Tools
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/apktool-port-tools.yml'
   push:
     branches:
       - agent/customer-statement-pdf-20260821
