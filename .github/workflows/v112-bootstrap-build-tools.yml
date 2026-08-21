@@ -44,14 +44,15 @@ jobs:
           cp -a "$ANDROID_SDK_ROOT/build-tools" portable/android-sdk/
           cp -a "$ANDROID_SDK_ROOT/licenses" portable/android-sdk/ || true
           cp -a /tmp/gradle-dist/gradle-9.4.1 portable/gradle/
-          tar -C portable -cJf fush-v112-build-toolchain.tar.xz android-sdk gradle
-          sha256sum fush-v112-build-toolchain.tar.xz > fush-v112-build-toolchain.tar.xz.sha256
-          ls -lh fush-v112-build-toolchain.tar.xz
+          tar -C portable -cf fush-v112-build-toolchain.tar android-sdk gradle
+          sha256sum fush-v112-build-toolchain.tar > fush-v112-build-toolchain.tar.sha256
+          ls -lh fush-v112-build-toolchain.tar
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v112-portable-build-toolchain
+          name: FUSH-v112-portable-build-toolchain-fast
+          compression-level: 1
           path: |
-            fush-v112-build-toolchain.tar.xz
-            fush-v112-build-toolchain.tar.xz.sha256
+            fush-v112-build-toolchain.tar
+            fush-v112-build-toolchain.tar.sha256
           if-no-files-found: error
           retention-days: 1
