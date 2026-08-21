@@ -1,0 +1,110 @@
+name: FUSH v112 temporary validation build
+
+on:
+  push:
+    branches:
+      - fush/v112-role-permissions-build
+    paths:
+      - 'ci/v112/READY'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Extract exact v112 source payload
+        shell: bash
+        run: |
+          rm -rf buildsrc
+          mkdir buildsrc
+          cat ci/v112/source_chunks/part_* | tr -d '\r\n' | base64 -d > ci/v112/fush-v112-buildsrc.tar.xz
+          tar -xJf ci/v112/fush-v112-buildsrc.tar.xz -C buildsrc
+          grep -q 'applicationId = "com.fush.erp.recovery"' buildsrc/app/build.gradle.kts
+          grep -q 'versionCode = 112' buildsrc/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.63-role-permissions-delete1"' buildsrc/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 38' buildsrc/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          if grep -R --include='*.kt' --include='*.java' -n 'fallbackToDestructiveMigration' buildsrc/app/src/main; then
+            echo 'Destructive migration fallback detected' >&2
+            exit 1
+          fi
+
+      - name: Run full JVM unit test suite
+        working-directory: buildsrc
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Compile debug and release APKs
+        working-directory: buildsrc
+        run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
+
+      - name: Run targeted role management instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd buildsrc
+            gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.RoleManagementIntegrationTest
+
+      - name: Align unsigned release and verify identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci/v112/output
+          UNSIGNED=$(find buildsrc/app/build/outputs/apk/release -maxdepth 1 -type f -name '*unsigned*.apk' | head -1)
+          test -n "$UNSIGNED"
+          zipalign -f -p 4 "$UNSIGNED" ci/v112/output/FUSH_ERP_Mobile_v112-RolePermissionsDelete-ALIGNED-UNSIGNED.apk
+          zipalign -c -P 16 -v 4 ci/v112/output/FUSH_ERP_Mobile_v112-RolePermissionsDelete-ALIGNED-UNSIGNED.apk
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" ci/v112/output/apksigner.jar
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging ci/v112/output/FUSH_ERP_Mobile_v112-RolePermissionsDelete-ALIGNED-UNSIGNED.apk | head -20 > ci/v112/output/APK_BADGING.txt
+          sha256sum ci/v112/output/FUSH_ERP_Mobile_v112-RolePermissionsDelete-ALIGNED-UNSIGNED.apk > ci/v112/output/SHA256SUMS.txt
+          cat > ci/v112/output/BUILD_VALIDATION.txt <<'EOF'
+          FUSH ERP Mobile v112 temporary build validation
+          applicationId=com.fush.erp.recovery
+          versionCode=112
+          versionName=0.15.4.63-role-permissions-delete1
+          Room=38
+          JVM unit tests=PASS
+          RoleManagementIntegrationTest=PASS
+          assembleDebug=PASS
+          assembleRelease=PASS
+          zipalign 4-byte + 16KB page check=PASS
+          Permanent signing intentionally performed outside GitHub; no signing key/password stored in repository.
+          EOF
+
+      - name: Publish temporary build outputs to this non-official branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/v112/output
+          git commit -m "v112 temporary validated unsigned build [skip ci]"
+          git push origin HEAD:fush/v112-role-permissions-build
