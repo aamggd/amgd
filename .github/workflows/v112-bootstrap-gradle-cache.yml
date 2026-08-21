@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 45
     env:
       GRADLE_USER_HOME: ${{ github.workspace }}/v112-gradle-home
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
@@ -34,12 +35,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
-      - name: Resolve exact v112 plugins and dependencies
+      - name: Resolve exact v112 plugins and all compile/test dependencies
         working-directory: ci/v112/deps_project
         shell: bash
         run: |
           set -euo pipefail
-          gradle --no-daemon :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:assembleDebugAndroidTest --stacktrace
+          gradle --no-daemon --max-workers=2 \
+            :app:compileDebugKotlin \
+            :app:compileReleaseKotlin \
+            :app:compileDebugUnitTestKotlin \
+            :app:compileDebugAndroidTestKotlin \
+            --stacktrace
       - name: Package isolated Gradle cache
         shell: bash
         run: |
