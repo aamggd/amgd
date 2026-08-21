@@ -1,0 +1,57 @@
+name: FUSH v112 bootstrap build tools
+
+on:
+  pull_request:
+    branches: [fush/v112-toolchain-target]
+    paths:
+      - '.github/workflows/v112-bootstrap-build-tools.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@v3
+      - name: Install exact Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Download Gradle 9.4.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 -o /tmp/gradle-9.4.1-bin.zip https://services.gradle.org/distributions/gradle-9.4.1-bin.zip
+          unzip -q /tmp/gradle-9.4.1-bin.zip -d /tmp/gradle-dist
+      - name: Package portable build toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p portable/android-sdk portable/gradle
+          cp -a "$ANDROID_SDK_ROOT/platform-tools" portable/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/platforms" portable/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/build-tools" portable/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/licenses" portable/android-sdk/ || true
+          cp -a /tmp/gradle-dist/gradle-9.4.1 portable/gradle/
+          tar -C portable -cJf fush-v112-build-toolchain.tar.xz android-sdk gradle
+          sha256sum fush-v112-build-toolchain.tar.xz > fush-v112-build-toolchain.tar.xz.sha256
+          ls -lh fush-v112-build-toolchain.tar.xz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-portable-build-toolchain
+          path: |
+            fush-v112-build-toolchain.tar.xz
+            fush-v112-build-toolchain.tar.xz.sha256
+          if-no-files-found: error
+          retention-days: 1
