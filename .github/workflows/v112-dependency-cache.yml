@@ -14,13 +14,15 @@ permissions:
 jobs:
   resolve-dependencies:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK 36
         shell: bash
@@ -31,24 +33,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
-      - name: Resolve exact v112 plugins and dependencies
+      - name: Resolve exact v112 plugins, Kotlin build tools, runtime and test dependencies
         working-directory: ci/v112/deps_project
+        shell: bash
         run: |
-          gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:testDebugUnitTest --stacktrace
+          set -euo pipefail
+          gradle --no-daemon --max-workers=2 --refresh-dependencies \
+            :app:compileDebugKotlin \
+            :app:compileReleaseKotlin \
+            :app:compileDebugUnitTestKotlin \
+            :app:compileDebugAndroidTestKotlin \
+            --stacktrace
+          gradle --no-daemon --max-workers=2 :app:dependencies --configuration kotlinBuildToolsApiClasspath
+          gradle --no-daemon --max-workers=2 \
+            :app:assembleDebug \
+            :app:assembleRelease \
+            :app:testDebugUnitTest \
+            :app:assembleDebugAndroidTest \
+            --stacktrace
       - name: Package Gradle dependency cache
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf "$HOME/.gradle/daemon" "$HOME/.gradle/workers" "$HOME/.gradle/notifications" || true
           du -sh "$HOME/.gradle/caches" || true
-          tar -C "$HOME/.gradle" -cJf v112-gradle-caches.tar.xz caches
-          sha256sum v112-gradle-caches.tar.xz > v112-gradle-caches.tar.xz.sha256
-          ls -lh v112-gradle-caches.tar.xz
+          tar -C "$HOME/.gradle" -cf v112-gradle-caches.tar caches
+          sha256sum v112-gradle-caches.tar > v112-gradle-caches.tar.sha256
+          ls -lh v112-gradle-caches.tar
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v112-gradle-dependency-cache
+          compression-level: 1
           path: |
-            v112-gradle-caches.tar.xz
-            v112-gradle-caches.tar.xz.sha256
+            v112-gradle-caches.tar
+            v112-gradle-caches.tar.sha256
           if-no-files-found: error
           retention-days: 1
       - name: Publish successful run id marker
