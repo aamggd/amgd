@@ -31,20 +31,43 @@ jobs:
       - name: Resolve exact v112 plugins and dependencies
         working-directory: ci/v112/deps_project
         run: |
-          gradle --no-daemon --refresh-dependencies :app:assembleDebug :app:testDebugUnitTest --stacktrace
-      - name: Package Gradle dependency cache
+          gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest --stacktrace
+      - name: Package and split Gradle dependency cache
         shell: bash
         run: |
           set -euo pipefail
           du -sh "$HOME/.gradle/caches" || true
           tar -C "$HOME/.gradle" -cJf v112-gradle-caches.tar.xz caches
           sha256sum v112-gradle-caches.tar.xz > v112-gradle-caches.tar.xz.sha256
-          ls -lh v112-gradle-caches.tar.xz
+          split -b 300M -d -a 2 v112-gradle-caches.tar.xz v112-gradle-caches.part-
+          ls -lh v112-gradle-caches.tar.xz v112-gradle-caches.part-*
+          test -f v112-gradle-caches.part-00
+          test -f v112-gradle-caches.part-01
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v112-gradle-dependency-cache
-          path: |
-            v112-gradle-caches.tar.xz
-            v112-gradle-caches.tar.xz.sha256
+          name: FUSH-v112-gradle-cache-part-00
+          path: v112-gradle-caches.part-00
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-gradle-cache-part-01
+          path: v112-gradle-caches.part-01
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-gradle-cache-part-02
+          path: v112-gradle-caches.part-02
+          if-no-files-found: ignore
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-gradle-cache-checksum
+          path: v112-gradle-caches.tar.xz.sha256
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 1
