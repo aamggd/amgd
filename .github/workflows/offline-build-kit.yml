@@ -38,30 +38,55 @@ jobs:
       - name: Warm exact project dependencies
         working-directory: central_source
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
-      - name: Package offline build kit
+      - name: Package and split offline build kit
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p kit/gradle kit/android-sdk
+          mkdir -p kit/gradle kit/android-sdk parts
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
-          echo "$GRADLE_HOME" > kit/gradle-home.txt
           cp -a "$GRADLE_HOME" kit/gradle/gradle-home
           cp -a "$HOME/.gradle/caches/modules-2" kit/gradle/modules-2
-          if [ -d "$HOME/.gradle/caches/9.4.1" ]; then cp -a "$HOME/.gradle/caches/9.4.1" kit/gradle/cache-9.4.1; fi
-          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" kit/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" kit/android-sdk/android-36
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" kit/android-sdk/build-tools-36.0.0
-          cp -a "$ANDROID_SDK_ROOT/platform-tools" kit/android-sdk/
-          cp -a "$ANDROID_SDK_ROOT/licenses" kit/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/platform-tools" kit/android-sdk/platform-tools
+          cp -a "$ANDROID_SDK_ROOT/licenses" kit/android-sdk/licenses
           tar -C kit -czf fush-offline-build-kit.tar.gz .
-          sha256sum fush-offline-build-kit.tar.gz > fush-offline-build-kit.tar.gz.sha256
-          du -h fush-offline-build-kit.tar.gz
-      - name: Upload kit
+          sha256sum fush-offline-build-kit.tar.gz > parts/fush-offline-build-kit.tar.gz.sha256
+          split -b 300M -d -a 2 fush-offline-build-kit.tar.gz parts/fush-offline-build-kit.part-
+          ls -lh parts
+      - name: Upload part 00
         uses: actions/upload-artifact@v4
         with:
-          name: fush-offline-build-kit
-          path: |
-            fush-offline-build-kit.tar.gz
-            fush-offline-build-kit.tar.gz.sha256
+          name: fush-offline-build-kit-part-00
+          path: parts/fush-offline-build-kit.part-00
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-offline-build-kit-part-01
+          path: parts/fush-offline-build-kit.part-01
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-offline-build-kit-part-02
+          path: parts/fush-offline-build-kit.part-02
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-offline-build-kit-part-03
+          path: parts/fush-offline-build-kit.part-03
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-offline-build-kit-checksum
+          path: parts/fush-offline-build-kit.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
