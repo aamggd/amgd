@@ -1,0 +1,49 @@
+name: APK Binary Port Tools
+
+on:
+  push:
+    branches:
+      - agent/customer-statement-pdf-20260821
+    paths:
+      - '.github/workflows/apktool-port-tools.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;36.0.0"
+      - name: Download and verify Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          curl -fL --retry 3 -o out/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar
+          echo 'dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423  out/apktool.jar' | sha256sum -c -
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" out/zipalign
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" out/aapt2
+          chmod +x out/zipalign out/aapt2
+          java -jar out/apktool.jar --version | tee out/apktool-version.txt
+          sha256sum out/zipalign out/aapt2 > out/android-tools.sha256
+      - name: Upload binary port tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-binary-port-tools
+          path: out/*
+          if-no-files-found: error
+          retention-days: 1
