@@ -1,0 +1,112 @@
+name: Build Exact v106 Clean APK
+
+on:
+  pull_request:
+    branches: [agent/v106-clean-apk-build-20260821]
+    paths:
+      - 'v106_clean_payload/**'
+      - '.github/workflows/build-v106-clean-exact.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_SHA256: '89c018ff8e81ca6857929b54ed81ddaffde56c796cc893e031880a9a80e473ac'
+  EXPECTED_APP_ID: 'com.fush.erp.recovery'
+  EXPECTED_VERSION_CODE: '106'
+  EXPECTED_ROOM_SCHEMA: '38'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact payload branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Reconstruct exact v106 Clean source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat v106_clean_payload/source-part-*.b64 | tr -d '\r\n' > source.b64
+          base64 -d source.b64 > FushERP-Mobile-v106-CLEAN-Source.zip
+          echo "$SOURCE_SHA256  FushERP-Mobile-v106-CLEAN-Source.zip" | sha256sum -c -
+          mkdir release-source
+          unzip -q FushERP-Mobile-v106-CLEAN-Source.zip -d unpacked
+          ROOT=$(find unpacked -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          test -n "$ROOT"
+          cp -a "$ROOT"/. release-source/
+
+      - name: Validate exact clean source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' release-source/app/build.gradle.kts
+          grep -q 'versionCode = 106' release-source/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.57-clean-install"' release-source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 38' release-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' release-source/app/src/main || true
+
+      - name: Compile Kotlin debug
+        working-directory: release-source
+        run: gradle --no-daemon :app:compileDebugKotlin
+
+      - name: Run unit tests
+        working-directory: release-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release APK
+        working-directory: release-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate and align release
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=release-source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='$EXPECTED_APP_ID'"
+          echo "$BADGING" | grep -q "versionCode='$EXPECTED_VERSION_CODE'"
+          mkdir -p out/apksigner/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -P 16 -f -v 4 "$APK" out/FUSH_ERP_Mobile_v106-CLEAN-unsigned-aligned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -P 16 -v 4 out/FUSH_ERP_Mobile_v106-CLEAN-unsigned-aligned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" out/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" out/apksigner/lib/apksigner.jar
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" out/aapt
+          chmod +x out/apksigner/apksigner out/aapt
+          sha256sum out/FUSH_ERP_Mobile_v106-CLEAN-unsigned-aligned.apk > out/FUSH_ERP_Mobile_v106-CLEAN-unsigned-aligned.apk.sha256
+          cp FushERP-Mobile-v106-CLEAN-Source.zip out/FushERP-Mobile-v106-CLEAN-Source.zip
+
+      - name: Upload exact v106 candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v106-CLEAN-Exact-Candidate
+          path: out/*
+          if-no-files-found: error
+          retention-days: 3
