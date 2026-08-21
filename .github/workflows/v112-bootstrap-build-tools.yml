@@ -5,6 +5,10 @@ on:
     branches: [fush/v112-role-permissions-build]
     paths:
       - '.github/workflows/v112-bootstrap-build-tools.yml'
+  pull_request:
+    branches: [fush/v112-toolchain-target]
+    paths:
+      - '.github/workflows/v112-bootstrap-build-tools.yml'
   workflow_dispatch:
 
 permissions:
