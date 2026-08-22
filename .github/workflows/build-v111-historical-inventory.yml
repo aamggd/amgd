@@ -1,0 +1,91 @@
+name: Build v111 Historical Inventory Guard
+
+on:
+  push:
+    branches:
+      - agent/v111-historical-inventory-build-20260822
+    paths:
+      - 'v111_build/**'
+      - '.github/workflows/build-v111-historical-inventory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-v111:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated build branch
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Reconstruct exact v111 source payload
+        shell: bash
+        run: |
+          base64 -d v111_build/source.tar.xz.b64 > v111-source.tar.xz
+          echo "5ce73d4359b5179d6f0931b80095b3e8ee53c4439ab9481fbfcf5bec789b662b  v111-source.tar.xz" | sha256sum -c -
+          mkdir -p v111-source
+          tar -xJf v111-source.tar.xz -C v111-source
+          test -f v111-source/settings.gradle.kts
+          test -f v111-source/app/build.gradle.kts
+
+      - name: Verify v111 release identity and safety baseline
+        shell: bash
+        run: |
+          grep -q 'applicationId = "com.fush.erp.recovery"' v111-source/app/build.gradle.kts
+          grep -q 'versionCode = 111' v111-source/app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.62-historical-inventory-guard1"' v111-source/app/build.gradle.kts
+          grep -q 'version = 38' v111-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          if grep -R --line-number 'fallbackToDestructiveMigration' v111-source/app/src/main/java; then
+            echo 'Destructive migration fallback detected' >&2
+            exit 1
+          fi
+
+      - name: Run unit tests
+        working-directory: v111-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build debug and unsigned release APKs
+        working-directory: v111-source
+        run: gradle --no-daemon :app:assembleDebug :app:assembleRelease
+
+      - name: Collect APK and local signing tools
+        shell: bash
+        run: |
+          mkdir -p artifact/sign-tools/lib
+          RELEASE_APK="v111-source/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$RELEASE_APK"
+          cp "$RELEASE_APK" artifact/FUSH_ERP_Mobile_v111-HistoricalInventoryGuard-UNSIGNED.apk
+          sha256sum artifact/FUSH_ERP_Mobile_v111-HistoricalInventoryGuard-UNSIGNED.apk > artifact/FUSH_ERP_Mobile_v111-HistoricalInventoryGuard-UNSIGNED.apk.sha256
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" artifact/sign-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" artifact/sign-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" artifact/sign-tools/lib/
+          chmod +x artifact/sign-tools/apksigner artifact/sign-tools/zipalign
+
+      - name: Upload unsigned v111 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v111-HistoricalInventoryGuard-UNSIGNED-and-sign-tools
+          path: artifact
+          if-no-files-found: error
+          retention-days: 2
