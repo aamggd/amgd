@@ -7,6 +7,12 @@ on:
     paths:
       - 'v111_build/**'
       - '.github/workflows/build-v111-historical-inventory.yml'
+  pull_request:
+    branches:
+      - agent/v106-clean-apk-build-20260821
+    paths:
+      - 'v111_build/**'
+      - '.github/workflows/build-v111-historical-inventory.yml'
 
 permissions:
   contents: read
