@@ -16,7 +16,7 @@ on:
 jobs:
   package-toolchain:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
@@ -48,18 +48,112 @@ jobs:
           cp gradlew.bat "$GITHUB_WORKSPACE/v123-toolchain/gradlew.bat"
           cp gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/v123-toolchain/gradle/wrapper/gradle-wrapper.jar"
           cp gradle/wrapper/gradle-wrapper.properties "$GITHUB_WORKSPACE/v123-toolchain/gradle/wrapper/gradle-wrapper.properties"
-      - name: Package Android build tools
+      - name: Seed v123 Gradle dependencies
+        shell: bash
         run: |
-          mkdir -p v123-toolchain/android-build-tools/lib
+          set -euo pipefail
+          SEED=/tmp/v123-seed
+          mkdir -p "$SEED/app/src/main" "$SEED/app/schemas"
+          cat > "$SEED/settings.gradle.kts" <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "FushV123DependencySeed"
+          include(":app")
+          EOF
+          cat > "$SEED/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application") version "9.2.0" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.3.21" apply false
+              id("com.google.devtools.ksp") version "2.3.9" apply false
+              id("androidx.room") version "2.8.4" apply false
+          }
+          EOF
+          cat > "$SEED/app/build.gradle.kts" <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.plugin.compose")
+              id("com.google.devtools.ksp")
+              id("androidx.room")
+          }
+          android {
+              namespace = "com.fush.seed"
+              compileSdk = 36
+              defaultConfig {
+                  applicationId = "com.fush.seed"
+                  minSdk = 26
+                  targetSdk = 36
+                  versionCode = 1
+                  versionName = "1.0"
+                  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+              }
+              buildFeatures { compose = true }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          room { schemaDirectory("$projectDir/schemas") }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.17.0")
+              implementation("androidx.activity:activity-compose:1.13.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+              implementation("androidx.navigation:navigation-compose:2.9.8")
+              implementation("androidx.room:room-runtime:2.8.4")
+              implementation("androidx.room:room-ktx:2.8.4")
+              ksp("androidx.room:room-compiler:2.8.4")
+              val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
+              implementation(composeBom)
+              androidTestImplementation(composeBom)
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-tooling-preview")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material-icons-core")
+              debugImplementation("androidx.compose.ui:ui-tooling")
+              testImplementation("junit:junit:4.13.2")
+              testImplementation("androidx.room:room-testing:2.8.4")
+              androidTestImplementation("androidx.room:room-testing:2.8.4")
+              androidTestImplementation("androidx.test:core:1.7.0")
+              androidTestImplementation("androidx.test:runner:1.7.0")
+              androidTestImplementation("androidx.test.ext:junit:1.3.0")
+          }
+          EOF
+          cat > "$SEED/app/src/main/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>
+          EOF
+          cd "$SEED"
+          gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
+          gradle --no-daemon :app:dependencies >/tmp/v123-seed-dependencies.txt
+      - name: Package offline build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p v123-toolchain/android-build-tools/lib v123-toolchain/offline
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" v123-toolchain/android-build-tools/apksigner
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" v123-toolchain/android-build-tools/lib/apksigner.jar
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" v123-toolchain/android-build-tools/zipalign
           chmod +x v123-toolchain/gradlew v123-toolchain/android-build-tools/apksigner v123-toolchain/android-build-tools/zipalign
+          tar -czf v123-toolchain/offline/android-sdk36.tgz -C "$ANDROID_SDK_ROOT" build-tools/36.0.0 platforms/android-36 platform-tools licenses
+          tar -czf v123-toolchain/offline/gradle-home.tgz -C "$HOME/.gradle" caches wrapper native 2>/dev/null || tar -czf v123-toolchain/offline/gradle-home.tgz -C "$HOME/.gradle" caches wrapper
+          cp /tmp/v123-seed-dependencies.txt v123-toolchain/offline/seed-dependencies.txt
           sha256sum v123-toolchain/gradle/wrapper/gradle-wrapper.jar > v123-toolchain/gradle-wrapper.jar.sha256
           sha256sum v123-toolchain/android-build-tools/apksigner v123-toolchain/android-build-tools/lib/apksigner.jar v123-toolchain/android-build-tools/zipalign > v123-toolchain/android-build-tools.sha256
+          sha256sum v123-toolchain/offline/android-sdk36.tgz v123-toolchain/offline/gradle-home.tgz > v123-toolchain/offline/offline-assets.sha256
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v123-Toolchain-Bootstrap
+          name: FUSH-v123-Offline-Toolchain
           path: v123-toolchain/
           if-no-files-found: error
           retention-days: 1
