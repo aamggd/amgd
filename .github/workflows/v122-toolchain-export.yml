@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fush/v122-toolchain-export
+  pull_request:
+    branches:
+      - fush/v112-ci-base2
 
 jobs:
   export-toolchain:
