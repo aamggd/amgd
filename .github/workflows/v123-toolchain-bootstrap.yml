@@ -6,6 +6,11 @@ on:
       - agent/v123-toolchain-bootstrap-20260822
     paths:
       - '.github/workflows/v123-toolchain-bootstrap.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/v123-toolchain-bootstrap.yml'
   workflow_dispatch:
 
 jobs:
