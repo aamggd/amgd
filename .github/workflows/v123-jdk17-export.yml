@@ -26,18 +26,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Package JDK 17
+      - name: Package real JDK 17 directory
         shell: bash
         run: |
           set -euo pipefail
           java -version
+          REAL_JAVA_HOME="$(realpath "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
           mkdir -p jdk17-export
-          tar -czf jdk17-export/temurin-jdk17-linux-x64.tgz -C "$(dirname "$JAVA_HOME")" "$(basename "$JAVA_HOME")"
+          tar -czf jdk17-export/temurin-jdk17-linux-x64.tgz -C "$(dirname "$REAL_JAVA_HOME")" "$(basename "$REAL_JAVA_HOME")"
           sha256sum jdk17-export/temurin-jdk17-linux-x64.tgz > jdk17-export/temurin-jdk17-linux-x64.tgz.sha256
           du -h jdk17-export/temurin-jdk17-linux-x64.tgz
+          test "$(stat -c%s jdk17-export/temurin-jdk17-linux-x64.tgz)" -gt 50000000
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v123-Temurin-JDK17
+          name: FUSH-v123-Temurin-JDK17-Real
           path: jdk17-export/
           if-no-files-found: error
           retention-days: 1
