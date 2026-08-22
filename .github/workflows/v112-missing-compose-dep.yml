@@ -1,0 +1,34 @@
+name: FUSH v112 missing Compose dependency
+
+on:
+  pull_request:
+    branches: [fush/v112-ci-base2]
+    paths:
+      - 'ci/v112/MISSING_DEP_TRIGGER_*'
+
+permissions:
+  contents: read
+
+jobs:
+  export-dep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact missing Google Maven artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          base='https://dl.google.com/dl/android/maven2/androidx/compose/material/material-icons-core-desktop/1.7.8/material-icons-core-desktop-1.7.8'
+          curl -fL --retry 3 "$base.jar" -o out/material-icons-core-desktop-1.7.8.jar
+          curl -fL --retry 3 "$base.pom" -o out/material-icons-core-desktop-1.7.8.pom
+          curl -fL --retry 3 "$base.module" -o out/material-icons-core-desktop-1.7.8.module || true
+          sha256sum out/material-icons-core-desktop-1.7.8.jar | tee out/SHA256SUMS.txt
+          grep -q '^b5729220e242132b22b0c0317a304ff167a05cc685c3e9e6483d5dfca3495f56  ' out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v112-material-icons-core-desktop-1.7.8
+          path: out/*
+          compression-level: 0
+          retention-days: 1
