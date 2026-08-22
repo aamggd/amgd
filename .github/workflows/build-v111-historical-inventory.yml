@@ -45,15 +45,24 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Reconstruct exact v111 source payload
+      - name: Reconstruct and verify exact v111 source tree
         shell: bash
         run: |
           base64 -d v111_build/source.tar.xz.b64 > v111-source.tar.xz
-          echo "5ce73d4359b5179d6f0931b80095b3e8ee53c4439ab9481fbfcf5bec789b662b  v111-source.tar.xz" | sha256sum -c -
+          sha256sum v111-source.tar.xz
+          xz -t v111-source.tar.xz
           mkdir -p v111-source
           tar -xJf v111-source.tar.xz -C v111-source
           test -f v111-source/settings.gradle.kts
           test -f v111-source/app/build.gradle.kts
+          cd v111-source
+          find . -type f -print0 | sort -z | xargs -0 sha256sum > ../tree.sha256
+          echo "08a2d27b5b6b4f06c446860aa918d423503ece3241883ce16c26313a48c075b6  ../tree.sha256" | sha256sum -c -
+          echo "87cb5736ba2105700258a15f784ee102c736c9c490a96e58eb319c7b98c215cf  app/build.gradle.kts" | sha256sum -c -
+          echo "18f510895474c30fbdb3a6b59d31f75f1b5fc3a215c85db25ec6866594dc6fed  app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt" | sha256sum -c -
+          echo "b41489c65415714ae11c9729f8e42169e80d07a5045125de8d656bb536d7455a  app/src/main/java/com/fush/erp/domain/ProductionService.kt" | sha256sum -c -
+          echo "16e4e2e5f72749dadb40c8f356c32ca0c065b86b419b61ef5ced2e76805e8d1b  app/src/test/java/com/fush/erp/domain/HistoricalInventoryGuardPolicyTest.kt" | sha256sum -c -
+          echo "3d55a09f9af4da971124dea80933bc92488750337d4ef068660f3f6f74137f4a  app/src/test/java/com/fush/erp/domain/WarehouseTransferMathTest.kt" | sha256sum -c -
 
       - name: Verify v111 release identity and safety baseline
         shell: bash
