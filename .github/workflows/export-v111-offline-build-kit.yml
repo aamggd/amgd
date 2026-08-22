@@ -149,11 +149,11 @@ jobs:
         run: |
           gradle --no-daemon :app:dependencies
           gradle --no-daemon :app:assembleDebug -x lint || true
-      - name: Package offline Gradle Android kit
+      - name: Package and split offline Gradle Android kit
         shell: bash
         run: |
           set -e
-          mkdir -p offline-kit/android-sdk/platforms offline-kit/android-sdk/build-tools offline-kit/android-sdk/platform-tools offline-kit/android-sdk/licenses offline-kit/gradle-home
+          mkdir -p offline-kit/android-sdk/platforms offline-kit/android-sdk/build-tools offline-kit/android-sdk/platform-tools offline-kit/android-sdk/licenses offline-kit/gradle-home kit-parts
           cp -a "$ANDROID_SDK_ROOT/platforms/android-36" offline-kit/android-sdk/platforms/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" offline-kit/android-sdk/build-tools/
           cp -a "$ANDROID_SDK_ROOT/platform-tools/." offline-kit/android-sdk/platform-tools/
@@ -165,14 +165,40 @@ jobs:
           GRADLE_ROOT="$(cd "$(dirname "$GRADLE_REAL")/.." && pwd)"
           cp -a "$GRADLE_ROOT" offline-kit/gradle-9.4.1
           tar -I 'zstd -10 -T0' -cf Fush-v111-offline-build-kit.tar.zst offline-kit
-          sha256sum Fush-v111-offline-build-kit.tar.zst > Fush-v111-offline-build-kit.tar.zst.sha256
-          ls -lh Fush-v111-offline-build-kit.tar.zst
-      - name: Upload offline build kit
+          sha256sum Fush-v111-offline-build-kit.tar.zst > kit-parts/Fush-v111-offline-build-kit.tar.zst.sha256
+          split -b 240M -d -a 2 Fush-v111-offline-build-kit.tar.zst kit-parts/part-
+          ls -lh kit-parts
+          test -f kit-parts/part-00
+          test -f kit-parts/part-01
+          test -f kit-parts/part-02
+          test -f kit-parts/part-03
+      - name: Upload kit part 00
         uses: actions/upload-artifact@v4
         with:
-          name: Fush-v111-offline-build-kit
+          name: Fush-v111-offline-kit-part-00
           path: |
-            Fush-v111-offline-build-kit.tar.zst
-            Fush-v111-offline-build-kit.tar.zst.sha256
+            kit-parts/part-00
+            kit-parts/Fush-v111-offline-build-kit.tar.zst.sha256
+          retention-days: 2
+          if-no-files-found: error
+      - name: Upload kit part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fush-v111-offline-kit-part-01
+          path: kit-parts/part-01
+          retention-days: 2
+          if-no-files-found: error
+      - name: Upload kit part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fush-v111-offline-kit-part-02
+          path: kit-parts/part-02
+          retention-days: 2
+          if-no-files-found: error
+      - name: Upload kit part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fush-v111-offline-kit-part-03
+          path: kit-parts/part-03
           retention-days: 2
           if-no-files-found: error
