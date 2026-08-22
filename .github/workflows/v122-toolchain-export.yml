@@ -1,0 +1,62 @@
+name: v122 Toolchain Export
+
+on:
+  push:
+    branches:
+      - fush/v122-toolchain-export
+
+jobs:
+  export-toolchain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Ensure Android SDK 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+
+      - name: Package Gradle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          echo "Gradle home: $GRADLE_HOME"
+          tar -cJf "$RUNNER_TEMP/gradle-9.4.1.tar.xz" -C "$GRADLE_HOME" .
+          sha256sum "$RUNNER_TEMP/gradle-9.4.1.tar.xz"
+
+      - name: Package minimal Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tar -cJf "$RUNNER_TEMP/android-sdk-36.tar.xz" -C "$ANDROID_HOME" \
+            platforms/android-36 \
+            build-tools/36.0.0 \
+            licenses
+          sha256sum "$RUNNER_TEMP/android-sdk-36.tar.xz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v122-gradle-9.4.1
+          path: ${{ runner.temp }}/gradle-9.4.1.tar.xz
+          compression-level: 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v122-android-sdk-36
+          path: ${{ runner.temp }}/android-sdk-36.tar.xz
+          compression-level: 0
