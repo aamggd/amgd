@@ -43,11 +43,11 @@ jobs:
           gradle --no-daemon wrapper --gradle-version 9.4.1
           gradle --no-daemon wrapper --gradle-version 9.4.1
           ./gradlew --version
-          mkdir -p "$GITHUB_WORKSPACE/v123-toolchain/gradle/wrapper"
-          cp gradlew "$GITHUB_WORKSPACE/v123-toolchain/gradlew"
-          cp gradlew.bat "$GITHUB_WORKSPACE/v123-toolchain/gradlew.bat"
-          cp gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/v123-toolchain/gradle/wrapper/gradle-wrapper.jar"
-          cp gradle/wrapper/gradle-wrapper.properties "$GITHUB_WORKSPACE/v123-toolchain/gradle/wrapper/gradle-wrapper.properties"
+          mkdir -p "$GITHUB_WORKSPACE/v123-small/gradle/wrapper"
+          cp gradlew "$GITHUB_WORKSPACE/v123-small/gradlew"
+          cp gradlew.bat "$GITHUB_WORKSPACE/v123-small/gradlew.bat"
+          cp gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/v123-small/gradle/wrapper/gradle-wrapper.jar"
+          cp gradle/wrapper/gradle-wrapper.properties "$GITHUB_WORKSPACE/v123-small/gradle/wrapper/gradle-wrapper.properties"
       - name: Seed v123 Gradle dependencies
         shell: bash
         run: |
@@ -56,18 +56,11 @@ jobs:
           mkdir -p "$SEED/app/src/main" "$SEED/app/schemas"
           cat > "$SEED/settings.gradle.kts" <<'EOF'
           pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
           }
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
+              repositories { google(); mavenCentral() }
           }
           rootProject.name = "FushV123DependencySeed"
           include(":app")
@@ -134,26 +127,62 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>
           EOF
           cd "$SEED"
-          gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest
-          gradle --no-daemon :app:dependencies >/tmp/v123-seed-dependencies.txt
-      - name: Package offline build environment
+          gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest
+      - name: Package split offline assets
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p v123-toolchain/android-build-tools/lib v123-toolchain/offline
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" v123-toolchain/android-build-tools/apksigner
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" v123-toolchain/android-build-tools/lib/apksigner.jar
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" v123-toolchain/android-build-tools/zipalign
-          chmod +x v123-toolchain/gradlew v123-toolchain/android-build-tools/apksigner v123-toolchain/android-build-tools/zipalign
-          tar -czf v123-toolchain/offline/android-sdk36.tgz -C "$ANDROID_SDK_ROOT" build-tools/36.0.0 platforms/android-36 platform-tools licenses
-          tar -czf v123-toolchain/offline/gradle-home.tgz -C "$HOME/.gradle" caches wrapper native 2>/dev/null || tar -czf v123-toolchain/offline/gradle-home.tgz -C "$HOME/.gradle" caches wrapper
-          cp /tmp/v123-seed-dependencies.txt v123-toolchain/offline/seed-dependencies.txt
-          sha256sum v123-toolchain/gradle/wrapper/gradle-wrapper.jar > v123-toolchain/gradle-wrapper.jar.sha256
-          sha256sum v123-toolchain/android-build-tools/apksigner v123-toolchain/android-build-tools/lib/apksigner.jar v123-toolchain/android-build-tools/zipalign > v123-toolchain/android-build-tools.sha256
-          sha256sum v123-toolchain/offline/android-sdk36.tgz v123-toolchain/offline/gradle-home.tgz > v123-toolchain/offline/offline-assets.sha256
+          mkdir -p v123-small/offline v123-parts
+          cp /tmp/v123-seed/app/build/outputs/apk/debug/app-debug.apk v123-small/seed-debug.apk
+          tar -czf v123-small/offline/android-sdk36.tgz -C "$ANDROID_SDK_ROOT" build-tools/36.0.0 platforms/android-36 platform-tools licenses
+          tar -czf /tmp/gradle-modules.tgz -C "$HOME/.gradle" caches/modules-2 wrapper
+          split -b 250M -d -a 2 /tmp/gradle-modules.tgz v123-parts/gradle-modules.part.
+          sha256sum v123-small/offline/android-sdk36.tgz > v123-small/offline/android-sdk36.tgz.sha256
+          sha256sum /tmp/gradle-modules.tgz > v123-parts/gradle-modules.tgz.sha256
+          sha256sum v123-parts/gradle-modules.part.* > v123-parts/parts.sha256
+          du -sh "$HOME/.gradle/caches/modules-2" "$HOME/.gradle/wrapper" "$ANDROID_SDK_ROOT/build-tools/36.0.0" "$ANDROID_SDK_ROOT/platforms/android-36"
+          ls -lh v123-small/offline/android-sdk36.tgz v123-parts/*
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v123-Offline-Toolchain
-          path: v123-toolchain/
+          name: FUSH-v123-SDK36-And-Wrapper
+          path: v123-small/
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-00
+          path: v123-parts/gradle-modules.part.00
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-01
+          path: v123-parts/gradle-modules.part.01
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-02
+          path: v123-parts/gradle-modules.part.02
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-03
+          path: v123-parts/gradle-modules.part.03
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-04
+          path: v123-parts/gradle-modules.part.04
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-GradleCache-Metadata
+          path: |
+            v123-parts/gradle-modules.tgz.sha256
+            v123-parts/parts.sha256
           if-no-files-found: error
           retention-days: 1
