@@ -39,27 +39,27 @@ jobs:
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
           echo "Gradle home: $GRADLE_HOME"
-          tar -cJf "$RUNNER_TEMP/gradle-9.4.1.tar.xz" -C "$GRADLE_HOME" .
-          sha256sum "$RUNNER_TEMP/gradle-9.4.1.tar.xz"
+          tar -cf "$RUNNER_TEMP/gradle-9.4.1.tar" -C "$GRADLE_HOME" .
+          sha256sum "$RUNNER_TEMP/gradle-9.4.1.tar"
 
       - name: Package minimal Android SDK
         shell: bash
         run: |
           set -euxo pipefail
-          tar -cJf "$RUNNER_TEMP/android-sdk-36.tar.xz" -C "$ANDROID_HOME" \
+          tar -cf "$RUNNER_TEMP/android-sdk-36.tar" -C "$ANDROID_HOME" \
             platforms/android-36 \
             build-tools/36.0.0 \
             licenses
-          sha256sum "$RUNNER_TEMP/android-sdk-36.tar.xz"
+          sha256sum "$RUNNER_TEMP/android-sdk-36.tar"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: v122-gradle-9.4.1
-          path: ${{ runner.temp }}/gradle-9.4.1.tar.xz
+          name: v122-gradle-9.4.1-fast
+          path: ${{ runner.temp }}/gradle-9.4.1.tar
           compression-level: 0
 
       - uses: actions/upload-artifact@v4
         with:
-          name: v122-android-sdk-36
-          path: ${{ runner.temp }}/android-sdk-36.tar.xz
+          name: v122-android-sdk-36-fast
+          path: ${{ runner.temp }}/android-sdk-36.tar
           compression-level: 0
