@@ -1,0 +1,105 @@
+--- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+@@ -1556,12 +1556,7 @@
+         val end = start + 86_400_000L
+         val seq = db.productionDao().countBatchesInRange(start, end) + 1
+         val date = SimpleDateFormat("yyMMdd", Locale.US).format(Date(manufactureDate))
+-        val searchable = (product.code + " " + product.nameAr + " " + product.nameEn).uppercase(Locale.US)
+-        val prefix = when {
+-            searchable.contains("200") -> "F200"
+-            searchable.contains("60") -> "F60"
+-            else -> "F${product.id}"
+-        }
++        val prefix = ProductionBatchNumberPolicy.productPrefix(product.code, product.id)
+         return "$prefix-$date-${seq.toString().padStart(2, '0')}"
+     }
+ 
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 129
+-        versionName = "0.15.4.80-cash-refund-actual-cash-guard1"
++        versionCode = 130
++        versionName = "0.15.4.81-generic-production-batch-number1"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/app/src/main/java/com/fush/erp/domain/ProductionBatchNumberPolicy.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionBatchNumberPolicy.kt
+@@ -0,0 +1,17 @@
++package com.fush.erp.domain
++
++import java.util.Locale
++
++object ProductionBatchNumberPolicy {
++    /**
++     * Batch identity is derived from the product master-data code, never from a hardcoded size/name.
++     * Example: FG-000123 -> FG000123. This works unchanged for 60ml, 100ml, 200ml, or any future product.
++     */
++    fun productPrefix(productCode: String, productId: Long): String {
++        val normalized = productCode
++            .trim()
++            .uppercase(Locale.US)
++            .replace(Regex("[^A-Z0-9]+"), "")
++        return normalized.ifBlank { "F$productId" }
++    }
++}
+--- a/app/src/test/java/com/fush/erp/domain/ProductionBatchNumberPolicyTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/ProductionBatchNumberPolicyTest.kt
+@@ -0,0 +1,20 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class ProductionBatchNumberPolicyTest {
++    @Test fun productCodeDrivesPrefixForAnyProductSize() {
++        assertEquals("FG000060", ProductionBatchNumberPolicy.productPrefix("FG-000060", 60))
++        assertEquals("FG000100", ProductionBatchNumberPolicy.productPrefix("FG-000100", 100))
++        assertEquals("FG000200", ProductionBatchNumberPolicy.productPrefix("FG-000200", 200))
++    }
++
++    @Test fun prefixDoesNotDependOnMlNamingConvention() {
++        assertEquals("FUSHGELX", ProductionBatchNumberPolicy.productPrefix("FUSH-GEL-X", 999))
++    }
++
++    @Test fun blankCodeHasStableIdFallback() {
++        assertEquals("F42", ProductionBatchNumberPolicy.productPrefix("   ", 42))
++    }
++}
+--- a/app/src/test/java/com/fush/erp/domain/ProductionBatchNumberContractTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/ProductionBatchNumberContractTest.kt
+@@ -0,0 +1,19 @@
++package com.fush.erp.domain
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ProductionBatchNumberContractTest {
++    @Test fun productionServiceHasNoSizeSpecificBatchHardcoding() {
++        val f = listOf(
++            File("src/main/java/com/fush/erp/domain/ProductionService.kt"),
++            File("app/src/main/java/com/fush/erp/domain/ProductionService.kt")
++        ).first { it.isFile }
++        val source = f.readText()
++        assertTrue(source.contains("ProductionBatchNumberPolicy.productPrefix(product.code, product.id)"))
++        assertFalse(source.contains("contains(\"200\") -> \"F200\""))
++        assertFalse(source.contains("contains(\"60\") -> \"F60\""))
++    }
++}
+--- a/V130_GENERIC_PRODUCTION_BATCH_NUMBER.md
++++ b/V130_GENERIC_PRODUCTION_BATCH_NUMBER.md
+@@ -0,0 +1,8 @@
++# v130 Generic Production Batch Number
++
++- Removed size-specific `60` / `200` batch-number hardcoding from `ProductionService`.
++- Batch prefix now derives from the product master-data `code`.
++- Product names and package volume do not participate in batch numbering.
++- New products such as 100ml require no code change.
++- Existing historical batch numbers are untouched.
++- Room schema remains 39; no migration and no database recreation.
