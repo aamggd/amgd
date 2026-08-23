@@ -55,9 +55,7 @@ jobs:
               androidTestDeps("androidx.test.ext:junit:1.3.0")
           }
           tasks.register("resolveAndroidTestDeps") {
-              doLast {
-                  androidTestDeps.resolve().forEach { println(it.absolutePath) }
-              }
+              doLast { androidTestDeps.resolve().forEach { println(it.absolutePath) } }
           }
           EOF
           GRADLE_USER_HOME=/tmp/v128-test-cache gradle -p /tmp/v128-seed --no-daemon resolveAndroidTestDeps
@@ -74,6 +72,7 @@ jobs:
           split -b 190M -d -a 2 /tmp/v128-android-runtime.tgz /tmp/runtime-parts/v128-android-runtime.tgz.part-
           cp /tmp/v128-android-runtime.tgz.sha256 /tmp/runtime-parts/
           sha256sum /tmp/runtime-parts/v128-android-runtime.tgz.part-* > /tmp/runtime-parts/parts.sha256
+          ls -lh /tmp/runtime-parts
 
       - name: Upload Gradle test cache
         uses: actions/upload-artifact@v4
@@ -85,10 +84,53 @@ jobs:
           compression-level: 0
           retention-days: 1
 
-      - name: Upload Android emulator runtime
+      - name: Upload runtime part 00
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v128-AndroidRuntime
-          path: /tmp/runtime-parts/*
+          name: FUSH-v128-AndroidRuntime-00
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-00
           compression-level: 0
+          retention-days: 1
+      - name: Upload runtime part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-01
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-01
+          compression-level: 0
+          retention-days: 1
+      - name: Upload runtime part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-02
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-02
+          compression-level: 0
+          retention-days: 1
+      - name: Upload runtime part 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-03
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-03
+          compression-level: 0
+          retention-days: 1
+      - name: Upload runtime part 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-04
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-04
+          compression-level: 0
+          retention-days: 1
+      - name: Upload runtime part 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-05
+          path: /tmp/runtime-parts/v128-android-runtime.tgz.part-05
+          compression-level: 0
+          retention-days: 1
+      - name: Upload runtime metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime-Metadata
+          path: |
+            /tmp/runtime-parts/v128-android-runtime.tgz.sha256
+            /tmp/runtime-parts/parts.sha256
           retention-days: 1
