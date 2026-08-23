@@ -1,0 +1,71 @@
+name: v129 Export Restored Gradle Cache
+
+on:
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore/provision Gradle 9.4.1 and prior FUSH caches
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Confirm Gradle and stage restored cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --version
+          mkdir -p split/modules split/transforms split/other
+          shopt -s nullglob
+          for p in "$HOME"/.gradle/caches/modules-*; do cp -a "$p" split/modules/; done
+          for p in "$HOME"/.gradle/caches/transforms-*; do cp -a "$p" split/transforms/; done
+          for p in "$HOME"/.gradle/caches/*/transforms; do
+            v="$(basename "$(dirname "$p")")"
+            mkdir -p "split/transforms/$v"
+            cp -a "$p" "split/transforms/$v/"
+          done
+          cp -a "$HOME/.gradle/caches" split/other/
+          rm -rf split/other/caches/modules-* split/other/caches/transforms-*
+          for p in split/other/caches/*/transforms; do [ -e "$p" ] && rm -rf "$p"; done
+          du -sh split/modules split/transforms split/other
+
+      - name: Upload Gradle modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-restored-gradle-modules
+          path: split/modules
+          retention-days: 7
+          compression-level: 6
+
+      - name: Upload Gradle transforms
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-restored-gradle-transforms
+          path: split/transforms
+          retention-days: 7
+          compression-level: 6
+
+      - name: Upload remaining Gradle caches
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-restored-gradle-other
+          path: split/other
+          retention-days: 7
+          compression-level: 6
