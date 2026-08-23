@@ -116,15 +116,15 @@ jobs:
           cp -a "$GRADLE_HOME_REAL" offline-env/gradle-9.4.1
           cp -a "$JAVA_HOME"/. offline-env/jdk-17/
           printf 'sdk=%s\ngradle=%s\njdk=%s\n' "$ANDROID_SDK_ROOT" "$GRADLE_HOME_REAL" "$JAVA_HOME" > offline-env/README.txt
-          tar -C offline-env -cJf v129-offline-build-env.tar.xz .
-          sha256sum v129-offline-build-env.tar.xz > v129-offline-build-env.tar.xz.sha256
+          tar -C offline-env -czf v129-offline-build-env.tar.gz .
+          sha256sum v129-offline-build-env.tar.gz > v129-offline-build-env.tar.gz.sha256
 
       - name: Upload offline build environment
         uses: actions/upload-artifact@v4
         with:
-          name: v129-offline-build-env
+          name: v129-offline-build-env-gzip
           path: |
-            v129-offline-build-env.tar.xz
-            v129-offline-build-env.tar.xz.sha256
+            v129-offline-build-env.tar.gz
+            v129-offline-build-env.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
