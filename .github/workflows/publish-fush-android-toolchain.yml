@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - fush/toolchain-android36-jdk17-gradle941
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 permissions:
