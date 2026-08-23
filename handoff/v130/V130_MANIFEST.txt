@@ -1,0 +1,24 @@
+FUSH ERP Mobile v130 — Generic Production Batch Number
+Base: v129 Cash Refund Actual Cash Guard
+Branch: fush/v130-generic-production-batch-number
+Application ID: com.fush.erp.recovery
+versionCode: 130
+versionName: 0.15.4.81-generic-production-batch-number1
+Room schema: 39
+Database migration: none
+Destructive migration: none
+
+Fix:
+- Removed ProductionService hardcoding for contains("200") -> F200 and contains("60") -> F60.
+- Batch prefix now derives from normalized product master-data code.
+- Historical batch numbers are not rewritten.
+- 100ml and future products require no batch-number code change.
+
+Artifacts:
+Source ZIP SHA-256: 69d76eee465c21a78e57b547b291df0e7ab38aa770b3dd0eb69fb4b196f0ac52
+Patch SHA-256: bcbdfde74159e184e1f13d17d9ab8e04f137d5d94357566e4773a112a21f66c0
+
+Validation:
+- Main-source scan: PASS — no F60/F200 size-specific batch hardcoding remains.
+- ZIP integrity: PASS.
+- Local full Gradle build/test was attempted; environment timed out during Gradle cache/configuration work and did not produce a completed build result for v130 in this handoff.
