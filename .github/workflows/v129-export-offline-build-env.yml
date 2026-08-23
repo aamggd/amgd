@@ -93,11 +93,10 @@ jobs:
               androidTestImplementation("androidx.test.ext:junit:1.3.0")
           }
           EOF
-          mkdir -p prime/app/src/main
+          mkdir -p prime/app/src/main prime/app/schemas
           cat > prime/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>
           EOF
-          mkdir -p prime/app/schemas
           cd prime
           gradle --no-daemon :app:dependencies >/tmp/fush-dependencies.txt
           gradle --no-daemon :app:assembleDebug >/tmp/fush-prime-build.txt
@@ -106,17 +105,17 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p offline-env/android-sdk offline-env/gradle-home
+          mkdir -p offline-env/android-sdk offline-env/gradle-home offline-env/jdk-17
           cp -a "$ANDROID_SDK_ROOT/platforms/android-36" offline-env/android-sdk/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" offline-env/android-sdk/
           cp -a "$ANDROID_SDK_ROOT/platform-tools" offline-env/android-sdk/
           cp -a "$HOME/.gradle/caches" offline-env/gradle-home/
           cp -a "$HOME/.gradle/wrapper" offline-env/gradle-home/ || true
-          command -v gradle > offline-env/gradle-command.txt
           GRADLE_BIN="$(command -v gradle)"
           GRADLE_HOME_REAL="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd -P)"
           cp -a "$GRADLE_HOME_REAL" offline-env/gradle-9.4.1
-          printf 'sdk=%s\ngradle=%s\n' "$ANDROID_SDK_ROOT" "$GRADLE_HOME_REAL" > offline-env/README.txt
+          cp -a "$JAVA_HOME"/. offline-env/jdk-17/
+          printf 'sdk=%s\ngradle=%s\njdk=%s\n' "$ANDROID_SDK_ROOT" "$GRADLE_HOME_REAL" "$JAVA_HOME" > offline-env/README.txt
           tar -C offline-env -cJf v129-offline-build-env.tar.xz .
           sha256sum v129-offline-build-env.tar.xz > v129-offline-build-env.tar.xz.sha256
 
