@@ -1,4 +1,4 @@
-name: v129 Export Offline Android Build Environment
+name: v129 Export Split Offline Android Build Environment
 
 on:
   pull_request:
@@ -101,27 +101,75 @@ jobs:
           gradle --no-daemon :app:dependencies >/tmp/fush-dependencies.txt
           gradle --no-daemon :app:assembleDebug >/tmp/fush-prime-build.txt
 
-      - name: Prepare offline build environment
+      - name: Stage split toolchain components
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p offline-env/android-sdk offline-env/gradle-home offline-env/jdk-17
-          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" offline-env/android-sdk/
-          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" offline-env/android-sdk/
-          cp -a "$ANDROID_SDK_ROOT/platform-tools" offline-env/android-sdk/
-          cp -a "$HOME/.gradle/caches" offline-env/gradle-home/
-          cp -a "$HOME/.gradle/wrapper" offline-env/gradle-home/ || true
+          mkdir -p split/jdk17 split/android-sdk split/gradle941 split/gradle-modules/caches split/gradle-transforms/caches split/gradle-other
+          cp -a "$JAVA_HOME"/. split/jdk17/
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" split/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" split/android-sdk/
+          cp -a "$ANDROID_SDK_ROOT/platform-tools" split/android-sdk/
           GRADLE_BIN="$(command -v gradle)"
           GRADLE_HOME_REAL="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd -P)"
-          cp -a "$GRADLE_HOME_REAL" offline-env/gradle-9.4.1
-          cp -a "$JAVA_HOME"/. offline-env/jdk-17/
-          printf 'sdk=%s\ngradle=%s\njdk=%s\n' "$ANDROID_SDK_ROOT" "$GRADLE_HOME_REAL" "$JAVA_HOME" > offline-env/README.txt
+          cp -a "$GRADLE_HOME_REAL"/. split/gradle941/
+          shopt -s nullglob
+          for p in "$HOME"/.gradle/caches/modules-*; do cp -a "$p" split/gradle-modules/caches/; done
+          for p in "$HOME"/.gradle/caches/transforms-*; do cp -a "$p" split/gradle-transforms/caches/; done
+          for p in "$HOME"/.gradle/caches/*/transforms; do
+            v="$(basename "$(dirname "$p")")"
+            mkdir -p "split/gradle-transforms/caches/$v"
+            cp -a "$p" "split/gradle-transforms/caches/$v/"
+          done
+          cp -a "$HOME/.gradle/caches" split/gradle-other/
+          rm -rf split/gradle-other/caches/modules-* split/gradle-other/caches/transforms-*
+          for p in split/gradle-other/caches/*/transforms; do [ -e "$p" ] && rm -rf "$p"; done
+          du -sh split/*
 
-      - name: Upload offline build environment
+      - name: Upload JDK17
         uses: actions/upload-artifact@v4
         with:
-          name: v129-offline-build-env-raw
-          path: offline-env
-          if-no-files-found: error
+          name: v129-toolchain-jdk17
+          path: split/jdk17
           retention-days: 1
-          compression-level: 0
+          compression-level: 6
+
+      - name: Upload Android SDK36
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-toolchain-android-sdk36
+          path: split/android-sdk
+          retention-days: 1
+          compression-level: 6
+
+      - name: Upload Gradle 9.4.1
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-toolchain-gradle941
+          path: split/gradle941
+          retention-days: 1
+          compression-level: 6
+
+      - name: Upload Gradle modules cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-toolchain-gradle-modules
+          path: split/gradle-modules
+          retention-days: 1
+          compression-level: 6
+
+      - name: Upload Gradle transforms cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-toolchain-gradle-transforms
+          path: split/gradle-transforms
+          retention-days: 1
+          compression-level: 6
+
+      - name: Upload remaining Gradle cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: v129-toolchain-gradle-other
+          path: split/gradle-other
+          retention-days: 1
+          compression-level: 6
