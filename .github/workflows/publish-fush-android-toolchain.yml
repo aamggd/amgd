@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   publish-toolchain:
@@ -84,11 +84,11 @@ jobs:
           FUSH Android Build Toolchain
           Android SDK Platform: 36
           Android Build Tools: 36.0.0
-          JDK: Temurin 17
+          JDK: Temurin 17.0.20+8
           Gradle: 9.4.1
           Gradle distribution SHA-256: 2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
           Intended AppID: com.fush.erp.recovery
-          No signing key or application source is included in this toolchain release.
+          No signing key or application source is included in this toolchain package.
           EOF
 
           cd /tmp/fush-toolchain/release
@@ -100,32 +100,43 @@ jobs:
             TOOLCHAIN_MANIFEST.txt > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Publish persistent GitHub Release assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: fush-android-toolchain-36-jdk17-gradle-9.4.1
-        shell: bash
-        run: |
-          set -euxo pipefail
-          cd /tmp/fush-toolchain/release
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" \
-              FUSH-Temurin-JDK17-linux-x64.tar.gz \
-              FUSH-Android-SDK36-linux-x64.tar.gz \
-              FUSH-Gradle-9.4.1-bin.zip \
-              FUSH-Gradle-Wrapper-9.4.1.tar.gz \
-              TOOLCHAIN_MANIFEST.txt \
-              SHA256SUMS.txt \
-              --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$TAG" \
-              FUSH-Temurin-JDK17-linux-x64.tar.gz \
-              FUSH-Android-SDK36-linux-x64.tar.gz \
-              FUSH-Gradle-9.4.1-bin.zip \
-              FUSH-Gradle-Wrapper-9.4.1.tar.gz \
-              TOOLCHAIN_MANIFEST.txt \
-              SHA256SUMS.txt \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "FUSH Android Toolchain — SDK 36 / JDK 17 / Gradle 9.4.1" \
-              --notes "Reusable FUSH ERP Mobile Android build toolchain. Contains Android SDK Platform 36 + Build Tools 36.0.0, Temurin JDK 17, Gradle 9.4.1 and Gradle Wrapper. No FUSH source code and no signing material included."
-          fi
+      - name: Upload Android SDK 36
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Android-SDK36-linux-x64
+          path: /tmp/fush-toolchain/release/FUSH-Android-SDK36-linux-x64.tar.gz
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload Temurin JDK 17
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Temurin-JDK17-linux-x64
+          path: /tmp/fush-toolchain/release/FUSH-Temurin-JDK17-linux-x64.tar.gz
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload Gradle 9.4.1
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Gradle-9.4.1-bin
+          path: /tmp/fush-toolchain/release/FUSH-Gradle-9.4.1-bin.zip
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload Gradle Wrapper 9.4.1
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Gradle-Wrapper-9.4.1
+          path: /tmp/fush-toolchain/release/FUSH-Gradle-Wrapper-9.4.1.tar.gz
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload manifest and SHA-256
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Android-Toolchain-Manifest
+          path: |
+            /tmp/fush-toolchain/release/TOOLCHAIN_MANIFEST.txt
+            /tmp/fush-toolchain/release/SHA256SUMS.txt
+          retention-days: 90
