@@ -1,1 +1,123 @@
-diff placeholder
+--- a/app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt
+@@ -189,6 +189,23 @@
+     /** Actual cash applied to the invoice. Used for cash collection / commission metrics only. */
+     @Query("SELECT COALESCE(SUM(amountBase), 0) FROM customer_receipt_allocations WHERE invoiceId = :invoiceId")
+     suspend fun receivedBaseForInvoice(invoiceId: Long): Double
++
++    /** Net actual cash applied up to the requested date; settlement discounts are excluded. */
++    @Query("""
++        SELECT COALESCE(SUM(cra.amountBase), 0)
++        FROM customer_receipt_allocations cra
++        JOIN customer_receipts cr ON cr.id = cra.receiptId
++        WHERE cra.invoiceId = :invoiceId AND cr.receiptDate <= :asOf
++    """)
++    suspend fun receivedBaseForInvoiceAsOf(invoiceId: Long, asOf: Long): Double
++
++    @Query("""
++        SELECT COALESCE(SUM(totalBase), 0)
++        FROM sales_returns
++        WHERE salesInvoiceId = :invoiceId AND status = 'POSTED'
++          AND settlementType = 'CASH_REFUND' AND returnDate <= :asOf
++    """)
++    suspend fun cashRefundedBaseForInvoiceAsOf(invoiceId: Long, asOf: Long): Double
+ 
+     /** Total A/R settlement = cash applied + settlement discount. */
+     @Query("SELECT COALESCE(SUM(amountBase + discountBase), 0) FROM customer_receipt_allocations WHERE invoiceId = :invoiceId")
+--- a/app/src/main/java/com/fush/erp/domain/CashRefundCoveragePolicy.kt
++++ b/app/src/main/java/com/fush/erp/domain/CashRefundCoveragePolicy.kt
+@@ -0,0 +1,23 @@
++package com.fush.erp.domain
++
++object CashRefundCoveragePolicy {
++    const val EPS = 1e-8
++
++    fun availableBase(actualCashBase: Double, alreadyRefundedBase: Double): Double =
++        actualCashBase - alreadyRefundedBase
++
++    fun requireCovered(
++        actualCashBase: Double,
++        alreadyRefundedBase: Double,
++        requestedRefundBase: Double = 0.0,
++        context: String
++    ) {
++        require(actualCashBase.isFinite() && alreadyRefundedBase.isFinite() && requestedRefundBase.isFinite()) {
++            "قيم حماية الرد النقدي غير صالحة"
++        }
++        require(actualCashBase + EPS >= alreadyRefundedBase + requestedRefundBase) {
++            val available = availableBase(actualCashBase, alreadyRefundedBase).coerceAtLeast(0.0)
++            "$context: الحد النقدي المتاح ${"%.2f".format(available)} ولا يسمح بمبلغ إضافي ${"%.2f".format(requestedRefundBase)}"
++        }
++    }
++}
+--- a/app/src/main/java/com/fush/erp/domain/SalesService.kt
++++ b/app/src/main/java/com/fush/erp/domain/SalesService.kt
+@@ -619,6 +619,15 @@
+         }
+         require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذا التحصيل مسبقاً" }
+ 
++        allocations.forEach { allocation ->
++            val invoice = requireNotNull(db.salesDao().invoiceById(allocation.invoiceId)) { "فاتورة التحصيل غير موجودة" }
++            requireSalesCashRefundTimelineCovered(
++                invoice = invoice,
++                proposedCashDeltaBase = -allocation.amountBase,
++                eventDate = reversalDate
++            )
++        }
++
+         val reversalNo = numbering.nextDocumentNo("RCRV", reversalDate)
+         val reversalId = db.salesDao().insertReceipt(
+             CustomerReceiptEntity(
+@@ -715,6 +724,13 @@
+         val unitNetOriginal = if (line.quantity > 0.0) line.netOriginal / line.quantity else 0.0
+         val totalOriginal = quantity * unitNetOriginal
+         val totalBase = totalOriginal * invoice.exchangeRate
++        if (settlementType == "CASH_REFUND") {
++            requireSalesCashRefundTimelineCovered(
++                invoice = invoice,
++                proposedRefundBase = totalBase,
++                eventDate = returnDate
++            )
++        }
+ 
+         val allocationPlan = mutableListOf<Pair<SalesAllocationEntity, Double>>()
+         var remainingBase = returnBaseQty
+@@ -1297,6 +1313,38 @@
+         )
+     }
+ 
++    private suspend fun requireSalesCashRefundTimelineCovered(
++        invoice: SalesInvoiceEntity,
++        proposedRefundBase: Double = 0.0,
++        proposedCashDeltaBase: Double = 0.0,
++        eventDate: Long
++    ) {
++        val relevantDates = buildSet {
++            add(eventDate)
++            db.salesDao().receiptsForInvoice(invoice.id)
++                .filter { it.receiptDate >= eventDate }
++                .forEach { add(it.receiptDate) }
++            db.salesDao().returnsForInvoice(invoice.id)
++                .filter { it.status == "POSTED" && it.settlementType == "CASH_REFUND" && it.returnDate >= eventDate }
++                .forEach { add(it.returnDate) }
++        }.sorted()
++
++        for (date in relevantDates) {
++            val actualCashBase = if (invoice.paymentType == "CASH") {
++                invoice.totalBase
++            } else {
++                db.salesDao().receivedBaseForInvoiceAsOf(invoice.id, date)
++            } + proposedCashDeltaBase
++            val refundedBase = db.salesDao().cashRefundedBaseForInvoiceAsOf(invoice.id, date)
++            CashRefundCoveragePolicy.requireCovered(
++                actualCashBase = actualCashBase,
++                alreadyRefundedBase = refundedBase,
++                requestedRefundBase = proposedRefundBase,
++                context = "فاتورة البيع ${invoice.invoiceNo}: الرد النقدي يجب أن يكون مغطى بالنقد المحصل فعلياً"
++            )
++        }
++    }
++
+     private suspend fun resolveTreasury(treasuryAccountId: Long?, currencyCode: String): TreasuryAccountEntity {
+         val treasury = if (treasuryAccountId != null) {
+             requireNotNull(db.accountingDao().treasuryById(treasuryAccountId)) { "الخزينة/البنك غير موجود" }
