@@ -1,0 +1,93 @@
+name: V128 Android Test Runtime Export
+
+on:
+  push:
+    branches:
+      - agent/v123-toolchain-bootstrap-20260822
+  workflow_dispatch:
+
+jobs:
+  export-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install emulator and API 35 system image
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "system-images;android-35;default;x86_64"
+
+      - name: Resolve AndroidX instrumentation dependencies into isolated Gradle cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/v128-seed /tmp/v128-test-cache
+          mkdir -p /tmp/v128-seed /tmp/v128-test-cache
+          cat > /tmp/v128-seed/settings.gradle.kts <<'EOF'
+          rootProject.name = "v128-android-test-deps"
+          EOF
+          cat > /tmp/v128-seed/build.gradle.kts <<'EOF'
+          repositories {
+              google()
+              mavenCentral()
+          }
+          val androidTestDeps by configurations.creating
+          dependencies {
+              androidTestDeps("androidx.test:core:1.7.0")
+              androidTestDeps("androidx.test:runner:1.7.0")
+              androidTestDeps("androidx.test.ext:junit:1.3.0")
+          }
+          tasks.register("resolveAndroidTestDeps") {
+              doLast {
+                  androidTestDeps.resolve().forEach { println(it.absolutePath) }
+              }
+          }
+          EOF
+          GRADLE_USER_HOME=/tmp/v128-test-cache gradle -p /tmp/v128-seed --no-daemon resolveAndroidTestDeps
+          tar -czf /tmp/v128-android-test-gradle-cache.tgz -C /tmp/v128-test-cache/caches modules-2
+          sha256sum /tmp/v128-android-test-gradle-cache.tgz > /tmp/v128-android-test-gradle-cache.tgz.sha256
+
+      - name: Package emulator runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tar -czf /tmp/v128-android-runtime.tgz -C "$ANDROID_SDK_ROOT" emulator system-images/android-35/default/x86_64
+          sha256sum /tmp/v128-android-runtime.tgz > /tmp/v128-android-runtime.tgz.sha256
+          mkdir -p /tmp/runtime-parts
+          split -b 190M -d -a 2 /tmp/v128-android-runtime.tgz /tmp/runtime-parts/v128-android-runtime.tgz.part-
+          cp /tmp/v128-android-runtime.tgz.sha256 /tmp/runtime-parts/
+          sha256sum /tmp/runtime-parts/v128-android-runtime.tgz.part-* > /tmp/runtime-parts/parts.sha256
+
+      - name: Upload Gradle test cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidTest-GradleCache
+          path: |
+            /tmp/v128-android-test-gradle-cache.tgz
+            /tmp/v128-android-test-gradle-cache.tgz.sha256
+          compression-level: 0
+          retention-days: 1
+
+      - name: Upload Android emulator runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-AndroidRuntime
+          path: /tmp/runtime-parts/*
+          compression-level: 0
+          retention-days: 1
