@@ -1,0 +1,128 @@
+name: Publish FUSH Android Toolchain
+
+on:
+  push:
+    branches:
+      - fush/toolchain-android36-jdk17-gradle941
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-toolchain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Temurin JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "cmdline-tools;latest"
+
+      - name: Download Gradle 9.4.1 and generate wrapper
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/fush-toolchain/gradle-wrapper-project
+          curl -fL --retry 3 \
+            https://services.gradle.org/distributions/gradle-9.4.1-bin.zip \
+            -o /tmp/fush-toolchain/gradle-9.4.1-bin.zip
+          echo "2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb  /tmp/fush-toolchain/gradle-9.4.1-bin.zip" | sha256sum -c -
+          unzip -q /tmp/fush-toolchain/gradle-9.4.1-bin.zip -d /tmp/fush-toolchain/gradle-dist
+          cat > /tmp/fush-toolchain/gradle-wrapper-project/settings.gradle.kts <<'EOF'
+          rootProject.name = "fush-toolchain-wrapper"
+          EOF
+          /tmp/fush-toolchain/gradle-dist/gradle-9.4.1/bin/gradle \
+            -p /tmp/fush-toolchain/gradle-wrapper-project \
+            wrapper --gradle-version 9.4.1 --distribution-type bin
+
+      - name: Package JDK, SDK and Gradle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/fush-toolchain/release
+
+          JAVA_PARENT="$(dirname "$JAVA_HOME")"
+          JAVA_DIR="$(basename "$JAVA_HOME")"
+          tar -C "$JAVA_PARENT" -czf /tmp/fush-toolchain/release/FUSH-Temurin-JDK17-linux-x64.tar.gz "$JAVA_DIR"
+
+          tar -C "$ANDROID_SDK_ROOT" -czf /tmp/fush-toolchain/release/FUSH-Android-SDK36-linux-x64.tar.gz \
+            platform-tools \
+            platforms/android-36 \
+            build-tools/36.0.0 \
+            cmdline-tools/latest \
+            licenses
+
+          cp /tmp/fush-toolchain/gradle-9.4.1-bin.zip \
+            /tmp/fush-toolchain/release/FUSH-Gradle-9.4.1-bin.zip
+
+          tar -C /tmp/fush-toolchain/gradle-wrapper-project -czf \
+            /tmp/fush-toolchain/release/FUSH-Gradle-Wrapper-9.4.1.tar.gz \
+            gradlew gradlew.bat gradle
+
+          cat > /tmp/fush-toolchain/release/TOOLCHAIN_MANIFEST.txt <<'EOF'
+          FUSH Android Build Toolchain
+          Android SDK Platform: 36
+          Android Build Tools: 36.0.0
+          JDK: Temurin 17
+          Gradle: 9.4.1
+          Gradle distribution SHA-256: 2ab2958f2a1e51120c326cad6f385153bb11ee93b3c216c5fccebfdfbb7ec6cb
+          Intended AppID: com.fush.erp.recovery
+          No signing key or application source is included in this toolchain release.
+          EOF
+
+          cd /tmp/fush-toolchain/release
+          sha256sum \
+            FUSH-Temurin-JDK17-linux-x64.tar.gz \
+            FUSH-Android-SDK36-linux-x64.tar.gz \
+            FUSH-Gradle-9.4.1-bin.zip \
+            FUSH-Gradle-Wrapper-9.4.1.tar.gz \
+            TOOLCHAIN_MANIFEST.txt > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish persistent GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: fush-android-toolchain-36-jdk17-gradle-9.4.1
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd /tmp/fush-toolchain/release
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              FUSH-Temurin-JDK17-linux-x64.tar.gz \
+              FUSH-Android-SDK36-linux-x64.tar.gz \
+              FUSH-Gradle-9.4.1-bin.zip \
+              FUSH-Gradle-Wrapper-9.4.1.tar.gz \
+              TOOLCHAIN_MANIFEST.txt \
+              SHA256SUMS.txt \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              FUSH-Temurin-JDK17-linux-x64.tar.gz \
+              FUSH-Android-SDK36-linux-x64.tar.gz \
+              FUSH-Gradle-9.4.1-bin.zip \
+              FUSH-Gradle-Wrapper-9.4.1.tar.gz \
+              TOOLCHAIN_MANIFEST.txt \
+              SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "FUSH Android Toolchain — SDK 36 / JDK 17 / Gradle 9.4.1" \
+              --notes "Reusable FUSH ERP Mobile Android build toolchain. Contains Android SDK Platform 36 + Build Tools 36.0.0, Temurin JDK 17, Gradle 9.4.1 and Gradle Wrapper. No FUSH source code and no signing material included."
+          fi
