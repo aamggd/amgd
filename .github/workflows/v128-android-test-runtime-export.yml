@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/v123-toolchain-bootstrap-20260822
+  pull_request:
   workflow_dispatch:
 
 jobs:
