@@ -1,0 +1,183 @@
+name: TEMP v140 Offline Android Toolchain
+
+on:
+  push:
+    branches:
+      - 'fush/tmp-v140-build-20260824'
+    paths:
+      - '.github/workflows/tmp-v140-offline-toolchain.yml'
+  workflow_dispatch:
+
+jobs:
+  toolchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Create dependency-equivalent synthetic project
+        shell: bash
+        run: |
+          rm -rf _warm
+          mkdir -p _warm/app/src/main/java/com/fush/warm _warm/gradle
+          cat > _warm/settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "FushWarm"
+          include(":app")
+          EOF
+          cat > _warm/build.gradle.kts <<'EOF'
+          plugins {
+              alias(libs.plugins.android.application) apply false
+              alias(libs.plugins.kotlin.compose) apply false
+              alias(libs.plugins.ksp) apply false
+              alias(libs.plugins.room) apply false
+          }
+          EOF
+          cat > _warm/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2200m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+          cat > _warm/gradle/libs.versions.toml <<'EOF'
+          [versions]
+          agp = "9.2.0"
+          kotlin = "2.3.21"
+          ksp = "2.3.9"
+          room = "2.8.4"
+          activity = "1.13.0"
+          lifecycle = "2.10.0"
+          navigation = "2.9.8"
+          composeBom = "2026.06.00"
+          coreKtx = "1.17.0"
+          junit = "4.13.2"
+
+          [libraries]
+          androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+          androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+          androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+          androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+          androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+          androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+          androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+          androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+          androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+          androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+          androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+          androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+          androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+          androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+          androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
+          junit = { module = "junit:junit", version.ref = "junit" }
+
+          [plugins]
+          android-application = { id = "com.android.application", version.ref = "agp" }
+          kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+          ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+          room = { id = "androidx.room", version.ref = "room" }
+          EOF
+          cat > _warm/app/build.gradle.kts <<'EOF'
+          plugins {
+              alias(libs.plugins.android.application)
+              alias(libs.plugins.kotlin.compose)
+              alias(libs.plugins.ksp)
+              alias(libs.plugins.room)
+          }
+          android {
+              namespace = "com.fush.warm"
+              compileSdk = 36
+              defaultConfig { applicationId = "com.fush.warm"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "1" }
+              buildFeatures { compose = true; buildConfig = true }
+              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+          }
+          room { schemaDirectory("$projectDir/schemas") }
+          dependencies {
+              implementation(libs.androidx.core.ktx)
+              implementation(libs.androidx.activity.compose)
+              implementation(libs.androidx.lifecycle.runtime.ktx)
+              implementation(libs.androidx.lifecycle.viewmodel.compose)
+              implementation(libs.androidx.navigation.compose)
+              implementation(libs.androidx.room.runtime)
+              implementation(libs.androidx.room.ktx)
+              ksp(libs.androidx.room.compiler)
+              val composeBom = platform(libs.androidx.compose.bom)
+              implementation(composeBom)
+              androidTestImplementation(composeBom)
+              implementation(libs.androidx.compose.ui)
+              implementation(libs.androidx.compose.ui.tooling.preview)
+              implementation(libs.androidx.compose.material3)
+              implementation(libs.androidx.compose.material.icons.core)
+              debugImplementation(libs.androidx.compose.ui.tooling)
+              testImplementation(libs.junit)
+              testImplementation(libs.androidx.room.testing)
+              androidTestImplementation(libs.androidx.room.testing)
+              androidTestImplementation("androidx.test:core:1.7.0")
+              androidTestImplementation("androidx.test:runner:1.7.0")
+              androidTestImplementation("androidx.test.ext:junit:1.3.0")
+          }
+          EOF
+          cat > _warm/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"><application /></manifest>
+          EOF
+          cat > _warm/app/src/main/java/com/fush/warm/Warm.kt <<'EOF'
+          package com.fush.warm
+          import androidx.room.Database
+          import androidx.room.Entity
+          import androidx.room.PrimaryKey
+          import androidx.room.RoomDatabase
+          @Entity data class WarmEntity(@PrimaryKey val id: Long)
+          @Database(entities=[WarmEntity::class], version=1) abstract class WarmDb: RoomDatabase()
+          EOF
+      - name: Warm Gradle/plugin/dependency caches
+        working-directory: _warm
+        shell: bash
+        run: |
+          gradle --no-daemon :app:assembleRelease
+          gradle --no-daemon :app:testDebugUnitTest
+          gradle --no-daemon :app:dependencies >/dev/null
+      - name: Package offline toolchain and caches
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/fush-v140-offline"
+          mkdir -p "$OUT/gradle-home" "$OUT/android-sdk"
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          cp -a "$GRADLE_HOME/." "$OUT/gradle-home/"
+          cp -a "$HOME/.gradle" "$OUT/gradle-user-home"
+          mkdir -p "$OUT/android-sdk/platforms" "$OUT/android-sdk/build-tools" "$OUT/android-sdk/licenses"
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" "$OUT/android-sdk/platforms/"
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" "$OUT/android-sdk/build-tools/"
+          cp -a "$ANDROID_SDK_ROOT/licenses/." "$OUT/android-sdk/licenses/" || true
+          printf '%s\n' "gradle=$(gradle --version | head -1)" "sdk=$ANDROID_SDK_ROOT" > "$OUT/TOOLCHAIN.txt"
+          tar -C "$RUNNER_TEMP" -I 'gzip -1' -cf "$RUNNER_TEMP/Fush-v140-offline-toolchain.tar.gz" fush-v140-offline
+          ls -lh "$RUNNER_TEMP/Fush-v140-offline-toolchain.tar.gz"
+          sha256sum "$RUNNER_TEMP/Fush-v140-offline-toolchain.tar.gz" > "$RUNNER_TEMP/Fush-v140-offline-toolchain.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fush-v140-offline-toolchain
+          path: |
+            ${{ runner.temp }}/Fush-v140-offline-toolchain.tar.gz
+            ${{ runner.temp }}/Fush-v140-offline-toolchain.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 1
