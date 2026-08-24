@@ -184,3 +184,5 @@ jobs:
             v140-offline-toolchain.tar.gz.sha256
           if-no-files-found: error
           retention-days: 1
+
+# trigger 2026-08-24 build from uploaded v140 source
