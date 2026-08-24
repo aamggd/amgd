@@ -1,0 +1,46 @@
+name: V123 JDK17 Export
+
+on:
+  push:
+    branches:
+      - agent/v123-toolchain-bootstrap-20260822
+    paths:
+      - '.github/workflows/v123-jdk17-export.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/v123-jdk17-export.yml'
+  workflow_dispatch:
+
+jobs:
+  export-jdk17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Package real JDK 17 directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          REAL_JAVA_HOME="$(realpath "$JAVA_HOME")"
+          test -x "$REAL_JAVA_HOME/bin/java"
+          mkdir -p jdk17-export
+          tar -czf jdk17-export/temurin-jdk17-linux-x64.tgz -C "$(dirname "$REAL_JAVA_HOME")" "$(basename "$REAL_JAVA_HOME")"
+          sha256sum jdk17-export/temurin-jdk17-linux-x64.tgz > jdk17-export/temurin-jdk17-linux-x64.tgz.sha256
+          du -h jdk17-export/temurin-jdk17-linux-x64.tgz
+          test "$(stat -c%s jdk17-export/temurin-jdk17-linux-x64.tgz)" -gt 50000000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-Temurin-JDK17-Real
+          path: jdk17-export/
+          if-no-files-found: error
+          retention-days: 1
