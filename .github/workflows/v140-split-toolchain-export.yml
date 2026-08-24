@@ -1,0 +1,111 @@
+name: V140 Split Toolchain Export
+
+on:
+  pull_request:
+    branches:
+      - fush/v140-build-runner
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download already-built v140 offline toolchain
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p downloaded
+          gh run download 32698384572 -n v140-offline-toolchain -D downloaded
+          ls -lh downloaded
+          test -f downloaded/v140-offline-toolchain.tar.gz
+          sha256sum downloaded/v140-offline-toolchain.tar.gz
+
+      - name: Split toolchain below connector limit
+        shell: bash
+        run: |
+          mkdir -p split
+          split -b 350M -d -a 2 downloaded/v140-offline-toolchain.tar.gz split/toolchain.part.
+          ls -lh split
+          sha256sum split/toolchain.part.* > split/parts.sha256
+          tar -C "$JAVA_HOME" -czf split/jdk17.tar.gz .
+          sha256sum split/jdk17.tar.gz > split/jdk17.sha256
+          ls -lh split/jdk17.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-00
+          path: split/toolchain.part.00
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-01
+          path: split/toolchain.part.01
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-02
+          path: split/toolchain.part.02
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-03
+          path: split/toolchain.part.03
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-04
+          path: split/toolchain.part.04
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-05
+          path: split/toolchain.part.05
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-part-06
+          path: split/toolchain.part.06
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-toolchain-manifest
+          path: |
+            split/parts.sha256
+            split/jdk17.sha256
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-jdk17
+          path: split/jdk17.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
