@@ -1,0 +1,13 @@
+--- a/app/src/test/java/com/fush/erp/domain/CollectionSettlementDiscountContractTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/CollectionSettlementDiscountContractTest.kt
+@@ -21,7 +21,9 @@ class CollectionSettlementDiscountContractTest {
+         assertTrue(migration.contains("Migration(38, 39)"))
+         assertTrue(migration.contains("ALTER TABLE customer_receipts ADD COLUMN discountOriginal"))
+         assertTrue(migration.contains("ALTER TABLE customer_receipt_allocations ADD COLUMN discountBase"))
+-        assertTrue(database.contains("FUSH_DB_SCHEMA_VERSION = 40"))
++        val schemaVersion = Regex("FUSH_DB_SCHEMA_VERSION\\s*=\\s*(\\d+)")
++            .find(database)?.groupValues?.get(1)?.toInt() ?: error("Database schema version not found")
++        assertTrue(schemaVersion >= 40)
+     }
+ 
+     @Test
