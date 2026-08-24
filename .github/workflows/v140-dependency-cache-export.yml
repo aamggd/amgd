@@ -107,7 +107,10 @@ jobs:
           cat > /tmp/v140seed/app/src/main/res/values/styles.xml <<'EOF'
           <resources><style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar" /></resources>
           EOF
-          GRADLE_USER_HOME=/tmp/v140-gradle-home gradle -p /tmp/v140seed --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest
+          GRADLE_USER_HOME=/tmp/v140-gradle-home gradle -p /tmp/v140seed --no-daemon \
+            :app:compileDebugJavaWithJavac \
+            :app:compileDebugAndroidTestJavaWithJavac \
+            :app:compileDebugUnitTestJavaWithJavac
       - name: Package cache
         shell: bash
         run: |
