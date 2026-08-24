@@ -1,4 +1,5 @@
 name: TEMP v140 Offline Android Toolchain
+# retrigger: 2026-08-24
 
 on:
   push:
