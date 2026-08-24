@@ -6,6 +6,9 @@ on:
       - fush/v140-build-runner
     paths:
       - '.github/workflows/v140-toolchain-cache.yml'
+  pull_request:
+    branches:
+      - fush/v140-build-runner
   workflow_dispatch:
 
 permissions:
