@@ -1,1 +1,1 @@
-Trigger fast offline toolchain artifact build. No application source or signing material.
+Trigger split offline toolchain export for local v140 build. No application source or signing material.
