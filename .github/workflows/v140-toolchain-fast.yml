@@ -1,0 +1,52 @@
+name: V140 Fast Offline Toolchain
+
+on:
+  pull_request:
+    branches: [fush/v140-build-runner]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Warm exact v140 dependency set
+        working-directory: v140_warm
+        run: |
+          gradle wrapper --gradle-version 9.4.1
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease :app:lintVitalRelease
+      - name: Stage offline files without recompression
+        shell: bash
+        run: |
+          mkdir -p offline/android-sdk offline/gradle-home/caches offline/gradle-home/wrapper offline/jdk17
+          cp -a "$ANDROID_HOME/platforms" offline/android-sdk/
+          cp -a "$ANDROID_HOME/build-tools" offline/android-sdk/
+          cp -a "$ANDROID_HOME/platform-tools" offline/android-sdk/
+          cp -a "$ANDROID_HOME/licenses" offline/android-sdk/ || true
+          cp -a "$HOME/.gradle/caches/modules-2" offline/gradle-home/caches/
+          cp -a "$HOME/.gradle/wrapper/." offline/gradle-home/wrapper/
+          cp -a "$JAVA_HOME/." offline/jdk17/
+          du -sh offline/* offline/gradle-home/caches/modules-2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v140-fast-offline-toolchain
+          path: offline
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
