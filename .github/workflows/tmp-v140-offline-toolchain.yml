@@ -7,6 +7,11 @@ on:
       - 'fush/tmp-v140-build-20260824'
     paths:
       - '.github/workflows/tmp-v140-offline-toolchain.yml'
+  pull_request:
+    branches:
+      - 'fush/v140-vendor-lifecycle-startup-hotfix'
+    paths:
+      - '.github/workflows/tmp-v140-offline-toolchain.yml'
   workflow_dispatch:
 
 jobs:
