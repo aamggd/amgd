@@ -1,0 +1,64 @@
+name: FUSH ERP Computer First Runnable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fush/computer-first-runnable-v143
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.400
+      - name: Reconstruct source bundle
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem computer/source-parts/part-*.txt | Sort-Object Name
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          [IO.File]::WriteAllBytes('computer/FushERP-Computer-FirstRunnable-src.zip',[Convert]::FromBase64String($b64))
+          Expand-Archive -LiteralPath computer/FushERP-Computer-FirstRunnable-src.zip -DestinationPath computer/build -Force
+      - name: Core compatibility checks
+        shell: pwsh
+        working-directory: computer/build
+        run: |
+          dotnet --info
+          dotnet restore src/FushERP.Domain/FushERP.Domain.csproj
+          dotnet build src/FushERP.Domain/FushERP.Domain.csproj -c Release --no-restore
+          dotnet build src/FushERP.Application/FushERP.Application.csproj -c Release
+          dotnet run --project tests/FushERP.Domain.CompatibilityChecks/FushERP.Domain.CompatibilityChecks.csproj -c Release
+      - name: Build SQL Server infrastructure
+        shell: pwsh
+        working-directory: computer/build
+        run: |
+          dotnet restore src/FushERP.Infrastructure.SqlServer/FushERP.Infrastructure.SqlServer.csproj
+          dotnet build src/FushERP.Infrastructure.SqlServer/FushERP.Infrastructure.SqlServer.csproj -c Release --no-restore
+      - name: Publish WinUI x64 self-contained
+        shell: pwsh
+        working-directory: computer/build
+        run: |
+          dotnet restore src/FushERP.Desktop.WinUI/FushERP.Desktop.WinUI.csproj -r win-x64
+          dotnet publish src/FushERP.Desktop.WinUI/FushERP.Desktop.WinUI.csproj -c Release -r win-x64 --self-contained true -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -o artifacts/FushERP-Computer-win-x64
+      - name: First-run notes
+        shell: pwsh
+        working-directory: computer/build
+        run: |
+          @"
+          FUSH ERP Computer - First Runnable Windows Build
+          Baseline: FUSH ERP Mobile v143
+          Target: Windows x64
+          Stack: .NET 10 + WinUI 3 + EF Core 10 + SQL Server
+          This is an engineering test build. Database-backed workflows require SQL Server configuration.
+          "@ | Set-Content -Encoding UTF8 artifacts/FushERP-Computer-win-x64/README-FIRST-RUN.txt
+      - name: Upload runnable Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Computer-FirstRunnable-win-x64-v143
+          path: computer/build/artifacts/FushERP-Computer-win-x64/**
+          if-no-files-found: error
+          retention-days: 14
