@@ -1,0 +1,82 @@
+name: TEMP v150 Emulator Runtime
+
+on:
+  push:
+    branches:
+      - 'fush/tmp-v140-build-20260824'
+    paths:
+      - '.github/workflows/tmp-v150-emulator-sdk.yml'
+  workflow_dispatch:
+
+jobs:
+  pack-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: android-actions/setup-android@v3
+      - name: Install emulator runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "system-images;android-30;default;x86_64"
+          mkdir -p "$RUNNER_TEMP/parts"
+          tar -C "$ANDROID_SDK_ROOT" -I 'zstd -15 -T0' -cf "$RUNNER_TEMP/emulator-runtime.tar.zst" \
+            platform-tools emulator system-images/android-30/default/x86_64 cmdline-tools/latest licenses
+          split -b 180M -d -a 2 "$RUNNER_TEMP/emulator-runtime.tar.zst" "$RUNNER_TEMP/parts/emulator-runtime.part-"
+          ls -lh "$RUNNER_TEMP/parts"
+          sha256sum "$RUNNER_TEMP/parts"/* > "$RUNNER_TEMP/parts/SHA256SUMS.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-00
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-00
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-01
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-01
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-02
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-02
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-03
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-03
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-04
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-04
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-05
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-05
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-06
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-06
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-07
+          path: ${{ runner.temp }}/parts/emulator-runtime.part-07
+          if-no-files-found: warn
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v150-emulator-runtime-checksums
+          path: ${{ runner.temp }}/parts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 1
