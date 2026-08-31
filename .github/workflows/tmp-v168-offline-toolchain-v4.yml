@@ -1,0 +1,122 @@
+name: TEMP v168 Offline Toolchain v4
+
+on:
+  push:
+    branches:
+      - fush/tmp-v168-offline-toolchain-20260831
+    paths:
+      - .github/workflows/tmp-v168-offline-toolchain-v4.yml
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '9.4.1', cache-disabled: true}
+      - uses: android-actions/setup-android@v3
+      - name: Install exact SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+      - name: Resolve exact project dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/fush-warmup
+          mkdir -p /tmp/fush-warmup/app/src/main/java/com/fush/cache /tmp/fush-warmup/app/src/main/res/values
+          cat > /tmp/fush-warmup/settings.gradle.kts <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name = "FushWarmup"; include(":app")
+          EOF
+          cat > /tmp/fush-warmup/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "9.2.0" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.3.21" apply false
+              id("com.google.devtools.ksp") version "2.3.9" apply false
+              id("androidx.room") version "2.8.4" apply false
+          }
+          EOF
+          cat > /tmp/fush-warmup/app/build.gradle.kts <<'EOF'
+          plugins { id("com.android.application"); id("org.jetbrains.kotlin.plugin.compose"); id("com.google.devtools.ksp"); id("androidx.room") }
+          android {
+              namespace = "com.fush.cache"; compileSdk = 36
+              defaultConfig { applicationId = "com.fush.cache"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "1"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+              buildFeatures { compose = true; buildConfig = true }
+              compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
+          }
+          room { schemaDirectory("$projectDir/schemas") }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.17.0")
+              implementation("androidx.activity:activity-compose:1.13.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+              implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+              implementation("androidx.navigation:navigation-compose:2.9.8")
+              implementation("androidx.room:room-runtime:2.8.4")
+              implementation("androidx.room:room-ktx:2.8.4")
+              ksp("androidx.room:room-compiler:2.8.4")
+              val bom = platform("androidx.compose:compose-bom:2026.06.00")
+              implementation(bom); androidTestImplementation(bom)
+              implementation("androidx.compose.ui:ui"); implementation("androidx.compose.ui:ui-tooling-preview")
+              implementation("androidx.compose.material3:material3"); implementation("androidx.compose.material:material-icons-core")
+              debugImplementation("androidx.compose.ui:ui-tooling")
+              testImplementation("junit:junit:4.13.2"); testImplementation("androidx.room:room-testing:2.8.4")
+              androidTestImplementation("androidx.room:room-testing:2.8.4"); androidTestImplementation("androidx.test:core:1.7.0")
+              androidTestImplementation("androidx.test:runner:1.7.0"); androidTestImplementation("androidx.test.ext:junit:1.3.0")
+          }
+          tasks.register("resolveAll") {
+              doLast {
+                  configurations.filter { it.isCanBeResolved }.forEach { c ->
+                      println("Resolving ${c.name}")
+                      c.resolve()
+                  }
+              }
+          }
+          EOF
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:theme="@style/AppTheme" /></manifest>' > /tmp/fush-warmup/app/src/main/AndroidManifest.xml
+          echo '<resources><style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar" /></resources>' > /tmp/fush-warmup/app/src/main/res/values/styles.xml
+          echo 'package com.fush.cache; class Warmup' > /tmp/fush-warmup/app/src/main/java/com/fush/cache/Warmup.kt
+          cd /tmp/fush-warmup
+          gradle --no-daemon --max-workers=2 :app:resolveAll :app:compileDebugKotlin :app:compileReleaseKotlin :app:generateReleaseLintVitalReportModel
+      - name: Package minimal SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf /tmp/export && mkdir -p /tmp/export/android-sdk/platforms /tmp/export/android-sdk/build-tools
+          cp -a "$ANDROID_HOME/platforms/android-36" /tmp/export/android-sdk/platforms/
+          cp -a "$ANDROID_HOME/build-tools/36.0.0" /tmp/export/android-sdk/build-tools/
+          cp -a "$ANDROID_HOME/platform-tools" /tmp/export/android-sdk/
+          cp -a "$ANDROID_HOME/licenses" /tmp/export/android-sdk/ || true
+          tar -C /tmp/export -I 'zstd -6 -T0' -cf /tmp/v168-android-sdk36-min.tar.zst android-sdk
+          sha256sum /tmp/v168-android-sdk36-min.tar.zst > /tmp/v168-android-sdk36-min.tar.zst.sha256
+      - name: Package cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf "$HOME/.gradle/caches/journal-1" || true
+          tar -C "$HOME/.gradle" -I 'zstd -3 -T0' -cf /tmp/v168-gradle-cache-min.tar.zst caches
+          sha256sum /tmp/v168-gradle-cache-min.tar.zst > /tmp/v168-gradle-cache-min.tar.zst.sha256
+          du -h /tmp/v168-android-sdk36-min.tar.zst /tmp/v168-gradle-cache-min.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-android-sdk36-min
+          path: |
+            /tmp/v168-android-sdk36-min.tar.zst
+            /tmp/v168-android-sdk36-min.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-gradle-cache-min
+          path: |
+            /tmp/v168-gradle-cache-min.tar.zst
+            /tmp/v168-gradle-cache-min.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
