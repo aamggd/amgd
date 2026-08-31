@@ -1,0 +1,62 @@
+name: TEMP v168 Split Cache
+
+on:
+  push:
+    branches:
+      - fush/tmp-v168-offline-toolchain-20260831
+    paths:
+      - .github/workflows/tmp-v168-split-cache.yml
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Download v5 Gradle cache artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/cache-artifact
+          gh api /repos/${GITHUB_REPOSITORY}/actions/artifacts/9770614047/zip > /tmp/cache.zip
+          unzip -q /tmp/cache.zip -d /tmp/cache-artifact
+          ls -lh /tmp/cache-artifact
+          sha256sum -c /tmp/cache-artifact/v168-gradle-cache-final.tar.zst.sha256
+      - name: Split cache
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/parts
+          split -b 220M -d -a 2 /tmp/cache-artifact/v168-gradle-cache-final.tar.zst /tmp/parts/cache.part.
+          sha256sum /tmp/parts/cache.part.* > /tmp/parts/PARTS.sha256
+          cp /tmp/cache-artifact/v168-gradle-cache-final.tar.zst.sha256 /tmp/parts/ORIGINAL.sha256
+          ls -lh /tmp/parts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-gradle-cache-part00
+          path: /tmp/parts/cache.part.00
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-gradle-cache-part01
+          path: /tmp/parts/cache.part.01
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-gradle-cache-part02
+          path: /tmp/parts/cache.part.02
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v168-gradle-cache-manifest
+          path: |
+            /tmp/parts/PARTS.sha256
+            /tmp/parts/ORIGINAL.sha256
+          retention-days: 1
