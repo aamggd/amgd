@@ -1,0 +1,40 @@
+name: TEMP Export Gradle 9.4.1
+
+on:
+  push:
+    branches:
+      - fush/tmp-v168-offline-toolchain-20260831
+    paths:
+      - .github/workflows/tmp-export-gradle-9.4.1.yml
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-disabled: true
+      - name: Package Gradle installation
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_BIN="$(command -v gradle)"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_BIN")/.." && pwd)"
+          tar -C "$(dirname "$GRADLE_HOME")" -I 'zstd -10 -T0' -cf /tmp/gradle-9.4.1.tar.zst "$(basename "$GRADLE_HOME")"
+          sha256sum /tmp/gradle-9.4.1.tar.zst > /tmp/gradle-9.4.1.tar.zst.sha256
+          ls -lh /tmp/gradle-9.4.1.tar.zst
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-9.4.1-local-build
+          path: |
+            /tmp/gradle-9.4.1.tar.zst
+            /tmp/gradle-9.4.1.tar.zst.sha256
+          retention-days: 1
+          compression-level: 0
