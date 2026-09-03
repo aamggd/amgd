@@ -1,0 +1,382 @@
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/V180_SHIPMENT_FIFO_LOT_AUTOSELECT.md /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/V180_SHIPMENT_FIFO_LOT_AUTOSELECT.md
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/V180_SHIPMENT_FIFO_LOT_AUTOSELECT.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/V180_SHIPMENT_FIFO_LOT_AUTOSELECT.md	2026-09-03 01:35:43.290543599 +0000
+@@ -0,0 +1,14 @@
++# FUSH ERP Mobile v180 — Shipment FIFO Lot Auto-Select
++
++## Scope
++- Shipment creation no longer accepts a manually typed lot number.
++- After warehouse + item + shipment date are selected, the app shows the oldest actually available lot automatically.
++- FIFO is based primarily on the oldest stock movement date in the selected warehouse.
++- If the requested quantity exceeds the oldest lot, the line is split automatically across the next FIFO lots.
++- Existing open shipment quantities that have not yet been allocated/sold are deducted from availability to prevent the same physical stock from being assigned to two shipments.
++- The domain service validates the FIFO allocation again inside the create transaction; the UI cannot bypass the rule.
++- No Room schema change. Existing Room schema remains 48 and no destructive migration is introduced.
++
++## Version
++- versionCode: 180
++- versionName: 0.15.4.131-shipment-fifo-lot-autoselect
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/build.gradle.kts /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/build.gradle.kts
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/build.gradle.kts	2026-09-02 23:15:14.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/build.gradle.kts	2026-09-03 01:27:15.413627974 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 179
+-        versionName = "0.15.4.130-sales-additional-charges-shipment-costs"
++        versionCode = 180
++        versionName = "0.15.4.131-shipment-fifo-lot-autoselect"
+ 
+         buildConfigField("String", "SUPABASE_URL", "\"https://bkbjtyacoiaheunweyuu.supabase.co\"")
+         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY\"")
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt	2026-08-31 00:03:02.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt	2026-09-03 01:27:15.407087323 +0000
+@@ -504,6 +504,25 @@
+     """)
+     suspend fun lotBalancesAt(warehouseId: Long, itemId: Long, asOf: Long): List<LotBalanceRow>
+ 
++    /**
++     * Positive lot balances ordered by the age of the stock in this warehouse (FIFO).
++     * Shipment creation uses this to select the oldest available lot automatically.
++     * Expiry date is only a deterministic tie-breaker; the primary rule is oldest stock.
++     */
++    @Query("""
++        SELECT itemId AS itemId, lotNo AS lotNo, expiryDate AS expiryDate,
++               COALESCE(SUM(quantityBase), 0) AS quantityBase,
++               COALESCE(SUM(quantityBase * unitCostBase), 0) AS inventoryValueBase
++        FROM stock_movements
++        WHERE warehouseId = :warehouseId AND itemId = :itemId AND movementDate <= :asOf
++        GROUP BY itemId, lotNo, expiryDate
++        HAVING COALESCE(SUM(quantityBase), 0) > 0.000000001
++        ORDER BY MIN(movementDate) ASC,
++                 CASE WHEN expiryDate IS NULL THEN 1 ELSE 0 END, expiryDate ASC,
++                 COALESCE(lotNo, '') ASC
++    """)
++    suspend fun lotBalancesFifoAt(warehouseId: Long, itemId: Long, asOf: Long): List<LotBalanceRow>
++
+     @Query("""
+         SELECT * FROM stock_movements
+         WHERE warehouseId = :warehouseId AND itemId = :itemId
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/ShipmentDao.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/ShipmentDao.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/ShipmentDao.kt	2026-09-02 23:39:14.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/data/dao/ShipmentDao.kt	2026-09-03 01:35:43.286448673 +0000
+@@ -20,6 +20,31 @@
+     @Query("SELECT * FROM sales_shipment_items WHERE shipmentId=:shipmentId ORDER BY id") suspend fun itemsForShipment(shipmentId: Long): List<SalesShipmentItemEntity>
+     @Query("SELECT * FROM sales_shipment_items WHERE id=:id LIMIT 1") suspend fun itemById(id: Long): SalesShipmentItemEntity?
+ 
++    /**
++     * Quantity from this warehouse/item/lot already committed to shipments and not yet sold,
++     * evaluated as-of the shipment business date. This keeps a second shipment from reusing
++     * the same physical lot while its first shipment still has unallocated quantity.
++     */
++    @Query("""
++        SELECT COALESCE(SUM(
++            i.quantityBase - COALESCE((
++                SELECT SUM(a.quantityBase)
++                FROM sales_shipment_invoice_item_allocations a
++                WHERE a.shipmentItemId=i.id
++                  AND a.createdAt <= :asOf
++                  AND (a.status='ACTIVE' OR (a.status='REVERSED' AND COALESCE(a.reversedAt, 9223372036854775807) > :asOf))
++            ), 0)
++        ), 0)
++        FROM sales_shipment_items i
++        JOIN sales_shipments s ON s.id=i.shipmentId
++        WHERE s.fromWarehouseId=:warehouseId
++          AND i.itemId=:itemId
++          AND COALESCE(i.lotNo, '')=:lotKey
++          AND s.shipmentDate <= :asOf
++          AND NOT (s.status='CANCELLED' AND COALESCE(s.cancelledAt, 0) <= :asOf)
++    """)
++    suspend fun reservedShipmentQtyBaseAt(warehouseId: Long, itemId: Long, lotKey: String, asOf: Long): Double
++
+     @Insert(onConflict = OnConflictStrategy.ABORT) suspend fun insertExpense(row: SalesShipmentExpenseEntity): Long
+     @Query("SELECT * FROM sales_shipment_expenses WHERE shipmentId=:shipmentId AND status='POSTED' ORDER BY expenseDate,id") suspend fun expensesForShipment(shipmentId: Long): List<SalesShipmentExpenseEntity>
+     @Query("SELECT * FROM sales_shipment_expenses WHERE id=:id LIMIT 1") suspend fun expenseById(id: Long): SalesShipmentExpenseEntity?
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/domain/ShipmentService.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/domain/ShipmentService.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/domain/ShipmentService.kt	2026-09-02 23:12:44.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/domain/ShipmentService.kt	2026-09-03 01:35:43.286881228 +0000
+@@ -48,6 +48,88 @@
+         val shipmentClosed: Boolean
+     )
+ 
++    data class ShipmentLotAvailability(
++        val lotNo: String,
++        val availableQtyBase: Double
++    )
++
++    data class ShipmentLotAllocation(
++        val lotNo: String,
++        val quantityBase: Double
++    )
++
++    /**
++     * FIFO lot availability for shipment creation. Stock already committed to other shipments
++     * (but not yet allocated/sold) is deducted so the same physical quantity cannot be selected
++     * by two open shipments. [additionalReservedByLot] is used by the create dialog for lines
++     * already drafted in the same new shipment.
++     */
++    suspend fun availableShipmentLotsFifo(
++        warehouseId: Long,
++        itemId: Long,
++        shipmentDate: Long,
++        additionalReservedByLot: Map<String, Double> = emptyMap()
++    ): List<ShipmentLotAvailability> {
++        val asOf = BusinessDatePolicy.endOfBusinessDay(shipmentDate)
++        val rawLots = db.stockDao().lotBalancesFifoAt(warehouseId, itemId, asOf)
++
++        // Shipment items store lotNo (not expiry) as the trace key. Keep FIFO order from the
++        // first occurrence and merge any duplicate lot rows before applying reservations.
++        val totalsByLot = linkedMapOf<String, Double>()
++        rawLots.forEach { row ->
++            val key = row.lotNo.orEmpty().trim()
++            totalsByLot[key] = (totalsByLot[key] ?: 0.0) + row.quantityBase
++        }
++
++        val result = mutableListOf<ShipmentLotAvailability>()
++        totalsByLot.forEach { (lotKey, physicalQty) ->
++            val alreadyCommitted = db.shipmentDao().reservedShipmentQtyBaseAt(warehouseId, itemId, lotKey, asOf)
++            val draftReserved = additionalReservedByLot[lotKey] ?: 0.0
++            val available = (physicalQty - alreadyCommitted - draftReserved).coerceAtLeast(0.0)
++            if (available > EPS) result += ShipmentLotAvailability(lotKey, available)
++        }
++        return result
++    }
++
++    private suspend fun requireRequestUsesOldestAvailableLots(request: CreateShipmentRequest) {
++        request.items.groupBy { it.itemId }.forEach { (itemId, rows) ->
++            val requestedQty = rows.sumOf { it.quantityBase }
++            val availableLots = availableShipmentLotsFifo(request.fromWarehouseId, itemId, request.shipmentDate)
++            val expected = allocateOldestAvailableLots(availableLots, requestedQty)
++                .groupBy { it.lotNo }
++                .mapValues { (_, values) -> values.sumOf { it.quantityBase } }
++            val actual = rows.groupBy { it.lotNo.trim() }
++                .mapValues { (_, values) -> values.sumOf { it.quantityBase } }
++                .filterValues { it > EPS }
++
++            require(expected.keys == actual.keys && expected.all { (lot, qty) -> kotlin.math.abs((actual[lot] ?: 0.0) - qty) <= EPS }) {
++                "يجب استخدام أقدم تشغيلة متاحة تلقائياً للشحنة"
++            }
++        }
++    }
++
++    companion object {
++        private const val EPS = 0.000000001
++
++        fun allocateOldestAvailableLots(
++            lots: List<ShipmentLotAvailability>,
++            requestedQtyBase: Double
++        ): List<ShipmentLotAllocation> {
++            require(requestedQtyBase.isFinite() && requestedQtyBase > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
++            var remaining = requestedQtyBase
++            val out = mutableListOf<ShipmentLotAllocation>()
++            lots.forEach { lot ->
++                if (remaining <= EPS) return@forEach
++                if (!lot.availableQtyBase.isFinite() || lot.availableQtyBase <= EPS) return@forEach
++                val take = minOf(remaining, lot.availableQtyBase)
++                out += ShipmentLotAllocation(lot.lotNo, take)
++                remaining -= take
++            }
++            require(remaining <= EPS) { "المخزون المتاح غير كافٍ للكمية المطلوبة" }
++            return out
++        }
++    }
++
+     suspend fun createShipment(request: CreateShipmentRequest): Long = db.withTransaction {
+         db.requireUserPermission(request.createdBy, SecurityPermissions.SALES_POST)
+         FutureDocumentDatePolicy.requireNotFuture(request.shipmentDate, "تاريخ الشحنة")
+@@ -58,6 +140,7 @@
+             require(it.quantityBase.isFinite() && it.quantityBase > 0.0) { "كمية الشحنة يجب أن تكون أكبر من صفر" }
+             requireNotNull(db.itemDao().byId(it.itemId)) { "أحد أصناف الشحنة غير موجود" }
+         }
++        requireRequestUsesOldestAvailableLots(request)
+         val shipmentNo = AutoNumberService(db).nextDocumentNo("SHP", request.shipmentDate)
+         val id = db.shipmentDao().insertShipment(
+             SalesShipmentEntity(
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt	2026-09-02 23:12:44.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt	2026-09-03 01:35:43.289460448 +0000
+@@ -2269,7 +2269,8 @@
+     var notes by remember { mutableStateOf("") }
+     val drafts = remember { mutableStateListOf<ShipmentItemDraftUi>() }
+     var item by remember { mutableStateOf<ItemEntity?>(null) }
+-    var lotNo by remember { mutableStateOf("") }
++    var suggestedLot by remember { mutableStateOf<ShipmentService.ShipmentLotAvailability?>(null) }
++    var lotLookupBusy by remember { mutableStateOf(false) }
+     var qty by remember { mutableStateOf("") }
+     var error by remember { mutableStateOf<String?>(null) }
+     var busy by remember { mutableStateOf(false) }
+@@ -2284,17 +2285,85 @@
+                 OutlinedTextField(transportRef, { transportRef = it }, label = { Text("مرجع النقل") }, modifier = Modifier.fillMaxWidth())
+                 HorizontalDivider()
+                 Text("أصناف الشحنة", style = MaterialTheme.typography.titleMedium)
+-                SalesSelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { "${it.code} — ${it.nameAr}" }) { item = it }
+-                OutlinedTextField(lotNo, { lotNo = it }, label = { Text("التشغيلة / Lot") }, modifier = Modifier.fillMaxWidth())
++                SalesSelectionField("الصنف", item?.nameAr ?: "اختر", itemsList, { "${it.code} — ${it.nameAr}" }) {
++                    item = it
++                    suggestedLot = null
++                    error = null
++                }
++                LaunchedEffect(warehouse?.id, item?.id, dateText, drafts.size) {
++                    val selectedWarehouse = warehouse
++                    val selectedItem = item
++                    if (selectedWarehouse == null || selectedItem == null) {
++                        suggestedLot = null
++                        return@LaunchedEffect
++                    }
++                    lotLookupBusy = true
++                    suggestedLot = runCatching {
++                        val shipmentDate = salesParseDate(dateText)
++                        val alreadyDrafted = drafts
++                            .filter { it.item.id == selectedItem.id }
++                            .groupBy { it.lotNo }
++                            .mapValues { (_, rows) -> rows.sumOf { it.quantityBase } }
++                        ShipmentService(container.db).availableShipmentLotsFifo(
++                            warehouseId = selectedWarehouse.id,
++                            itemId = selectedItem.id,
++                            shipmentDate = shipmentDate,
++                            additionalReservedByLot = alreadyDrafted
++                        ).firstOrNull()
++                    }.getOrNull()
++                    lotLookupBusy = false
++                }
++                OutlinedTextField(
++                    value = when {
++                        lotLookupBusy -> "جارٍ تحديد أقدم مخزون..."
++                        item == null -> "اختر الصنف أولاً"
++                        suggestedLot == null -> "لا يوجد مخزون متاح"
++                        suggestedLot?.lotNo.isNullOrBlank() -> "بدون رقم تشغيلة"
++                        else -> suggestedLot?.lotNo.orEmpty()
++                    },
++                    onValueChange = {},
++                    readOnly = true,
++                    label = { Text("التشغيلة / Lot — تلقائي من أقدم مخزون") },
++                    supportingText = {
++                        suggestedLot?.let { lot ->
++                            Text("المتاح من هذه التشغيلة بعد حجوزات الشحنات المفتوحة: ${salesMoney(lot.availableQtyBase)}")
++                        } ?: Text("النظام يطبق FIFO ويختار أقدم رصيد متاح فعلياً في المخزن المحدد.")
++                    },
++                    modifier = Modifier.fillMaxWidth()
++                )
+                 OutlinedTextField(qty, { qty = it }, label = { Text("الكمية بالوحدة الأساسية") }, modifier = Modifier.fillMaxWidth())
+                 OutlinedButton(onClick = {
+-                    runCatching {
+-                        val selected = requireNotNull(item) { "اختر الصنف" }
+-                        val q = requireNotNull(qty.toDoubleOrNull()) { "الكمية غير صالحة" }
+-                        require(q > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
+-                        drafts += ShipmentItemDraftUi(selected, lotNo.trim(), q)
+-                        item = null; lotNo = ""; qty = ""; error = null
+-                    }.onFailure { error = it.message }
++                    val selected = item
++                    val selectedWarehouse = warehouse
++                    val q = qty.toDoubleOrNull()
++                    if (selected == null) { error = "اختر الصنف"; return@OutlinedButton }
++                    if (selectedWarehouse == null) { error = "اختر المخزن"; return@OutlinedButton }
++                    if (q == null || q <= 0.0) { error = "الكمية يجب أن تكون أكبر من صفر"; return@OutlinedButton }
++                    scope.launch {
++                        try {
++                            val shipmentDate = salesParseDate(dateText)
++                            val alreadyDrafted = drafts
++                                .filter { it.item.id == selected.id }
++                                .groupBy { it.lotNo }
++                                .mapValues { (_, rows) -> rows.sumOf { it.quantityBase } }
++                            val lots = ShipmentService(container.db).availableShipmentLotsFifo(
++                                warehouseId = selectedWarehouse.id,
++                                itemId = selected.id,
++                                shipmentDate = shipmentDate,
++                                additionalReservedByLot = alreadyDrafted
++                            )
++                            val allocations = ShipmentService.allocateOldestAvailableLots(lots, q)
++                            allocations.forEach { allocation ->
++                                drafts += ShipmentItemDraftUi(selected, allocation.lotNo, allocation.quantityBase)
++                            }
++                            item = null
++                            suggestedLot = null
++                            qty = ""
++                            error = null
++                        } catch (e: Exception) {
++                            error = e.message ?: "تعذر تحديد التشغيلة من المخزون"
++                        }
++                    }
+                 }, modifier = Modifier.fillMaxWidth()) { Text("إضافة الصنف للشحنة") }
+                 drafts.forEachIndexed { index, d ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/domain/ShipmentFifoLotAllocationV180Test.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/domain/ShipmentFifoLotAllocationV180Test.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/domain/ShipmentFifoLotAllocationV180Test.kt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/domain/ShipmentFifoLotAllocationV180Test.kt	2026-09-03 01:35:43.290071756 +0000
+@@ -0,0 +1,42 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShipmentFifoLotAllocationV180Test {
++    @Test fun `requested quantity uses oldest lot first`() {
++        val lots = listOf(
++            ShipmentService.ShipmentLotAvailability("LOT-001", 30.0),
++            ShipmentService.ShipmentLotAvailability("LOT-002", 50.0),
++            ShipmentService.ShipmentLotAvailability("LOT-003", 100.0)
++        )
++        val out = ShipmentService.allocateOldestAvailableLots(lots, 20.0)
++        assertEquals(listOf(ShipmentService.ShipmentLotAllocation("LOT-001", 20.0)), out)
++    }
++
++    @Test fun `quantity spills into next lot only after oldest is exhausted`() {
++        val lots = listOf(
++            ShipmentService.ShipmentLotAvailability("LOT-001", 30.0),
++            ShipmentService.ShipmentLotAvailability("LOT-002", 50.0),
++            ShipmentService.ShipmentLotAvailability("LOT-003", 100.0)
++        )
++        val out = ShipmentService.allocateOldestAvailableLots(lots, 60.0)
++        assertEquals(2, out.size)
++        assertEquals("LOT-001", out[0].lotNo)
++        assertEquals(30.0, out[0].quantityBase, 0.000001)
++        assertEquals("LOT-002", out[1].lotNo)
++        assertEquals(30.0, out[1].quantityBase, 0.000001)
++    }
++
++    @Test fun `insufficient available inventory is rejected`() {
++        val failure = runCatching {
++            ShipmentService.allocateOldestAvailableLots(
++                listOf(ShipmentService.ShipmentLotAvailability("LOT-001", 10.0)),
++                12.0
++            )
++        }.exceptionOrNull()
++        assertTrue(failure is IllegalArgumentException)
++        assertTrue(failure?.message?.contains("المخزون المتاح غير كاف") == true)
++    }
++}
+diff -ruN '--exclude=.gradle' '--exclude=build' /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/ui/ShipmentFifoLotAutoselectV180ContractTest.kt /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/ui/ShipmentFifoLotAutoselectV180ContractTest.kt
+--- /mnt/data/v179baseline/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/ui/ShipmentFifoLotAutoselectV180ContractTest.kt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/fush179/FushERP-Mobile-v179-SalesAdditionalCharges-ShipmentCosts-FINAL-Source/app/src/test/java/com/fush/erp/ui/ShipmentFifoLotAutoselectV180ContractTest.kt	2026-09-03 01:35:43.290373644 +0000
+@@ -0,0 +1,28 @@
++package com.fush.erp.ui
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ShipmentFifoLotAutoselectV180ContractTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun `shipment create UI no longer accepts manual lot entry`() {
++        val screen = read("app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt")
++        assertTrue(screen.contains("التشغيلة / Lot — تلقائي من أقدم مخزون"))
++        assertTrue(screen.contains("availableShipmentLotsFifo"))
++        assertTrue(screen.contains("allocateOldestAvailableLots"))
++        assertFalse(screen.contains("OutlinedTextField(lotNo, { lotNo = it }, label = { Text(\"التشغيلة / Lot\")"))
++    }
++
++    @Test fun `fifo stock order and open shipment reservation are enforced`() {
++        val stockDao = read("app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt")
++        val shipmentDao = read("app/src/main/java/com/fush/erp/data/dao/ShipmentDao.kt")
++        val service = read("app/src/main/java/com/fush/erp/domain/ShipmentService.kt")
++        assertTrue(stockDao.contains("ORDER BY MIN(movementDate) ASC"))
++        assertTrue(shipmentDao.contains("reservedShipmentQtyBaseAt"))
++        assertTrue(shipmentDao.contains("sales_shipment_invoice_item_allocations"))
++        assertTrue(service.contains("requireRequestUsesOldestAvailableLots(request)"))
++    }
++}
