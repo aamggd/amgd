@@ -151,22 +151,22 @@ jobs:
           gradle --no-daemon :app:dependencies
           gradle --no-daemon :app:assembleDebug
 
-      - name: Package Gradle cache and Android tools
+      - name: Package minimal Gradle modules and Android tools
         shell: bash
         run: |
-          mkdir -p export/android-build-tools/lib
+          mkdir -p export/android-build-tools/lib export/gradle-cache/caches
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" export/android-build-tools/
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" export/android-build-tools/
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" export/android-build-tools/ || true
-          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" export/android-build-tools/ || true
           cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" export/android-build-tools/lib/
-          tar --exclude='*.lock' --exclude='gc.properties' -czf export/gradle-caches.tgz -C "$HOME/.gradle" caches
+          cp -a "$HOME/.gradle/caches/modules-2" export/gradle-cache/caches/
+          tar --exclude='*.lock' --exclude='gc.properties' -czf export/gradle-modules.tgz -C export/gradle-cache caches
+          rm -rf export/gradle-cache
           printf 'AGP=9.2.0\nGradle=9.4.1\nCompileSDK=36\nBuildTools=36.0.0\n' > export/BUILD_CACHE_INFO.txt
           du -sh export/*
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v180-Android-Build-Cache
+          name: FUSH-v180-Android-Modules
           path: export
           if-no-files-found: error
           retention-days: 1
