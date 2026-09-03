@@ -32,6 +32,10 @@ Shipment quantity 10 packs, actual transport cost 70,000. First invoice links 5 
 
 ## Source preservation
 
-The v179 source delta, Supabase SQL, validation report, checksums and implementation contract are stored in this directory/branch. The private FUSH signing key and password are intentionally **not** stored in GitHub.
+The complete v178→v179 source delta is archived as `source_delta/v179-code-only.patch.zst.b64`, and Room schemas 47/48 are archived as `source_delta/v179-room-schemas-47-48.tar.zst.b64`.
 
-Canonical local artifact hashes are recorded in `FUSH_ERP_Mobile_v179-FINAL-SHA256.txt` and `SOURCE_PROVENANCE.md`.
+Use `source_delta/RESTORE_V179_DELTA.sh` with the official v178 source ZIP to reconstruct the v179 source. The script validates SHA-256 checksums before applying anything.
+
+Supabase SQL, validation report, checksums and implementation contract are stored in this directory/branch. The private FUSH signing key and password are intentionally **not** stored in GitHub.
+
+Canonical artifact hashes and baseline provenance are recorded in `FUSH_ERP_Mobile_v179-FINAL-SHA256.txt` and `SOURCE_PROVENANCE.md`.
