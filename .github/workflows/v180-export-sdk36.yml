@@ -1,0 +1,30 @@
+name: v180 Export Android SDK 36
+
+on:
+  push:
+    branches: [fush/v180-shipment-fifo-lot-autoselect]
+    paths:
+      - '.github/workflows/v180-export-sdk36.yml'
+  workflow_dispatch:
+
+jobs:
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          mkdir -p export/platforms export/build-tools
+          cp -a "$ANDROID_SDK_ROOT/platforms/android-36" export/platforms/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" export/build-tools/
+          du -sh export/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Android-SDK36
+          path: export
+          if-no-files-found: error
+          retention-days: 1
