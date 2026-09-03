@@ -1,0 +1,1 @@
+FUSH ERP Mobile v180 temporary CI build input for Shipment FIFO lot auto-selection. Baseline: v179. This branch is isolated from Central/master.
