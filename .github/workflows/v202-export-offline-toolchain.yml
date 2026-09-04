@@ -145,23 +145,75 @@ jobs:
           gradle --no-daemon :app:dependencies
           gradle --no-daemon :app:assembleDebug
 
-      - name: Package offline toolchain
+      - name: Package and split offline toolchain
         shell: bash
         run: |
-          rm -rf export
-          mkdir -p export/sdk/platforms export/sdk/build-tools export/gradle
+          rm -rf export splitout
+          mkdir -p export/sdk/platforms export/sdk/build-tools export/gradle splitout
           cp -a "$ANDROID_SDK_ROOT/platforms/android-36" export/sdk/platforms/
           cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" export/sdk/build-tools/
           GRADLE_REAL="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(cd "$(dirname "$GRADLE_REAL")/.." && pwd)"
           cp -a "$GRADLE_HOME" export/gradle/gradle-9.4.1
-          tar --exclude='*.lock' --exclude='gc.properties' -czf export/gradle-caches.tgz -C "$HOME/.gradle" caches
           printf 'Gradle=9.4.1\nAGP=9.2.0\nKotlin=2.3.21\nKSP=2.3.9\nRoom=2.8.4\nCompileSDK=36\nBuildTools=36.0.0\n' > export/INFO.txt
-          du -sh export/*
+          tar -czf splitout/core.tgz -C export sdk gradle INFO.txt
+          tar --exclude='*.lock' --exclude='gc.properties' -czf splitout/cache.tgz -C "$HOME/.gradle" caches
+          split -b 240M -d -a 2 splitout/core.tgz splitout/core-part-
+          split -b 240M -d -a 2 splitout/cache.tgz splitout/cache-part-
+          rm splitout/core.tgz splitout/cache.tgz
+          ls -lh splitout
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-v202-Offline-Toolchain
-          path: export
-          if-no-files-found: error
+          name: FUSH-v202-core-part-00
+          path: splitout/core-part-00
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-core-part-01
+          path: splitout/core-part-01
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-core-part-02
+          path: splitout/core-part-02
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-core-part-03
+          path: splitout/core-part-03
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-cache-part-00
+          path: splitout/cache-part-00
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-cache-part-01
+          path: splitout/cache-part-01
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-cache-part-02
+          path: splitout/cache-part-02
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-cache-part-03
+          path: splitout/cache-part-03
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-cache-part-04
+          path: splitout/cache-part-04
+          if-no-files-found: ignore
           retention-days: 1
