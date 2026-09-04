@@ -1,0 +1,74 @@
+name: v202 Geography Master IDs CI Build
+
+on:
+  push:
+    branches: [fush/v202-build-tools-temp]
+    paths:
+      - 'v202_ci/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Restore exact v202 build source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v202-source
+          cat v202_ci/chunk_*.b64 | base64 -d > /tmp/v202-source.tar.gz
+          echo '5c9e0abf7f62b8676c1be07e609827f43872e229f278203c7f3365fdc6448e6d  /tmp/v202-source.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/v202-source.tar.gz -C /tmp/v202-source
+          rm -f /tmp/v202-source/local.properties
+          mkdir -p /tmp/v202-source/app/schemas/com.fush.erp.data.FushDatabase
+          grep -q 'versionCode = 202' /tmp/v202-source/app/build.gradle.kts
+          grep -q '0.15.4.153-geography-master-ids' /tmp/v202-source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 50' /tmp/v202-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Run unit tests
+        working-directory: /tmp/v202-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release APK
+        working-directory: /tmp/v202-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Run release lint gate
+        working-directory: /tmp/v202-source
+        run: gradle --no-daemon :app:lintVitalRelease
+
+      - name: Align and inspect unsigned release
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find /tmp/v202-source/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          test -n "$APK"
+          mkdir -p /tmp/v202-artifact
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -f -p 4 "$APK" /tmp/v202-artifact/FUSH_ERP_Mobile_v202-GeographyMasterIds-FINAL-ALIGNED-UNSIGNED.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 /tmp/v202-artifact/FUSH_ERP_Mobile_v202-GeographyMasterIds-FINAL-ALIGNED-UNSIGNED.apk > /tmp/v202-artifact/ZIPALIGN_VERIFY.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump badging /tmp/v202-artifact/FUSH_ERP_Mobile_v202-GeographyMasterIds-FINAL-ALIGNED-UNSIGNED.apk > /tmp/v202-artifact/AAPT2_BADGING.txt
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" /tmp/v202-artifact/apksigner.jar
+          sha256sum /tmp/v202-artifact/FUSH_ERP_Mobile_v202-GeographyMasterIds-FINAL-ALIGNED-UNSIGNED.apk > /tmp/v202-artifact/UNSIGNED_SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-GeographyMasterIds-Unsigned
+          path: /tmp/v202-artifact
+          if-no-files-found: error
+          retention-days: 1
