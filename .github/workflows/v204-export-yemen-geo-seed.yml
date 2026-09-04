@@ -1,0 +1,37 @@
+name: v204 Export Yemen Geography Seed
+
+on:
+  push:
+    branches: [fush/v202-local-yemen-fx-build]
+    paths:
+      - '.github/workflows/v204-export-yemen-geo-seed.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download reference datasets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p geo-seed
+          curl -fL --retry 3 'https://raw.githubusercontent.com/open-admin-data/yemen-administrative-divisions/master/data/all-governorate.json' -o geo-seed/all-governorate.json
+          curl -fL --retry 3 'https://raw.githubusercontent.com/open-admin-data/yemen-administrative-divisions/master/data/all-district.json' -o geo-seed/all-district.json
+          curl -fL --retry 3 'https://raw.githubusercontent.com/YemenOpenSource/Yemen-info/master/yemen-info.json' -o geo-seed/yemen-info.json
+          python - <<'PY'
+          import json
+          for p in ['geo-seed/all-governorate.json','geo-seed/all-district.json','geo-seed/yemen-info.json']:
+              with open(p, encoding='utf-8') as f: data=json.load(f)
+              print(p, type(data).__name__, len(data) if hasattr(data,'__len__') else '-')
+          PY
+          sha256sum geo-seed/* > geo-seed/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v204-Yemen-Geography-Seed
+          path: geo-seed
+          if-no-files-found: error
+          retention-days: 1
