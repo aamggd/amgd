@@ -1,0 +1,95 @@
+name: v202 Split Offline Android Toolchain
+
+on:
+  push:
+    branches: [fush/v202-local-yemen-fx-build]
+    paths:
+      - '.github/workflows/v202-split-offline-toolchain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download successful v202 offline toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FUSH-v202-Offline-Toolchain
+          path: source_artifact
+          run-id: 33917977438
+          github-token: ${{ github.token }}
+
+      - name: Repack and split into 160 MiB parts
+        shell: bash
+        run: |
+          set -euo pipefail
+          find source_artifact -maxdepth 3 -type f -printf '%p %s bytes\n' | sort
+          mkdir -p parts tmp
+          tar -czf tmp/platform.tgz -C source_artifact/sdk/platforms android-36
+          tar -czf tmp/buildtools.tgz -C source_artifact/sdk/build-tools 36.0.0
+          tar -czf tmp/gradle.tgz -C source_artifact/gradle gradle-9.4.1
+          cp source_artifact/gradle-caches.tgz tmp/cache.tgz
+          cp source_artifact/INFO.txt parts/INFO.txt
+          for item in platform buildtools gradle cache; do
+            split -b 160M -d -a 2 "tmp/${item}.tgz" "parts/${item}-"
+          done
+          sha256sum tmp/*.tgz > parts/COMPONENT_SHA256.txt
+          ls -lh parts
+
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-platform-00, path: parts/platform-00, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-platform-01, path: parts/platform-01, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-platform-02, path: parts/platform-02, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-platform-03, path: parts/platform-03, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-buildtools-00, path: parts/buildtools-00, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-buildtools-01, path: parts/buildtools-01, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-buildtools-02, path: parts/buildtools-02, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-buildtools-03, path: parts/buildtools-03, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-gradle-00, path: parts/gradle-00, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-gradle-01, path: parts/gradle-01, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-gradle-02, path: parts/gradle-02, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-gradle-03, path: parts/gradle-03, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-00, path: parts/cache-00, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-01, path: parts/cache-01, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-02, path: parts/cache-02, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-03, path: parts/cache-03, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-04, path: parts/cache-04, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-05, path: parts/cache-05, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-06, path: parts/cache-06, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-07, path: parts/cache-07, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-08, path: parts/cache-08, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: FUSH-v202-cache-09, path: parts/cache-09, if-no-files-found: ignore, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v202-toolchain-metadata
+          path: |
+            parts/INFO.txt
+            parts/COMPONENT_SHA256.txt
+          if-no-files-found: error
+          retention-days: 1
