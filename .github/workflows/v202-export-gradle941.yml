@@ -1,0 +1,40 @@
+name: v202 Export Gradle 9.4.1
+
+on:
+  push:
+    branches: [fush/v202-build-tools-temp]
+    paths:
+      - '.github/workflows/v202-export-gradle941.yml'
+  workflow_dispatch:
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Package Gradle distribution
+        shell: bash
+        run: |
+          set -euo pipefail
+          GRADLE_BIN="$(command -v gradle)"
+          GRADLE_REAL="$(readlink -f "$GRADLE_BIN")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_REAL")")"
+          echo "GRADLE_BIN=$GRADLE_BIN"
+          echo "GRADLE_REAL=$GRADLE_REAL"
+          echo "GRADLE_HOME=$GRADLE_HOME"
+          gradle --version
+          mkdir -p export
+          cp -a "$GRADLE_HOME" export/gradle-9.4.1
+          tar -czf export/gradle-9.4.1.tgz -C export gradle-9.4.1
+          rm -rf export/gradle-9.4.1
+          sha256sum export/gradle-9.4.1.tgz > export/SHA256.txt
+          du -sh export/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Gradle-9.4.1
+          path: export
+          if-no-files-found: error
+          retention-days: 1
