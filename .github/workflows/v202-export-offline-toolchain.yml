@@ -28,7 +28,7 @@ jobs:
         shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
 
       - name: Resolve FUSH dependency graph
         shell: bash
@@ -104,6 +104,7 @@ jobs:
           android {
               namespace = "com.fush.bootstrap"
               compileSdk = 36
+              buildToolsVersion = "36.1.0"
               defaultConfig { applicationId = "com.fush.bootstrap"; minSdk = 26; targetSdk = 36; versionCode = 1; versionName = "1" }
               buildFeatures { compose = true }
               compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
@@ -151,11 +152,11 @@ jobs:
           rm -rf export splitout
           mkdir -p export/sdk/platforms export/sdk/build-tools export/gradle splitout
           cp -a "$ANDROID_SDK_ROOT/platforms/android-36" export/sdk/platforms/
-          cp -a "$ANDROID_SDK_ROOT/build-tools/36.0.0" export/sdk/build-tools/
+          cp -a "$ANDROID_SDK_ROOT/build-tools/36.1.0" export/sdk/build-tools/
           GRADLE_REAL="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(cd "$(dirname "$GRADLE_REAL")/.." && pwd)"
           cp -a "$GRADLE_HOME" export/gradle/gradle-9.4.1
-          printf 'Gradle=9.4.1\nAGP=9.2.0\nKotlin=2.3.21\nKSP=2.3.9\nRoom=2.8.4\nCompileSDK=36\nBuildTools=36.0.0\n' > export/INFO.txt
+          printf 'Gradle=9.4.1\nAGP=9.2.0\nKotlin=2.3.21\nKSP=2.3.9\nRoom=2.8.4\nCompileSDK=36\nBuildTools=36.1.0\n' > export/INFO.txt
           tar -czf splitout/core.tgz -C export sdk gradle INFO.txt
           tar --exclude='*.lock' --exclude='gc.properties' -czf splitout/cache.tgz -C "$HOME/.gradle" caches
           split -b 240M -d -a 2 splitout/core.tgz splitout/core-part-
@@ -218,4 +219,4 @@ jobs:
           if-no-files-found: ignore
           retention-days: 2
 
-# Regenerated for FAZ v1.0.5 local offline build on 2026-09-06.
+# Regenerated with Build Tools 36.1.0 for FAZ v1.0.5 local offline build.
