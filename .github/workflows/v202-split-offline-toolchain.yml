@@ -42,49 +42,49 @@ jobs:
           ls -lh parts
 
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-platform-00, path: parts/platform-00, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-platform-00, path: parts/platform-00, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-platform-01, path: parts/platform-01, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-platform-01, path: parts/platform-01, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-platform-02, path: parts/platform-02, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-platform-02, path: parts/platform-02, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-platform-03, path: parts/platform-03, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-platform-03, path: parts/platform-03, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-buildtools-00, path: parts/buildtools-00, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-buildtools-00, path: parts/buildtools-00, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-buildtools-01, path: parts/buildtools-01, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-buildtools-01, path: parts/buildtools-01, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-buildtools-02, path: parts/buildtools-02, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-buildtools-02, path: parts/buildtools-02, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-buildtools-03, path: parts/buildtools-03, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-buildtools-03, path: parts/buildtools-03, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-gradle-00, path: parts/gradle-00, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-gradle-00, path: parts/gradle-00, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-gradle-01, path: parts/gradle-01, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-gradle-01, path: parts/gradle-01, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-gradle-02, path: parts/gradle-02, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-gradle-02, path: parts/gradle-02, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-gradle-03, path: parts/gradle-03, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-gradle-03, path: parts/gradle-03, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-00, path: parts/cache-00, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-00, path: parts/cache-00, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-01, path: parts/cache-01, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-01, path: parts/cache-01, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-02, path: parts/cache-02, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-02, path: parts/cache-02, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-03, path: parts/cache-03, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-03, path: parts/cache-03, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-04, path: parts/cache-04, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-04, path: parts/cache-04, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-05, path: parts/cache-05, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-05, path: parts/cache-05, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-06, path: parts/cache-06, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-06, path: parts/cache-06, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-07, path: parts/cache-07, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-07, path: parts/cache-07, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-08, path: parts/cache-08, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-08, path: parts/cache-08, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
-        with: {name: FUSH-v202-cache-09, path: parts/cache-09, if-no-files-found: ignore, retention-days: 1}
+        with: {name: FUSH-v202-cache-09, path: parts/cache-09, if-no-files-found: ignore, retention-days: 2}
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-toolchain-metadata
@@ -92,4 +92,6 @@ jobs:
             parts/INFO.txt
             parts/COMPONENT_SHA256.txt
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 2
+
+# Regenerated for local FAZ v1.0.5 offline build on 2026-09-06.
