@@ -168,52 +168,54 @@ jobs:
           name: FUSH-v202-core-part-00
           path: splitout/core-part-00
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-core-part-01
           path: splitout/core-part-01
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-core-part-02
           path: splitout/core-part-02
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-core-part-03
           path: splitout/core-part-03
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-cache-part-00
           path: splitout/cache-part-00
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-cache-part-01
           path: splitout/cache-part-01
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-cache-part-02
           path: splitout/cache-part-02
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-cache-part-03
           path: splitout/cache-part-03
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
       - uses: actions/upload-artifact@v4
         with:
           name: FUSH-v202-cache-part-04
           path: splitout/cache-part-04
           if-no-files-found: ignore
-          retention-days: 1
+          retention-days: 2
+
+# Regenerated for FAZ v1.0.5 local offline build on 2026-09-06.
