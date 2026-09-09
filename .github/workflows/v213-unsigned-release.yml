@@ -17,70 +17,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct v213 source archive
+      - name: Reconstruct clean v213 source transfer
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import base64, subprocess
-
-          parts = sorted(Path('ci/v213/parts').glob('part_*.b64'))
-          assert parts, 'No v213 parts found'
-          payload = bytearray()
-          for p in parts[:-1]:
+          files = [Path('ci/v213/build_source_parts/raw_000.b64')] + sorted(Path('ci/v213/continuation').glob('cont_*.b64'))
+          assert files[0].exists(), 'raw_000 missing'
+          out = bytearray()
+          for p in files:
               s = ''.join(p.read_text().split())
-              payload += base64.b64decode(s, validate=True)
-              print(p.name, 'decoded', len(s), 'chars')
-
-          p = parts[-1]
-          raw = ''.join(p.read_text().split())
-          print('FINAL_MARKER_CONTEXT=', repr(raw[9960:10080]))
-          print('FINAL_MARKER=', repr(raw[10000:10021]))
-
-          # part_005 contains two valid Base64 blocks separated by a textual marker.
-          left = raw[:10000]
-          right = raw[10021:]
-          print('left chars', len(left), 'right chars', len(right))
-          left_bytes = base64.b64decode(left, validate=True)
-          right_bytes = base64.b64decode(right, validate=True)
-          payload += left_bytes + right_bytes
-          Path('/tmp/v213-base.payload').write_bytes(payload)
-
-          candidates = [('/tmp/v213-base.payload', bytes(payload))]
-          cont = Path('ci/v213/continuation/cont_000.b64')
-          if cont.exists():
-              cs = ''.join(cont.read_text().split())
-              cb = base64.b64decode(cs, validate=True)
-              candidates.append(('/tmp/v213-with-cont.payload', bytes(payload) + cb))
-              print('continuation decoded bytes', len(cb))
-
-          chosen = None
-          for name, data in candidates:
-              Path(name).write_bytes(data)
-              r = subprocess.run(['xz','-t',name], capture_output=True, text=True)
-              print('xz test', name, 'rc=', r.returncode, r.stderr.strip())
-              if r.returncode == 0:
-                  chosen = name
-                  break
-          assert chosen, 'No complete XZ source payload found from uploaded v213 chunks'
-          Path('/tmp/v213.payload').write_bytes(Path(chosen).read_bytes())
-          print('CHOSEN', chosen, 'bytes', Path(chosen).stat().st_size)
+              b = base64.b64decode(s, validate=True)
+              out += b
+              print(p, 'chars=', len(s), 'bytes=', len(b))
+          Path('/tmp/v213.payload').write_bytes(out)
+          r = subprocess.run(['xz','-t','/tmp/v213.payload'], capture_output=True, text=True)
+          print('XZ_RC=', r.returncode, r.stderr.strip(), 'TOTAL_BYTES=', len(out))
+          assert r.returncode == 0, 'Clean second transfer is not complete yet'
           PY
           file /tmp/v213.payload
           mkdir -p /tmp/v213src
           tar -xJf /tmp/v213.payload -C /tmp/v213src
-          find /tmp/v213src -maxdepth 3 -type f | head -80
           ROOT="$(find /tmp/v213src -name settings.gradle.kts -printf '%h\n' | head -1)"
           test -n "$ROOT"
           echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+          find "$ROOT" -maxdepth 2 -type f | head -80
 
       - name: Verify exact v213 R2 identity
         shell: bash
         run: |
           set -euxo pipefail
-          grep -R -n 'versionCode = 213' "$ROOT/app/build.gradle.kts"
-          grep -R -n '0.15.4.164-commercial-multitenant-foundation' "$ROOT/app/build.gradle.kts"
+          grep -n 'versionCode = 213' "$ROOT/app/build.gradle.kts"
+          grep -n '0.15.4.164-commercial-multitenant-foundation' "$ROOT/app/build.gradle.kts"
           grep -R -n 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java"
           test -f "$ROOT/app/src/main/java/com/fush/erp/data/V213CommercialTenantBindingMigration.kt"
           ! grep -R -n 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
