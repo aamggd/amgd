@@ -5,10 +5,11 @@ on:
     branches: [v213-build-clean]
     paths:
       - 'ci/v213/source/**'
+      - 'ci/v213/SOURCE_URL.txt'
   workflow_dispatch:
     inputs:
       source_url:
-        description: 'Direct HTTPS URL to the exact v213 source tar.xz (optional when repo chunks exist)'
+        description: 'Direct HTTPS URL to the exact v213 source tar.xz (optional when repo source exists)'
         required: false
         type: string
 
@@ -41,11 +42,15 @@ jobs:
       - name: Acquire and verify v213 source snapshot
         shell: bash
         env:
-          SOURCE_URL: ${{ inputs.source_url }}
+          DISPATCH_SOURCE_URL: ${{ inputs.source_url }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/v213-src
-          if [ -n "${SOURCE_URL:-}" ]; then
+          SOURCE_URL="${DISPATCH_SOURCE_URL:-}"
+          if [ -z "$SOURCE_URL" ] && [ -f ci/v213/SOURCE_URL.txt ]; then
+            SOURCE_URL="$(tr -d '\r\n' < ci/v213/SOURCE_URL.txt)"
+          fi
+          if [ -n "$SOURCE_URL" ]; then
             case "$SOURCE_URL" in
               https://*) ;;
               *) echo 'source_url must use HTTPS' >&2; exit 1 ;;
