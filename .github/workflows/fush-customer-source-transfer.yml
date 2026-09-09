@@ -15,17 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect firestorage page assets
+      - name: Locate firestorage public API base
         shell: bash
-        env:
-          SHARE_URL: https://firestorage.ai/ja/f/1cY8iBEwzwFx
         run: |
           set -euo pipefail
-          curl -L --fail --silent --show-error "$SHARE_URL" -o share.html
-          mapfile -t scripts < <(grep -Eo 'src="[^"]+\.js"' share.html | sed 's/src="//;s/"$//')
-          for s in "${scripts[@]}"; do
-            echo "=== $s ==="
-            curl -L --fail --silent --show-error "https://firestorage.ai$s" -o asset.js || continue
-            wc -c asset.js
-            grep -Eo '.{0,160}(download|presign|signed|publicId|shareId|/api/|files).{0,220}' asset.js | head -n 80 || true
-          done
+          curl -L --fail --silent --show-error 'https://firestorage.ai/_next/static/chunks/4899-d89df949f2dbd5af.js' -o app.js
+          echo '=== absolute URLs ==='
+          grep -Eo 'https?://[^"'"'"'` )]+' app.js | sort -u | head -n 100 || true
+          echo '=== api-like paths ==='
+          grep -Eo '/[A-Za-z0-9_.:-]+(/[A-Za-z0-9_?=&.{}$:-]+){1,8}' app.js | grep -Ei 'api|shares|objects|files|download' | sort -u | head -n 150 || true
+          echo '=== config context ==='
+          grep -Eo '.{0,260}(NEXT_PUBLIC|API_BASE|apiBase|baseUrl|baseURL).{0,320}' app.js | head -n 120 || true
