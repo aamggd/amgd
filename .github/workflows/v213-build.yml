@@ -60,7 +60,7 @@ jobs:
             test -n "$(find ci/v213/source -maxdepth 1 -type f -name 'part-*' -print -quit 2>/dev/null || true)"
             cat ci/v213/source/part-* > /tmp/v213-source.tar.xz
           fi
-          echo '97e5eaa84945983b44b39f4eb1105fb375bb7e6d585cb463f4ba3835d98a06e  /tmp/v213-source.tar.xz' | sha256sum -c -
+          echo '97e5eaa896a53cf22591b13a72ee767ccb61802f55bef8879531e7dd5d98a06e  /tmp/v213-source.tar.xz' | sha256sum -c -
           tar -xJf /tmp/v213-source.tar.xz -C /tmp/v213-src
           if [ -f /tmp/v213-src/settings.gradle.kts ]; then
             echo 'PROJECT_DIR=/tmp/v213-src' >> "$GITHUB_ENV"
