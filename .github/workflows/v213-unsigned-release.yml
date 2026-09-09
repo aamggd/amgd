@@ -21,12 +21,63 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          : > /tmp/v213.payload
-          for p in ci/v213/parts/part_*.b64; do
-            tr -d '\r\n' < "$p" | base64 -d >> /tmp/v213.payload
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, re, subprocess
+
+          parts = sorted(Path('ci/v213/parts').glob('part_*.b64'))
+          assert parts, 'No v213 parts found'
+          payload = bytearray()
+          for p in parts[:-1]:
+              s = ''.join(p.read_text().split())
+              payload += base64.b64decode(s, validate=True)
+              print(p.name, 'decoded', len(s), 'chars')
+
+          p = parts[-1]
+          raw = ''.join(p.read_text().split())
+          print(p.name, 'raw chars', len(raw), 'tail', repr(raw[-80:]))
+          recovered = None
+          recovered_cut = None
+          # Find the longest valid Base64 prefix near the end.
+          for cut in range(len(raw), max(0, len(raw)-512), -1):
+              if cut % 4:
+                  continue
+              try:
+                  decoded = base64.b64decode(raw[:cut], validate=True)
+              except Exception:
+                  continue
+              recovered = decoded
+              recovered_cut = cut
+              break
+          assert recovered is not None, 'Could not recover a valid Base64 prefix from final part'
+          payload += recovered
+          print('recovered final prefix chars', recovered_cut, 'ignored tail', repr(raw[recovered_cut:]))
+          Path('/tmp/v213-base.payload').write_bytes(payload)
+
+          candidates = [('/tmp/v213-base.payload', bytes(payload))]
+          cont = Path('ci/v213/continuation/cont_000.b64')
+          if cont.exists():
+              cs = ''.join(cont.read_text().split())
+              try:
+                  cb = base64.b64decode(cs, validate=True)
+                  candidates.append(('/tmp/v213-with-cont.payload', bytes(payload) + cb))
+                  print('continuation decoded bytes', len(cb))
+              except Exception as exc:
+                  print('continuation decode failed', exc)
+
+          chosen = None
+          for name, data in candidates:
+              Path(name).write_bytes(data)
+              r = subprocess.run(['xz','-t',name], capture_output=True, text=True)
+              print('xz test', name, 'rc=', r.returncode, r.stderr.strip())
+              if r.returncode == 0:
+                  chosen = name
+                  break
+          assert chosen, 'No complete XZ source payload found from uploaded v213 chunks'
+          Path('/tmp/v213.payload').write_bytes(Path(chosen).read_bytes())
+          print('CHOSEN', chosen, 'bytes', Path(chosen).stat().st_size)
+          PY
           file /tmp/v213.payload
-          xz -t /tmp/v213.payload
           mkdir -p /tmp/v213src
           tar -xJf /tmp/v213.payload -C /tmp/v213src
           find /tmp/v213src -maxdepth 3 -type f | head -80
@@ -40,7 +91,7 @@ jobs:
           set -euxo pipefail
           grep -R -n 'versionCode = 213' "$ROOT/app/build.gradle.kts"
           grep -R -n '0.15.4.164-commercial-multitenant-foundation' "$ROOT/app/build.gradle.kts"
-          grep -R -n 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java" 
+          grep -R -n 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java"
           test -f "$ROOT/app/src/main/java/com/fush/erp/data/V213CommercialTenantBindingMigration.kt"
           ! grep -R -n 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
 
