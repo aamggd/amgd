@@ -1,0 +1,88 @@
+name: Build FUSH Customer v213 Release
+
+on:
+  push:
+    branches: [fush-customer]
+    paths:
+      - '.github/workflows/fush-customer-v213-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fush-customer
+
+      - name: Verify FUSH Customer identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq 'versionCode[[:space:]]*=[[:space:]]*213' app/build.gradle.kts
+          grep -Fq '0.15.4.164-commercial-multitenant-foundation' app/build.gradle.kts
+          grep -R -F -l 'MIGRATION_53_54_COMMERCIAL_TENANT_BINDING' app/src/main | grep -q .
+          grep -R -F -l 'arrayOf<Any?>(normalized, now, now),' app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt | grep -q .
+          if grep -R --include='*.kt' --include='*.java' -n 'fallbackToDestructiveMigration' app/src/main; then
+            echo 'Destructive Room migration fallback is forbidden' >&2
+            exit 1
+          fi
+          python3 tools/verify_v213_commercial_multitenant.py
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.1.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Assemble release
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Lint vital release
+        run: gradle --no-daemon :app:lintVitalRelease
+
+      - name: Package FUSH Customer artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out src-package/FUSH-Customer-v213-CommercialMultiTenant-Source
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.1.0/zipalign" -f -p 4 "$APK" out/FUSH-Customer-v213-CommercialMultiTenant-UNSIGNED-ALIGNED.apk
+          "$ANDROID_HOME/build-tools/36.1.0/zipalign" -c -v 4 out/FUSH-Customer-v213-CommercialMultiTenant-UNSIGNED-ALIGNED.apk
+          rsync -a --exclude='.git' --exclude='build' --exclude='app/build' --exclude='out' --exclude='src-package' ./ src-package/FUSH-Customer-v213-CommercialMultiTenant-Source/
+          (cd src-package && zip -qr ../out/FUSH-Customer-v213-CommercialMultiTenant-R3-Source.zip FUSH-Customer-v213-CommercialMultiTenant-Source)
+          printf '%s\n' \
+            'applicationId=com.fush.erp.recovery' \
+            'versionCode=213' \
+            'versionName=0.15.4.164-commercial-multitenant-foundation' \
+            'roomSchema=54' \
+            'compileFix=CloudSyncRepository explicit Any? bind args' \
+            'signing=NOT_PERFORMED_IN_GITHUB' > out/BUILD-IDENTITY.txt
+          sha256sum out/*.apk out/*.zip > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Customer-v213-Release-Unsigned
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
