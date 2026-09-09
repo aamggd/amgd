@@ -1,10 +1,13 @@
-name: FUSH Customer v216 Build
+name: FUSH Customer v216 Firestorage Endpoint Probe
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [fush-customer-v216-build]
 
 jobs:
-  staging:
+  probe:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "v216 patch chunks are being staged"
+      - uses: actions/checkout@v4
+      - name: Inspect firestorage client endpoint
+        run: bash ci/v216_probe_script.sh
