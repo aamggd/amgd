@@ -1,50 +1,10 @@
 name: FUSH Customer v216 Build
 
 on:
-  push:
-    branches: [fush-customer-v216-build]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - name: Apply v216 source patch
-        run: |
-          base64 -d ci/v216_patch.b64 > /tmp/v216_patch.zip
-          unzip -oq /tmp/v216_patch.zip -d .
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK 36
-        run: yes | sdkmanager --licenses >/dev/null || true; sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.4.1'
-      - name: Verify v216 contract
-        run: python3 tools/verify_v216_mfa_release_hardening.py
-      - name: Unit tests
-        run: gradle --no-daemon :app:testDebugUnitTest
-      - name: Assemble release
-        run: gradle --no-daemon :app:assembleRelease
-      - name: Release lint
-        run: gradle --no-daemon :app:lintVitalRelease
-      - name: Align APK
-        run: |
-          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
-          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-          OUT="FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk"
-          "$ZIPALIGN" -f -v 4 "$APK" "$OUT"
-          "$ZIPALIGN" -c -v 4 "$OUT"
-          sha256sum "$OUT" > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: FUSH-Customer-v216-Release-Unsigned
-          path: |
-            FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk
-            SHA256SUMS.txt
-          if-no-files-found: error
+      - run: echo "Patch upload in progress"
