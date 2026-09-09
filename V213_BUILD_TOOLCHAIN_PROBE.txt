@@ -1,0 +1,18 @@
+FUSH ERP Mobile v213 - Build Toolchain Probe
+============================================
+
+Java:
+openjdk version "21.0.11" 2026-04-21
+OpenJDK Runtime Environment (build 21.0.11+10-1-deb13u2-Debian)
+OpenJDK 64-Bit Server VM (build 21.0.11+10-1-deb13u2-Debian, mixed mode, sharing)
+
+./gradlew --version exit code: 1
+Error: Unable to access jarfile /mnt/data/fush_v213_work/gradle/wrapper/gradle-wrapper.jar
+
+gradle/wrapper directory:
+total 12
+drwxr-sr-x 2 root oai_shared 4096 Sep  4 14:35 .
+drwxr-sr-x 3 root oai_shared 4096 Sep  4 14:35 ..
+-rw-rw-r-- 1 root oai_shared  340 Aug 23 23:12 gradle-wrapper.properties
+
+RESULT: BLOCKED BEFORE GRADLE STARTUP

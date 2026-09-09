@@ -1,0 +1,33 @@
+FUSH ERP Mobile v208 — FX Precision + Authorized Override Hotfix
+
+Baseline: v207 Shipment Custody / Voucher Print / Customer Edit
+Application ID: com.fush.erp.recovery
+versionCode: 208
+versionName: 0.15.4.159-fx-precision-override-hotfix
+Room schema: 51 (unchanged; no database migration required)
+minSdk: 26
+targetSdk: 36
+compileSdk: 36
+
+FIXES VERIFIED
+- Sales invoice historical FX rate is retained at canonical 8-decimal accounting precision.
+- The previous 4-decimal UI formatter no longer feeds a rounded rate back into invoice posting.
+- Regression case covered: approved 2.91214953271028 no longer becomes 2.9121 for posting.
+- Sales service compares approved/requested rates using canonical 8-decimal accounting scaling.
+- A genuinely different invoice FX rate requires EXCHANGE_RATE_OVERRIDE.
+- Override reason must be at least 5 characters.
+- Every sales FX override is written to Audit Trail as SALES_FX_RATE_OVERRIDE.
+- Users without EXCHANGE_RATE_OVERRIDE cannot edit the rate.
+
+VALIDATION
+- Unit/contract tests: 676 total, 0 failures, 0 errors, 0 skipped — PASS
+- assembleRelease — PASS
+- lintVitalRelease — PASS
+- zipalign verification — PASS
+- APK signature v2 — PASS
+- APK signature v3 — PASS
+- Signers: 1
+- Certificate SHA-256: 22d5e2a8bd48ddd2339abdc4748648b509e02d046524d6e118fbe05088155586
+- Certificate matches v207 — PASS
+- No fallbackToDestructiveMigration added.
+- No Room schema change.

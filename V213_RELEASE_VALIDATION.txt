@@ -1,0 +1,89 @@
+FUSH ERP Mobile v213 — Commercial Multi-Tenant Foundation
+==========================================================
+
+Release identity
+- applicationId: com.fush.erp.recovery
+- versionCode: 213
+- versionName: 0.15.4.164-commercial-multitenant-foundation
+- Room schema: 54
+- Baseline: v212 only
+- Destructive migration: NOT used
+
+Static/source gate
+- V213_STATIC_VALIDATION.txt: 39/39 PASS (original source contract gate)
+- Compile-time FUSH_CLOUD_ORGANIZATION_ID: REMOVED
+- Fixed historical organization UUID in Android executable main code: NONE
+- Runtime organizationId required by all cloud sync engines: PASS
+- Room tenant binding present and Migration 53 -> 54 registered in both DB builders: PASS
+- Fresh commercial Supabase installer contains no fixed vendor tenant UUID: PASS
+
+Executable host gate
+- tools/verify_v213_commercial_multitenant.py: 48/48 PASS
+- Real SQLite host execution of tenant-binding DDL: PASS
+- Legacy business row preservation during host migration probe: PASS
+- Unique tenant marker enforcement: PASS
+- All 8 Android cloud transports require runtime tenant: PASS
+- FUSH AI Edge Function active-membership authorization: PASS (source inspection)
+- Membership discovery ACTIVE-only in v213 SQL: PASS
+- Cloud binding reads require active organization membership in v213 SQL: PASS
+- Internal privileged trigger RPC exposure hardening packaged: PASS
+- SECURITY DEFINER structural audit packaged: PASS
+- Dynamic all-tenant-table A/B cross-read test packaged: PASS
+- Representative cross-tenant INSERT/UPDATE/DELETE tests packaged: PASS
+- Privileged RPC cross-tenant denial probes packaged: PASS
+
+Kotlin host syntax/compile probe
+- CloudModels.kt: COMPILED
+- CloudTenantBindingEntity.kt: COMPILED with minimal AndroidX annotation stubs
+- V213CommercialTenantBindingMigration.kt: COMPILED with minimal AndroidX migration/SQLite stubs
+- Full Android/Kotlin compilation: NOT EXECUTED (Android toolchain unavailable)
+
+Connected Supabase baseline audit (READ-ONLY; production not changed)
+- Tenant-scoped public FUSH tables: 42
+- Tenant tables without RLS: 0
+- Unconditional tenant policies found by structural query: 0
+- Existing organization count: 1 historical FUSH tenant
+- fush_create_organization(text,text): NOT INSTALLED on live project yet
+- tenant-scoped device unique index: NOT INSTALLED on live project yet
+- organization-targeted SECURITY DEFINER RPCs without visible tenant guard: 0
+- anon-executable internal SECURITY DEFINER helpers identified: 2; v213 migration includes revocation
+
+Room/device gate
+- Android MigrationTestHelper 53 -> 54 test: ADDED
+- Android MigrationTestHelper execution: NOT EXECUTED
+- Room 54.json: NOT GENERATED in this environment
+
+Supabase live isolation gate
+- v213 migration applied to production: NO (intentionally untouched)
+- Staging policy audit: NOT EXECUTED
+- Staging two-user Tenant A/B test: NOT EXECUTED
+
+Android build gate
+- gradle/wrapper/gradle-wrapper.properties: PRESENT (Gradle 9.4.1)
+- gradle/wrapper/gradle-wrapper.jar: MISSING from supplied baseline
+- Android SDK: NOT AVAILABLE in this environment
+- Gradle tests: NOT EXECUTED
+- assembleRelease: NOT EXECUTED
+- lintVitalRelease: NOT EXECUTED
+- connectedDebugAndroidTest: NOT EXECUTED
+- v213 APK/AAB: NOT BUILT
+- v213 signing: NOT EXECUTED
+
+Baseline evidence from v212 (historical only, not v213 execution evidence)
+- v212 tests: 688 / 0 failures / 0 errors / 0 skipped
+- v212 assembleRelease: PASS
+- v212 lintVitalRelease: PASS
+- v212 zipalign: PASS
+- v212 signature: v2=true, v3=true
+- permanent signer SHA-256: 22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+
+FINAL STATUS
+- v213 SOURCE FOUNDATION: IMPLEMENTED
+- v213 HOST MULTI-TENANT GATE: PASS (48/48)
+- LIVE PRODUCTION CLOUD: UNCHANGED
+- COMMERCIAL RELEASE GATE: NOT CLOSED
+- PRODUCTION / SALE STATUS: DO NOT RELEASE v213 YET
+
+Clean build command
+- Linux/macOS: ./RUN_V213_COMMERCIAL_GATE.sh
+- Windows: .\\RUN_V213_COMMERCIAL_GATE.ps1

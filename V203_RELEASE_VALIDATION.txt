@@ -1,0 +1,38 @@
+FUSH ERP Mobile v203 — Room 49→50 Startup Migration Hotfix
+===========================================================
+
+Root cause fixed
+----------------
+FushErpApplication opens the production database first through
+AccountingWaveBRoomBootstrap.migrateBeforeContainer(). In v202 that bootstrap
+registered migrations only through 48→49. AppContainer did contain 49→50, but
+startup failed before AppContainer could be created.
+
+Fix
+---
+- Added MIGRATION_49_50_LOCAL_FX_ENGINE to AccountingWaveBRoomBootstrap.
+- Added contract test to require 48→49 followed by 49→50 in the startup bootstrap.
+- Room schema remains 50. No 50→51 migration is required.
+- No fallbackToDestructiveMigration, deleteDatabase, or clearAllTables in production source.
+- User data is preserved.
+
+Release identity
+----------------
+applicationId: com.fush.erp.recovery
+versionCode: 203
+versionName: 0.15.4.154-local-yemen-fx-migration-hotfix
+Room schema: 50
+compileSdk / targetSdk: 36 / 36
+
+Validation
+----------
+Gradle unit tests: PASS — 649 tests, 0 failures, 0 errors, 0 skipped
+assembleRelease: PASS
+lintVitalRelease: PASS
+zipalign verification: PASS
+APK signature v2: PASS
+APK signature v3: PASS
+Signer certificate SHA-256:
+22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+
+The signing key and password are not included in the source package.

@@ -1,0 +1,17 @@
+V164 STATIC VALIDATION
+========================================
+PASS - versionCode 164
+PASS - applicationId preserved
+PASS - Room remains 46
+PASS - No destructive migration
+PASS - Document guard interface
+PASS - Repository implements guard
+PASS - RPC wired
+PASS - Sales invoice guard
+PASS - Cash receipt guard
+PASS - Purchase invoice guard
+PASS - Registry SQL
+PASS - Backfill sales
+PASS - Backfill purchase
+
+13/13 PASS

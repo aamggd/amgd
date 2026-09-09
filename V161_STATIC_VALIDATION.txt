@@ -1,0 +1,32 @@
+PASS | applicationId stable
+PASS | versionCode 161
+PASS | versionName v161
+PASS | Room schema 46
+PASS | no destructive fallback
+PASS | repository purchase sync
+PASS | foreground purchase sync
+PASS | purchase sync UI
+PASS | DAO allInvoicesForCloudSync
+PASS | DAO allReturnsForCloudSync
+PASS | DAO invoiceByNo
+PASS | DAO returnByNo
+PASS | DAO returnLinesForReturn
+PASS | engine fush_tx_purchase_invoices
+PASS | engine fush_tx_purchase_lines
+PASS | engine fush_tx_purchase_returns
+PASS | engine fush_tx_purchase_return_lines
+PASS | no stock movement write in engine
+PASS | no supplier payment write in engine
+PASS | SQL fush_tx_purchase_invoices
+PASS | SQL fush_tx_purchase_lines
+PASS | SQL fush_tx_purchase_returns
+PASS | SQL fush_tx_purchase_return_lines
+PASS | SQL enable row level security
+PASS | SQL OWNER
+PASS | SQL ADMIN
+PASS | XML app/src/main/res/values/strings.xml
+PASS | XML app/src/main/res/values-ar/strings.xml
+PASS | unique strings values
+PASS | unique strings values-ar
+
+RESULT: 30/30 PASS

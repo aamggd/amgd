@@ -1,0 +1,56 @@
+FUSH ERP Mobile v202 — Local Yemen FX Engine
+============================================
+Baseline: v201 AdminUnusedShipmentDelete
+Application ID: com.fush.erp.recovery
+versionCode: 202
+versionName: 0.15.4.153-local-yemen-fx-engine
+Room schema: 50
+Migration: 49 -> 50, non-destructive
+
+IMPLEMENTED
+- YECES primary adapter through Supabase Edge Function: USD/SAR, Aden/Sanaa, BUY/SELL.
+- ACAPS YETI USD comparison and secondary fallback.
+- SAMA USD/SAR 3.75 cross-check for SAR.
+- Supabase batch/rate persistence and cached fallback.
+- Android local cache for fetched market quotes.
+- Accountant refresh + approval workflow.
+- High variance / stale override permission + reason + audit.
+- Immutable daily approved FX snapshots.
+- Canonical approved USD/SAR/YER_OLD exchange-rate history.
+- Purchase invoices and supplier payments hydrate the approved historical rate for their date.
+- Posted documents retain their stored exchangeRate; later refreshes do not reprice them.
+- Separate FX permissions and one-time role compatibility upgrade.
+- Room 49->50 migration regression test included.
+- FX variance policy unit test included.
+
+FINAL VALIDATION — 2026-09-04
+PASS  Gradle unit tests: 649 tests, 0 failures, 0 errors, 0 skipped.
+PASS  assembleRelease.
+PASS  lintVitalRelease (executed as part of assembleRelease).
+PASS  Room generated schema 50 present.
+PASS  App ID: com.fush.erp.recovery.
+PASS  versionCode: 202; versionName: 0.15.4.153-local-yemen-fx-engine.
+PASS  No fallbackToDestructiveMigration in AppContainer.
+PASS  APK zipalign verification.
+PASS  APK Signature Scheme v2 and v3 verification.
+PASS  Signing certificate SHA-256:
+      22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+PASS  Signing certificate matches the supplied v201 reference APK.
+PASS  v201 -> v202 update identity: same applicationId and same signing certificate.
+
+TEST MAINTENANCE
+- Twelve historical v184-v201 contract tests were corrected so they protect the
+  schema-49 baseline while allowing later non-destructive schema upgrades. They no
+  longer incorrectly require the current app to remain exactly on schema 49 or
+  versionCode 201. No production code was changed by this test maintenance.
+
+ANDROID INSTRUMENTATION
+NOT RUN: device/emulator instrumentation tests, because no Android emulator/device is
+available in this execution environment. The migration instrumentation test remains
+included in app/src/androidTest.
+
+SUPABASE DEPLOYMENT
+The SQL schema and Edge Function are included under /supabase. They were not deployed
+from this environment because no Supabase deployment credential/CLI session is
+available. Until deployed to the configured Supabase project, the Android online FX
+refresh endpoint can return an HTTP error; local/manual historical FX remains available.

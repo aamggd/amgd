@@ -1,0 +1,366 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 62
+-        versionName = "0.15.4.23-phase14.5-legacy-lot-assignment"
++        versionCode = 63
++        versionName = "0.15.4.24-phase14.5-multi-sample-quality"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/app/src/main/java/com/fush/erp/data/FushDatabase.kt
++++ b/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+@@ -5,7 +5,7 @@
+ import com.fush.erp.data.dao.*
+ import com.fush.erp.data.entity.*
+ 
+-const val FUSH_DB_SCHEMA_VERSION = 23
++const val FUSH_DB_SCHEMA_VERSION = 24
+ 
+ @Database(
+     entities = [
+@@ -35,6 +35,7 @@
+         ProductionIssueEntity::class,
+         QualitySpecificationEntity::class,
+         QualityCheckEntity::class,
++        QualityCheckSampleEntity::class,
+         NonConformanceEntity::class,
+         CustomerEntity::class,
+         SalesPriceEntity::class,
+--- a/app/src/main/java/com/fush/erp/data/AppContainer.kt
++++ b/app/src/main/java/com/fush/erp/data/AppContainer.kt
+@@ -25,7 +25,7 @@
+         context.applicationContext,
+         FushDatabase::class.java,
+         "fush_erp.db"
+-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23).build()
++    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24).build()
+ 
+     val purchaseService = PurchaseService(db)
+     val inventoryService = InventoryService(db)
+--- a/app/src/main/java/com/fush/erp/data/Migrations.kt
++++ b/app/src/main/java/com/fush/erp/data/Migrations.kt
+@@ -1652,3 +1652,23 @@
+     }
+ }
+ 
++
++
++val MIGRATION_23_24 = object : Migration(23, 24) {
++    override fun migrate(db: SupportSQLiteDatabase) {
++        db.execSQL("""
++            CREATE TABLE IF NOT EXISTS quality_check_samples (
++                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
++                checkId INTEGER NOT NULL,
++                sequenceNo INTEGER NOT NULL,
++                measuredValue REAL NOT NULL,
++                FOREIGN KEY(checkId) REFERENCES quality_checks(id) ON UPDATE NO ACTION ON DELETE CASCADE
++            )
++        """.trimIndent())
++        db.execSQL("CREATE INDEX IF NOT EXISTS index_quality_check_samples_checkId ON quality_check_samples(checkId)")
++        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_quality_check_samples_checkId_sequenceNo ON quality_check_samples(checkId, sequenceNo)")
++
++        // Existing quantitative checks are preserved as historical aggregate checks.
++        // We intentionally do not invent individual sample readings for legacy records.
++    }
++}
+--- a/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/ProductionDaos.kt
+@@ -107,6 +107,12 @@
+     suspend fun insertQualityCheck(row: QualityCheckEntity): Long
+ 
+     @Insert(onConflict = OnConflictStrategy.ABORT)
++    suspend fun insertQualityCheckSamples(rows: List<QualityCheckSampleEntity>)
++
++    @Query("SELECT * FROM quality_check_samples WHERE checkId = :checkId ORDER BY sequenceNo, id")
++    suspend fun samplesForQualityCheck(checkId: Long): List<QualityCheckSampleEntity>
++
++    @Insert(onConflict = OnConflictStrategy.ABORT)
+     suspend fun insertNonConformance(row: NonConformanceEntity): Long
+ 
+     @Update
+--- a/app/src/main/java/com/fush/erp/data/entity/ProductionEntities.kt
++++ b/app/src/main/java/com/fush/erp/data/entity/ProductionEntities.kt
+@@ -208,6 +208,26 @@
+ )
+ 
+ @Entity(
++    tableName = "quality_check_samples",
++    indices = [
++        Index("checkId"),
++        Index(value = ["checkId", "sequenceNo"], unique = true)
++    ],
++    foreignKeys = [ForeignKey(
++        entity = QualityCheckEntity::class,
++        parentColumns = ["id"],
++        childColumns = ["checkId"],
++        onDelete = ForeignKey.CASCADE
++    )]
++)
++data class QualityCheckSampleEntity(
++    @PrimaryKey(autoGenerate = true) val id: Long = 0,
++    val checkId: Long,
++    val sequenceNo: Int,
++    val measuredValue: Double
++)
++
++@Entity(
+     tableName = "non_conformances",
+     indices = [Index("batchId")],
+     foreignKeys = [ForeignKey(
+--- a/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionMath.kt
+@@ -75,6 +75,31 @@
+         return if (aboveMin && belowMax) "PASS" else "FAIL"
+     }
+ 
++    data class QualitySampleSummary(
++        val average: Double,
++        val minimum: Double,
++        val maximum: Double,
++        val passedCount: Int,
++        val failedCount: Int
++    )
++
++    fun summarizeQualitySamples(values: List<Double>, minValue: Double?, maxValue: Double?): QualitySampleSummary {
++        require(values.isNotEmpty()) { "يجب إدخال قراءة واحدة على الأقل" }
++        require(values.all { it.isFinite() }) { "إحدى قراءات العينة غير صالحة" }
++        validateQualitySpecification(minValue, maxValue, null, 1)
++        val passed = values.count { qualityDecision(it, minValue, maxValue) == "PASS" }
++        return QualitySampleSummary(
++            average = values.average(),
++            minimum = values.minOrNull()!!,
++            maximum = values.maxOrNull()!!,
++            passedCount = passed,
++            failedCount = values.size - passed
++        )
++    }
++
++    fun qualitySampleDecision(values: List<Double>, minValue: Double?, maxValue: Double?): String =
++        if (summarizeQualitySamples(values, minValue, maxValue).failedCount == 0) "PASS" else "FAIL"
++
+     fun actualUnitCost(materialCost: Double, laborCost: Double, acceptedQty: Double): Double {
+         require(materialCost >= 0.0 && materialCost.isFinite()) { "تكلفة المواد غير صالحة" }
+         validateDirectLaborCost(laborCost)
+--- a/app/src/main/java/com/fush/erp/domain/ProductionService.kt
++++ b/app/src/main/java/com/fush/erp/domain/ProductionService.kt
+@@ -671,8 +671,7 @@
+     suspend fun recordQuantitativeQualityCheck(
+         batchId: Long,
+         specificationId: Long,
+-        measuredValue: Double,
+-        actualSampleSize: Int,
++        measuredValues: List<Double>,
+         notes: String,
+         checkedBy: Long
+     ): Long = db.withTransaction {
+@@ -683,26 +682,37 @@
+         require(spec.isActive) { "مواصفة الجودة غير نشطة" }
+         require(spec.productItemId == order.productItemId) { "مواصفة الجودة لا تخص هذا المنتج" }
+         ProductionMath.validateQualitySpecification(spec.minValue, spec.maxValue, spec.targetValue, spec.requiredSampleSize)
+-        ProductionMath.validateQualitySampleSize(actualSampleSize, spec.requiredSampleSize)
+-        val decision = ProductionMath.qualityDecision(measuredValue, spec.minValue, spec.maxValue)
+-        db.productionDao().insertQualityCheck(
++        ProductionMath.validateQualitySampleSize(measuredValues.size, spec.requiredSampleSize)
++        val summary = ProductionMath.summarizeQualitySamples(measuredValues, spec.minValue, spec.maxValue)
++        val decision = if (summary.failedCount == 0) "PASS" else "FAIL"
++        val checkId = db.productionDao().insertQualityCheck(
+             QualityCheckEntity(
+                 batchId = batch.id,
+                 stage = spec.stage,
+                 checkName = spec.parameterName,
+-                resultValue = measuredValue.toString(),
++                resultValue = measuredValues.joinToString(",") { it.toString() },
+                 specificationId = spec.id,
+-                measuredValue = measuredValue,
++                measuredValue = summary.average,
+                 unit = spec.unit,
+                 minValue = spec.minValue,
+                 maxValue = spec.maxValue,
+                 targetValue = spec.targetValue,
+-                sampleSize = actualSampleSize,
++                sampleSize = measuredValues.size,
+                 decision = decision,
+                 notes = notes.trim(),
+                 checkedBy = checkedBy
+             )
+         )
++        db.productionDao().insertQualityCheckSamples(
++            measuredValues.mapIndexed { index, value ->
++                QualityCheckSampleEntity(
++                    checkId = checkId,
++                    sequenceNo = index + 1,
++                    measuredValue = value
++                )
++            }
++        )
++        checkId
+     }
+ 
+     suspend fun recordQualityCheck(
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -11,6 +11,7 @@
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.domain.ProductionMath
+ import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.export.ReportExportDocument
+ import com.fush.erp.ui.export.ReportExportTable
+@@ -1163,8 +1164,8 @@
+     var specifications by remember { mutableStateOf<List<QualitySpecificationEntity>>(emptyList()) }
+     var productItemId by remember { mutableStateOf<Long?>(null) }
+     var selectedSpecId by remember { mutableStateOf<Long?>(null) }
+-    var measuredText by remember { mutableStateOf("") }
+-    var sampleText by remember { mutableStateOf("") }
++    var sampleReadings by remember { mutableStateOf<List<String>>(emptyList()) }
++    var samplesByCheck by remember { mutableStateOf<Map<Long, List<QualityCheckSampleEntity>>>(emptyMap()) }
+     var quantitativeNotes by remember { mutableStateOf("") }
+     var legacyCheckName by remember { mutableStateOf("فحص وصفي إضافي") }
+     var legacyResultValue by remember { mutableStateOf("") }
+@@ -1181,6 +1182,7 @@
+     fun reload() {
+         scope.launch {
+             checks = container.db.productionDao().checksForBatch(batch.id)
++            samplesByCheck = checks.associate { it.id to container.db.productionDao().samplesForQualityCheck(it.id) }
+             nonConformances = container.db.productionDao().nonConformancesForBatch(batch.id)
+             val order = container.db.productionDao().orderById(batch.orderId)
+             productItemId = order?.productItemId
+@@ -1193,8 +1195,9 @@
+ 
+     val activeSpecs = specifications.filter { it.isActive }
+     val selectedSpec = activeSpecs.firstOrNull { it.id == selectedSpecId }
+-    LaunchedEffect(selectedSpecId) {
+-        selectedSpec?.let { if (sampleText.isBlank()) sampleText = it.requiredSampleSize.toString() }
++    LaunchedEffect(selectedSpecId, selectedSpec?.requiredSampleSize) {
++        val required = selectedSpec?.requiredSampleSize ?: 0
++        sampleReadings = List(required) { "" }
+     }
+ 
+     AlertDialog(
+@@ -1211,31 +1214,57 @@
+                         QualitySpecificationSelectionField(
+                             specs = activeSpecs,
+                             selectedId = selectedSpecId,
+-                            onSelect = { selectedSpecId = it; sampleText = "" }
++                            onSelect = { selectedSpecId = it }
+                         )
+                         selectedSpec?.let { spec ->
+                             Text("${spec.parameterName} • الحدود: ${qualityLimitsText(spec.minValue, spec.maxValue, spec.unit)}${spec.targetValue?.let { " • الهدف ${formatProductionQty(it)} ${spec.unit}" } ?: ""}")
+                             Text("العينة المطلوبة: ${spec.requiredSampleSize}${if (spec.isRequired) " • إلزامي" else " • اختياري"}", style = MaterialTheme.typography.bodySmall)
+                         }
+-                        OutlinedTextField(measuredText, { measuredText = it }, label = { Text("القراءة الفعلية") }, singleLine = true)
+-                        OutlinedTextField(sampleText, { sampleText = it }, label = { Text("حجم العينة الفعلي") }, singleLine = true)
++                        selectedSpec?.let { spec ->
++                            Text("أدخل ${spec.requiredSampleSize} قراءات منفصلة. يجب أن تكون كل قراءة ضمن حدود القبول.", style = MaterialTheme.typography.bodySmall)
++                            sampleReadings.forEachIndexed { index, value ->
++                                OutlinedTextField(
++                                    value = value,
++                                    onValueChange = { next ->
++                                        sampleReadings = sampleReadings.toMutableList().also { it[index] = next }
++                                    },
++                                    label = { Text("قراءة العينة ${index + 1}") },
++                                    singleLine = true
++                                )
++                            }
++                            val parsed = sampleReadings.mapNotNull { it.toDoubleOrNull()?.takeIf { value -> value.isFinite() } }
++                            if (sampleReadings.isNotEmpty() && parsed.size == sampleReadings.size) {
++                                val summary = ProductionMath.summarizeQualitySamples(parsed, spec.minValue, spec.maxValue)
++                                Text(
++                                    "المتوسط ${formatProductionQty(summary.average)} ${spec.unit} • الأدنى ${formatProductionQty(summary.minimum)} • الأعلى ${formatProductionQty(summary.maximum)} • غير المطابق ${summary.failedCount}",
++                                    style = MaterialTheme.typography.bodySmall,
++                                    color = if (summary.failedCount == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
++                                )
++                            }
++                        }
+                         OutlinedTextField(quantitativeNotes, { quantitativeNotes = it }, label = { Text("ملاحظات القراءة") })
+                         Button(
+-                            enabled = selectedSpec != null && measuredText.toDoubleOrNull()?.isFinite() == true && sampleText.toIntOrNull()?.let { it > 0 } == true,
++                            enabled = selectedSpec != null && sampleReadings.isNotEmpty() && sampleReadings.all { it.toDoubleOrNull()?.isFinite() == true },
+                             onClick = {
+                                 val spec = selectedSpec ?: return@Button
++                                val values = sampleReadings.map { it.toDouble() }
+                                 scope.launch {
+                                     try {
+                                         val id = container.productionService.recordQuantitativeQualityCheck(
+-                                            batch.id, spec.id, measuredText.toDouble(), sampleText.toInt(), quantitativeNotes, user.id
++                                            batch.id, spec.id, values, quantitativeNotes, user.id
+                                         )
+                                         val saved = container.db.productionDao().checksForBatch(batch.id).firstOrNull { it.id == id }
+-                                        message = if (saved?.decision == "PASS") "تم تسجيل القراءة: ضمن حدود القبول" else "تم تسجيل القراءة: خارج حدود القبول"
+-                                        measuredText = ""; sampleText = spec.requiredSampleSize.toString(); quantitativeNotes = ""; reload()
++                                        val summary = ProductionMath.summarizeQualitySamples(values, spec.minValue, spec.maxValue)
++                                        message = if (saved?.decision == "PASS") {
++                                            "تم تسجيل ${values.size} قراءات: جميعها ضمن حدود القبول"
++                                        } else {
++                                            "تم تسجيل ${values.size} قراءات: ${summary.failedCount} قراءة خارج حدود القبول"
++                                        }
++                                        sampleReadings = List(spec.requiredSampleSize) { "" }; quantitativeNotes = ""; reload()
+                                     } catch (e: Exception) { message = e.message }
+                                 }
+                             }
+-                        ) { Text("تسجيل القراءة الكمية") }
++                        ) { Text("تسجيل قراءات العينة") }
+                     }
+                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                         OutlinedButton(onClick = { editingSpec = null; showSpecEditor = true }) { Text("إضافة مواصفة") }
+@@ -1289,8 +1318,17 @@
+                         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                             Text("${check.checkName}: ${if (check.decision == "PASS") "مقبول" else "مرفوض"}")
+                             if (check.measuredValue != null) {
+-                                Text("القراءة ${formatProductionQty(check.measuredValue)} ${check.unit} • ${qualityLimitsText(check.minValue, check.maxValue, check.unit)}")
+-                                Text("العينة الفعلية: ${check.sampleSize}${check.targetValue?.let { " • الهدف ${formatProductionQty(it)} ${check.unit}" } ?: ""}", style = MaterialTheme.typography.bodySmall)
++                                val samples = samplesByCheck[check.id].orEmpty()
++                                if (samples.isNotEmpty()) {
++                                    val values = samples.map { it.measuredValue }
++                                    val summary = ProductionMath.summarizeQualitySamples(values, check.minValue, check.maxValue)
++                                    Text("المتوسط ${formatProductionQty(summary.average)} ${check.unit} • ${qualityLimitsText(check.minValue, check.maxValue, check.unit)}")
++                                    Text("الأدنى ${formatProductionQty(summary.minimum)} • الأعلى ${formatProductionQty(summary.maximum)} • مطابق ${summary.passedCount}/${values.size}", style = MaterialTheme.typography.bodySmall)
++                                    Text(values.mapIndexed { index, value -> "${index + 1}) ${formatProductionQty(value)}" }.joinToString("  •  "), style = MaterialTheme.typography.bodySmall)
++                                } else {
++                                    Text("قراءة تاريخية مجمعة ${formatProductionQty(check.measuredValue)} ${check.unit} • ${qualityLimitsText(check.minValue, check.maxValue, check.unit)}")
++                                    Text("حجم العينة المسجل تاريخيًا: ${check.sampleSize}${check.targetValue?.let { " • الهدف ${formatProductionQty(it)} ${check.unit}" } ?: ""}", style = MaterialTheme.typography.bodySmall)
++                                }
+                             } else if (check.resultValue.isNotBlank()) Text(check.resultValue)
+                         }
+                     }
+--- a/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/ProductionMathTest.kt
+@@ -155,4 +155,22 @@
+         }
+     }
+ 
++    @Test
++    fun `quality sample passes only when every reading is within limits`() {
++        val values = listOf(59.0, 59.5, 60.0, 60.5, 61.0)
++        val summary = ProductionMath.summarizeQualitySamples(values, 59.0, 61.0)
++        assertEquals(5, summary.passedCount)
++        assertEquals(0, summary.failedCount)
++        assertEquals("PASS", ProductionMath.qualitySampleDecision(values, 59.0, 61.0))
++    }
++
++    @Test
++    fun `quality sample fails when one reading is outside limits`() {
++        val values = listOf(59.5, 60.0, 61.1, 60.2)
++        val summary = ProductionMath.summarizeQualitySamples(values, 59.0, 61.0)
++        assertEquals(3, summary.passedCount)
++        assertEquals(1, summary.failedCount)
++        assertEquals("FAIL", ProductionMath.qualitySampleDecision(values, 59.0, 61.0))
++    }
++
+ }
+--- a/PHASE14_5_24_SCOPE.md
++++ b/PHASE14_5_24_SCOPE.md
+@@ -0,0 +1,8 @@
++# Phase 14.5.24 — Multi-sample quantitative quality checks
++
++- Quantitative quality specifications with required sample size now collect one actual reading per sampled unit.
++- A check passes only when every sample reading is within the specification limits.
++- The check stores an aggregate average plus a durable child table containing every individual reading.
++- UI shows average, minimum, maximum, conforming count and all sample values.
++- Legacy aggregate quality checks remain unchanged and are clearly shown as historical aggregate records; no readings are invented.
++- Room schema 24 adds only `quality_check_samples`; migration 23 -> 24 is non-destructive.

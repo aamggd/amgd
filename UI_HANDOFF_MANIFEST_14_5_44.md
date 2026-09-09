@@ -1,0 +1,38 @@
+# FUSH UI Handoff Manifest — through 14.5.44
+
+## UI package sequence
+1. 14.5.34 — Foundation / Material 3 / login / navigation / dashboard
+2. 14.5.35 — Sales & Customers
+3. 14.5.36 — Purchases & Suppliers
+4. 14.5.37 — Accounting & Treasury presentation
+5. 14.5.38 — Inventory & Master Data
+6. 14.5.39 — Production & Quality
+7. 14.5.40 — Employees & Sales Representatives
+8. 14.5.41 — Assets, Maintenance & Operating Expenses
+9. 14.5.42 — Reports, Analytics & Adaptive Layout
+10. 14.5.43 — Accessibility, States & UX Polish
+11. 14.5.44 — Final UI Consistency & Integration Handoff
+
+## Final UI-only handoff boundary
+The UI branch intentionally does not own final Room schema numbering, final versionCode, accounting/security migrations, signing, APK release, or merge into `fush/main`. Those are central integration responsibilities.
+
+## Integration expectations
+- Start from the current unified source, not an old UI source snapshot.
+- Apply each package in order only when not already integrated.
+- For conflicts, preserve the newer business/data/security implementation and manually carry forward the UI presentation changes.
+- Do not overwrite `data/`, `domain/`, migrations, authentication/RBAC or accounting service code with older UI-branch copies.
+- Keep `applicationId = com.fush.erp.recovery`.
+- Use the permanent project signing certificate only in the central release pipeline; never commit key material or passwords.
+
+## Final verification checklist after central merge
+- Unit tests PASS.
+- Release build PASS.
+- Application ID unchanged.
+- Room schema/migrations validated by the central integration sequence.
+- No destructive migration or database recreation.
+- Phone navigation and 840dp+ adaptive navigation both verified.
+- Arabic RTL, dark/light theme, large font and TalkBack verified on device/emulator.
+- Sales, purchases, customer/supplier statements, treasury, inventory, production, quality, employee compensation, sales commissions, expenses, backup/restore and reports smoke-tested.
+- Report numbers compared before/after UI merge to confirm presentation-only equality.
+- Upgrade install over the currently deployed signed APK verified without uninstall or data loss.
+- APK zipalign/signature v2/v3 and signing-certificate SHA-256 verified by the central release workflow.

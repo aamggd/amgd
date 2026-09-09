@@ -1,0 +1,23 @@
+FUSH ERP Mobile v180 — Shipment FIFO Lot Auto-Select Validation
+====================================================================
+PASS  AppID unchanged
+PASS  versionCode 180
+PASS  versionName v180 FIFO
+PASS  Room schema remains 48
+PASS  47→48 migration retained
+PASS  No destructive migration
+PASS  Manual shipment lot entry removed
+PASS  Read-only auto lot field present
+PASS  FIFO ordered by oldest stock movement
+PASS  Open shipment reservation deducted
+PASS  FIFO split function present
+PASS  Service revalidates FIFO inside create transaction
+PASS  v180 unit tests added
+PASS  v180 contract tests added
+PASS  Reservation SQL smoke: 30 shipped - 10 sold = 20 reserved — reserved=20.0
+
+Static checks: 15/15 PASS
+Kotlin FIFO policy smoke: PASS (compiled and executed separately with kotlinc)
+Gradle build attempt: FAILED BEFORE COMPILATION because com.android.application 9.2.0 could not be resolved from plugin repositories in this isolated runtime.
+Signed APK: NOT PRODUCED in this runtime; no false success claim.
+Room migration: no schema change; schema remains 48.

@@ -1,0 +1,22 @@
+FUSH ERP Mobile - v104 Expenses Redesign Source
+
+Package ID: com.fush.erp.recovery
+Version Code: 104
+Version Name: 0.15.4.55-central-expenses-redesign1
+Room Schema: 38
+Base source: v102 064b945 source lineage
+Purpose: Full rebuild of Accounting > Expenses entry path.
+
+Key architecture change:
+- No long-lived Room observe/collectAsState calls on Expenses entry.
+- Expenses list uses one bounded one-shot Room query guarded by try/catch.
+- Secondary master data is loaded only when Add Expense is opened.
+- Existing accounting posting behavior is preserved.
+- No destructive migration fallback added.
+- No signing key, certificate password, or secret is included in this source archive.
+
+Validation status at source export time:
+- v104 compile gate: PASS on GitHub CI for the current redesign line.
+- Targeted expense regression: PASS.
+- Full unit comparison vs v102 known baseline: PASS with no new failures.
+- Runtime emulator gate was still in progress when this source archive was exported.

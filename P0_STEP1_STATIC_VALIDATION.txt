@@ -1,0 +1,8 @@
+FUSH v104 P0 Step 1 static validation
+KOTLINC_STEP1_PASS
+STEP1_POLICY_INVARIANTS_PASS
+blocked=TREASURY_EXPENSE,TREASURY_INCOME,TREASURY_PAYMENT,TREASURY_RECEIPT,TREASURY_TRANSFER
+AppID=com.fush.erp.recovery
+Room=38
+fallbackToDestructiveMigration=ABSENT
+Gradle targeted gate=PENDING on configured Android environment

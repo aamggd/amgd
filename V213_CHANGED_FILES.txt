@@ -1,0 +1,42 @@
+Files /mnt/data/fush_v212_src/FUSH_ERP_Mobile_v186-UnifiedSync-Supabase.sql and /mnt/data/fush_v213_work/FUSH_ERP_Mobile_v186-UnifiedSync-Supabase.sql differ
+Only in /mnt/data/fush_v213_work: FUSH_ERP_Mobile_v213-CommercialMultiTenant-Supabase.sql
+Files /mnt/data/fush_v212_src/LATEST_SOURCE_INFO.txt and /mnt/data/fush_v213_work/LATEST_SOURCE_INFO.txt differ
+Only in /mnt/data/fush_v213_work: RUN_V213_COMMERCIAL_GATE.ps1
+Only in /mnt/data/fush_v213_work: RUN_V213_COMMERCIAL_GATE.sh
+Only in /mnt/data/fush_v213_work: V213_BUILD_TOOLCHAIN_PROBE.txt
+Only in /mnt/data/fush_v213_work: V213_CHANGED_FILES.txt
+Only in /mnt/data/fush_v213_work: V213_COMMERCIAL_MULTI_TENANT_HANDOFF.md
+Only in /mnt/data/fush_v213_work: V213_HOST_VALIDATION.txt
+Only in /mnt/data/fush_v213_work: V213_LIVE_SUPABASE_BASELINE_AUDIT.txt
+Only in /mnt/data/fush_v213_work: V213_MULTI_TENANT_POLICY_AUDIT.sql
+Only in /mnt/data/fush_v213_work: V213_MULTI_TENANT_RLS_TEST.sql
+Only in /mnt/data/fush_v213_work: V213_RELEASE_BLOCKERS.txt
+Only in /mnt/data/fush_v213_work: V213_RELEASE_VALIDATION.txt
+Only in /mnt/data/fush_v213_work: V213_STATIC_VALIDATION.txt
+Files /mnt/data/fush_v212_src/app/build.gradle.kts and /mnt/data/fush_v213_work/app/build.gradle.kts differ
+Only in /mnt/data/fush_v213_work/app/src/androidTest/java/com/fush/erp/data: CommercialTenantBindingMigrationTest.kt
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/AccountingCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/AccountingCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/CloudModels.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/CloudModels.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/CloudSessionStore.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/CloudSessionStore.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/FushAiRemoteService.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/FushAiRemoteService.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/InventoryProductionCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/InventoryProductionCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/MasterDataCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/MasterDataCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/PurchaseDocumentsCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/PurchaseDocumentsCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/SalesAuxiliaryCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/SalesAuxiliaryCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/SalesReceivablesCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/SalesReceivablesCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/cloud/SupplierPaymentsTreasuryCloudSyncEngine.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/cloud/SupplierPaymentsTreasuryCloudSyncEngine.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/data/AppContainer.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/data/AppContainer.kt differ
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/data/FushDatabase.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/data/FushDatabase.kt differ
+Only in /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/data: V213CommercialTenantBindingMigration.kt
+Only in /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/data/entity: CloudTenantBindingEntity.kt
+Files /mnt/data/fush_v212_src/app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt and /mnt/data/fush_v213_work/app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt differ
+Files /mnt/data/fush_v212_src/app/src/test/java/com/fush/erp/domain/V209MultiCurrencyTreasuryContractTest.kt and /mnt/data/fush_v213_work/app/src/test/java/com/fush/erp/domain/V209MultiCurrencyTreasuryContractTest.kt differ
+Files /mnt/data/fush_v212_src/app/src/test/java/com/fush/erp/domain/V211FushAiDraftActionsContractTest.kt and /mnt/data/fush_v213_work/app/src/test/java/com/fush/erp/domain/V211FushAiDraftActionsContractTest.kt differ
+Files /mnt/data/fush_v212_src/app/src/test/java/com/fush/erp/domain/V212ShipmentNumberCollisionHotfixContractTest.kt and /mnt/data/fush_v213_work/app/src/test/java/com/fush/erp/domain/V212ShipmentNumberCollisionHotfixContractTest.kt differ
+Only in /mnt/data/fush_v213_work/app/src/test/java/com/fush/erp/domain: V213CommercialMultiTenantFoundationContractTest.kt
+Files /mnt/data/fush_v212_src/cloud/supabase/001_cloud_sync_foundation.sql and /mnt/data/fush_v213_work/cloud/supabase/001_cloud_sync_foundation.sql differ
+Only in /mnt/data/fush_v213_work/cloud/supabase: 010_commercial_multitenant_foundation.sql
+Only in /mnt/data/fush_v213_work/tools: __pycache__
+Only in /mnt/data/fush_v213_work/tools: verify_v213_commercial_multitenant.py

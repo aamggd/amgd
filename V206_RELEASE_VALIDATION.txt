@@ -1,0 +1,25 @@
+FUSH ERP Mobile v206 — FUSH AI Read-Only Assistant
+===================================================
+Baseline: v205 Customer Address Description
+Application ID: com.fush.erp.recovery
+versionCode: 206
+versionName: 0.15.4.157-fush-ai-readonly-assistant
+Room schema: 51 (unchanged from v205; no database migration)
+
+Implemented:
+- FUSH AI local read-only assistant screen.
+- Arabic intent parsing for sales today/month, customer balance, stock, treasury balances,
+  overdue invoices, monthly purchases, production status, shipment follow-up, business summary, and help.
+- Existing ERP permissions are checked before each data read.
+- No posting, approval, deletion, update, or database write action is exposed by v206.
+- No public LLM/API is called and ERP data is not sent to an AI provider.
+
+Validation:
+- Unit tests: 666 total, 0 failures, 0 errors, 0 skipped.
+- assembleRelease: PASS (BUILD SUCCESSFUL).
+- lintVitalRelease: PASS (No issues found).
+- zipalign: PASS.
+- APK signature: v2 PASS, v3 PASS, one signer.
+- Signing certificate SHA-256: 22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+- Certificate matches v205, so v206 is an in-place update.
+- APK SHA-256: a961121f6dd4e074ceefb40ee54f7e8987b951494392a8aca9dc7c9fd22d7b7f

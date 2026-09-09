@@ -1,0 +1,25 @@
+FUSH ERP Mobile v155 - BUILD ATTEMPT
+====================================
+
+Commands attempted:
+  ./gradlew --version
+  ./gradlew testDebugUnitTest --no-daemon
+  ./gradlew assembleRelease --no-daemon
+
+Result:
+  FAILED BEFORE GRADLE STARTUP
+
+Reason:
+  java.net.UnknownHostException: services.gradle.org
+  Required wrapper distribution: gradle-9.4.1-bin.zip
+
+Additional validation:
+  - Cloud Kotlin layer compiled with local Kotlin compiler + API stubs: PASS
+  - New Compose cloud screen compiled with local Compose API stubs: PASS
+  - v155 static contract assertions: PASS
+  - XML parsing: PASS
+  - Duplicate string resource name check: PASS
+  - Room schema remains 46: PASS
+  - fallbackToDestructiveMigration search: ABSENT
+
+No APK is claimed as built or signed from this environment.

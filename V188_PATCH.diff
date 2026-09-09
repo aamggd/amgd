@@ -1,0 +1,222 @@
+--- /mnt/data/v187src/fush_v187_work/app/build.gradle.kts	2026-09-03 19:28:23.000000000 +0000
++++ app/build.gradle.kts	2026-09-03 20:28:50.893824318 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 187
+-        versionName = "0.15.4.138-cloud-journal-staging-hydration"
++        versionCode = 188
++        versionName = "0.15.4.139-legacy-treasury-cloud-hydration"
+ 
+         buildConfigField("String", "SUPABASE_URL", "\"https://bkbjtyacoiaheunweyuu.supabase.co\"")
+         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY\"")
+--- /mnt/data/v187src/fush_v187_work/app/src/main/java/com/fush/erp/cloud/AccountingCloudSyncEngine.kt	2026-09-03 19:28:23.000000000 +0000
++++ app/src/main/java/com/fush/erp/cloud/AccountingCloudSyncEngine.kt	2026-09-03 20:28:50.893681697 +0000
+@@ -11,6 +11,7 @@
+ import com.fush.erp.data.entity.PartyVoucherEntity
+ import com.fush.erp.data.entity.UserEntity
+ import com.fush.erp.domain.AccountingPrecision
++import com.fush.erp.domain.LegacyTreasuryCloudHydrationPolicy
+ import org.json.JSONArray
+ import org.json.JSONObject
+ import java.math.BigDecimal
+@@ -297,7 +298,12 @@
+             return if (diffs.isEmpty()) ApplyOutcome.Applied else ApplyOutcome.Conflict(AccountingSyncConflict("JOURNAL", entryNo, diffs))
+         }
+         val sourceType = payload.optString("source_type", "MANUAL")
+-        val sourceId = resolveLocalSourceId(sourceType, payload.optString("source_ref"), payload.optNullableString("reversal_of_entry_no"))
++        val sourceRef = payload.optString("source_ref")
++        val legacyTreasuryHydration = LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration(sourceType)
++        val sourceId = resolveLocalSourceId(sourceType, sourceRef, payload.optNullableString("reversal_of_entry_no"))
++            ?: if (legacyTreasuryHydration) {
++                LegacyTreasuryCloudHydrationPolicy.stableHistoricalSourceId(sourceType, sourceRef, entryNo)
++            } else null
+         db.withTransaction {
+             // Cloud hydration must respect the same DB lifecycle as locally-created operational journals:
+             // STAGING header -> complete line batch -> exact balance trigger -> POSTED.
+@@ -311,7 +317,10 @@
+                         currencyCode = payload.optString("currency_code"),
+                         legacyExchangeRateReal = AccountingPrecision.rateToDouble(payload.optLong("exchange_rate_scaled", AccountingPrecision.RATE_SCALE)),
+                         exchangeRateScaled = payload.optLong("exchange_rate_scaled", AccountingPrecision.RATE_SCALE),
+-                        sourceType = sourceType,
++                        // Historical TREASURY_* rows are intentionally blocked for new local
++                        // inserts. Hydrate them through a MANUAL/STAGING alias, then restore the
++                        // original sourceType before POSTED while still inside this transaction.
++                        sourceType = if (legacyTreasuryHydration) "MANUAL" else sourceType,
+                         sourceId = sourceId,
+                         status = "STAGING",
+                         createdBy = localUser.id,
+@@ -340,6 +349,18 @@
+                 existing.id
+             }
+             if (existing == null || existing.status.equals("STAGING", ignoreCase = true)) {
++                if (existing == null && legacyTreasuryHydration) {
++                    val stagingHeader = requireNotNull(db.journalDao().byId(entryId)) {
++                        "CLOUD_LEGACY_TREASURY_STAGING_HEADER_MISSING:$entryNo"
++                    }
++                    db.journalDao().updateEntry(
++                        stagingHeader.copy(
++                            sourceType = sourceType,
++                            sourceId = sourceId,
++                            status = "STAGING",
++                        )
++                    )
++                }
+                 db.journalDao().insertLinesRaw(
+                     resolved.map { line ->
+                         JournalLineEntity(
+--- /dev/null	2026-09-03 20:21:04.478369197 +0000
++++ app/src/main/java/com/fush/erp/domain/LegacyTreasuryCloudHydrationPolicy.kt	2026-09-03 20:28:50.428107126 +0000
+@@ -0,0 +1,35 @@
++package com.fush.erp.domain
++
++/**
++ * Compatibility policy for posted treasury journals created before stable voucher operation IDs
++ * were introduced.
++ *
++ * The old TREASURY_* source types are deliberately blocked for new local INSERTs by
++ * AccountingIdempotencyDatabaseGuards. Cloud synchronization, however, still needs to hydrate
++ * already-posted historical journals that legitimately use those source types.
++ *
++ * Hydration therefore inserts the header temporarily as MANUAL/STAGING inside one transaction,
++ * restores the original historical source type while it is still STAGING, writes all lines, and
++ * only then transitions to POSTED. This keeps the fail-closed local posting policy intact while
++ * preserving byte-for-byte cloud identity for subsequent sync comparisons.
++ */
++object LegacyTreasuryCloudHydrationPolicy {
++    val historicalSourceTypes: Set<String> = linkedSetOf(
++        "TREASURY_TRANSFER",
++        "TREASURY_RECEIPT",
++        "TREASURY_PAYMENT",
++        "TREASURY_EXPENSE",
++        "TREASURY_INCOME",
++    )
++
++    fun requiresCompatibilityHydration(sourceType: String): Boolean =
++        sourceType.trim().uppercase() in historicalSourceTypes
++
++    fun stableHistoricalSourceId(sourceType: String, sourceRef: String, entryNo: String): String {
++        val normalizedType = sourceType.trim().uppercase()
++        require(normalizedType in historicalSourceTypes) { "NOT_LEGACY_TREASURY_SOURCE:$normalizedType" }
++        val stableRef = sourceRef.trim().ifBlank { entryNo.trim() }
++        require(stableRef.isNotBlank()) { "LEGACY_TREASURY_CLOUD_SOURCE_REF_REQUIRED" }
++        return "cloud-legacy:${normalizedType.lowercase()}:${stableRef.uppercase()}"
++    }
++}
+--- /mnt/data/v187src/fush_v187_work/app/src/test/java/com/fush/erp/domain/V187CloudJournalStagingHydrationContractTest.kt	2026-09-03 19:36:39.000000000 +0000
++++ app/src/test/java/com/fush/erp/domain/V187CloudJournalStagingHydrationContractTest.kt	2026-09-03 20:30:56.335362631 +0000
+@@ -33,11 +33,12 @@
+     }
+ 
+     @Test
+-    fun v187RemainsSafeUpdate() {
++    fun v187SafetyBaselineRemainsPreservedByLaterUpdates() {
+         val gradle = listOf(File("build.gradle.kts"), File("app/build.gradle.kts")).first { it.isFile }.readText()
+         val db = source("com/fush/erp/data/FushDatabase.kt")
+-        assertTrue(gradle.contains("versionCode = 187"))
+-        assertTrue(gradle.contains("0.15.4.138-cloud-journal-staging-hydration"))
++        val versionCode = Regex("versionCode\\s*=\\s*(\\d+)").find(gradle)?.groupValues?.get(1)?.toInt()
++            ?: error("versionCode not found")
++        assertTrue(versionCode >= 187)
+         assertTrue(db.contains("FUSH_DB_SCHEMA_VERSION = 49"))
+         assertFalse(db.contains("fallbackToDestructiveMigration"))
+     }
+--- /dev/null	2026-09-03 20:21:04.478369197 +0000
++++ app/src/test/java/com/fush/erp/domain/V188LegacyTreasuryCloudHydrationPolicyTest.kt	2026-09-03 20:28:51.023903612 +0000
+@@ -0,0 +1,44 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class V188LegacyTreasuryCloudHydrationPolicyTest {
++    @Test
++    fun onlyHistoricalBlockedTreasurySourcesUseCompatibilityHydration() {
++        val expected = setOf(
++            "TREASURY_TRANSFER",
++            "TREASURY_RECEIPT",
++            "TREASURY_PAYMENT",
++            "TREASURY_EXPENSE",
++            "TREASURY_INCOME",
++        )
++        assertEquals(expected, LegacyTreasuryCloudHydrationPolicy.historicalSourceTypes)
++        expected.forEach { assertTrue(LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration(it.lowercase())) }
++        assertFalse(LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration("TRANSFER"))
++        assertFalse(LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration("CUSTOMER_RECEIPT"))
++        assertFalse(LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration("MANUAL"))
++    }
++
++    @Test
++    fun historicalCloudSourceIdIsDeterministicAndFallsBackToEntryNo() {
++        assertEquals(
++            "cloud-legacy:treasury_expense:EV-20260901-120000-ABC123",
++            LegacyTreasuryCloudHydrationPolicy.stableHistoricalSourceId(
++                " treasury_expense ",
++                "ev-20260901-120000-abc123",
++                "ignored",
++            )
++        )
++        assertEquals(
++            "cloud-legacy:treasury_transfer:TV-20260901-120000-XYZ789",
++            LegacyTreasuryCloudHydrationPolicy.stableHistoricalSourceId(
++                "TREASURY_TRANSFER",
++                "",
++                "tv-20260901-120000-xyz789",
++            )
++        )
++    }
++}
+--- /dev/null	2026-09-03 20:21:04.478369197 +0000
++++ app/src/test/java/com/fush/erp/domain/V188LegacyTreasuryCloudHydrationContractTest.kt	2026-09-03 20:28:51.025115820 +0000
+@@ -0,0 +1,48 @@
++package com.fush.erp.domain
++
++import java.io.File
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class V188LegacyTreasuryCloudHydrationContractTest {
++    private fun source(relative: String): String {
++        val candidates = listOf(File("src/main/java/$relative"), File("app/src/main/java/$relative"))
++        return candidates.firstOrNull { it.isFile }?.readText() ?: error("Source file not found: $relative")
++    }
++
++    @Test
++    fun legacyTreasuryCloudJournalUsesTemporaryStagingAliasThenRestoresHistoricalType() {
++        val engine = source("com/fush/erp/cloud/AccountingCloudSyncEngine.kt")
++        val start = engine.indexOf("private suspend fun applyJournalFromCloud")
++        val end = engine.indexOf("private suspend fun resolveLocalSourceId", start)
++        assertTrue(start >= 0 && end > start)
++        val block = engine.substring(start, end)
++
++        assertTrue(block.contains("LegacyTreasuryCloudHydrationPolicy.requiresCompatibilityHydration(sourceType)"))
++        assertTrue(block.contains("LegacyTreasuryCloudHydrationPolicy.stableHistoricalSourceId(sourceType, sourceRef, entryNo)"))
++        assertTrue(block.contains("sourceType = if (legacyTreasuryHydration) \"MANUAL\" else sourceType"))
++        assertTrue(block.contains("if (existing == null && legacyTreasuryHydration)"))
++        assertTrue(block.contains("sourceType = sourceType"))
++        assertTrue(block.contains("status = \"STAGING\""))
++        assertTrue(block.contains("transitionStagingToPosted"))
++    }
++
++    @Test
++    fun databaseFailClosedGuardForNewLegacyTreasuryPostingIsNotWeakened() {
++        val guards = source("com/fush/erp/data/AccountingIdempotencyDatabaseGuards.kt")
++        assertTrue(guards.contains("trg_journal_unstable_source_blocked_insert"))
++        assertTrue(guards.contains("ACCOUNTING_SOURCE_REQUIRES_STABLE_EVENT_ID"))
++        assertFalse(guards.contains("NEW.status <> 'STAGING'"))
++    }
++
++    @Test
++    fun v188IsSchemaPreservingUpdate() {
++        val gradle = listOf(File("build.gradle.kts"), File("app/build.gradle.kts")).first { it.isFile }.readText()
++        val db = source("com/fush/erp/data/FushDatabase.kt")
++        assertTrue(gradle.contains("versionCode = 188"))
++        assertTrue(gradle.contains("0.15.4.139-legacy-treasury-cloud-hydration"))
++        assertTrue(db.contains("FUSH_DB_SCHEMA_VERSION = 49"))
++        assertFalse(db.contains("fallbackToDestructiveMigration"))
++    }
++}

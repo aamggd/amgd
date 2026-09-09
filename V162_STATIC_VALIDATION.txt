@@ -1,0 +1,43 @@
+01. PASS - applicationId stable
+02. PASS - versionCode 162
+03. PASS - versionName v162
+04. PASS - Room schema 46
+05. PASS - No fallbackToDestructiveMigration in main
+06. PASS - Purchase conflict model
+07. PASS - Purchase difference model
+08. PASS - Result conflict details
+09. PASS - Engine exposes last conflicts
+10. PASS - Engine saves conflicts
+11. PASS - Invoice conflict diff inspector
+12. PASS - Return conflict diff inspector
+13. PASS - Invoice line count comparison
+14. PASS - Purchase item comparison
+15. PASS - Purchase unit comparison
+16. PASS - Purchase quantity comparison
+17. PASS - Purchase unit price comparison
+18. PASS - Purchase cost comparison
+19. PASS - Purchase lot comparison
+20. PASS - Purchase expiry comparison
+21. PASS - No automatic conflict replacement path
+22. PASS - Conflict persistence save
+23. PASS - Conflict persistence load
+24. PASS - Repository exposes purchase conflicts
+25. PASS - UI remembers purchase conflicts
+26. PASS - UI refreshes purchase conflicts
+27. PASS - UI renders purchase inspector
+28. PASS - UI renders purchase cards
+29. PASS - XML parses: app/src/main/res/values/strings.xml
+30. PASS - Inspector title string: app/src/main/res/values/strings.xml
+31. PASS - Inspector help string: app/src/main/res/values/strings.xml
+32. PASS - Preserved warning string: app/src/main/res/values/strings.xml
+33. PASS - XML parses: app/src/main/res/values-ar/strings.xml
+34. PASS - Inspector title string: app/src/main/res/values-ar/strings.xml
+35. PASS - Inspector help string: app/src/main/res/values-ar/strings.xml
+36. PASS - Preserved warning string: app/src/main/res/values-ar/strings.xml
+37. PASS - No v162 SQL migration added
+38. PASS - Uses v161 purchase cloud tables
+39. PASS - No new Room entities
+40. PASS - No cloud-side resolution RPC
+41. PASS - V162 contract test source added
+
+TOTAL: 41/41 PASS

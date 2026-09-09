@@ -1,0 +1,32 @@
+FUSH ERP Mobile v207 — Final Release Validation
+================================================
+Application ID: com.fush.erp.recovery
+versionCode: 207
+versionName: 0.15.4.158-shipment-custody-voucher-print
+Room schema: 51 (unchanged from v206)
+
+Implemented:
+- New shipment transfers real lot/expiry/cost stock from source warehouse to hidden system shipment custody.
+- Sales allocated to v207 shipment consumes stock from custody, preventing double deduction.
+- Unused shipment deletion returns custody stock to source warehouse before deletion.
+- Legacy pre-v207 shipments remain supported.
+- Customer receipt printing uses the invoice-style in-app report/PDF pipeline and FUSH red full-width branding.
+- Fixed Activity discovery through localized ContextWrapper for Android print preview.
+- Customer profile now supports authorized editing without changing customer code/identity.
+- Added dedicated CUSTOMERS_EDIT permission + compatibility role upgrade + audit trail.
+
+Validation:
+- compileDebugKotlin: PASS
+- Unit tests: 672 total / 0 failures / 0 errors / 0 skipped
+- assembleRelease: PASS
+- lintVitalRelease: PASS
+- zipalign: PASS
+- APK signature v2: PASS
+- APK signature v3: PASS
+- Application ID verified: com.fush.erp.recovery
+- versionCode verified: 207
+- Room schema verified: 51
+- fallbackToDestructiveMigration: NOT PRESENT in production source
+- Signing certificate SHA-256:
+  22d5e2a8bd48ddd2339abdc4748648b509e02d046524d6e118fbe05088155586
+- Certificate matches v206: YES

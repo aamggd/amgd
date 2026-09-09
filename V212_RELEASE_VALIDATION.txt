@@ -1,0 +1,43 @@
+FUSH ERP Mobile v212 — Shipment Number Collision Hotfix
+========================================================
+
+Release identity
+- applicationId: com.fush.erp.recovery
+- versionCode: 212
+- versionName: 0.15.4.163-shipment-number-collision-hotfix
+- Room schema: 53 (unchanged from v211)
+- Destructive migration: NOT used
+
+Root cause fixed
+- A cloud-hydrated shipment can advance sales_shipments without advancing the secondary phone's local DOC:SHP:<date> number_sequences row.
+- The accountant phone could therefore generate an SHP number that already existed locally and hit:
+  UNIQUE constraint failed: sales_shipments.shipmentNo
+
+v212 fix
+- ShipmentDao exposes the highest persisted automatic SHP suffix for a business-date prefix.
+- AutoNumberService.nextShipmentNo() reconciles local number_sequences against persisted/hydrated shipment rows before allocation and skips any existing candidate.
+- Connected shipment creation reserves SALE_SHIPMENT numbers through the company-wide document-number guard before local insert.
+- Existing cloud shipment numbers were backfilled into fush_document_number_registry.
+- A Supabase trigger automatically registers future synced SHIPMENT numbers, including shipments coming from older app versions.
+- fush_reserve_document_number rejects SALE_SHIPMENT numbers already represented in cloud sales auxiliary documents.
+
+Verification
+- Gradle test: PASS
+- Unit/contract tests: 688 total, 0 failures, 0 errors, 0 skipped
+- assembleRelease: PASS
+- lintVitalRelease: PASS
+- zipalign: PASS
+- APK signature: v2=true, v3=true, one signer
+- APK signer certificate SHA-256:
+  22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+- v211 and v212 certificate fingerprints: MATCH
+- APK package verification: com.fush.erp.recovery / versionCode 212
+
+Supabase production verification
+- v212 shipment-number registry hardening migration: APPLIED
+- Cloud shipment rows checked at deployment: 9
+- SALE_SHIPMENT reserved numbers after backfill: 9
+- trg_fush_register_shipment_document_number: ACTIVE
+
+Install
+- Install v212 directly over v211. Do not uninstall the app and do not clear app data.

@@ -1,0 +1,38 @@
+FUSH ERP Mobile v209 — Multi-Currency Treasury + Treasury Editing
+================================================================
+
+Release identity
+- Application ID: com.fush.erp.recovery
+- versionCode: 209
+- versionName: 0.15.4.160-multicurrency-treasury-edit
+- Room schema: 52
+- Migration: 51 -> 52 via MIGRATION_51_52_MULTI_CURRENCY_TREASURY
+- No destructive migration / no database reset.
+
+Implemented
+- Existing treasury rows are grouped using stable groupCode, backfilled from the existing treasury code.
+- A logical treasury can contain multiple currency-specific posting accounts.
+- Each currency keeps a separate GL account and separate original-currency balance.
+- Treasury edit screen: name, type, bank metadata, active state. Stable code is preserved.
+- Add Currency action creates a dedicated ASSET posting account atomically under the same logical treasury.
+- Add Currency requires TREASURY_POST + ACCOUNTING_POST; editing requires TREASURY_POST.
+- Customer collection still requires an exact treasury currency match and now explains how to add a missing currency.
+- Cloud treasury mirror carries group_code.
+- Supabase group_code migration and backward-compatibility trigger were applied to the connected FUSH-ERP project.
+- Audit actions: TREASURY_UPDATE and TREASURY_ADD_CURRENCY.
+
+Verification
+- compileDebugKotlin: PASS
+- Unit tests: 679 total, 0 failures, 0 errors, 0 skipped
+- assembleRelease: PASS
+- lintVitalRelease: PASS
+- Room exported schema 52: present
+- zipalign: PASS
+- APK signature: v2=true, v3=true, one signer
+- Signing certificate SHA-256: 22d5e2a8bd48ddd2339abdc4748648b509e02d046524d6e118fbe05088155586
+- AppID/versionCode checked with aapt2.
+- v208 and v209 signing certificate SHA-256: identical.
+
+Instrumentation note
+- MultiCurrencyTreasuryMigrationTest for Room 51 -> 52 is included in source.
+- It was not executed because no Android emulator/device is available in this build environment.

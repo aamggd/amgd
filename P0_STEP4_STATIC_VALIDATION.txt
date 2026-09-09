@@ -1,0 +1,16 @@
+P0 Step 4 static/targeted validation
+
+Kotlin compile — AccountingIntegrationContract + AccountingP1IntegrityPolicy: PASS
+Exact AccountingP1IntegrityPolicyTest logic: 5/5 PASS
+  - duplicateProtectionMatchesOnlyP0StableSources PASS
+  - repeatableOrManualEventsAreNotFalselyDeduplicated PASS
+  - stableEventKeyIsNormalizedAndRequiresIdentity PASS
+  - doubleEntryValidatorStillRejectsImbalance PASS
+  - stableAutomaticEventsHaveAReversalPath PASS
+Current AccountingPostingIdempotencyPolicyTest logic: 6/6 PASS
+SalesCommissionIdempotencyPolicyTest logic: 1/1 PASS
+Current commission lifecycle remains replay-safe: PASS
+No fake reversal path added to terminal reversal events: PASS
+App ID unchanged: PASS
+Room 38 unchanged: PASS
+Full Gradle Android suite: PENDING

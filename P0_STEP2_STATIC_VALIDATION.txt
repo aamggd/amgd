@@ -1,0 +1,26 @@
+P0 STEP 2 VALIDATION
+====================
+Scope: Treasury/expense voucher double-submit + retry idempotency
+
+PURE KOTLIN COMPILE: PASS
+PURE POLICY ASSERTIONS: PASS
+ACTIVE VoucherRequest CONSTRUCTORS WITH operationId: PASS
+postVoucher stable operation sourceId: PASS
+postVoucher replay returns existing journal id: PASS
+payload mismatch fail-closed check: PRESENT
+UI in-flight guards:
+  Expense: PASS (static)
+  Treasury vouchers: PASS (static)
+  Sales rep commission payment: PASS (static)
+DB replay-safe canonical treasury source policy: PASS (static/pure)
+
+AppID: com.fush.erp.recovery (UNCHANGED)
+versionCode: 104 (UNCHANGED)
+Room: 38 (UNCHANGED)
+Migration added: NO
+Destructive migration: NO
+Signing material: NOT INCLUDED
+
+GRADLE TARGETED TESTS: PENDING USER/CI ENVIRONMENT
+ASSEMBLE DEBUG: PENDING USER/CI ENVIRONMENT
+RUNTIME DOUBLE-TAP/RETRY TEST: PENDING

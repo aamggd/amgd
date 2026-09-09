@@ -1,0 +1,36 @@
+FUSH ERP Mobile v213 — Connected Supabase Baseline Audit (READ-ONLY)
+===================================================================
+Audit time: 2026-09-09
+No DDL/DML migration was applied to the connected production project during this audit.
+
+Observed current cloud state before v213 migration:
+- Existing organizations: 1 (historical FUSH tenant)
+- Historical fixed FUSH organization UUID exists: YES
+- Public fush_* tables carrying organization_id: 42
+- Tenant tables with RLS disabled: 0
+- Unconditional authenticated/anon tenant policies detected by structural query: 0
+- public.fush_create_organization(text,text): NOT INSTALLED YET
+- tenant-scoped device unique index (organization_id,user_id,device_key): NOT INSTALLED YET
+- fush_organization_members self policy currently does not require is_active in the policy itself
+- fush_cloud_user_bindings self policy currently permits own binding without an explicit active-membership predicate
+
+Privileged function audit before v213 migration:
+- SECURITY DEFINER functions accepting target_organization_id without a visible tenant guard: 0
+- FUSH SECURITY DEFINER functions without pinned search_path: 0
+- SECURITY DEFINER functions executable by anon that should be internal-only: 2
+  * fush_register_shipment_document_number() [trigger function]
+  * rls_auto_enable() [event-trigger function]
+- fush_set_treasury_group_code() had mutable/default search_path (security advisor warning)
+
+v213 source migration 010 addresses the above commercial-tenant deltas by:
+- adding random organization creation + OWNER membership
+- scoping device uniqueness by organization
+- making membership discovery ACTIVE-only
+- requiring active organization membership for cloud binding reads
+- revoking Data API execution from the two internal privileged trigger helpers when present
+- pinning fush_set_treasury_group_code() search_path when present
+
+Supabase Security Advisor also reports account/security items outside the v213 tenant-source gate:
+- Leaked password protection is disabled.
+- Two FX feed tables have RLS enabled but no policies (currently no direct client policy path).
+These remain explicit hardening items; no production setting was changed in this audit.

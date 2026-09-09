@@ -1,0 +1,53 @@
+FUSH ERP Mobile v159 static validation: 51/51 PASS
+
+PASS - applicationId preserved
+PASS - versionCode 159
+PASS - versionName v159
+PASS - Room schema 46
+PASS - no fallbackToDestructiveMigration
+PASS - sales engine exists
+PASS - owner/admin publish only
+PASS - employee local docs skipped
+PASS - master sync before sales auto sync
+PASS - foreground one-minute loop retained
+PASS - repository sales sync API
+PASS - repository sales mutex
+PASS - screen manual sales sync
+PASS - invoice all-cloud DAO
+PASS - receipt all-cloud DAO
+PASS - returns all-cloud DAO
+PASS - invoice natural lookup
+PASS - receipt natural lookup
+PASS - return natural lookup
+PASS - SQL table fush_tx_sales_invoices
+PASS - SQL table fush_tx_sales_lines
+PASS - SQL table fush_tx_sales_allocations
+PASS - SQL table fush_tx_customer_receipts
+PASS - SQL table fush_tx_customer_receipt_allocations
+PASS - SQL table fush_tx_sales_returns
+PASS - SQL table fush_tx_sales_return_lines
+PASS - RLS enabled by dynamic block
+PASS - member read policy
+PASS - owner/admin write policy
+PASS - anon revoked
+PASS - transaction SQL no DROP TABLE
+PASS - transaction SQL no DELETE FROM
+PASS - invoice cloud uses customer business code
+PASS - invoice cloud uses warehouse business code
+PASS - line cloud uses item/unit business codes
+PASS - receipt reversal uses receipt number
+PASS - receipt allocations use invoice number
+PASS - returns use source invoice number
+PASS - download inserts in Room transaction
+PASS - treasury ids not replayed
+PASS - sales rep local id not replayed
+PASS - createdBy localized
+PASS - v159 scope document present
+PASS - root SQL copy present
+PASS - values XML parses
+PASS - values no duplicate string names
+PASS - values-ar XML parses
+PASS - values-ar no duplicate string names
+PASS - English v159 strings
+PASS - Arabic v159 strings
+PASS - no bad employee apos regression

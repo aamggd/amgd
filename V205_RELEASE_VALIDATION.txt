@@ -1,0 +1,31 @@
+FUSH ERP Mobile v205 — Customer Address Description
+
+Release identity
+- AppID: com.fush.erp.recovery
+- versionCode: 205
+- versionName: 0.15.4.156-customer-address-description
+- Room schema: 51 (unchanged from v204; no migration required)
+- minSdk: 26
+- targetSdk: 36
+
+Change
+- Added a multiline customer field: "وصف العنوان / تفاصيل العنوان" immediately after the formal governorate/district/area selectors.
+- Example placeholder helps record street, landmark, building, nearby business, etc.
+- The field is persisted into the existing CustomerEntity.address column.
+- The same field is forwarded by both customer-creation entry points (Customers screen and Sales invoice quick-create).
+- Customer profile displays it as "وصف العنوان".
+- Existing cloud master-data customer address column remains the transport/storage field; no Supabase schema change is required.
+
+Data safety
+- No Room schema change: remains schema 51.
+- No destructive migration or database deletion added.
+- v204 formal geography IDs and migrations remain intact.
+
+Validation
+- Unit tests: 659 total, 0 failures, 0 errors, 0 skipped.
+- assembleRelease: PASS.
+- lintVitalRelease: PASS.
+- zipalign: PASS.
+- APK signing: v2 PASS, v3 PASS, one signer.
+- Certificate SHA-256: 22d5e2a8bd48ddd2339abdc4748648b509e02d046524d6e118fbe05088155586
+- Direct update path over v204 preserved: same AppID and permanent signing certificate.

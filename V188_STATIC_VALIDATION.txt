@@ -1,0 +1,19 @@
+FUSH ERP Mobile v188 - Static/logic validation
+Date: 2026-09-03
+Baseline: v187 CloudJournalStagingHydration
+
+PASS: versionCode=188
+PASS: versionName=0.15.4.139-legacy-treasury-cloud-hydration
+PASS: Room schema remains 49
+PASS: fallbackToDestructiveMigration absent
+PASS: legacy TREASURY_* direct INSERT database guard remains unchanged
+PASS: legacy cloud hydration uses MANUAL/STAGING compatibility alias only inside existing transaction
+PASS: original legacy sourceType restored before STAGING->POSTED transition
+PASS: deterministic compatibility sourceId derived from source_ref / entryNo
+PASS: normal insertLinesRaw + transitionStagingToPosted lifecycle retained
+PASS: LegacyTreasuryCloudHydrationPolicy.kt compiled with local kotlinc
+PASS: SQLite trigger simulation confirmed direct TREASURY_TRANSFER insert still aborts with ACCOUNTING_SOURCE_REQUIRES_STABLE_EVENT_ID while compatibility sequence reaches POSTED
+
+BUILD STATUS:
+NOT RUN in this container: Gradle wrapper JAR is absent from the supplied baseline and Android SDK 36 is not installed here.
+No APK is claimed. Run full Gradle unit tests / assembleRelease / lintVitalRelease in the normal FUSH Android build environment, then sign with the permanent certificate.

@@ -1,0 +1,667 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 5d1672d..066db0a 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 102
+-        versionName = "0.15.4.55-central-sales-p1-test1"
++        versionCode = 104
++        versionName = "0.15.4.55-central-expenses-redesign1"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index d2c7736..3177f6d 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -17,7 +17,6 @@ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.AccountingService
+ import com.fush.erp.domain.ExpenseClassificationPolicy
+-import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.FushMetricCard
+ import com.fush.erp.ui.FushSectionHeader
+ import com.fush.erp.ui.FushStatusPill
+@@ -28,6 +27,7 @@ import com.fush.erp.ui.FushDateField
+ import com.fush.erp.ui.FushDecimalField
+ import com.fush.erp.ui.FushOperationMessage
+ import kotlinx.coroutines.launch
++import kotlinx.coroutines.flow.first
+ import java.text.SimpleDateFormat
+ import java.util.*
+ 
+@@ -37,274 +37,425 @@ private val EXPENSE_REFERENCE_TYPES = ExpenseClassificationPolicy.referenceTypes
+ 
+ @Composable
+ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Modifier = Modifier) {
+-    val scope = rememberCoroutineScope()
+-    val context = LocalContext.current
+-    var expenseAttachmentUri by remember { mutableStateOf("") }
+-    var expenseAttachmentName by remember { mutableStateOf("") }
+-    var expenseAttachmentMime by remember { mutableStateOf("") }
+-    val expenseAttachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+-        if (uri != null) {
+-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+-            expenseAttachmentUri = uri.toString()
+-            expenseAttachmentMime = context.contentResolver.getType(uri).orEmpty()
+-            expenseAttachmentName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+-                if (c.moveToFirst()) c.getString(0) else null
+-            }.orEmpty().ifBlank { "مرفق مصروف" }
+-        }
+-    }
+-    val rows by container.db.expenseDao().observeReportRows().collectAsState(initial = emptyList())
+-    val repContribution by container.db.expenseDao().observeSalesRepContribution().collectAsState(initial = emptyList())
+-    val accounts by container.db.accountDao().observeAll().collectAsState(initial = emptyList())
+-    val employees by container.db.employeeDao().observeActiveEmployees().collectAsState(initial = emptyList())
+-    val salesReps by container.db.salesRepresentativeDao().observeActive().collectAsState(initial = emptyList())
+-    val customers by container.db.customerDao().observeAll().collectAsState(initial = emptyList())
+-    val suppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
+-    val itemsMaster by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+-    val treasury by container.db.accountingDao().observeTreasuryBalances().collectAsState(initial = emptyList())
+-    val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
+-    val salesInvoices by container.db.salesDao().observeSummaries().collectAsState(initial = emptyList())
+-    val purchaseInvoices by container.db.purchaseDao().observeSummaries().collectAsState(initial = emptyList())
+-    val productionOrders by container.db.productionDao().observeOrderSummaries().collectAsState(initial = emptyList())
+-
+     var showAdd by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
+-    var accountFilter by remember { mutableStateOf<AccountEntity?>(null) }
+-    var employeeFilter by remember { mutableStateOf<EmployeeEntity?>(null) }
+-    var repFilter by remember { mutableStateOf<SalesRepresentativeEntity?>(null) }
+-    var customerFilter by remember { mutableStateOf<CustomerEntity?>(null) }
+-    var supplierFilter by remember { mutableStateOf<SupplierEntity?>(null) }
+-    var centerFilter by remember { mutableStateOf<Pair<String, String>?>(null) }
+-    var referenceFilter by remember { mutableStateOf<Pair<String, String>?>(null) }
+-    var organizationFilter by remember { mutableStateOf("") }
++    var rows by remember { mutableStateOf<List<ExpenseReportRow>>(emptyList()) }
++    var loading by remember { mutableStateOf(true) }
++    var loadError by remember { mutableStateOf<String?>(null) }
++    var reloadToken by remember { mutableIntStateOf(0) }
+     var search by remember { mutableStateOf("") }
+     var from by remember { mutableStateOf("") }
+     var to by remember { mutableStateOf("") }
++    var centerFilter by remember { mutableStateOf<String?>(null) }
+ 
+-    val expenseAccounts = accounts.filter { it.isPosting && it.type == "EXPENSE" }
+-    val filtered = rows.filter { row ->
+-        (accountFilter == null || row.expenseAccountId == accountFilter!!.id) &&
+-            (employeeFilter == null || row.employeeId == employeeFilter!!.id) &&
+-            (repFilter == null || row.salesRepId == repFilter!!.id) &&
+-            (customerFilter == null || row.customerId == customerFilter!!.id) &&
+-            (supplierFilter == null || row.supplierId == supplierFilter!!.id) &&
+-            (centerFilter == null || row.costCenterCode == centerFilter!!.first) &&
+-            (referenceFilter == null || row.referenceType == referenceFilter!!.first) &&
+-            (organizationFilter.isBlank() || row.organizationUnit.contains(organizationFilter.trim(), true)) &&
+-            expenseDateMatch(row.voucherDate, from, to) &&
+-            (search.isBlank() || listOf(
+-                row.voucherNo, row.description, row.referenceNo, row.referenceLabel, row.employeeName,
+-                row.salesRepName, row.customerName, row.supplierName, row.itemName, row.organizationUnit
+-            ).any { it.contains(search.trim(), true) })
++    // v104 architecture: entering Expenses performs exactly one bounded, one-shot Room call.
++    // There are no long-lived Room collectors on the entry path. Any mapper/query problem is
++    // contained in this coroutine and becomes an inline warning instead of a process-level crash.
++    LaunchedEffect(reloadToken) {
++        loading = true
++        loadError = null
++        rows = try {
++            container.db.expenseDao().reportRows(0L, Long.MAX_VALUE)
++        } catch (error: Throwable) {
++            runCatching { android.util.Log.e("FushExpenseV104", "Expense list load failed", error) }
++            loadError = "تعذر قراءة الحركات القديمة بأمان. يمكنك تسجيل مصروف جديد أو إعادة المحاولة."
++            emptyList()
++        }
++        loading = false
++    }
++
++    val filtered = remember(rows, search, from, to, centerFilter) {
++        rows.filter { row ->
++            (centerFilter == null || row.costCenterCode == centerFilter) &&
++                expenseDateMatch(row.voucherDate, from, to) &&
++                (search.isBlank() || listOf(
++                    row.voucherNo,
++                    row.description,
++                    row.expenseAccountName,
++                    row.costCenterName,
++                    row.employeeName,
++                    row.salesRepName,
++                    row.customerName,
++                    row.supplierName,
++                    row.itemName,
++                    row.organizationUnit,
++                    row.referenceNo,
++                    row.referenceLabel
++                ).any { it.contains(search.trim(), ignoreCase = true) })
++        }
+     }
+     val total = filtered.sumOf { it.amountBase }
+-    val averageExpense = if (filtered.isEmpty()) 0.0 else total / filtered.size
+-    val maintenanceSpend = filtered.filter { it.costCenterCode == "MAINTENANCE" }.sumOf { it.amountBase }
+-    val byAccount = filtered.groupBy { it.expenseAccountName }.mapValues { it.value.sumOf { r -> r.amountBase } }.toList().sortedByDescending { it.second }
+-    val byCenter = filtered.groupBy { it.costCenterName }.mapValues { it.value.sumOf { r -> r.amountBase } }.toList().sortedByDescending { it.second }
+-    val topAccount = byAccount.firstOrNull()
+-    val topCenter = byCenter.firstOrNull()
+-    val exportFilterSummary = listOfNotNull(
+-        accountFilter?.let { "حساب المصروف" to "${it.code} — ${it.nameAr}" },
+-        centerFilter?.let { "مركز التكلفة" to it.second },
+-        employeeFilter?.let { "الموظف" to it.fullNameAr },
+-        repFilter?.let { "مندوب المبيعات" to it.fullNameAr },
+-        customerFilter?.let { "العميل" to it.nameAr },
+-        supplierFilter?.let { "المورد" to it.nameAr },
+-        referenceFilter?.let { "نوع المرجع" to it.second },
+-        organizationFilter.trim().takeIf { it.isNotBlank() }?.let { "الفرع / المنشأة" to it },
+-        search.trim().takeIf { it.isNotBlank() }?.let { "البحث" to it },
+-        from.trim().takeIf { it.isNotBlank() }?.let { "من تاريخ" to it },
+-        to.trim().takeIf { it.isNotBlank() }?.let { "إلى تاريخ" to it }
+-    )
++    val average = if (filtered.isEmpty()) 0.0 else total / filtered.size
++    val centers = rows
++        .map { it.costCenterCode to it.costCenterName }
++        .filter { it.first.isNotBlank() }
++        .distinctBy { it.first }
++        .sortedBy { it.second }
++    val byAccount = filtered.groupBy { it.expenseAccountName.ifBlank { "غير مصنف" } }
++        .mapValues { (_, list) -> list.sumOf { it.amountBase } }
++        .toList()
++        .sortedByDescending { it.second }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++    LazyColumn(
++        modifier = modifier.fillMaxSize().padding(12.dp),
++        verticalArrangement = Arrangement.spacedBy(12.dp)
++    ) {
+         item {
+             FushSectionHeader(
+-                title = "المصروفات التشغيلية ومراكز التكلفة",
+-                subtitle = "تابع المصروف حسب الحساب والقسم والموظف والمندوب والطرف والمرجع، مع بقاء القيد المحاسبي هو مصدر الحقيقة."
++                title = "المصروفات",
++                subtitle = "واجهة جديدة مستقلة وخفيفة: عرض الحركات أولًا، والبيانات الإضافية تُحمّل فقط عند الحاجة."
+             )
+             FushOperationMessage(message, onConsumed = { message = null })
+         }
++
+         item {
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                FushMetricCard("إجمالي المصروف", expenseMoney(total), Modifier.weight(1f), helper = "حسب الفلاتر الحالية", tone = FushStatusTone.Info)
+-                FushMetricCard("عدد الحركات", filtered.size.toString(), Modifier.weight(1f), helper = "سند مصروف مرحّل")
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.spacedBy(8.dp),
++                        verticalAlignment = Alignment.CenterVertically
++                    ) {
++                        Button(onClick = { showAdd = true }, modifier = Modifier.weight(1f)) {
++                            Text("تسجيل مصروف جديد")
++                        }
++                        OutlinedButton(onClick = { reloadToken++ }) {
++                            Text("تحديث")
++                        }
++                    }
++                    if (loading) {
++                        LinearProgressIndicator(Modifier.fillMaxWidth())
++                        Text("جاري تحميل حركات المصروفات…", style = MaterialTheme.typography.bodySmall)
++                    }
++                    loadError?.let { warning ->
++                        FushInlineState(warning)
++                    }
++                }
+             }
+         }
++
+         item {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                FushMetricCard("متوسط الحركة", expenseMoney(averageExpense), Modifier.weight(1f), helper = "إجمالي ÷ عدد الحركات")
+                 FushMetricCard(
+-                    "مصروف الصيانة", expenseMoney(maintenanceSpend), Modifier.weight(1f), helper = "مركز تكلفة الصيانة",
+-                    tone = if (maintenanceSpend > 0) FushStatusTone.Warning else FushStatusTone.Neutral
++                    "إجمالي المصروف",
++                    expenseMoney(total),
++                    Modifier.weight(1f),
++                    helper = "حسب النتائج المعروضة",
++                    tone = FushStatusTone.Info
++                )
++                FushMetricCard(
++                    "عدد الحركات",
++                    filtered.size.toString(),
++                    Modifier.weight(1f),
++                    helper = "الحركات المطابقة"
+                 )
+             }
+         }
+         item {
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-                    FushSectionHeader("إجراء جديد", "سند المصروف يربط الحساب بالخزينة والأبعاد التشغيلية دون إضافة حسابات فرعية غير ضرورية.")
+-                    Button(onClick = {
+-                        expenseAttachmentUri = ""
+-                        expenseAttachmentName = ""
+-                        expenseAttachmentMime = ""
+-                        showAdd = true
+-                    }, modifier = Modifier.fillMaxWidth()) { Text("تسجيل مصروف جديد") }
+-                }
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    "متوسط الحركة",
++                    expenseMoney(average),
++                    Modifier.weight(1f),
++                    helper = "الإجمالي ÷ العدد"
++                )
++                FushMetricCard(
++                    "أكبر حساب",
++                    byAccount.firstOrNull()?.let { expenseMoney(it.second) } ?: "0.00",
++                    Modifier.weight(1f),
++                    helper = byAccount.firstOrNull()?.first ?: "لا توجد بيانات",
++                    tone = FushStatusTone.Neutral
++                )
+             }
+         }
++
+         item {
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-                    FushSectionHeader("الفلاتر والتحليل", "يمكن الجمع بين أكثر من بُعد للوصول إلى تكلفة عملية أو موظف أو فرع محدد.")
+-                    ExpenseNullableSelectionField("حساب المصروف", accountFilter, expenseAccounts, { "${it.code} — ${it.nameAr}" }) { accountFilter = it }
+-                    ExpenseNullableSelectionField("مركز التكلفة / القسم", centerFilter, EXPENSE_COST_CENTERS, { it.second }) { centerFilter = it }
+-                    ExpenseNullableSelectionField("الموظف", employeeFilter, employees, { "${it.code} — ${it.fullNameAr}" }) { employeeFilter = it }
+-                    ExpenseNullableSelectionField("مندوب المبيعات", repFilter, salesReps, { "${it.code} — ${it.fullNameAr}" }) { repFilter = it }
+-                    ExpenseNullableSelectionField("نوع المرجع", referenceFilter, EXPENSE_REFERENCE_TYPES, { it.second }) { referenceFilter = it }
+-                    ExpenseNullableSelectionField("العميل", customerFilter, customers, { "${it.code} — ${it.nameAr}" }) { customerFilter = it }
+-                    ExpenseNullableSelectionField("المورد", supplierFilter, suppliers, { "${it.code} — ${it.nameAr}" }) { supplierFilter = it }
+-                    OutlinedTextField(organizationFilter, { organizationFilter = it }, label = { Text("الفرع / المنشأة") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+-                    OutlinedTextField(search, { search = it }, label = { Text("بحث في البيان أو المرجع أو الطرف") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
++                    FushSectionHeader("بحث وفترة", "الفلاتر هنا تعتمد على بيانات الحركة نفسها ولا تفتح جداول إضافية.")
++                    OutlinedTextField(
++                        value = search,
++                        onValueChange = { search = it },
++                        label = { Text("بحث") },
++                        placeholder = { Text("رقم السند، الوصف، الحساب، الموظف، الطرف…") },
++                        singleLine = true,
++                        modifier = Modifier.fillMaxWidth()
++                    )
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        FushDateField(from, { from = it }, "من تاريخ", modifier = Modifier.weight(1f))
+-                        FushDateField(to, { to = it }, "إلى تاريخ", modifier = Modifier.weight(1f))
++                        FushDateField(value = from, onValueChange = { from = it }, label = "من تاريخ", modifier = Modifier.weight(1f))
++                        FushDateField(value = to, onValueChange = { to = it }, label = "إلى تاريخ", modifier = Modifier.weight(1f))
++                    }
++                    if (centers.isNotEmpty()) {
++                        ExpenseNullableSelectionField(
++                            "مركز التكلفة",
++                            centerFilter?.let { code -> centers.firstOrNull { it.first == code } },
++                            centers,
++                            { it.second }
++                        ) { selected -> centerFilter = selected?.first }
++                    }
++                    if (search.isNotBlank() || from.isNotBlank() || to.isNotBlank() || centerFilter != null) {
++                        TextButton(onClick = {
++                            search = ""
++                            from = ""
++                            to = ""
++                            centerFilter = null
++                        }) { Text("مسح الفلاتر") }
+                     }
+-                    OutlinedButton(onClick = {
+-                        accountFilter = null; employeeFilter = null; repFilter = null; customerFilter = null; supplierFilter = null
+-                        centerFilter = null; referenceFilter = null; organizationFilter = ""; search = ""; from = ""; to = ""
+-                    }, modifier = Modifier.fillMaxWidth()) { Text("مسح الفلاتر") }
+-                }
+-            }
+-        }
+-        item {
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    FushSectionHeader("طباعة تقرير المصروفات", "PDF وExcel ومعاينة الطباعة تستخدم نفس الفلاتر الحالية")
+-                    ReportExportActions(
+-                        document = buildExpenseSectionExportDocument(filtered, exportFilterSummary),
+-                        baseName = "FushERP-Expenses",
+-                        printJobName = "Fush ERP - Expenses",
+-                        enabled = filtered.isNotEmpty()
+-                    )
+                 }
+             }
+         }
+-        item {
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    FushSectionHeader("أكبر بنود الصرف", "قراءة سريعة للحساب ومركز التكلفة الأكثر استهلاكًا ضمن النطاق الحالي.")
+-                    topAccount?.let {
+-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                            Column(Modifier.weight(1f)) {
+-                                Text("أكبر حساب", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                                Text(it.first, style = MaterialTheme.typography.titleSmall)
+-                            }
+-                            Text(expenseMoney(it.second), style = MaterialTheme.typography.titleMedium)
+-                        }
+-                    } ?: FushInlineState("لا توجد بيانات مصروفات ضمن الفلاتر الحالية.")
+-                    topCenter?.let {
+-                        HorizontalDivider()
+-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                            Column(Modifier.weight(1f)) {
+-                                Text("أكبر مركز تكلفة", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                                Text(it.first, style = MaterialTheme.typography.titleSmall)
++
++        if (byAccount.isNotEmpty()) {
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                        FushSectionHeader("ملخص حسب الحساب", "تحليل مباشر من الحركات المحملة دون استعلامات إضافية.")
++                        byAccount.take(5).forEach { (account, amount) ->
++                            Row(
++                                Modifier.fillMaxWidth(),
++                                horizontalArrangement = Arrangement.SpaceBetween,
++                                verticalAlignment = Alignment.CenterVertically
++                            ) {
++                                Text(account, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
++                                Text(expenseMoney(amount), style = MaterialTheme.typography.titleSmall)
+                             }
+-                            Text(expenseMoney(it.second), style = MaterialTheme.typography.titleMedium)
++                            if (account != byAccount.take(5).last().first) HorizontalDivider()
+                         }
+                     }
+-                    if (byAccount.size > 1) {
+-                        Text(
+-                            "أعلى الحسابات: " + byAccount.take(3).joinToString(" • ") { "${it.first}: ${expenseMoney(it.second)}" },
+-                            style = MaterialTheme.typography.bodySmall,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+-                        )
+-                    }
+                 }
+             }
+         }
+-        item { FushSectionHeader("حركات المصروف", "${filtered.size} حركة مطابقة للفلاتر الحالية.") }
+-        if (filtered.isEmpty()) {
++
++        item {
++            FushSectionHeader("حركات المصروف", "${filtered.size} حركة")
++        }
++        if (!loading && filtered.isEmpty()) {
+             item {
+                 ElevatedCard(Modifier.fillMaxWidth()) {
+-                    FushEmptyState("لا توجد حركات مصروف", "لا توجد حركات مطابقة للفلاتر الحالية.", Modifier.padding(18.dp))
++                    FushEmptyState(
++                        if (loadError == null) "لا توجد حركات مصروف" else "تعذر عرض الحركات القديمة",
++                        if (loadError == null) "يمكنك البدء بتسجيل مصروف جديد." else "الشاشة بقيت مفتوحة بأمان. جرّب التحديث أو سجّل حركة جديدة.",
++                        Modifier.padding(18.dp)
++                    )
+                 }
+             }
+         }
+-        items(filtered, key = { "expense-${it.expenseId}" }) { row ->
++        items(filtered, key = { "expense-v104-${it.expenseId}-${it.voucherId}" }) { row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically
++                    ) {
+                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                            Text(row.voucherNo, style = MaterialTheme.typography.titleMedium)
+-                            Text("${row.expenseAccountCode} — ${row.expenseAccountName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(row.voucherNo.ifBlank { "سند مصروف" }, style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                "${row.expenseAccountCode} — ${row.expenseAccountName}",
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant
++                            )
+                         }
+                         Text(expenseMoney(row.amountBase), style = MaterialTheme.typography.titleLarge)
+                     }
+                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+-                        FushStatusPill(row.costCenterName, FushStatusTone.Info)
+-                        FushStatusPill(row.paymentMethod, FushStatusTone.Neutral)
++                        if (row.costCenterName.isNotBlank()) FushStatusPill(row.costCenterName, FushStatusTone.Info)
++                        if (row.paymentMethod.isNotBlank()) FushStatusPill(row.paymentMethod, FushStatusTone.Neutral)
+                         if (row.attachmentCount > 0) FushStatusPill("${row.attachmentCount} مرفق", FushStatusTone.Success)
+                     }
+-                    Text(row.description)
+-                    Text("${expenseDate(row.voucherDate)} • ${row.currencyCode} ${expenseMoney(row.amountOriginal)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                    row.employeeName.takeIf { it.isNotBlank() }?.let { Text("الموظف: $it", style = MaterialTheme.typography.bodySmall) }
+-                    row.salesRepName.takeIf { it.isNotBlank() }?.let { Text("مندوب المبيعات: $it", style = MaterialTheme.typography.bodySmall) }
+-                    row.organizationUnit.takeIf { it.isNotBlank() }?.let { Text("الفرع/المنشأة: $it", style = MaterialTheme.typography.bodySmall) }
+-                    val parties = listOf(row.customerName, row.supplierName, row.itemName).filter { it.isNotBlank() }
+-                    if (parties.isNotEmpty()) Text("الربط: ${parties.joinToString(" • ")}", style = MaterialTheme.typography.bodySmall)
+-                    if (row.referenceType != "NONE") {
+-                        Text("المرجع: ${expenseReferenceName(row.referenceType)} — ${row.referenceNo} ${row.referenceLabel}", style = MaterialTheme.typography.bodySmall)
+-                    }
+-                }
+-            }
+-        }
+-        item { FushSectionHeader("مساهمة مندوبي المبيعات", "صافي المساهمة = صافي المبيعات − صافي تكلفة البضاعة − المصروفات المباشرة.") }
+-        if (repContribution.isEmpty()) item { FushInlineState("لا توجد بيانات مساهمة لمناديب المبيعات ضمن الفترة الحالية.") }
+-        items(repContribution, key = { "rep-contribution-${it.salesRepId}" }) { row ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Text(row.salesRepName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+-                        FushStatusPill(
+-                            expenseMoney(row.netContributionBase),
+-                            if (row.netContributionBase >= 0) FushStatusTone.Success else FushStatusTone.Danger
++                    if (row.description.isNotBlank()) Text(row.description)
++                    Text(
++                        "${expenseDate(row.voucherDate)} • ${row.currencyCode} ${expenseMoney(row.amountOriginal)}",
++                        style = MaterialTheme.typography.bodySmall,
++                        color = MaterialTheme.colorScheme.onSurfaceVariant
++                    )
++                    val dimensions = listOfNotNull(
++                        row.employeeName.takeIf { it.isNotBlank() }?.let { "الموظف: $it" },
++                        row.salesRepName.takeIf { it.isNotBlank() }?.let { "المندوب: $it" },
++                        row.customerName.takeIf { it.isNotBlank() }?.let { "العميل: $it" },
++                        row.supplierName.takeIf { it.isNotBlank() }?.let { "المورد: $it" },
++                        row.itemName.takeIf { it.isNotBlank() }?.let { "الصنف: $it" },
++                        row.organizationUnit.takeIf { it.isNotBlank() }?.let { "الفرع: $it" }
++                    )
++                    dimensions.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
++                    if (row.referenceType != "NONE" && row.referenceNo.isNotBlank()) {
++                        Text(
++                            "المرجع: ${expenseReferenceName(row.referenceType)} — ${row.referenceNo}",
++                            style = MaterialTheme.typography.bodySmall
+                         )
+                     }
+-                    Text("صافي المبيعات: ${expenseMoney(row.netSalesBase)}", style = MaterialTheme.typography.bodyMedium)
+-                    Text("صافي تكلفة البضاعة: ${expenseMoney(row.netCogsBase)}", style = MaterialTheme.typography.bodySmall)
+-                    Text("المصروفات المباشرة: ${expenseMoney(row.directExpensesBase)}", style = MaterialTheme.typography.bodySmall)
+                 }
+             }
+         }
+     }
+ 
+     if (showAdd) {
+-        AddExpenseDialog(
+-            treasury = treasury,
+-            accounts = expenseAccounts,
+-            currencies = currencies,
+-            employees = employees,
+-            salesReps = salesReps,
+-            customers = customers,
+-            suppliers = suppliers,
+-            items = itemsMaster,
+-            salesInvoices = salesInvoices,
+-            purchaseInvoices = purchaseInvoices,
+-            productionOrders = productionOrders,
+-            attachmentUri = expenseAttachmentUri,
+-            attachmentName = expenseAttachmentName,
+-            attachmentMime = expenseAttachmentMime,
+-            onPickAttachment = { expenseAttachmentPicker.launch(arrayOf("application/pdf", "image/*")) },
+-            onDismiss = { showAdd = false }
+-        ) { request ->
+-            scope.launch {
+-                try {
+-                    val id = container.accountingService.postVoucher(request.copy(createdBy = user.id))
+-                    message = "تم ترحيل المصروف والقيد رقم $id"
+-                    showAdd = false
+-                } catch (e: Exception) {
+-                    message = e.message ?: "تعذر ترحيل المصروف"
++        ExpenseAddDialogHostV104(
++            container = container,
++            user = user,
++            onDismiss = { showAdd = false },
++            onMessage = { message = it },
++            onPosted = {
++                showAdd = false
++                reloadToken++
++            }
++        )
++    }
++}
++
++private data class ExpenseAddSnapshotV104(
++    val accounts: List<AccountEntity>,
++    val employees: List<EmployeeEntity>,
++    val salesReps: List<SalesRepresentativeEntity>,
++    val customers: List<CustomerEntity>,
++    val suppliers: List<SupplierEntity>,
++    val items: List<ItemEntity>,
++    val treasury: List<TreasuryBalanceRow>,
++    val currencies: List<CurrencyEntity>,
++    val salesInvoices: List<SalesInvoiceSummary>,
++    val purchaseInvoices: List<PurchaseInvoiceSummary>,
++    val productionOrders: List<ProductionOrderSummary>,
++    val warnings: List<String>
++)
++
++@Composable
++private fun ExpenseAddDialogHostV104(
++    container: AppContainer,
++    user: UserEntity,
++    onDismiss: () -> Unit,
++    onMessage: (String) -> Unit,
++    onPosted: () -> Unit
++) {
++    val scope = rememberCoroutineScope()
++    val context = LocalContext.current
++    var snapshot by remember { mutableStateOf<ExpenseAddSnapshotV104?>(null) }
++    var loading by remember { mutableStateOf(true) }
++    var fatalLoadError by remember { mutableStateOf<String?>(null) }
++    var loadAttempt by remember { mutableIntStateOf(0) }
++    var attachmentUri by remember { mutableStateOf("") }
++    var attachmentName by remember { mutableStateOf("") }
++    var attachmentMime by remember { mutableStateOf("") }
++
++    LaunchedEffect(loadAttempt) {
++        loading = true
++        fatalLoadError = null
++        val warnings = mutableListOf<String>()
++
++        suspend fun <T> safeLoad(label: String, fallback: T, block: suspend () -> T): T = try {
++            block()
++        } catch (error: Throwable) {
++            runCatching { android.util.Log.e("FushExpenseV104", "Add-expense source failed: $label", error) }
++            warnings += label
++            fallback
++        }
++
++        val accounts = safeLoad("حسابات المصروف", emptyList()) { container.db.accountDao().allActive() }
++            .filter { it.isPosting && it.type == "EXPENSE" }
++        val treasury = safeLoad("الخزائن", emptyList()) { container.db.accountingDao().observeTreasuryBalances().first() }
++        val currencies = safeLoad("العملات", emptyList()) { container.db.currencyDao().allActive() }
++        val employees = safeLoad("الموظفين", emptyList()) { container.db.employeeDao().activeEmployees() }
++        val salesReps = safeLoad("المندوبين", emptyList()) { container.db.salesRepresentativeDao().active() }
++        val customers = safeLoad("العملاء", emptyList()) { container.db.customerDao().allActive() }
++        val suppliers = safeLoad("الموردين", emptyList()) { container.db.supplierDao().allActive() }
++        val items = safeLoad("الأصناف", emptyList()) { container.db.itemDao().allActive() }
++        val salesInvoices = safeLoad("فواتير المبيعات", emptyList()) { container.db.salesDao().observeSummaries().first() }
++        val purchaseInvoices = safeLoad("فواتير المشتريات", emptyList()) { container.db.purchaseDao().observeSummaries().first() }
++        val productionOrders = safeLoad("أوامر الإنتاج", emptyList()) { container.db.productionDao().observeOrderSummaries().first() }
++
++        if (accounts.isEmpty() || treasury.isEmpty() || currencies.isEmpty()) {
++            fatalLoadError = buildString {
++                append("تعذر تجهيز البيانات الأساسية لتسجيل المصروف.")
++                if (warnings.isNotEmpty()) append(" المصادر المتأثرة: ${warnings.joinToString("، ")}.")
++            }
++            snapshot = null
++        } else {
++            snapshot = ExpenseAddSnapshotV104(
++                accounts = accounts,
++                employees = employees,
++                salesReps = salesReps,
++                customers = customers,
++                suppliers = suppliers,
++                items = items,
++                treasury = treasury,
++                currencies = currencies,
++                salesInvoices = salesInvoices,
++                purchaseInvoices = purchaseInvoices,
++                productionOrders = productionOrders,
++                warnings = warnings
++            )
++        }
++        loading = false
++    }
++
++    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri != null) {
++            runCatching {
++                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
++            }
++            attachmentUri = uri.toString()
++            attachmentMime = runCatching { context.contentResolver.getType(uri).orEmpty() }.getOrDefault("")
++            attachmentName = runCatching {
++                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
++                    if (cursor.moveToFirst()) cursor.getString(0) else null
++                }.orEmpty()
++            }.getOrDefault("").ifBlank { "مرفق مصروف" }
++        }
++    }
++
++    when {
++        loading -> AlertDialog(
++            onDismissRequest = {},
++            confirmButton = {},
++            dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } },
++            title = { Text("تجهيز تسجيل المصروف") },
++            text = {
++                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
++                    LinearProgressIndicator(Modifier.fillMaxWidth())
++                    Text("يتم تحميل البيانات اللازمة فقط لهذه العملية…")
++                }
++            }
++        )
++        fatalLoadError != null -> AlertDialog(
++            onDismissRequest = onDismiss,
++            confirmButton = { Button(onClick = { loadAttempt++ }) { Text("إعادة المحاولة") } },
++            dismissButton = { TextButton(onClick = onDismiss) { Text("إغلاق") } },
++            title = { Text("تعذر تجهيز النموذج") },
++            text = { Text(fatalLoadError.orEmpty()) }
++        )
++        snapshot != null -> {
++            val data = snapshot ?: return
++            if (data.warnings.isNotEmpty()) {
++                LaunchedEffect(data.warnings) {
++                    onMessage("تم فتح نموذج المصروف، لكن تعذر تحميل: ${data.warnings.joinToString("، ")}")
++                }
++            }
++            AddExpenseDialog(
++                treasury = data.treasury,
++                accounts = data.accounts,
++                currencies = data.currencies,
++                employees = data.employees,
++                salesReps = data.salesReps,
++                customers = data.customers,
++                suppliers = data.suppliers,
++                items = data.items,
++                salesInvoices = data.salesInvoices,
++                purchaseInvoices = data.purchaseInvoices,
++                productionOrders = data.productionOrders,
++                attachmentUri = attachmentUri,
++                attachmentName = attachmentName,
++                attachmentMime = attachmentMime,
++                onPickAttachment = { attachmentPicker.launch(arrayOf("application/pdf", "image/*")) },
++                onDismiss = onDismiss
++            ) { request ->
++                scope.launch {
++                    try {
++                        val id = container.accountingService.postVoucher(request.copy(createdBy = user.id))
++                        onMessage("تم ترحيل المصروف والقيد رقم $id")
++                        onPosted()
++                    } catch (error: Throwable) {
++                        runCatching { android.util.Log.e("FushExpenseV104", "Expense post failed", error) }
++                        onMessage(error.message ?: "تعذر ترحيل المصروف")
++                    }
+                 }
+             }
+         }

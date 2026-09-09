@@ -1,0 +1,26 @@
+FUSH ERP Mobile v166 Static Validation: 24/24 PASS
+
+PASS - applicationId com.fush.erp.recovery
+PASS - versionCode 166
+PASS - versionName v166 production conflict inspector
+PASS - Room schema 46
+PASS - No fallbackToDestructiveMigration
+PASS - XML parses: app/src/main/res/values/strings.xml
+PASS - XML parses: app/src/main/res/values-ar/strings.xml
+PASS - Localized resource cloud_inventory_production_conflict_summary
+PASS - Localized resource cloud_inventory_production_conflict_business
+PASS - Localized resource cloud_inventory_production_conflict_timing
+PASS - Localized resource cloud_inventory_production_conflict_descriptive
+PASS - Localized resource cloud_inventory_production_value_present
+PASS - Localized resource cloud_inventory_production_value_absent
+PASS - Field-level production comparator active
+PASS - Field-level recipe comparator active
+PASS - Legacy production whole-document conflict removed
+PASS - Severity in conflict model
+PASS - Severity persisted in sync store
+PASS - Business/timing/descriptive UI summary
+PASS - Issue pairing prevents timestamp cascade
+PASS - Readable Aden timestamps
+PASS - Cloud schema domain preserved (no new SQL required)
+PASS - Latest v165 productionCanonical build fix preserved
+PASS - Inspector remains non-destructive

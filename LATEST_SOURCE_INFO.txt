@@ -1,0 +1,32 @@
+FUSH ERP Mobile — Latest Source Info
+Baseline: v212 Shipment Number Collision Hotfix
+Current development release: v213 Commercial Multi-Tenant Foundation
+Current versionCode: 213
+Current versionName: 0.15.4.164-commercial-multitenant-foundation
+Application ID: com.fush.erp.recovery
+Room schema: 54
+Destructive migration: NOT used
+
+Scope
+- Removes compile-time FUSH_CLOUD_ORGANIZATION_ID from Android.
+- CloudSession now carries a runtime organizationId resolved from the authenticated user's ACTIVE Supabase memberships.
+- All cloud synchronization domains, document-number reservation, device registration, member provisioning, and FUSH AI use the runtime tenant.
+- Adds cloud_tenant_binding inside Room so a database/backup is permanently bound to one cloud tenant and cannot be uploaded into another tenant by changing cloud login.
+- Adds safe Room Migration 53 -> 54. It creates only the tenant-binding table/index and does not modify or delete business rows.
+- Existing v212 cloud sessions are lazily upgraded: when a single active membership exists (or the Room DB is already bound to an active membership), v213 adopts that organization without deleting local data.
+- Adds Supabase fush_create_organization(...) using gen_random_uuid(), tenant-scoped device uniqueness, fresh commercial installer without a fixed vendor tenant seed, RLS A/B test, and tenant policy audit.
+
+Database
+- Room schema: 54
+- Migration: MIGRATION_53_54_COMMERCIAL_TENANT_BINDING
+- No fallbackToDestructiveMigration.
+- Supabase incremental migration: cloud/supabase/010_commercial_multitenant_foundation.sql
+
+Release status
+- Static commercial multi-tenant source gate: PASS (39/39).
+- Executable host commercial tenant gate: PASS (48/48), including SQLite migration execution, privileged-RPC structural checks, dynamic RLS test packaging, and FUSH AI tenant authorization inspection.
+- Gradle unit tests / assembleRelease / lintVitalRelease: NOT EXECUTED in this environment (Gradle wrapper JAR and Android SDK unavailable).
+- Room 53 -> 54 instrumented migration test: ADDED, NOT EXECUTED here.
+- Connected production Supabase baseline: READ-ONLY audited (42/42 tenant tables have RLS); production left unchanged.
+- Live staging Tenant A/B RLS + privileged-RPC test and policy audit: PACKAGED, NOT EXECUTED yet.
+- v213 APK: NOT BUILT / NOT SIGNED in this environment.

@@ -1,0 +1,25 @@
+PASS - versionCode=156
+PASS - versionName v156
+PASS - AppID preserved
+PASS - Room schema 46
+PASS - No fallbackToDestructiveMigration
+PASS - Per-user session store
+PASS - v155 session migration
+PASS - Owner provisioning RPC
+PASS - Owner self-claim RPC
+PASS - Fresh-device cloud join
+PASS - No secret/service-role key
+PASS - RLS enabled
+PASS - Anon access revoked
+PASS - SECURITY DEFINER provisioning
+PASS - No DROP TABLE
+PASS - No DELETE/TRUNCATE
+PASS - XML unique values - 557 strings
+PASS - XML unique values-ar - 557 strings
+PASS - All cloud strings EN
+PASS - All cloud strings AR
+PASS - Cloud screen receives local user
+PASS - Initial worker join route
+PASS - Cloud-member local bootstrap
+
+TOTAL 23/23 PASS

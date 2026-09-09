@@ -1,0 +1,49 @@
+FUSH ERP Mobile v213 - Static Commercial Multi-Tenant Validation
+Generated UTC: 2026-09-09T00:21:39.880651+00:00
+
+NOTE: Source/static gate only. Gradle tests, Android migration instrumentation and live Supabase RLS are separate release gates.
+
+[PASS] Application ID preserved
+[PASS] versionCode is 213
+[PASS] versionName is v213 commercial multi-tenant
+[PASS] Compile-time FUSH_CLOUD_ORGANIZATION_ID removed
+[PASS] Vendor fixed organization UUID removed from Android main
+[PASS] CloudSession carries organizationId
+[PASS] CloudSession fails closed without tenant
+[PASS] CloudSessionStore persists organizationId
+[PASS] Repository resolves tenant from active memberships
+[PASS] Repository prefers Room-bound tenant on upgrade
+[PASS] Repository binds Room database tenant
+[PASS] Repository blocks cross-tenant DB reuse
+[PASS] Device upsert is tenant-scoped
+[PASS] Room schema is 54
+[PASS] Room includes tenant binding entity
+[PASS] Migration 53->54 creates tenant binding only
+[PASS] Migration 53->54 registered in AppContainer
+[PASS] Migration 53->54 registered in accounting bootstrap
+[PASS] Instrumented Room 53->54 migration test exists
+[PASS] AccountingCloudSyncEngine.kt uses runtime tenant
+[PASS] InventoryProductionCloudSyncEngine.kt uses runtime tenant
+[PASS] MasterDataCloudSyncEngine.kt uses runtime tenant
+[PASS] PurchaseDocumentsCloudSyncEngine.kt uses runtime tenant
+[PASS] SalesAuxiliaryCloudSyncEngine.kt uses runtime tenant
+[PASS] SalesReceivablesCloudSyncEngine.kt uses runtime tenant
+[PASS] SupplierPaymentsTreasuryCloudSyncEngine.kt uses runtime tenant
+[PASS] FushAiRemoteService.kt uses runtime tenant
+[PASS] Fresh cloud foundation has no vendor tenant seed
+[PASS] Incremental Supabase migration creates random organizations
+[PASS] New organization creator grants OWNER membership
+[PASS] Supabase device uniqueness includes organization
+[PASS] Fresh v213 installer has no fixed tenant UUID
+[PASS] RLS A/B acceptance test checks cross-tenant read denial
+[PASS] RLS A/B acceptance test checks cross-tenant write denial
+[PASS] RLS A/B test structurally requires RLS on tenant tables
+[PASS] Tenant policy audit exists and rejects unconditional tenant policies
+[PASS] v209 regression contract accepts later schemas
+[PASS] v211 regression contract accepts later schemas
+[PASS] v212 regression contract accepts later versions/schemas
+
+TOTAL: 39
+PASS: 39
+FAIL: 0
+RESULT: PASS

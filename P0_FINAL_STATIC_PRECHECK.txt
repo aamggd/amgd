@@ -1,0 +1,5 @@
+AppID: PASS
+versionCode 104: PASS
+Room 38: PASS
+No destructive migration: PASS
+Gradle full regression/build: PENDING EXECUTION ON ANDROID-SDK-ENABLED MACHINE

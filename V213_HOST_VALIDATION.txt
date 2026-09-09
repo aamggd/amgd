@@ -1,0 +1,53 @@
+[PASS] applicationId preserved
+[PASS] versionCode 213
+[PASS] versionName v213 commercial multitenant
+[PASS] compile-time organization BuildConfig removed
+[PASS] fixed historical organization UUID absent from executable Kotlin
+[PASS] CloudSession carries organizationId
+[PASS] CloudSession fails closed without organizationId
+[PASS] CloudSessionStore persists organizationId
+[PASS] legacy sessions stay tenantless until membership resolution
+[PASS] repository resolves active memberships
+[PASS] repository binds tenant inside Room
+[PASS] repository blocks reuse with another tenant
+[PASS] device upsert conflict key includes organization
+[PASS] Room schema is 54
+[PASS] Room entity includes CloudTenantBindingEntity
+[PASS] 53->54 migration registered in AppContainer
+[PASS] 53->54 migration registered in accounting bootstrap
+[PASS] no destructive fallback added to app database setup
+[PASS] AccountingCloudSyncEngine.kt requires runtime organization
+[PASS] InventoryProductionCloudSyncEngine.kt requires runtime organization
+[PASS] MasterDataCloudSyncEngine.kt requires runtime organization
+[PASS] PurchaseDocumentsCloudSyncEngine.kt requires runtime organization
+[PASS] SalesAuxiliaryCloudSyncEngine.kt requires runtime organization
+[PASS] SalesReceivablesCloudSyncEngine.kt requires runtime organization
+[PASS] SupplierPaymentsTreasuryCloudSyncEngine.kt requires runtime organization
+[PASS] FushAiRemoteService.kt requires runtime organization
+[PASS] migration contains tenant binding CREATE TABLE
+[PASS] migration preserves pre-existing business row
+[PASS] tenant binding starts empty
+[PASS] tenant binding organization unique constraint executes
+[PASS] organization creation uses random UUID
+[PASS] organization creator becomes OWNER
+[PASS] device uniqueness is tenant scoped
+[PASS] legacy privileged trigger RPC exposure is revoked
+[PASS] legacy treasury trigger search_path is pinned
+[PASS] membership discovery is ACTIVE-only
+[PASS] cloud binding read requires active org membership
+[PASS] fresh installer contains no fixed historical tenant UUID
+[PASS] FUSH AI server verifies active tenant membership
+[PASS] RLS gate dynamically scans every organization_id FUSH table
+[PASS] RLS gate tests cross-tenant UPDATE
+[PASS] RLS gate tests cross-tenant DELETE
+[PASS] RLS gate tests cross-tenant INSERT
+[PASS] RLS gate includes own-tenant positive write control
+[PASS] RLS gate probes privileged RPC cross-tenant denial
+[PASS] policy audit rejects tenant tables without RLS
+[PASS] policy audit rejects unconditional authenticated tenant policies
+[PASS] policy audit covers SECURITY DEFINER bypass risks
+
+TOTAL: 48
+PASS: 48
+FAIL: 0
+RESULT: PASS

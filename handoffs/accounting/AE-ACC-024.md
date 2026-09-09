@@ -1,0 +1,41 @@
+# Accounting Handoff — AE-ACC-024 QA Correction Round
+
+- Defect ID: AE-ACC-024
+- Severity: CRITICAL
+- Repair Branch: `accounting-ae-acc-024-fix`
+- Repair Parent: `f4900a6b3f72ae718274a727c67433e837e44a43`
+- QA Failure Root Cause: The original Room 35 -> 36 backfill used SQLite `ROUND(value * scale)`, whose tie behavior does not match the canonical `BigDecimal + RoundingMode.HALF_EVEN` policy used by new Room 36 writes. Example: `1.23445` migrated to `12345` while a new write canonicalizes to `12344`.
+- Additional Real-Room35 Migration Constraint: Room 35 databases migrated through `MIGRATION_34_35_ACCOUNTING_P1` contain POSTED immutability UPDATE triggers. Updating canonical columns and compatibility mirrors during 35 -> 36 therefore requires controlled suspension and restoration of the two UPDATE guards inside the migration transaction.
+- Migration Fix:
+  - Removed all SQLite `ROUND()` use from AE-ACC-024 backfill.
+  - Reads legacy Room 35 REAL values as `Double` and passes each value through the exact production `AccountingPrecision.amountToScaled` / `rateToScaled` functions.
+  - Writes canonical scaled INTEGER values and derives legacy REAL mirrors only from those canonical integers.
+  - Processes rows in bounded batches and updates by immutable primary key, preserving row counts and IDs.
+  - Temporarily drops only `trg_posted_journal_no_update` and `trg_posted_journal_line_no_update` for the controlled backfill, then restores them before migration completion.
+  - No destructive migration, database deletion, data rebuild, or `fallbackToDestructiveMigration` is used.
+- Amount Policy: 4 decimals, `HALF_EVEN`.
+- Exchange Rate Policy: 8 decimals, `HALF_EVEN`.
+- Files Changed in QA Correction:
+  - `app/src/main/java/com/fush/erp/data/AccountingPrecisionAutoMigration.kt`
+  - `app/src/test/java/com/fush/erp/domain/AccountingPrecisionTest.kt`
+  - `app/src/androidTest/java/com/fush/erp/data/AccountingPrecisionMigrationTest.kt`
+  - `app/build.gradle.kts`
+  - `handoffs/accounting/AE-ACC-024.md`
+- Regression Tests Added/Expanded:
+  - `1.23445 -> 12344`
+  - `1.23455 -> 12346`
+  - values immediately below/above the HALF_EVEN boundary
+  - negative HALF_EVEN conversion and zero in pure precision tests
+  - 8-decimal exchange-rate tie cases
+  - actual Room 34 -> production 34/35 migration -> Room 35 data -> Room 36 auto-migration path
+  - row-count preservation
+  - journal-entry and journal-line ID preservation
+  - debit/credit canonical preservation and post-migration balance equality
+  - legacy REAL mirror equality to canonical scaled values
+  - restoration of POSTED immutability triggers
+- Local Validation Results:
+  - Pure Kotlin precision regression: `PRECISION_HALF_EVEN_REGRESSION_PASS`.
+  - Harness built from the repository's exported Room 35 schema plus production posted-update guards: `ROOM35_EXPORTED_SCHEMA_MIGRATION_HARNESS_PASS`; row counts, IDs, canonical values, mirrors, balance, and restored guards all verified.
+- Build/Test Environment Note: The supplied source archive has no Gradle wrapper and this execution environment has no Android SDK/system Gradle, so the Android instrumentation migration test is committed for pre-integration QA execution. No APK/runtime PASS is claimed without the Android test runner.
+- Required QA Retest: Run the committed `AccountingPrecisionMigrationTest` on Android against the exported Room schemas and confirm Room schema validation and all assertions pass.
+- Status: AE-ACC-024 — CORRECTED / TESTED / READY FOR PRE-INTEGRATION QA RETEST.

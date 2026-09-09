@@ -1,0 +1,27 @@
+FUSH ERP Mobile v155 - STATIC VALIDATION
+===========================================
+
+PASS  applicationId preserved
+PASS  versionCode 155
+PASS  versionName v155
+PASS  Room schema 46
+PASS  No destructive migration
+PASS  Unchanged app/src/main/java/com/fush/erp/data/FushDatabase.kt
+PASS  Unchanged app/schemas/com.fush.erp.data.FushDatabase/46.json
+PASS  Present app/src/main/java/com/fush/erp/cloud/CloudModels.kt
+PASS  Present app/src/main/java/com/fush/erp/cloud/CloudSessionStore.kt
+PASS  Present app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt
+PASS  Present app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt
+PASS  Present cloud/supabase/001_cloud_sync_foundation.sql
+PASS  Publishable key only
+PASS  Android Keystore
+PASS  AES/GCM
+PASS  Cloud screen permission gated
+PASS  XML parse app/src/main/res/values/strings.xml
+PASS  No duplicate resources app/src/main/res/values/strings.xml
+PASS  XML parse app/src/main/res/values-ar/strings.xml
+PASS  No duplicate resources app/src/main/res/values-ar/strings.xml
+PASS  Cloud isolated compile artifact
+PASS  UI isolated compile artifact
+
+TOTAL: 22/22 PASS

@@ -1,0 +1,10 @@
+PASS
+13 AccountingService mutation guards verified
+6 FixedAssetService mutation guards verified
+6 specialized permissions cataloged
+resolveCashCountDifference requires CASH_COUNT_POST + ACCOUNTING_POST
+Read-only AUDITOR/VIEWER defaults remain non-posting
+UI permission gates found for journals, treasury, fixed assets, period/year close, FX, bank reconciliation
+One-time compatibility upgrade marker found
+Room schema remains 38
+versionCode = 108

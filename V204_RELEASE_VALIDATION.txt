@@ -1,0 +1,52 @@
+FUSH ERP Mobile v204 — Formal Geography Hierarchy
+Validation date: 2026-09-05
+
+Release identity
+- applicationId: com.fush.erp.recovery
+- versionCode: 204
+- versionName: 0.15.4.155-formal-geography-hierarchy
+- Room schema: 51
+- Required migration: 50 -> 51
+- No fallbackToDestructiveMigration
+- No database delete/clearAllTables in app source
+
+Formal geography hierarchy
+- Room tables: geo_governorates, geo_districts, geo_areas
+- Official seed bundled in app asset: 22 governorates, 335 districts, 2,234 areas/uzlas
+- Customer links: governorateId, districtId, areaId
+- Sales invoice links: governorateId, districtId, areaId
+- Shipment destination links: destinationGovernorateId, destinationDistrictId, destinationAreaId
+- Shipment/invoice allocation checks governorate by formal ID, not legacy text
+- Legacy province text remains for history/display compatibility
+- Legacy governorate aliases are normalized and backfilled where safely resolvable
+- Existing legacy data is not destructively rewritten
+
+Cloud / Supabase
+- V204 formal geography cloud schema applied to FUSH-ERP project
+- Cloud master tables: fush_md_governorates, fush_md_districts, fush_md_areas
+- customer and sales invoice cloud rows include governorate_id, district_id, area_id
+- Existing non-empty customer/invoice province rows: 0 unmapped governorates after backfill
+- Current cloud seed contains 22 governorates; the app's MasterData bidirectional sync publishes the bundled 335 districts and 2,234 areas to the organization cloud tables.
+
+ACCOUNTANT default permissions
+- ACCOUNTANT includes TREASURY_POST in default permissions
+- Existing ACCOUNTANT role upgraded once with marker ACCOUNTANT_TREASURY_VOUCHERS_V204
+- This grants treasury voucher management without automatically granting cash-count posting or geography administration
+
+Build & tests
+- testDebugUnitTest: PASS
+- Tests: 655
+- Failures: 0
+- Errors: 0
+- Skipped: 0
+- assembleRelease: PASS
+- lintVitalRelease: PASS
+- Room schema 51 JSON generated and present
+
+APK verification
+- zipalign: PASS
+- APK Signature Scheme v2: PASS
+- APK Signature Scheme v3: PASS
+- Signing certificate SHA-256:
+  22:D5:E2:A8:BD:48:DD:D2:33:9A:BD:C4:74:86:48:B5:09:E0:2D:04:65:24:D6:E1:18:FB:E0:50:88:15:55:86
+- Certificate matches v203 release certificate

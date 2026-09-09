@@ -1,0 +1,13 @@
+# From project root in PowerShell
+
+# If the source has no wrapper yet:
+powershell -ExecutionPolicy Bypass -File .\GENERATE_GRADLE_WRAPPER.ps1
+
+# P0-3 targeted tests
+.\gradlew.bat :app:testDebugUnitTest --tests "com.fush.erp.domain.AccountingPeriodPostingPolicyTest" --tests "com.fush.erp.domain.AccountingPeriodConsumerContractTest" --tests "com.fush.erp.domain.AccountingPeriodFailClosedContractTest" --no-daemon
+
+# Build gate
+.\gradlew.bat :app:assembleDebug --no-daemon
+
+# Full suite only after targeted P0-3 passes
+.\gradlew.bat :app:testDebugUnitTest --no-daemon

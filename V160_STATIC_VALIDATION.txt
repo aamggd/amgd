@@ -1,0 +1,42 @@
+FUSH ERP Mobile v160 static validation: 40/40 PASS
+
+[PASS] applicationId preserved
+[PASS] versionCode 160
+[PASS] versionName v160
+[PASS] Room schema remains 46
+[PASS] No fallbackToDestructiveMigration
+[PASS] Conflict difference model present
+[PASS] Conflict document model present
+[PASS] Sync result carries details
+[PASS] Conflict store saves per user
+[PASS] Conflict store reloads per user
+[PASS] Repository exposes last conflicts
+[PASS] Engine persists conflict list
+[PASS] Invoice inspector present
+[PASS] Receipt inspector present
+[PASS] Return inspector present
+[PASS] Invoice child lines inspected
+[PASS] Receipt allocations inspected
+[PASS] Return lines inspected
+[PASS] Floating-point tolerance present
+[PASS] Technical createdAt excluded from diff inspector
+[PASS] No destructive conflict overwrite API added
+[PASS] UI conflict state loads persisted conflicts
+[PASS] UI refreshes conflict details after sync
+[PASS] UI conflict inspector card present
+[PASS] UI shows local and cloud values
+[PASS] UI states both copies preserved
+[PASS] values strings XML parses
+[PASS] values string names unique
+[PASS] values conflict strings complete
+[PASS] values-ar strings XML parses
+[PASS] values-ar string names unique
+[PASS] values-ar conflict strings complete
+[PASS] All CloudSyncScreen R.string refs resolve
+[PASS] FushDatabase.kt unchanged from v159
+[PASS] No Supabase SQL migration required
+[PASS] Brace count balanced: SalesReceivablesCloudSyncEngine.kt :: 158 vs 158
+[PASS] Brace count balanced: SalesReceivablesSyncStore.kt :: 11 vs 11
+[PASS] Brace count balanced: SalesReceivablesSyncModels.kt :: 0 vs 0
+[PASS] Brace count balanced: CloudSyncRepository.kt :: 127 vs 127
+[PASS] Brace count balanced: CloudSyncScreen.kt :: 108 vs 108

@@ -1,0 +1,49 @@
+V163 STATIC VALIDATION: 47/47 PASS
+
+PASS - applicationId preserved
+PASS - versionCode 163
+PASS - versionName v163
+PASS - Room schema 46
+PASS - no destructive migration in AppContainer
+PASS - new SQL present
+PASS - treasury cloud table
+PASS - supplier payments cloud table
+PASS - supplier allocations cloud table
+PASS - RLS treasury
+PASS - RLS payments
+PASS - owner/admin cloud writes
+PASS - read member policy
+PASS - payment FK to purchase invoice
+PASS - engine class exists
+PASS - OWNER/ADMIN publisher guard
+PASS - stable payment number key
+PASS - stable treasury code
+PASS - stable supplier code
+PASS - stable invoice number allocation
+PASS - reversal uses payment number
+PASS - download inserts supplier payment
+PASS - download inserts allocations
+PASS - no journal replay in engine
+PASS - no generic voucher replay in engine
+PASS - treasury directory dependency
+PASS - missing ledger fails closed
+PASS - conflict model exists
+PASS - conflict store exists
+PASS - repository wired
+PASS - repository mutex
+PASS - screen state wired
+PASS - screen button wired
+PASS - screen conflict card wired
+PASS - auto sync wired after purchases
+PASS - DAO payment by number
+PASS - DAO all payments cloud sync
+PASS - DAO treasury by code
+PASS - contract test exists
+PASS - handoff exists
+PASS - XML valid app/src/main/res/values/strings.xml
+PASS - no duplicate strings app/src/main/res/values/strings.xml
+PASS - XML valid app/src/main/res/values-ar/strings.xml
+PASS - no duplicate strings app/src/main/res/values-ar/strings.xml
+PASS - brace balance SupplierPaymentsTreasuryCloudSyncEngine.kt
+PASS - brace balance CloudSyncScreen.kt
+PASS - brace balance CloudSyncRepository.kt

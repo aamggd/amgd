@@ -1,0 +1,52 @@
+FUSH ERP Mobile v211 — FUSH AI Draft Actions — Final Release Validation
+Date: 2026-09-06
+
+Identity
+- Application ID: com.fush.erp.recovery
+- versionCode: 211
+- versionName: 0.15.4.162-fush-ai-draft-actions
+- Room schema: 53
+- Database migration: 52 -> 53 (non-destructive)
+- fallbackToDestructiveMigration: not introduced
+
+Feature scope
+- FUSH AI read/tool-calling capabilities retained.
+- Added isolated AI draft records for:
+  * Sales invoice draft
+  * Treasury voucher draft
+  * Production order draft
+- Draft states: PENDING / APPROVED / CANCELLED.
+- Draft approval does NOT post an ERP document, move inventory, alter treasury balances, post GL, or execute production.
+- Draft operations are permission-checked and audited.
+- Supabase Edge Function fush-ai updated to version 2 with draft_* planning tools only; no operational write/post/delete tools.
+- External LLM provider is not configured in this build environment; local safe fallback remains available.
+
+Tests
+- Final JVM/unit test result: 685 tests, 0 failures, 0 errors, 0 skipped.
+- An earlier run exposed one stale v209 schema contract expectation; it was corrected and the complete suite was rerun successfully.
+- Android instrumentation migration test for 52 -> 53 is included in source but was not executed because no Android emulator/device was available in the build environment.
+
+Release build
+- assembleRelease: PASS
+- lintVitalRelease: PASS
+- Gradle release build: BUILD SUCCESSFUL
+- zipalign verification: PASS
+
+APK verification
+- APK SHA-256: 80282a5cb504e7938991b03a51ce437e6b5644173fa39380e06172bb1c6121ab
+- APK signing v1: false
+- APK signing v2: true
+- APK signing v3: true
+- Number of signers: 1
+- Signing certificate SHA-256: 22d5e2a8bd48ddd2339abdc4748648b509e02d046524d6e118fbe05088155586
+- minSdk: 26
+- targetSdk: 36
+- compileSdk: 36
+
+Source package hygiene
+- Build outputs excluded.
+- .gradle/.kotlin excluded.
+- local.properties excluded.
+- APK/AAB/IDSIG excluded.
+- P12/JKS/keystore files excluded.
+- Signing password not present in packaged source.

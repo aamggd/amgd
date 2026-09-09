@@ -1,0 +1,9 @@
+# Run from the project root in PowerShell.
+# If gradlew.bat does not exist, generate it first with the installed Gradle 9.4.1:
+powershell -ExecutionPolicy Bypass -File .\GENERATE_GRADLE_WRAPPER.ps1
+
+# Step 2 targeted tests:
+.\gradlew.bat :app:testDebugUnitTest --tests "com.fush.erp.domain.AccountingPostingIdempotencyPolicyTest" --tests "com.fush.erp.domain.TreasuryVoucherOperationIdentityTest" --tests "com.fush.erp.domain.TreasuryVoucherDoubleSubmitContractTest" --no-daemon
+
+# Compile APK after targeted tests:
+.\gradlew.bat :app:assembleDebug --no-daemon

@@ -1,0 +1,17 @@
+P0 STEP 3 STATIC VALIDATION
+===========================
+AppID com.fush.erp.recovery: PASS
+Room schema 38 unchanged: PASS
+No destructive migration fallback: PASS
+AccountingPeriodDatabaseGuard installed: PASS
+POSTED insert without OPEN period rejected: PASS (SQLite semantic probe)
+POSTED update without OPEN period rejected: PASS (SQLite semantic probe)
+CLOSED period rejected: PASS (SQLite semantic probe)
+OPEN period accepted: PASS (SQLite semantic probe)
+Central period gate has no silent ?: return: PASS
+Sales/Purchase/Inventory/Production gates before mutation: PASS (45 invariants total)
+New guard Kotlin syntax: PASS
+AccountingPeriodPostingPolicy Kotlin syntax: PASS
+Gradle targeted tests: PENDING
+assembleDebug: PENDING
+Android runtime missing/closed-period test: PENDING

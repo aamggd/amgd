@@ -1,0 +1,28 @@
+FUSH ERP Mobile v167 Static Validation
+==========================================
+PASS 24/24
+
+PASS - applicationId preserved
+PASS - versionCode 167
+PASS - versionName v167
+PASS - Room schema 46
+PASS - no destructive migration
+PASS - v167 SQL migration packaged
+PASS - CAS RPC defined
+PASS - CAS RPC role guard
+PASS - PRODUCTION insert policy only
+PASS - production outbound role enabled
+PASS - inventory outbound roles enabled
+PASS - closed production only
+PASS - closed-after-cursor guard
+PASS - existing cloud production never employee-overwritten
+PASS - inventory local changes detected from stock movements
+PASS - cloud sync adjustments excluded outbound
+PASS - cloud updated_at concurrency check
+PASS - CAS publish used
+PASS - inventory conflict surfaced
+PASS - outbound cursor persisted
+PASS - outbound cursor held on conflict
+PASS - inventory conflict UI label
+PASS - English/Arabic resource XML valid
+PASS - v167 scope text present

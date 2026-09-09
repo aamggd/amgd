@@ -1,0 +1,46 @@
+FUSH ERP Mobile v165 static validation
+======================================
+PASS - versionCode 165
+PASS - versionName v165
+PASS - applicationId preserved
+PASS - Room 46
+PASS - no destructive migration
+PASS - exists InventoryProductionCloudSyncEngine.kt
+PASS - exists InventoryProductionSyncModels.kt
+PASS - exists InventoryProductionSyncStore.kt
+PASS - exists 008_inventory_production_mirror.sql
+PASS - owner admin publisher
+PASS - production order mirror
+PASS - production material mirror
+PASS - production batch mirror
+PASS - production issue mirror
+PASS - recipe mirror
+PASS - inventory snapshot
+PASS - inventory quantity adjustments
+PASS - inventory revaluation adjustments
+PASS - no posting service replay
+PASS - production conflicts preserved
+PASS - repository wired
+PASS - automatic foreground sync
+PASS - manual sync UI
+PASS - en XML valid
+PASS - en no duplicate strings
+PASS - ar XML valid
+PASS - ar no duplicate strings
+PASS - all EN resources exist
+PASS - all AR resources exist
+PASS - SQL fush_cloud_domain_state
+PASS - SQL fush_md_recipes
+PASS - SQL fush_md_recipe_components
+PASS - SQL fush_tx_production_orders
+PASS - SQL fush_tx_production_materials
+PASS - SQL fush_tx_production_batches
+PASS - SQL fush_tx_production_issues
+PASS - SQL fush_inventory_snapshot
+PASS - SQL RLS enabled
+PASS - SQL transaction
+PASS - recipe sync DAO
+PASS - production sync DAO
+PASS - stock sync DAO
+
+TOTAL: 42/42 PASS

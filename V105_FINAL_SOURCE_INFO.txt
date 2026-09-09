@@ -1,0 +1,8 @@
+FUSH ERP Mobile v105 Customer Statement — FINAL SOURCE HANDOFF
+Application ID: com.fush.erp.recovery
+versionCode: 105
+versionName: 0.15.4.56-customer-statement-hotfix1
+Room: 38
+Production baseline: v104 Backup+Arabic Hotfix APK
+No Room migration in this release.
+Signing material is not included.
