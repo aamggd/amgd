@@ -6,6 +6,11 @@ on:
     paths:
       - 'ci/v213/source/**'
   workflow_dispatch:
+    inputs:
+      source_url:
+        description: 'Direct HTTPS URL to the exact v213 source tar.xz (optional when repo chunks exist)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -33,12 +38,23 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
 
-      - name: Reconstruct v213 source snapshot
+      - name: Acquire and verify v213 source snapshot
         shell: bash
+        env:
+          SOURCE_URL: ${{ inputs.source_url }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/v213-src
-          cat ci/v213/source/part-* > /tmp/v213-source.tar.xz
+          if [ -n "${SOURCE_URL:-}" ]; then
+            case "$SOURCE_URL" in
+              https://*) ;;
+              *) echo 'source_url must use HTTPS' >&2; exit 1 ;;
+            esac
+            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$SOURCE_URL" --output /tmp/v213-source.tar.xz
+          else
+            test -n "$(find ci/v213/source -maxdepth 1 -type f -name 'part-*' -print -quit 2>/dev/null || true)"
+            cat ci/v213/source/part-* > /tmp/v213-source.tar.xz
+          fi
           echo '97e5eaa84945983b44b39f4eb1105fb375bb7e6d585cb463f4ba3835d98a06e  /tmp/v213-source.tar.xz' | sha256sum -c -
           tar -xJf /tmp/v213-source.tar.xz -C /tmp/v213-src
           if [ -f /tmp/v213-src/settings.gradle.kts ]; then
