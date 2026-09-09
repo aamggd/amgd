@@ -1,0 +1,32 @@
+name: FUSH Customer Source Transfer Probe
+
+on:
+  push:
+    branches: [fush-customer]
+    paths:
+      - '.github/workflows/fush-customer-source-transfer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect temporary source share
+        shell: bash
+        env:
+          SHARE_URL: https://firestorage.ai/ja/f/1cY8iBEwzwFx
+        run: |
+          set -euo pipefail
+          curl -L --fail --silent --show-error -D headers.txt "$SHARE_URL" -o share.html
+          echo '=== response headers ==='
+          sed -n '1,80p' headers.txt
+          echo '=== page size ==='
+          wc -c share.html
+          echo '=== candidate download/api references ==='
+          grep -Eo 'https?://[^"<> ]+|/[A-Za-z0-9_./?=&%-]+' share.html | grep -Ei 'download|api|zip|file|share' | head -n 120 || true
+          echo '=== static script references ==='
+          grep -Eo 'src="[^"]+"' share.html | head -n 80 || true
