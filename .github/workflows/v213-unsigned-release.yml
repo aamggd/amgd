@@ -1,0 +1,99 @@
+name: v213 R2 Unsigned Release
+
+on:
+  push:
+    branches: [v213-stock-issue-supplier-sales-build]
+    paths:
+      - '.github/workflows/v213-unsigned-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct v213 source archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cat ci/v213/parts/part_*.b64 | tr -d '\r\n' > /tmp/v213.b64
+          base64 -d /tmp/v213.b64 > /tmp/v213.payload
+          file /tmp/v213.payload
+          xz -t /tmp/v213.payload
+          mkdir -p /tmp/v213src
+          tar -xJf /tmp/v213.payload -C /tmp/v213src
+          find /tmp/v213src -maxdepth 3 -type f | head -80
+          ROOT="$(find /tmp/v213src -name settings.gradle.kts -printf '%h\n' | head -1)"
+          test -n "$ROOT"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Verify exact v213 R2 identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -R -n 'versionCode = 213' "$ROOT/app/build.gradle.kts"
+          grep -R -n '0.15.4.164-commercial-multitenant-foundation' "$ROOT/app/build.gradle.kts"
+          grep -R -n 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java" 
+          test -f "$ROOT/app/src/main/java/com/fush/erp/data/V213CommercialTenantBindingMigration.kt"
+          ! grep -R -n 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.1.0'
+
+      - name: Host gate
+        shell: bash
+        run: |
+          if [ -f "$ROOT/tools/v213_commercial_multitenant_host_gate.py" ]; then
+            python "$ROOT/tools/v213_commercial_multitenant_host_gate.py"
+          fi
+
+      - name: Unit tests
+        working-directory: ${{ env.ROOT }}
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: ${{ env.ROOT }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Release lint
+        working-directory: ${{ env.ROOT }}
+        run: gradle --no-daemon :app:lintVitalRelease
+
+      - name: Prepare aligned unsigned APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK="$(find "$ROOT/app/build/outputs/apk/release" -maxdepth 1 -name '*.apk' | head -1)"
+          test -f "$APK"
+          mkdir -p out
+          "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign" -p -f 4 "$APK" out/FUSH_ERP_Mobile_v213-CommercialMultiTenant-FOUNDATION-R2-ALIGNED-UNSIGNED.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign" -c -v 4 out/FUSH_ERP_Mobile_v213-CommercialMultiTenant-FOUNDATION-R2-ALIGNED-UNSIGNED.apk
+          sha256sum out/*.apk > out/SHA256.txt
+          cp -r "$ROOT/app/build/reports/tests" out/test-reports 2>/dev/null || true
+          cp -r "$ROOT/app/build/reports/lint-results-release.html" out/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v213-R2-Unsigned-Release
+          path: out
+          if-no-files-found: error
+          retention-days: 2
