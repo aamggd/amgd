@@ -4,6 +4,8 @@ on:
   push:
     branches: [fush-customer]
     paths:
+      - 'app/**'
+      - 'tools/**'
       - '.github/workflows/fush-customer-v213-release.yml'
   workflow_dispatch:
 
@@ -77,6 +79,7 @@ jobs:
             'versionName=0.15.4.164-commercial-multitenant-foundation' \
             'roomSchema=54' \
             'compileFix=CloudSyncRepository explicit Any? bind args' \
+            'v155Contract=v213 organization-aware device registration' \
             'signing=NOT_PERFORMED_IN_GITHUB' > out/BUILD-IDENTITY.txt
           sha256sum out/*.apk out/*.zip > out/SHA256SUMS.txt
 
