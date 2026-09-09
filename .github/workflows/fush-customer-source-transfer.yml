@@ -1,4 +1,4 @@
-name: FUSH Customer Source Transfer Probe
+name: Build FUSH Customer v213
 
 on:
   push:
@@ -11,18 +11,116 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
+    env:
+      API_BASE: https://api.firestorage.ai/dev/file
+      SHARE_ID: 1cY8iBEwzwFx
+      EXPECTED_SOURCE_SHA256: 4df22f239ca759f07084e0586fba81aa6f0290e193fd28e8e42fb039416cde10
     steps:
-      - name: Locate firestorage public API base
+      - name: Download exact v213 R2 source
         shell: bash
         run: |
           set -euo pipefail
-          curl -L --fail --silent --show-error 'https://firestorage.ai/_next/static/chunks/4899-d89df949f2dbd5af.js' -o app.js
-          echo '=== absolute URLs ==='
-          grep -Eo 'https?://[^"'"'"'` )]+' app.js | sort -u | head -n 100 || true
-          echo '=== api-like paths ==='
-          grep -Eo '/[A-Za-z0-9_.:-]+(/[A-Za-z0-9_?=&.{}$:-]+){1,8}' app.js | grep -Ei 'api|shares|objects|files|download' | sort -u | head -n 150 || true
-          echo '=== config context ==='
-          grep -Eo '.{0,260}(NEXT_PUBLIC|API_BASE|apiBase|baseUrl|baseURL).{0,320}' app.js | head -n 120 || true
+          curl -L --fail --silent --show-error "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID="$(jq -r '.files[] | select(.fileName=="FushERP-Mobile-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip") | .fileId' files.json | head -n1)"
+          test -n "$FILE_ID" && test "$FILE_ID" != "null"
+          curl -L --fail --silent --show-error -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL="$(jq -r '.downloadUrl' download.json)"
+          test -n "$DOWNLOAD_URL" && test "$DOWNLOAD_URL" != "null"
+          curl -L --fail --silent --show-error "$DOWNLOAD_URL" -o FUSH-Customer-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip
+          echo "$EXPECTED_SOURCE_SHA256  FUSH-Customer-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip" | sha256sum -c -
+          unzip -t FUSH-Customer-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip >/dev/null
+
+      - name: Extract and verify commercial source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir source
+          unzip -q FUSH-Customer-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip -d source
+          SETTINGS="$(find source -maxdepth 3 -name settings.gradle.kts -print -quit)"
+          test -n "$SETTINGS"
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          grep -Eq 'versionCode[[:space:]]*=[[:space:]]*213' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -Fq '0.15.4.164-commercial-multitenant-foundation' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -R -Eq 'version[[:space:]]*=[[:space:]]*54' "$PROJECT_DIR/app/src/main/java" "$PROJECT_DIR/app/src/main/kotlin" 2>/dev/null || grep -R -Eq 'version[[:space:]]*=[[:space:]]*54' "$PROJECT_DIR/app/src/main" 
+          find "$PROJECT_DIR" -name '*V213CommercialTenantBindingMigration*' -o -name '*CommercialTenantBindingMigration*' | grep -q .
+          if grep -R --include='*.kt' --include='*.java' -n 'fallbackToDestructiveMigration' "$PROJECT_DIR/app/src/main"; then
+            echo 'Destructive Room migration fallback is forbidden' >&2
+            exit 1
+          fi
+          echo 'FUSH Customer identity gate: PASS'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.1.0'
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run v213 host verifier
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py" ]; then
+            python3 "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py"
+          else
+            echo 'Host verifier file not found' >&2
+            exit 1
+          fi
+
+      - name: Run unit tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Assemble release
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Run release lint
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon :app:lintVitalRelease
+
+      - name: Prepare FUSH Customer artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk/release" -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK"
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
+          "$ZIPALIGN" -f -p 4 "$APK" out/FUSH-Customer-v213-CommercialMultiTenant-UNSIGNED-ALIGNED.apk
+          "$ZIPALIGN" -c -v 4 out/FUSH-Customer-v213-CommercialMultiTenant-UNSIGNED-ALIGNED.apk
+          cp FUSH-Customer-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip out/
+          sha256sum out/* > out/SHA256SUMS.txt
+          printf '%s\n' \
+            'applicationId=com.fush.erp.recovery' \
+            'versionCode=213' \
+            'versionName=0.15.4.164-commercial-multitenant-foundation' \
+            'roomSchema=54' \
+            'signing=NOT_PERFORMED_IN_GITHUB' > out/BUILD-IDENTITY.txt
+
+      - name: Upload FUSH Customer build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Customer-v213-Build
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
