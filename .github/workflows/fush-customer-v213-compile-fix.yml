@@ -1,0 +1,45 @@
+name: FUSH Customer v213 Compile Fix
+
+on:
+  push:
+    branches: [fush-customer]
+    paths:
+      - '.github/workflows/fush-customer-v213-compile-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fush-customer
+      - name: Apply Kotlin 2.3 explicit bind argument type
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt')
+          s = p.read_text()
+          old = 'arrayOf(normalized, now, now),'
+          new = 'arrayOf<Any?>(normalized, now, now),'
+          if s.count(old) != 1:
+              raise SystemExit(f'Expected exactly one compile-fix target, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+          grep -F 'arrayOf<Any?>(normalized, now, now),' "$FILE"
+      - name: Commit compile fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH Customer Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt
+          git commit -m 'Fix v213 Kotlin bind argument type inference'
+          git push origin HEAD:fush-customer
