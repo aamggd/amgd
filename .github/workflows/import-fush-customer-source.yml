@@ -1,0 +1,52 @@
+name: Import FUSH Customer v213 Source
+
+on:
+  push:
+    branches: [fush-customer]
+    paths:
+      - '.github/workflows/import-fush-customer-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_BASE: https://api.firestorage.ai/dev/file
+      SHARE_ID: 1cY8iBEwzwFx
+      EXPECTED_SHA256: 4df22f239ca759f07084e0586fba81aa6f0290e193fd28e8e42fb039416cde10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fush-customer
+      - name: Download verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -LfsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID="$(jq -r '.files[] | select(.fileName=="FushERP-Mobile-v213-CommercialMultiTenant-FOUNDATION-R2-Source.zip") | .fileId' files.json | head -1)"
+          test -n "$FILE_ID" && test "$FILE_ID" != null
+          curl -LfsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          URL="$(jq -r '.downloadUrl' download.json)"
+          curl -LfsS "$URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          rm -rf _fush_customer_import
+          mkdir _fush_customer_import
+          unzip -q source.zip -d _fush_customer_import
+          ROOT="$(dirname "$(find _fush_customer_import -maxdepth 3 -name settings.gradle.kts -print -quit)")"
+          test -f "$ROOT/app/build.gradle.kts"
+          rm -rf app cloud gradle tools build.gradle.kts settings.gradle.kts gradle.properties gradlew gradlew.bat
+          cp -a "$ROOT"/. .
+          rm -rf _fush_customer_import source.zip files.json download.json
+      - name: Commit FUSH Customer source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'FUSH Customer Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Import verified FUSH Customer v213 R2 source' || exit 0
+          git push origin HEAD:fush-customer
