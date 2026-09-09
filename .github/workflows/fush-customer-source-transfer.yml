@@ -15,15 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect firestorage file page JavaScript
+      - name: Inspect firestorage page assets
         shell: bash
         env:
-          BASE_URL: https://firestorage.ai
-          PAGE_JS: /_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js
+          SHARE_URL: https://firestorage.ai/ja/f/1cY8iBEwzwFx
         run: |
           set -euo pipefail
-          curl -L --fail --silent --show-error "$BASE_URL$PAGE_JS" -o page.js
-          echo '=== page js size ==='
-          wc -c page.js
-          echo '=== candidate endpoints ==='
-          grep -Eo '.{0,140}(download|presign|signed|share|publicId|shareId|files|api).{0,180}' page.js | head -n 200 || true
+          curl -L --fail --silent --show-error "$SHARE_URL" -o share.html
+          mapfile -t scripts < <(grep -Eo 'src="[^"]+\.js"' share.html | sed 's/src="//;s/"$//')
+          for s in "${scripts[@]}"; do
+            echo "=== $s ==="
+            curl -L --fail --silent --show-error "https://firestorage.ai$s" -o asset.js || continue
+            wc -c asset.js
+            grep -Eo '.{0,160}(download|presign|signed|publicId|shareId|/api/|files).{0,220}' asset.js | head -n 80 || true
+          done
