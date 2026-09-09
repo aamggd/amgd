@@ -5,6 +5,8 @@ import android.os.Build
 import android.provider.Settings
 import com.fush.erp.BuildConfig
 import com.fush.erp.data.entity.UserEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -36,10 +38,10 @@ class CommercialLicenseRemoteService(
 ) {
     private val appContext = context.applicationContext
 
-    suspend fun refresh(localUser: UserEntity): CloudOperationResult<CommercialLicenseSnapshot> {
+    suspend fun refresh(localUser: UserEntity): CloudOperationResult<CommercialLicenseSnapshot> = withContext(Dispatchers.IO) {
         val session = when (val result = cloudRepository.validSessionForAi(localUser)) {
             is CloudOperationResult.Success -> result.value
-            is CloudOperationResult.Failure -> return result
+            is CloudOperationResult.Failure -> return@withContext result
         }
         val body = JSONObject()
             .put("target_organization_id", session.requireOrganizationId())
@@ -47,20 +49,20 @@ class CommercialLicenseRemoteService(
             .put("target_device_name", deviceName())
             .put("target_app_version", BuildConfig.VERSION_NAME)
             .toString()
-        return rpc("fush_get_commercial_license_snapshot", body, session.accessToken)
+        rpc("fush_get_commercial_license_snapshot", body, session.accessToken)
     }
 
     suspend fun activate(
         localUser: UserEntity,
         activationCode: String,
-    ): CloudOperationResult<CommercialLicenseSnapshot> {
+    ): CloudOperationResult<CommercialLicenseSnapshot> = withContext(Dispatchers.IO) {
         val normalized = activationCode.trim().uppercase()
         if (normalized.length !in 8..128) {
-            return CloudOperationResult.Failure("رمز التفعيل غير صالح")
+            return@withContext CloudOperationResult.Failure("رمز التفعيل غير صالح")
         }
         val session = when (val result = cloudRepository.validSessionForAi(localUser)) {
             is CloudOperationResult.Success -> result.value
-            is CloudOperationResult.Failure -> return result
+            is CloudOperationResult.Failure -> return@withContext result
         }
         val body = JSONObject()
             .put("target_organization_id", session.requireOrganizationId())
@@ -69,7 +71,7 @@ class CommercialLicenseRemoteService(
             .put("target_device_name", deviceName())
             .put("target_app_version", BuildConfig.VERSION_NAME)
             .toString()
-        return rpc("fush_activate_commercial_license", body, session.accessToken)
+        rpc("fush_activate_commercial_license", body, session.accessToken)
     }
 
     private fun rpc(
