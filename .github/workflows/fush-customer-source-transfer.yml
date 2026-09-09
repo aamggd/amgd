@@ -46,8 +46,13 @@ jobs:
           test -f "$PROJECT_DIR/app/build.gradle.kts"
           grep -Eq 'versionCode[[:space:]]*=[[:space:]]*213' "$PROJECT_DIR/app/build.gradle.kts"
           grep -Fq '0.15.4.164-commercial-multitenant-foundation' "$PROJECT_DIR/app/build.gradle.kts"
-          grep -R -Eq 'version[[:space:]]*=[[:space:]]*54' "$PROJECT_DIR/app/src/main/java" "$PROJECT_DIR/app/src/main/kotlin" 2>/dev/null || grep -R -Eq 'version[[:space:]]*=[[:space:]]*54' "$PROJECT_DIR/app/src/main" 
-          find "$PROJECT_DIR" -name '*V213CommercialTenantBindingMigration*' -o -name '*CommercialTenantBindingMigration*' | grep -q .
+          if find "$PROJECT_DIR" -type f -name '54.json' | grep -q .; then
+            echo 'Room schema 54 JSON: PASS'
+          else
+            grep -R -Eq '(SCHEMA_VERSION|ROOM_SCHEMA|version)[^\n]*54' "$PROJECT_DIR/app/src/main"
+            echo 'Room schema 54 source marker: PASS'
+          fi
+          grep -R -F -l 'MIGRATION_53_54_COMMERCIAL_TENANT_BINDING' "$PROJECT_DIR/app/src/main" | grep -q .
           if grep -R --include='*.kt' --include='*.java' -n 'fallbackToDestructiveMigration' "$PROJECT_DIR/app/src/main"; then
             echo 'Destructive Room migration fallback is forbidden' >&2
             exit 1
@@ -79,12 +84,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -f "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py" ]; then
-            python3 "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py"
-          else
-            echo 'Host verifier file not found' >&2
-            exit 1
-          fi
+          test -f "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py"
+          python3 "$PROJECT_DIR/tools/verify_v213_commercial_multitenant.py"
 
       - name: Run unit tests
         working-directory: ${{ env.PROJECT_DIR }}
