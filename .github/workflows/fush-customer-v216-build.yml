@@ -1,13 +1,96 @@
-name: FUSH Customer v216 Firestorage Endpoint Probe
+name: FUSH Customer v216 Build
 
 on:
   push:
     branches: [fush-customer-v216-build]
+  workflow_dispatch:
 
 jobs:
-  probe:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Inspect firestorage client endpoint
-        run: bash ci/v216_probe_script.sh
+
+      - name: Download and verify v216 source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file'
+          SHARE='8yyd0ER8uxWe'
+          FILE='01a088279df8719f87554e2d5cf7f504'
+          COOKIE=/tmp/firestorage.cookies
+          rm -f "$COOKIE"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -H 'Content-Type: application/json' \
+            -X POST "$BASE/shares/$SHARE/cushion-sessions" \
+            --data '{"password":null}' \
+            -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -X POST "$BASE/shares/$SHARE/files/$FILE/download" \
+            -o /tmp/download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          with open('/tmp/download.json', encoding='utf-8') as f:
+              data = json.load(f)
+          url = data.get('downloadUrl')
+          if not url:
+              raise SystemExit('downloadUrl missing')
+          print(url)
+          PY
+          )"
+          curl -fL "$DOWNLOAD_URL" -o /tmp/v216_patch.zip
+          echo 'd2f4c2230222b9d650d46bc3d29a11b27d889ed3c8eeabe602bf8b6d07a0ddb3  /tmp/v216_patch.zip' | sha256sum -c -
+          unzip -oq /tmp/v216_patch.zip -d .
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Verify v216 contract
+        run: python3 tools/verify_v216_mfa_release_hardening.py
+
+      - name: Unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Assemble release
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Release lint
+        run: gradle --no-daemon :app:lintVitalRelease
+
+      - name: Align and identify release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -f "$APK"
+          OUT='FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk'
+          "$ZIPALIGN" -f -v 4 "$APK" "$OUT"
+          "$ZIPALIGN" -c -v 4 "$OUT"
+          "$AAPT2" dump badging "$OUT" | head -20 | tee APK_IDENTITY.txt
+          sha256sum "$OUT" > SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Customer-v216-Release-Unsigned
+          path: |
+            FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk
+            APK_IDENTITY.txt
+            SHA256SUMS.txt
+          if-no-files-found: error
