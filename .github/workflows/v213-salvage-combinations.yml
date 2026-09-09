@@ -1,0 +1,72 @@
+name: v213 Salvage Continuations
+
+on:
+  push:
+    branches: [v213-stock-issue-supplier-sales-build]
+    paths:
+      - '.github/workflows/v213-salvage-combinations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  salvage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Try historical source continuation combinations
+        shell: bash
+        run: |
+          set -u
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          parts = sorted(Path('ci/v213/parts').glob('part_*.b64'))
+          base = bytearray()
+          for p in parts:
+              raw=''.join(p.read_text().split())
+              if p.name=='part_005.b64' and len(raw)>10021:
+                  raw=raw[:10000]+raw[10021:]
+              base.extend(base64.b64decode(raw, validate=True))
+          Path('/tmp/base.xz').write_bytes(base)
+          cont=[]
+          for p in sorted(Path('ci/v213/continuation').glob('cont_*.b64')):
+              cont.append(base64.b64decode(''.join(p.read_text().split()), validate=True))
+          for n in range(0,len(cont)+1):
+              data=bytes(base)+b''.join(cont[:n])
+              Path(f'/tmp/candidate{n}.xz').write_bytes(data)
+              print('candidate',n,'bytes',len(data))
+          PY
+          BEST=-1
+          BESTSIZE=-1
+          for X in /tmp/candidate*.xz; do
+            N="${X#/tmp/candidate}"; N="${N%.xz}"
+            set +e
+            xz -dc "$X" > "/tmp/candidate${N}.tar" 2>"/tmp/candidate${N}.err"
+            RC=$?
+            set -e
+            SIZE=$(stat -c%s "/tmp/candidate${N}.tar")
+            echo "candidate=$N xz_rc=$RC tar_bytes=$SIZE err=$(cat /tmp/candidate${N}.err)"
+            if [ "$SIZE" -gt "$BESTSIZE" ]; then BEST=$N; BESTSIZE=$SIZE; fi
+          done
+          echo "BEST=$BEST BESTSIZE=$BESTSIZE"
+          mkdir -p /tmp/salvage
+          tar -xf "/tmp/candidate${BEST}.tar" -C /tmp/salvage --ignore-zeros 2>/tmp/tar.err || true
+          echo '--- tar error ---'; cat /tmp/tar.err || true
+          echo "files=$(find /tmp/salvage -type f | wc -l)"
+          echo '--- build identities ---'
+          find /tmp/salvage -name build.gradle.kts -print -exec grep -nE 'applicationId|versionCode|versionName' {} \; || true
+          echo '--- all feature-related file names ---'
+          find /tmp/salvage -type f \( -iname '*inventory*' -o -iname '*issue*' -o -iname '*supplier*' -o -iname '*sales*' \) -print | sort
+          echo '--- feature markers ---'
+          grep -R -n -E 'InventoryIssue|OWNER_WITHDRAW|DAMAGE|SupplierSale|supplier_sales_links|supplier.*sale|stock.*issue|صرف مخز|سحب.*مالك|تالف' /tmp/salvage 2>/dev/null | head -1000 || true
+          echo '--- services/screens candidates ---'
+          find /tmp/salvage -type f \( -iname '*Service*.kt' -o -iname '*Screen*.kt' -o -iname '*Entities*.kt' \) -print | sort | head -500
+      - name: Upload best salvage
+        uses: actions/upload-artifact@v4
+        with:
+          name: v213-best-salvage
+          path: /tmp/salvage
+          retention-days: 1
+          if-no-files-found: warn
