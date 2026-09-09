@@ -1,0 +1,73 @@
+name: v213 Inspect Salvaged Reference
+
+on:
+  push:
+    branches: [v213-stock-issue-supplier-sales-build]
+    paths:
+      - '.github/workflows/v213-inspect-reference.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Salvage and print relevant implementation sections
+        shell: bash
+        run: |
+          set -u
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          parts=sorted(Path('ci/v213/parts').glob('part_*.b64'))
+          out=bytearray()
+          for p in parts:
+              raw=''.join(p.read_text().split())
+              if p.name=='part_005.b64' and len(raw)>10021:
+                  raw=raw[:10000]
+                  # Keep only the continuous prefix; data after the ellipsis is not contiguous.
+              try:
+                  out.extend(base64.b64decode(raw, validate=True))
+              except Exception as e:
+                  print('decode stop',p,e)
+                  break
+          Path('/tmp/prefix.xz').write_bytes(out)
+          print('continuous compressed bytes',len(out))
+          PY
+          set +e
+          xz -dc /tmp/prefix.xz > /tmp/prefix.tar 2>/tmp/xz.err
+          set -e
+          mkdir -p /tmp/s
+          tar -xf /tmp/prefix.tar -C /tmp/s --ignore-zeros 2>/tmp/tar.err || true
+
+          echo '===== AdvancedInventoryDao relevant ====='
+          F=/tmp/s/app/src/main/java/com/fush/erp/data/dao/AdvancedInventoryDao.kt
+          test -f "$F" && sed -n '260,390p' "$F" || true
+
+          echo '===== PurchaseDaos supplier-sale balance logic ====='
+          F=/tmp/s/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+          test -f "$F" && sed -n '260,480p' "$F" || true
+
+          echo '===== AppContainer DB wiring ====='
+          F=/tmp/s/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          test -f "$F" && grep -n -E 'AdvancedInventoryDao|PurchaseDao|Supplier|Sales|database|migration' "$F" | head -250 || true
+
+          echo '===== Migrations markers ====='
+          for F in /tmp/s/app/src/main/java/com/fush/erp/data/*Migration*.kt /tmp/s/app/src/main/java/com/fush/erp/data/Migrations.kt; do
+            [ -f "$F" ] || continue
+            echo "--- $F"
+            grep -n -E 'supplier_sales_links|inventory_issues|inventory_issue|version|Migration|CREATE TABLE' "$F" | head -300 || true
+          done
+
+          echo '===== Party/Supplier DAO ====='
+          F=/tmp/s/app/src/main/java/com/fush/erp/data/dao/PartyDao.kt
+          test -f "$F" && sed -n '1,360p' "$F" || true
+
+          echo '===== All references to supplier_sales_links ====='
+          grep -R -n -C 3 'supplier_sales_links' /tmp/s 2>/dev/null | head -1200 || true
+
+          echo '===== All references to InventoryIssue ====='
+          grep -R -n -C 3 'InventoryIssue' /tmp/s 2>/dev/null | head -1200 || true
