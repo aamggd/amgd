@@ -13,8 +13,8 @@ android {
         applicationId = "com.fush.erp.recovery"
         minSdk = 26
         targetSdk = 36
-        versionCode = 213
-        versionName = "0.15.4.164-commercial-multitenant-foundation"
+        versionCode = 214
+        versionName = "0.15.5.165-commercial-licensing"
 
         buildConfigField("String", "SUPABASE_URL", "\"https://bkbjtyacoiaheunweyuu.supabase.co\"")
         buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY\"")
