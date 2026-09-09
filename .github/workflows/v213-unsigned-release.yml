@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euxo pipefail
           cat ci/v213/parts/part_*.b64 | tr -d '\r\n' > /tmp/v213.b64
-          base64 -d /tmp/v213.b64 > /tmp/v213.payload
+          base64 -d -i /tmp/v213.b64 > /tmp/v213.payload
           file /tmp/v213.payload
           xz -t /tmp/v213.payload
           mkdir -p /tmp/v213src
