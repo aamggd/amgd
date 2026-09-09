@@ -23,7 +23,7 @@ jobs:
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import base64, re, subprocess
+          import base64, subprocess, string
 
           parts = sorted(Path('ci/v213/parts').glob('part_*.b64'))
           assert parts, 'No v213 parts found'
@@ -35,35 +35,22 @@ jobs:
 
           p = parts[-1]
           raw = ''.join(p.read_text().split())
-          print(p.name, 'raw chars', len(raw), 'tail', repr(raw[-80:]))
-          recovered = None
-          recovered_cut = None
-          # Find the longest valid Base64 prefix near the end.
-          for cut in range(len(raw), max(0, len(raw)-512), -1):
-              if cut % 4:
-                  continue
-              try:
-                  decoded = base64.b64decode(raw[:cut], validate=True)
-              except Exception:
-                  continue
-              recovered = decoded
-              recovered_cut = cut
-              break
-          assert recovered is not None, 'Could not recover a valid Base64 prefix from final part'
+          alphabet = set(string.ascii_letters + string.digits + '+/=')
+          invalid = [(i, repr(ch)) for i, ch in enumerate(raw) if ch not in alphabet]
+          print(p.name, 'raw chars', len(raw), 'invalid', invalid[:20], 'count', len(invalid))
+          clean = ''.join(ch for ch in raw if ch in alphabet)
+          print('clean chars', len(clean), 'tail', repr(clean[-80:]))
+          recovered = base64.b64decode(clean, validate=True)
           payload += recovered
-          print('recovered final prefix chars', recovered_cut, 'ignored tail', repr(raw[recovered_cut:]))
           Path('/tmp/v213-base.payload').write_bytes(payload)
 
           candidates = [('/tmp/v213-base.payload', bytes(payload))]
           cont = Path('ci/v213/continuation/cont_000.b64')
           if cont.exists():
               cs = ''.join(cont.read_text().split())
-              try:
-                  cb = base64.b64decode(cs, validate=True)
-                  candidates.append(('/tmp/v213-with-cont.payload', bytes(payload) + cb))
-                  print('continuation decoded bytes', len(cb))
-              except Exception as exc:
-                  print('continuation decode failed', exc)
+              cb = base64.b64decode(cs, validate=True)
+              candidates.append(('/tmp/v213-with-cont.payload', bytes(payload) + cb))
+              print('continuation decoded bytes', len(cb))
 
           chosen = None
           for name, data in candidates:
