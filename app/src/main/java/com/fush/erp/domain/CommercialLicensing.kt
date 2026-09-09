@@ -76,10 +76,23 @@ internal class CommercialLicenseStore(context: Context) {
             .put("verified_at", snapshot.verifiedAt)
             .put("server_time", snapshot.serverTime)
             .toString()
-        prefs.edit().putString(KEY_SNAPSHOT, encrypt(json)).apply()
+        val floor = maxOf(snapshot.serverTime, snapshot.verifiedAt, System.currentTimeMillis())
+        prefs.edit()
+            .putString(KEY_SNAPSHOT, encrypt(json))
+            .putLong(KEY_TIME_FLOOR, floor)
+            .apply()
     }
 
-    fun clear() = prefs.edit().remove(KEY_SNAPSHOT).apply()
+    /** Never allow the effective offline clock to move backwards between app launches. */
+    fun trustedNow(): Long {
+        val wall = System.currentTimeMillis()
+        val previousFloor = prefs.getLong(KEY_TIME_FLOOR, 0L)
+        val now = maxOf(wall, previousFloor)
+        if (now > previousFloor) prefs.edit().putLong(KEY_TIME_FLOOR, now).apply()
+        return now
+    }
+
+    fun clear() = prefs.edit().remove(KEY_SNAPSHOT).remove(KEY_TIME_FLOOR).apply()
 
     private fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -116,6 +129,7 @@ internal class CommercialLicenseStore(context: Context) {
     private companion object {
         const val PREFS = "fush_commercial_license_v1"
         const val KEY_SNAPSHOT = "license_snapshot"
+        const val KEY_TIME_FLOOR = "trusted_time_floor"
         const val KEY_ALIAS = "fush_commercial_license_key_v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
     }
@@ -123,7 +137,7 @@ internal class CommercialLicenseStore(context: Context) {
 
 /**
  * v214 license coordinator.
- * Supabase is the authority. Local time is used only against a previously server-verified snapshot.
+ * Supabase is the authority. Offline decisions use only a previously server-verified snapshot.
  */
 class CommercialLicenseManager(
     context: Context,
@@ -133,7 +147,8 @@ class CommercialLicenseManager(
 
     fun currentSnapshot(): CommercialLicenseSnapshot? = store.load()
 
-    fun currentAccess(now: Long = TrustedTimeService.now()): CommercialLicenseAccess {
+    fun currentAccess(): CommercialLicenseAccess {
+        val now = store.trustedNow()
         val snapshot = store.load()
             ?: return CommercialLicenseAccess(
                 CommercialLicenseMode.UNLICENSED,
