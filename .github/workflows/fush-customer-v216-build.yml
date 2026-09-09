@@ -17,8 +17,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='8yyd0ER8uxWe'
-          FILE='01a088279df8719f87554e2d5cf7f504'
+          SHARE='ozloYUo8CRvx'
+          FILE='01a0883deb8b76adb7d20fdce3c0ce71'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -40,7 +40,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v216_patch.zip
-          echo 'd2f4c2230222b9d650d46bc3d29a11b27d889ed3c8eeabe602bf8b6d07a0ddb3  /tmp/v216_patch.zip' | sha256sum -c -
+          echo 'bd0daf9151ef17ebf0fae2175ddcb43b601de6beae05c02db92a9c85220cd99a  /tmp/v216_patch.zip' | sha256sum -c -
           unzip -oq /tmp/v216_patch.zip -d .
 
       - uses: actions/setup-java@v4
