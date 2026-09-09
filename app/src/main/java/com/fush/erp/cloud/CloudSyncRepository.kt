@@ -783,7 +783,7 @@ class CloudSyncRepository(
         val now = System.currentTimeMillis()
         db.openHelper.writableDatabase.execSQL(
             "INSERT OR IGNORE INTO cloud_tenant_binding(id, organization_id, bound_at, updated_at) VALUES (1, ?, ?, ?)",
-            arrayOf(normalized, now, now),
+            arrayOf<Any?>(normalized, now, now),
         )
         return databaseOrganizationId() == normalized
     }
