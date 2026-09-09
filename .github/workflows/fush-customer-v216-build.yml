@@ -1,10 +1,19 @@
-name: FUSH Customer v216 Build
+name: FUSH Customer v216 Firestorage Probe
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [fush-customer-v216-build]
 
 jobs:
-  build:
+  probe:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Patch upload in progress"
+      - name: Inspect share response
+        run: |
+          set -euxo pipefail
+          curl -L -sS -D /tmp/headers.txt -o /tmp/body.html 'https://firestorage.ai/ja/f/8yyd0ER8uxWe'
+          sed -n '1,80p' /tmp/headers.txt
+          file /tmp/body.html
+          wc -c /tmp/body.html
+          grep -Eo 'https?://[^"'"'"'<> ]+' /tmp/body.html | head -30 || true
+          grep -Ein 'download|v216-ci-patch|5ngbI0C40rCIiYXq|01a088279df8719f87554e2d5cf7f504' /tmp/body.html | head -50 || true
