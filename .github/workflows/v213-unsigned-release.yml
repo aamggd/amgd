@@ -23,7 +23,7 @@ jobs:
           set -euxo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import base64, subprocess, string
+          import base64, subprocess
 
           parts = sorted(Path('ci/v213/parts').glob('part_*.b64'))
           assert parts, 'No v213 parts found'
@@ -35,13 +35,16 @@ jobs:
 
           p = parts[-1]
           raw = ''.join(p.read_text().split())
-          alphabet = set(string.ascii_letters + string.digits + '+/=')
-          invalid = [(i, repr(ch)) for i, ch in enumerate(raw) if ch not in alphabet]
-          print(p.name, 'raw chars', len(raw), 'invalid', invalid[:20], 'count', len(invalid))
-          clean = ''.join(ch for ch in raw if ch in alphabet)
-          print('clean chars', len(clean), 'tail', repr(clean[-80:]))
-          recovered = base64.b64decode(clean, validate=True)
-          payload += recovered
+          print('FINAL_MARKER_CONTEXT=', repr(raw[9960:10080]))
+          print('FINAL_MARKER=', repr(raw[10000:10021]))
+
+          # part_005 contains two valid Base64 blocks separated by a textual marker.
+          left = raw[:10000]
+          right = raw[10021:]
+          print('left chars', len(left), 'right chars', len(right))
+          left_bytes = base64.b64decode(left, validate=True)
+          right_bytes = base64.b64decode(right, validate=True)
+          payload += left_bytes + right_bytes
           Path('/tmp/v213-base.payload').write_bytes(payload)
 
           candidates = [('/tmp/v213-base.payload', bytes(payload))]
@@ -128,8 +131,6 @@ jobs:
           "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign" -p -f 4 "$APK" out/FUSH_ERP_Mobile_v213-CommercialMultiTenant-FOUNDATION-R2-ALIGNED-UNSIGNED.apk
           "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign" -c -v 4 out/FUSH_ERP_Mobile_v213-CommercialMultiTenant-FOUNDATION-R2-ALIGNED-UNSIGNED.apk
           sha256sum out/*.apk > out/SHA256.txt
-          cp -r "$ROOT/app/build/reports/tests" out/test-reports 2>/dev/null || true
-          cp -r "$ROOT/app/build/reports/lint-results-release.html" out/ 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         with:
