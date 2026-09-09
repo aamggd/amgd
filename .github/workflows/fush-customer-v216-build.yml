@@ -1,24 +1,24 @@
-name: FUSH Customer v216 Build
+name: FUSH Customer v217 Commercial Release Gate
 
 on:
   push:
-    branches: [fush-customer-v216-build]
+    branches: [fush-customer-v217-build]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download and verify v216 source patch
+      - name: Download and verify exact v217 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='d1fP0n3mm1jF'
-          FILE='01a088437794739ead0b3787c9147bb0'
+          SHARE='8fiC5dRaQFsT'
+          FILE='01a0886e02847691b17365acd0478f77'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -39,11 +39,15 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/v216_patch.zip
-          echo '7acf735ef2ac06d030c1a48848bdd90cf7eaeb6457fbe12645d2a36ec147d5b6  /tmp/v216_patch.zip' | sha256sum -c -
-          unzip -oq /tmp/v216_patch.zip -d .
+          curl -fL "$DOWNLOAD_URL" -o /tmp/v217-source.zip
+          echo 'a7cfb864a0f073eb2c40f7e5faf5051729a3a9e3509ce82ec943d6a4e155ce1c  /tmp/v217-source.zip' | sha256sum -c -
+          rm -rf v217-src
+          mkdir -p v217-src
+          unzip -oq /tmp/v217-source.zip -d v217-src
+          test -f v217-src/settings.gradle.kts
+          test -f v217-src/app/build.gradle.kts
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -60,37 +64,62 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify v216 contract
-        run: python3 tools/verify_v216_mfa_release_hardening.py
+      - name: Verify v217 commercial release contract
+        shell: bash
+        run: |
+          cd v217-src
+          python3 tools/verify_v217_commercial_release_gate.py
 
       - name: Unit tests
-        run: gradle --no-daemon :app:testDebugUnitTest
+        shell: bash
+        run: |
+          cd v217-src
+          gradle --no-daemon :app:testDebugUnitTest
 
-      - name: Assemble release
-        run: gradle --no-daemon :app:assembleRelease
+      - name: Assemble release APK
+        shell: bash
+        run: |
+          cd v217-src
+          gradle --no-daemon :app:assembleRelease
+
+      - name: Build release AAB
+        shell: bash
+        run: |
+          cd v217-src
+          gradle --no-daemon :app:bundleRelease
 
       - name: Release lint
-        run: gradle --no-daemon :app:lintVitalRelease
+        shell: bash
+        run: |
+          cd v217-src
+          gradle --no-daemon :app:lintVitalRelease
 
-      - name: Align and identify release APK
+      - name: Align and identify release outputs
         shell: bash
         run: |
           set -euo pipefail
+          cd v217-src
           ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
           test -f "$APK"
-          OUT='FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk'
-          "$ZIPALIGN" -f -v 4 "$APK" "$OUT"
-          "$ZIPALIGN" -c -v 4 "$OUT"
-          "$AAPT2" dump badging "$OUT" | head -20 | tee APK_IDENTITY.txt
-          sha256sum "$OUT" > SHA256SUMS.txt
+          test -f "$AAB"
+          APK_OUT='FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED.aab'
+          "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
+          "$ZIPALIGN" -c -v 4 "$APK_OUT"
+          cp "$AAB" "$AAB_OUT"
+          "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
+          unzip -t "$AAB_OUT" >/dev/null
+          sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-Customer-v216-Release-Unsigned
+          name: FUSH-Customer-v217-Commercial-Release-Unsigned
           path: |
-            FUSH-Customer-v216-MFAReleaseHardening-UNSIGNED-ALIGNED.apk
-            APK_IDENTITY.txt
-            SHA256SUMS.txt
+            v217-src/FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED-ALIGNED.apk
+            v217-src/FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED.aab
+            v217-src/APK_IDENTITY.txt
+            v217-src/SHA256SUMS.txt
           if-no-files-found: error
