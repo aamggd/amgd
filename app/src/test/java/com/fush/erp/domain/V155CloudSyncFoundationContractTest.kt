@@ -33,7 +33,9 @@ class V155CloudSyncFoundationContractTest {
         assertFalse(build.contains("service_role", ignoreCase = true))
         assertFalse(build.contains("sb_secret_", ignoreCase = true))
         assertTrue(repository.contains("/auth/v1/token?grant_type=password"))
-        assertTrue(repository.contains("/rest/v1/fush_sync_devices?on_conflict=user_id,device_key"))
+        // v213 extends the v155 device identity contract with organization_id so one user's
+        // device registration cannot collide across customer companies/tenants.
+        assertTrue(repository.contains("/rest/v1/fush_sync_devices?on_conflict=organization_id,user_id,device_key"))
         assertTrue(repository.contains("Authorization", ignoreCase = true))
         assertTrue(sessionStore.contains("AndroidKeyStore"))
         assertTrue(sessionStore.contains("AES/GCM/NoPadding"))
