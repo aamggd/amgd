@@ -9,59 +9,134 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply exact v219 payload
+      - name: Download and verify exact v219 source
         shell: bash
         run: |
           set -euo pipefail
-          tr -d '\r\n' < v219_payload/part00.b64 | base64 -d > /tmp/v219_payload.zip
-          unzip -t /tmp/v219_payload.zip
-          unzip -qo /tmp/v219_payload.zip -d .
-          grep 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
-          grep 'versionCode = 219' app/build.gradle.kts
-          grep 'versionName = "0.15.8.170-company-bootstrap-auth-hotfix"' app/build.gradle.kts
-          grep 'const val FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          ! grep -R 'fallbackToDestructiveMigration' app/src/main/java
-          python3 tools/verify_v219_company_bootstrap_hotfix.py
+          BASE='https://api.firestorage.ai/dev/file'
+          SHARE='GLpkVejOy5iG'
+          FILE='01a0898a3f78727388c64b1e44be58f1'
+          COOKIE=/tmp/firestorage.cookies
+          rm -f "$COOKIE"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -H 'Content-Type: application/json' \
+            -X POST "$BASE/shares/$SHARE/cushion-sessions" \
+            --data '{"password":null}' \
+            -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -X POST "$BASE/shares/$SHARE/files/$FILE/download" \
+            -o /tmp/download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          with open('/tmp/download.json', encoding='utf-8') as f:
+              data = json.load(f)
+          url = data.get('downloadUrl')
+          if not url:
+              raise SystemExit('downloadUrl missing')
+          print(url)
+          PY
+          )"
+          curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
+          echo '5838c3b6ddd988a8723762d91d5e8dd05243d40c162bc7a31473ccabd69eaa18  /tmp/v219-source.zip' | sha256sum -c -
+          rm -rf v219-src
+          mkdir -p v219-src
+          unzip -oq /tmp/v219-source.zip -d v219-src
+          test -f v219-src/settings.gradle.kts
+          test -f v219-src/app/build.gradle.kts
+          grep 'applicationId = "com.fush.erp.recovery"' v219-src/app/build.gradle.kts
+          grep 'versionCode = 219' v219-src/app/build.gradle.kts
+          grep 'versionName = "0.15.8.170-company-bootstrap-auth-hotfix"' v219-src/app/build.gradle.kts
+          grep 'const val FUSH_DB_SCHEMA_VERSION = 55' v219-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R 'fallbackToDestructiveMigration' v219-src/app/src/main/java
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android 36
+      - name: Install Android SDK 36
+        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
 
       - name: Set up Gradle 9.4.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
 
-      - name: Unit tests
-        run: gradle --no-daemon :app:testReleaseUnitTest
-
-      - name: Build release APK and AAB
-        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease
-
-      - name: Collect outputs
+      - name: Verify v219 company bootstrap contract
+        shell: bash
         run: |
-          mkdir -p /tmp/out
-          find app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print -exec cp {} /tmp/out/ \;
-          sha256sum /tmp/out/* > /tmp/out/SHA256SUMS.txt
+          cd v219-src
+          python3 tools/verify_v219_company_bootstrap_hotfix.py
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          cd v219-src
+          gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Compile Android migration tests
+        shell: bash
+        run: |
+          cd v219-src
+          gradle --no-daemon :app:compileDebugAndroidTestKotlin
+
+      - name: Assemble release APK
+        shell: bash
+        run: |
+          cd v219-src
+          gradle --no-daemon :app:assembleRelease
+
+      - name: Build release AAB
+        shell: bash
+        run: |
+          cd v219-src
+          gradle --no-daemon :app:bundleRelease
+
+      - name: Release lint
+        shell: bash
+        run: |
+          cd v219-src
+          gradle --no-daemon :app:lintVitalRelease
+
+      - name: Align and identify release outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd v219-src
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          test -f "$APK"
+          test -f "$AAB"
+          APK_OUT='FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED.aab'
+          "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
+          "$ZIPALIGN" -c -v 4 "$APK_OUT"
+          cp "$AAB" "$AAB_OUT"
+          "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
+          unzip -t "$AAB_OUT" >/dev/null
+          sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
 
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
         with:
-          name: fush-v219-unsigned
-          path: /tmp/out/*
+          name: FUSH-v219-CompanyBootstrapAuthHotfix-Unsigned
+          path: |
+            v219-src/FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED-ALIGNED.apk
+            v219-src/FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED.aab
+            v219-src/APK_IDENTITY.txt
+            v219-src/SHA256SUMS.txt
           if-no-files-found: error
