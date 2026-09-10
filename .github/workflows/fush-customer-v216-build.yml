@@ -17,8 +17,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='283l9jJzGFcA'
-          FILE='01a0897b548476688596b91f29615c5c'
+          SHARE='y0iYq-bxKZfN'
+          FILE='01a08982c99477649b682239c7f742cc'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -40,7 +40,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
-          echo '3e91bc8dfe50d9425b6fc41af636a28a20e20b67ca6eb4922a4b84eeb5b0a79c  /tmp/v219-source.zip' | sha256sum -c -
+          echo 'f24ea07b4096b45203e3632244c73a3d5c8cbe04c467fe5be54e73af6372c781  /tmp/v219-source.zip' | sha256sum -c -
           rm -rf v219-src
           mkdir -p v219-src
           unzip -oq /tmp/v219-source.zip -d v219-src
