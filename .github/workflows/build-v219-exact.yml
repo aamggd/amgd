@@ -19,8 +19,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='squAlm5MBdwk'
-          FILE='01a089a0c21f736b8869b7194f779ab8'
+          SHARE='sYHL3cUs9Lrd'
+          FILE='01a089a7157977619c425062af847b73'
           COOKIE=/tmp/firestorage.cookies
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
@@ -35,7 +35,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
-          echo 'f80cd21a9fadf1503ecfb8af22e4712e4361513caa538ae0e2906eab59b0b50f  /tmp/v219-source.zip' | sha256sum -c -
+          echo '58ceb8ade070a9c9228ece0545820390944e94e77c2bed1f55a4534e87f4aabb  /tmp/v219-source.zip' | sha256sum -c -
           rm -rf v219-src
           mkdir v219-src
           unzip -oq /tmp/v219-source.zip -d v219-src
