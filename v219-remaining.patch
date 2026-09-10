@@ -1,0 +1,327 @@
+--- app/src/main/java/com/fush/erp/ui/screens/CommercialCloudLinkScreen.kt
++++ app/src/main/java/com/fush/erp/ui/screens/CommercialCloudLinkScreen.kt
+@@ -26,9 +26,12 @@
+ import androidx.compose.foundation.text.KeyboardOptions
+ import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.ui.unit.dp
++import com.fush.erp.cloud.CloudCompanyBootstrapStage
+ import com.fush.erp.cloud.CloudOperationResult
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
++import android.util.Log
++import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.launch
+ 
+ /**
+@@ -40,6 +43,7 @@
+     container: AppContainer,
+     user: UserEntity,
+     onSessionChanged: () -> Unit,
++    onNavigateToLicense: () -> Unit = {},
+     modifier: Modifier = Modifier,
+ ) {
+     val repository = container.cloudSyncRepository
+@@ -53,6 +57,7 @@
+     var busy by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
+     var isError by remember { mutableStateOf(false) }
++    var stage by remember { mutableStateOf<CloudCompanyBootstrapStage?>(null) }
+ 
+     Column(
+         modifier = modifier.fillMaxSize().padding(20.dp),
+@@ -127,36 +132,61 @@
+                     busy = true
+                     message = null
+                     scope.launch {
+-                        val result = if (mode == "NEW" && user.role == "ADMIN") {
+-                            repository.createCommercialCompany(
+-                                localUser = user,
+-                                email = email,
+-                                password = password,
+-                                organizationCode = organizationCode,
+-                                organizationName = organizationName,
+-                            )
+-                        } else {
+-                            repository.signIn(user, email, password)
+-                        }
+-                        when (result) {
+-                            is CloudOperationResult.Success -> {
+-                                session = repository.currentSession(user)
+-                                password = ""
+-                                isError = false
+-                                message = if (mode == "NEW") {
+-                                    "تم إنشاء Tenant الشركة وربط هذا الهاتف كمالك. انتقل الآن إلى الترخيص."
+-                                } else {
+-                                    "تم ربط حساب الشركة. انتقل الآن إلى الترخيص."
+-                                }
+-                                onSessionChanged()
++                        try {
++                            val result = if (mode == "NEW" && user.role == "ADMIN") {
++                                repository.createCommercialCompany(
++                                    localUser = user,
++                                    email = email,
++                                    password = password,
++                                    organizationCode = organizationCode,
++                                    organizationName = organizationName,
++                                    onProgress = { progress ->
++                                        stage = progress
++                                        message = progress.userMessage
++                                        isError = false
++                                    },
++                                )
++                            } else {
++                                stage = CloudCompanyBootstrapStage.SIGNING_IN
++                                message = CloudCompanyBootstrapStage.SIGNING_IN.userMessage
++                                repository.signIn(user, email, password)
+                             }
+-                            is CloudOperationResult.Failure -> {
+-                                session = repository.currentSession(user)
+-                                isError = true
+-                                message = result.message
++                            when (result) {
++                                is CloudOperationResult.Success -> {
++                                    session = repository.currentSession(user)
++                                    password = ""
++                                    isError = false
++                                    message = if (mode == "NEW") {
++                                        "تم إنشاء الشركة وربط المالك بنجاح"
++                                    } else {
++                                        "تم ربط حساب الشركة بنجاح. انتقل الآن إلى الترخيص."
++                                    }
++                                    onSessionChanged()
++                                    if (mode == "NEW") onNavigateToLicense()
++                                }
++                                is CloudOperationResult.Failure -> {
++                                    session = repository.currentSession(user)
++                                    isError = true
++                                    val stageName = stage?.name ?: "UNKNOWN"
++                                    val stageLabel = stage?.label ?: "غير معروفة"
++                                    message = "فشلت مرحلة $stageLabel: ${result.message}"
++                                    Log.w("FUSH-CompanyBootstrap", "stage=$stageName failed http=${result.httpCode}")
++                                }
+                             }
++                        } catch (cancelled: CancellationException) {
++                            throw cancelled
++                        } catch (t: Throwable) {
++                            val stageName = stage?.name ?: "UNKNOWN"
++                            val stageLabel = stage?.label ?: "غير معروفة"
++                            isError = true
++                            message = "حدث خطأ غير متوقع في مرحلة $stageLabel. ${t.message ?: t.javaClass.simpleName}"
++                            Log.e(
++                                "FUSH-CompanyBootstrap",
++                                "unexpected failure stage=$stageName type=${t.javaClass.simpleName}",
++                            )
++                        } finally {
++                            busy = false
+                         }
+-                        busy = false
+                     }
+                 },
+                 modifier = Modifier.fillMaxWidth(),
+--- app/src/main/java/com/fush/erp/ui/screens/CommercialRestrictedShell.kt
++++ app/src/main/java/com/fush/erp/ui/screens/CommercialRestrictedShell.kt
+@@ -15,6 +15,8 @@
+ import androidx.compose.material3.OutlinedTextField
+ import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.material3.Scaffold
++import androidx.compose.material3.SnackbarHost
++import androidx.compose.material3.SnackbarHostState
+ import androidx.compose.material3.Text
+ import androidx.compose.material3.TextButton
+ import androidx.compose.material3.TopAppBar
+@@ -62,10 +64,13 @@
+ ) {
+     var tab by remember { mutableStateOf("license") }
+     var sessionRevision by remember { mutableStateOf(0) }
++    val shellScope = rememberCoroutineScope()
++    val snackbarHostState = remember { SnackbarHostState() }
+     val session = remember(user.id, sessionRevision) { container.cloudSyncRepository.currentSession(user) }
+     val organizationId = session?.organizationId
+ 
+     Scaffold(
++        snackbarHost = { SnackbarHost(snackbarHostState) },
+         topBar = {
+             TopAppBar(
+                 title = {
+@@ -110,6 +115,12 @@
+                     sessionRevision += 1
+                     onAccessChanged(manager.currentAccess(container.cloudSyncRepository.currentSession(user)?.organizationId))
+                 },
++                onNavigateToLicense = {
++                    tab = "license"
++                    shellScope.launch {
++                        snackbarHostState.showSnackbar("تم إنشاء الشركة وربط المالك بنجاح")
++                    }
++                },
+                 modifier = modifier,
+             )
+             "reports" -> ReportsScreen(container, user, modifier)
+--- /dev/null
++++ app/src/main/java/com/fush/erp/cloud/CommercialCompanyBootstrapPolicy.kt
+@@ -0,0 +1,43 @@
++package com.fush.erp.cloud
++
++/**
++ * Pure decision helpers for the commercial company bootstrap path.
++ * Kept free of Android/network dependencies so Supabase auth edge cases are deterministic in JVM tests.
++ */
++internal object CommercialCompanyBootstrapPolicy {
++    private val accessTokenPattern = Regex("\\\"access_token\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
++    private val confirmationPattern = Regex("\\\"confirmation_sent_at\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
++    private val identitiesPattern = Regex("\\\"identities\\\"\\s*:\\s*\\[(.*?)]", setOf(RegexOption.DOT_MATCHES_ALL))
++
++    fun hasSession(signUpBody: String): Boolean =
++        accessTokenPattern.find(signUpBody)?.groupValues?.getOrNull(1)?.isNotBlank() == true
++
++    fun shouldAttemptSignInAfterSignUp(httpCode: Int?, signUpBody: String): Boolean {
++        if (httpCode != null && httpCode in 200..299) return !hasSession(signUpBody)
++        if (httpCode == 422 || httpCode == 400) {
++            val normalized = signUpBody.lowercase()
++            return "already" in normalized || "registered" in normalized || "exists" in normalized
++        }
++        return false
++    }
++
++    fun looksLikeNewUnconfirmedAccount(signUpBody: String): Boolean {
++        if (confirmationPattern.find(signUpBody)?.groupValues?.getOrNull(1)?.isNotBlank() == true) return true
++        val identitiesBody = identitiesPattern.find(signUpBody)?.groupValues?.getOrNull(1)?.trim().orEmpty()
++        return identitiesBody.isNotEmpty()
++    }
++
++    fun isDuplicateOrganizationCode(httpCode: Int?, body: String): Boolean {
++        val normalized = body.lowercase()
++        return httpCode == 409 ||
++            "23505" in normalized ||
++            "duplicate key" in normalized ||
++            ("unique" in normalized && ("organization" in normalized || "code" in normalized))
++    }
++}
+--- /dev/null
++++ app/src/test/java/com/fush/erp/cloud/V219CompanyBootstrapAuthPolicyTest.kt
+@@ -0,0 +1,48 @@
++package com.fush.erp.cloud
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class V219CompanyBootstrapAuthPolicyTest {
++    @Test
++    fun `new email with signup session continues without fallback sign in`() {
++        val body = """{"access_token":"token","refresh_token":"refresh","user":{"id":"u1"}}"""
++        assertTrue(CommercialCompanyBootstrapPolicy.hasSession(body))
++        assertFalse(CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(200, body))
++    }
++
++    @Test
++    fun `existing confirmed email with privacy preserving 200 no session falls back to sign in`() {
++        val body = """{"user":{"id":"opaque","identities":[]},"session":null}"""
++        assertFalse(CommercialCompanyBootstrapPolicy.hasSession(body))
++        assertTrue(CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(200, body))
++        assertFalse(CommercialCompanyBootstrapPolicy.looksLikeNewUnconfirmedAccount(body))
++    }
++
++    @Test
++    fun `new unconfirmed account is distinguished after sign in cannot proceed`() {
++        val body = """{"user":{"id":"new-user","confirmation_sent_at":"2026-09-10T00:00:00Z","identities":[{"id":"identity-1"}]},"session":null}"""
++        assertTrue(CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(200, body))
++        assertTrue(CommercialCompanyBootstrapPolicy.looksLikeNewUnconfirmedAccount(body))
++    }
++
++    @Test
++    fun `legacy already registered auth error also falls back to sign in`() {
++        val body = """{"msg":"User already registered"}"""
++        assertTrue(CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(422, body))
++    }
++
++    @Test
++    fun `wrong password is not mistaken for a signup success`() {
++        val loginError = """{"error_code":"invalid_credentials","msg":"Invalid login credentials"}"""
++        assertFalse(CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(401, loginError))
++    }
++
++    @Test
++    fun `duplicate organization code is recognized from postgres unique violation`() {
++        val body = """{"code":"23505","message":"duplicate key value violates unique constraint fush_organizations_code_key"}"""
++        assertTrue(CommercialCompanyBootstrapPolicy.isDuplicateOrganizationCode(400, body))
++        assertTrue(CommercialCompanyBootstrapPolicy.isDuplicateOrganizationCode(409, "{}"))
++    }
++}
+--- /dev/null
++++ app/src/test/java/com/fush/erp/cloud/V219CompanyBootstrapSourceContractTest.kt
+@@ -0,0 +1,75 @@
++package com.fush.erp.cloud
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class V219CompanyBootstrapSourceContractTest {
++    private fun source(path: String): String = File("app/" + path).readText()
++
++    @Test
++    fun `create company uses rpc returned tenant and never resolves old membership before creation`() {
++        val repo = source("src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt")
++        val start = repo.indexOf("suspend fun createCommercialCompany(")
++        val end = repo.indexOf("private fun registerBootstrapDevice", start)
++        val method = repo.substring(start, end)
++        assertTrue(method.contains("/rest/v1/rpc/fush_create_organization"))
++        assertTrue(method.contains("rawSession.copy(organizationId = organizationId)"))
++        assertFalse(method.contains("when (val tenant = resolveOrganization(rawSession))"))
++        assertTrue(method.contains("membershipRole != \"OWNER\""))
++    }
++
++    @Test
++    fun `rpc failure and duplicate code always return explicit failure`() {
++        val repo = source("src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt")
++        assertTrue(repo.contains("CommercialCompanyBootstrapPolicy.isDuplicateOrganizationCode"))
++        assertTrue(repo.contains("رمز الشركة $normalizedCode مستخدم مسبقًا"))
++        assertTrue(repo.contains("CloudOperationResult.Failure(message, created.code)"))
++    }
++
++    @Test
++    fun `device is bound to the new organization after owner verification`() {
++        val repo = source("src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt")
++        assertTrue(repo.contains("bindDatabaseOrganization(organizationId)"))
++        assertTrue(repo.contains("registerBootstrapDevice(scopedSession)"))
++        assertTrue(repo.contains("on_conflict=organization_id,user_id,device_key"))
++    }
++
++    @Test
++    fun `screen cannot silently fail and navigates to license after success`() {
++        val screen = source("src/main/java/com/fush/erp/ui/screens/CommercialCloudLinkScreen.kt")
++        val shell = source("src/main/java/com/fush/erp/ui/screens/CommercialRestrictedShell.kt")
++        assertTrue(screen.contains("onProgress = { progress ->"))
++        assertTrue(screen.contains("catch (t: Throwable)"))
++        assertTrue(screen.contains("finally"))
++        assertTrue(screen.contains("busy = false"))
++        assertTrue(screen.contains("تم إنشاء الشركة وربط المالك بنجاح"))
++        assertTrue(screen.contains("onNavigateToLicense()"))
++        assertTrue(shell.contains("onNavigateToLicense = { tab = \"license\" }"))
++    }
++
++    @Test
++    fun `all requested progress stages are defined`() {
++        val models = source("src/main/java/com/fush/erp/cloud/CloudModels.kt")
++        listOf("CREATING_ACCOUNT", "SIGNING_IN", "CREATING_COMPANY", "LINKING_OWNER", "BINDING_DEVICE", "SUCCESS")
++            .forEach { assertTrue(models.contains(it)) }
++    }
++
++    @Test
++    fun `room schema is unchanged by v219 and destructive migration remains absent`() {
++        val db = source("src/main/java/com/fush/erp/data/FushDatabase.kt")
++        val allMain = File("app/src/main/java").walkTopDown().filter { it.isFile && it.extension == "kt" }.joinToString("\n") { it.readText() }
++        assertTrue(db.contains("const val FUSH_DB_SCHEMA_VERSION = 55"))
++        assertFalse(allMain.contains("fallbackToDestructiveMigration"))
++    }
++
++    @Test
++    fun `multi tenant rls acceptance test dynamically blocks cross tenant reads`() {
++        val sql = File("V213_MULTI_TENANT_RLS_TEST.sql").readText()
++        assertTrue(sql.contains("RLS FAIL: user A can see tenant B"))
++        assertTrue(sql.contains("RLS FAIL: user B can see tenant A"))
++        assertTrue(sql.contains("Dynamic cross-read gate over every tenant-scoped FUSH table"))
++        assertTrue(sql.contains("rollback;"))
++    }
++}
