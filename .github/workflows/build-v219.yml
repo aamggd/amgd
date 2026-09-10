@@ -19,25 +19,35 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='nzuhk5BgOxIK'
-          FILE='01a089a1561274408428ce05c2b3da80'
+          SHARE='c4MICen-Kbc_'
+          FILE='01a089a4edb974aca35166cee1a9444b'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
-          curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
-          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -H 'Content-Type: application/json' \
+            -X POST "$BASE/shares/$SHARE/cushion-sessions" \
+            --data '{"password":null}' \
+            -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -X POST "$BASE/shares/$SHARE/files/$FILE/download" \
+            -o /tmp/download.json
           DOWNLOAD_URL="$(python3 - <<'PY'
           import json
-          with open('/tmp/download.json', encoding='utf-8') as f: data=json.load(f)
-          url=data.get('downloadUrl')
-          if not url: raise SystemExit('downloadUrl missing')
+          with open('/tmp/download.json', encoding='utf-8') as f:
+              data = json.load(f)
+          url = data.get('downloadUrl')
+          if not url:
+              raise SystemExit('downloadUrl missing')
           print(url)
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
-          echo 'd17ccca0b3e8daf9bd428bc0bfc7921e2c0ba5d4bf9329a8681a801c36054424  /tmp/v219-source.zip' | sha256sum -c -
-          rm -rf v219-src && mkdir -p v219-src
+          echo 'b44d358de1cef6789b3e5c63d09562dee1005165349805443ed2228a5d06f024  /tmp/v219-source.zip' | sha256sum -c -
+          rm -rf v219-src
+          mkdir -p v219-src
           unzip -oq /tmp/v219-source.zip -d v219-src
           test -f v219-src/settings.gradle.kts
+          test -f v219-src/app/build.gradle.kts
           grep 'applicationId = "com.fush.erp.recovery"' v219-src/app/build.gradle.kts
           grep 'versionCode = 219' v219-src/app/build.gradle.kts
           grep 'versionName = "0.15.8.170-company-bootstrap-auth-hotfix"' v219-src/app/build.gradle.kts
@@ -109,7 +119,8 @@ jobs:
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
-          test -f "$APK" && test -f "$AAB"
+          test -f "$APK"
+          test -f "$AAB"
           APK_OUT='FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED-ALIGNED.apk'
           AAB_OUT='FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
