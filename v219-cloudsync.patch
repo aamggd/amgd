@@ -1,0 +1,235 @@
+--- app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt
++++ app/src/main/java/com/fush/erp/cloud/CloudSyncRepository.kt
+@@ -3,6 +3,7 @@
+ import android.content.Context
+ import android.os.Build
+ import android.provider.Settings
++import android.util.Log
+ import androidx.annotation.StringRes
+ import com.fush.erp.BuildConfig
+ import com.fush.erp.R
+@@ -22,6 +23,8 @@
+ import java.security.MessageDigest
+ import java.time.Instant
+ 
++private const val COMPANY_BOOTSTRAP_LOG_TAG = "FUSH-CompanyBootstrap"
++
+ class CloudSyncRepository(
+     private val context: Context,
+     private val db: FushDatabase,
+@@ -473,6 +476,7 @@
+         password: String,
+         organizationCode: String,
+         organizationName: String,
++        onProgress: suspend (CloudCompanyBootstrapStage) -> Unit = {},
+     ): CloudOperationResult<CloudCompanyBootstrapResult> = withContext(Dispatchers.IO) {
+         if (localUser.role != "ADMIN") {
+             return@withContext CloudOperationResult.Failure("إنشاء شركة جديدة يتطلب مدير النظام المحلي")
+@@ -487,34 +491,69 @@
+             return@withContext CloudOperationResult.Failure("رمز الشركة يجب أن يكون 2-40 حرفًا إنجليزيًا/رقمًا بدون مسافات")
+         }
+ 
++        // Fail before the server creates a tenant if this Room database already belongs to another tenant.
++        // Memberships on the Auth account are intentionally ignored here; only the local DB binding matters.
++        databaseOrganizationId()?.let { existing ->
++            return@withContext CloudOperationResult.Failure(
++                "قاعدة البيانات المحلية مرتبطة مسبقًا بشركة أخرى ($existing). " +
++                    "استخدم تثبيتًا/قاعدة بيانات مستقلة لإنشاء شركة جديدة حفاظًا على عزل بيانات الشركات."
++            )
++        }
++
++        suspend fun stage(value: CloudCompanyBootstrapStage) {
++            Log.i(COMPANY_BOOTSTRAP_LOG_TAG, "stage=${value.name}")
++            withContext(Dispatchers.Main.immediate) { onProgress(value) }
++        }
++
++        stage(CloudCompanyBootstrapStage.CREATING_ACCOUNT)
+         val signupBody = JSONObject()
+             .put("email", normalizedEmail)
+             .put("password", password)
+             .toString()
+-        val rawSession = when (val signup = request("POST", "/auth/v1/signup", signupBody, null)) {
++
++        val rawSession: CloudSession = when (val signup = request("POST", "/auth/v1/signup", signupBody, null)) {
+             is HttpResult.Ok -> {
+-                val json = runCatching { JSONObject(signup.body) }.getOrNull()
+-                    ?: return@withContext CloudOperationResult.Failure("استجابة إنشاء الحساب السحابي غير صالحة")
+-                if (json.optString("access_token").isBlank()) {
+-                    return@withContext CloudOperationResult.Failure(
+-                        "تم إنشاء الحساب السحابي لكنه يحتاج تأكيد البريد الإلكتروني. أكد البريد ثم ارجع وسجل الدخول كحساب موجود."
+-                    )
+-                }
+-                when (val parsed = parseSession(signup.body, normalizedEmail)) {
+-                    is CloudOperationResult.Success -> parsed.value
+-                    is CloudOperationResult.Failure -> return@withContext parsed
++                if (CommercialCompanyBootstrapPolicy.hasSession(signup.body)) {
++                    when (val parsed = parseSession(signup.body, normalizedEmail)) {
++                        is CloudOperationResult.Success -> parsed.value
++                        is CloudOperationResult.Failure -> return@withContext parsed
++                    }
++                } else {
++                    // Supabase may deliberately return 2xx + no session for an existing account.
++                    // Never infer "new account" solely from the HTTP status. Prove ownership by sign-in.
++                    stage(CloudCompanyBootstrapStage.SIGNING_IN)
++                    val loginBody = JSONObject().put("email", normalizedEmail).put("password", password).toString()
++                    when (val login = request("POST", "/auth/v1/token?grant_type=password", loginBody, null)) {
++                        is HttpResult.Error -> {
++                            Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=SIGNING_IN failed http=${login.code}")
++                            if (CommercialCompanyBootstrapPolicy.looksLikeNewUnconfirmedAccount(signup.body)) {
++                                return@withContext CloudOperationResult.Failure(
++                                    "تم إنشاء الحساب السحابي لكنه يحتاج تأكيد البريد الإلكتروني قبل إنشاء الشركة. " +
++                                        "أكد البريد ثم أعد المحاولة بنفس البريد وكلمة المرور.",
++                                    login.code,
++                                )
++                            }
++                            return@withContext CloudOperationResult.Failure(authErrorMessage(login), login.code)
++                        }
++                        is HttpResult.Ok -> when (val parsed = parseSession(login.body, normalizedEmail)) {
++                            is CloudOperationResult.Success -> parsed.value
++                            is CloudOperationResult.Failure -> return@withContext parsed
++                        }
++                    }
+                 }
+             }
+             is HttpResult.Error -> {
+-                val alreadyExists = signup.code == 422 && signup.body.lowercase().let {
+-                    "already" in it || "registered" in it || "exists" in it
+-                }
+-                if (!alreadyExists) {
++                if (!CommercialCompanyBootstrapPolicy.shouldAttemptSignInAfterSignUp(signup.code, signup.body)) {
++                    Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=CREATING_ACCOUNT failed http=${signup.code}")
+                     return@withContext CloudOperationResult.Failure(authErrorMessage(signup), signup.code)
+                 }
++                stage(CloudCompanyBootstrapStage.SIGNING_IN)
+                 val loginBody = JSONObject().put("email", normalizedEmail).put("password", password).toString()
+                 when (val login = request("POST", "/auth/v1/token?grant_type=password", loginBody, null)) {
+-                    is HttpResult.Error -> return@withContext CloudOperationResult.Failure(authErrorMessage(login), login.code)
++                    is HttpResult.Error -> {
++                        Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=SIGNING_IN failed http=${login.code}")
++                        return@withContext CloudOperationResult.Failure(authErrorMessage(login), login.code)
++                    }
+                     is HttpResult.Ok -> when (val parsed = parseSession(login.body, normalizedEmail)) {
+                         is CloudOperationResult.Success -> parsed.value
+                         is CloudOperationResult.Failure -> return@withContext parsed
+@@ -523,7 +562,10 @@
+             }
+         }
+ 
+-        // Do not resolve memberships before creation: a brand-new customer intentionally has none.
++        // Intentionally do NOT call resolveOrganization(rawSession): the authenticated user may be an
++        // active member of FUSH or other tenants. A newly-created company must be scoped only to the UUID
++        // returned by fush_create_organization.
++        stage(CloudCompanyBootstrapStage.CREATING_COMPANY)
+         val createPayload = JSONObject()
+             .put("target_code", normalizedCode)
+             .put("target_name", normalizedName)
+@@ -534,8 +576,17 @@
+             createPayload,
+             rawSession.accessToken,
+         )) {
+-            is HttpResult.Error -> return@withContext CloudOperationResult.Failure(apiErrorMessage(created), created.code)
++            is HttpResult.Error -> {
++                Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=CREATING_COMPANY failed http=${created.code}")
++                val message = if (CommercialCompanyBootstrapPolicy.isDuplicateOrganizationCode(created.code, created.body)) {
++                    "رمز الشركة $normalizedCode مستخدم مسبقًا. اختر رمز شركة آخر."
++                } else {
++                    apiErrorMessage(created)
++                }
++                return@withContext CloudOperationResult.Failure(message, created.code)
++            }
+             is HttpResult.Ok -> runCatching { JSONObject(created.body) }.getOrElse {
++                Log.e(COMPANY_BOOTSTRAP_LOG_TAG, "stage=CREATING_COMPANY invalid_response=${it.javaClass.simpleName}")
+                 return@withContext CloudOperationResult.Failure("استجابة إنشاء الشركة السحابية غير صالحة")
+             }
+         }
+@@ -544,17 +595,55 @@
+             return@withContext CloudOperationResult.Failure("لم يُرجع الخادم معرّف الشركة الجديدة")
+         }
+         val scopedSession = rawSession.copy(organizationId = organizationId)
++
++        stage(CloudCompanyBootstrapStage.LINKING_OWNER)
++        val membershipRole = when (val membership = loadOwnMembership(scopedSession)) {
++            is CloudOperationResult.Success -> membership.value.trim().uppercase()
++            is CloudOperationResult.Failure -> {
++                Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=LINKING_OWNER membership_verification_failed http=${membership.httpCode}")
++                return@withContext CloudOperationResult.Failure(
++                    "تم إنشاء الشركة لكن تعذر التحقق من عضوية المالك: ${membership.message}",
++                    membership.httpCode,
++                )
++            }
++        }
++        if (membershipRole != "OWNER") {
++            return@withContext CloudOperationResult.Failure(
++                "تم إنشاء الشركة لكن دور الحساب غير صحيح. المتوقع OWNER وتم استلام $membershipRole."
++            )
++        }
+         val binding = when (val claimed = claimOwnerIdentity(localUser, scopedSession)) {
+-            is CloudOperationResult.Success -> claimed.value
+-            is CloudOperationResult.Failure -> return@withContext claimed
++            is CloudOperationResult.Success -> claimed.value.copy(cloudRole = "OWNER")
++            is CloudOperationResult.Failure -> {
++                Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=LINKING_OWNER identity_claim_failed http=${claimed.httpCode}")
++                return@withContext CloudOperationResult.Failure(
++                    "تم إنشاء الشركة وعضوية المالك، لكن تعذر ربط هوية المستخدم المحلي: ${claimed.message}",
++                    claimed.httpCode,
++                )
++            }
+         }
++
++        stage(CloudCompanyBootstrapStage.BINDING_DEVICE)
+         if (!bindDatabaseOrganization(organizationId)) {
+             return@withContext CloudOperationResult.Failure(
+-                "قاعدة البيانات المحلية مرتبطة بشركة أخرى. لا يمكن إنشاء شركة ثانية داخل نفس قاعدة البيانات."
++                "قاعدة البيانات المحلية مرتبطة بشركة أخرى. تم منع ربط الجهاز لحماية عزل بيانات الشركات."
+             )
+         }
+         sessionStore.save(localUser.id, scopedSession)
+         sessionStore.saveBinding(binding.copy(localUserId = localUser.id, cloudRole = "OWNER"))
++
++        when (val device = registerBootstrapDevice(scopedSession)) {
++            is CloudOperationResult.Success -> Unit
++            is CloudOperationResult.Failure -> {
++                Log.w(COMPANY_BOOTSTRAP_LOG_TAG, "stage=BINDING_DEVICE cloud_device_failed http=${device.httpCode}")
++                return@withContext CloudOperationResult.Failure(
++                    "تم إنشاء الشركة وربط المالك محليًا، لكن فشل تسجيل الجهاز سحابيًا: ${device.message}",
++                    device.httpCode,
++                )
++            }
++        }
++
++        stage(CloudCompanyBootstrapStage.SUCCESS)
+         CloudOperationResult.Success(
+             CloudCompanyBootstrapResult(
+                 session = scopedSession,
+@@ -566,6 +655,31 @@
+         )
+     }
+ 
++    private fun registerBootstrapDevice(session: CloudSession): CloudOperationResult<Unit> {
++        val now = Instant.now().toString()
++        val deviceName = buildDeviceName()
++        val payload = JSONObject()
++            .put("organization_id", session.requireOrganizationId())
++            .put("user_id", session.userId)
++            .put("device_key", deviceKey())
++            .put("device_name", deviceName)
++            .put("app_version", BuildConfig.VERSION_NAME)
++            .put("last_seen_at", now)
++            .put("updated_at", now)
++            .toString()
++        val path = "/rest/v1/fush_sync_devices?on_conflict=organization_id,user_id,device_key"
++        return when (val response = request(
++            method = "POST",
++            path = path,
++            body = payload,
++            bearerToken = session.accessToken,
++            prefer = "resolution=merge-duplicates,return=minimal",
++        )) {
++            is HttpResult.Error -> CloudOperationResult.Failure(apiErrorMessage(response), response.code)
++            is HttpResult.Ok -> CloudOperationResult.Success(Unit)
++        }
++    }
++
+     /**
+      * v217 Play/User-Data compliance path. This only submits a deletion request; server-side
+      * processing owns identity verification, statutory retention/anonymization and final Auth deletion.
