@@ -19,8 +19,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='GLpkVejOy5iG'
-          FILE='01a0898a3f78727388c64b1e44be58f1'
+          SHARE='FsvdsqcYpPSV'
+          FILE='01a0899eccd374238e7b895f5b02b82b'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -42,7 +42,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
-          echo '5838c3b6ddd988a8723762d91d5e8dd05243d40c162bc7a31473ccabd69eaa18  /tmp/v219-source.zip' | sha256sum -c -
+          echo 'f80cd21a9fadf1503ecfb8af22e4712e4361513caa538ae0e2906eab59b0b50f  /tmp/v219-source.zip' | sha256sum -c -
           rm -rf v219-src
           mkdir -p v219-src
           unzip -oq /tmp/v219-source.zip -d v219-src
@@ -129,6 +129,9 @@ jobs:
           "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
           unzip -t "$AAB_OUT" >/dev/null
           sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
+          mkdir -p signing-tools/lib
+          cp "$ANDROID_HOME/build-tools/36.1.0/apksigner" signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.1.0/lib/apksigner.jar" signing-tools/lib/
 
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
@@ -139,4 +142,6 @@ jobs:
             v219-src/FUSH_ERP_Mobile_v219-CompanyBootstrapAuthHotfix-UNSIGNED.aab
             v219-src/APK_IDENTITY.txt
             v219-src/SHA256SUMS.txt
+            v219-src/signing-tools/apksigner
+            v219-src/signing-tools/lib/apksigner.jar
           if-no-files-found: error
