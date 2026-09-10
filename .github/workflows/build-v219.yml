@@ -1,0 +1,102 @@
+name: Build FUSH ERP Mobile v219
+
+on:
+  push:
+    branches:
+      - fush-customer-v219-company-bootstrap-auth-hotfix-build
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download exact v219 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARE='https://firestorage.ai/ja/f/GLpkVejOy5iG'
+          curl -fL --retry 3 -A 'Mozilla/5.0' "$SHARE" -o /tmp/fush_download
+          if unzip -t /tmp/fush_download >/dev/null 2>&1; then
+            cp /tmp/fush_download /tmp/fush_v219.zip
+          else
+            python3 - <<'PY'
+          import re, html, subprocess
+          from pathlib import Path
+          s=Path('/tmp/fush_download').read_text(errors='ignore')
+          candidates=[]
+          patterns=[
+              r'https?://[^"\'<> ]+\.zip[^"\'<> ]*',
+              r'https?://[^"\'<> ]+(?:download|attachment)[^"\'<> ]*',
+              r'"(?:downloadUrl|download_url|url)"\s*:\s*"([^"]+)"',
+              r'href=["\']([^"\']+(?:download|\.zip)[^"\']*)["\']',
+          ]
+          for pat in patterns:
+              for m in re.finditer(pat,s,re.I):
+                  u=m.group(1) if m.groups() else m.group(0)
+                  u=html.unescape(u).replace('\\u0026','&').replace('\\/','/')
+                  if u.startswith('/'):
+                      u='https://firestorage.ai'+u
+                  if u.startswith('http') and u not in candidates:
+                      candidates.append(u)
+          print('download candidates:', candidates[:20])
+          for u in candidates:
+              try:
+                  subprocess.run(['curl','-fL','--retry','2','-A','Mozilla/5.0',u,'-o','/tmp/fush_v219.zip'],check=True)
+                  subprocess.run(['unzip','-t','/tmp/fush_v219.zip'],check=True,stdout=subprocess.DEVNULL)
+                  print('selected',u)
+                  break
+              except Exception:
+                  continue
+          else:
+              raise SystemExit('Could not resolve ZIP from share page')
+          PY
+          fi
+          rm -rf /tmp/fush_v219
+          mkdir -p /tmp/fush_v219
+          unzip -q /tmp/fush_v219.zip -d /tmp/fush_v219
+          ROOT=$(find /tmp/fush_v219 -name settings.gradle.kts -o -name settings.gradle | head -1 | xargs dirname)
+          echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
+          grep -R "versionCode = 219" "$ROOT/app/build.gradle.kts"
+          grep -R 'applicationId = "com.fush.erp.recovery"' "$ROOT/app/build.gradle.kts"
+
+      - name: Unit tests
+        run: |
+          cd "$SOURCE_ROOT"
+          chmod +x gradlew
+          ./gradlew --no-daemon testReleaseUnitTest
+
+      - name: Build release APK and AAB
+        run: |
+          cd "$SOURCE_ROOT"
+          ./gradlew --no-daemon assembleRelease bundleRelease
+
+      - name: Collect outputs
+        run: |
+          mkdir -p /tmp/out
+          find "$SOURCE_ROOT/app/build/outputs" -type f \( -name '*.apk' -o -name '*.aab' \) -print -exec cp {} /tmp/out/ \;
+          sha256sum /tmp/out/* > /tmp/out/SHA256SUMS.txt
+
+      - name: Upload unsigned release outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: fush-v219-unsigned
+          path: /tmp/out/*
+          if-no-files-found: error
