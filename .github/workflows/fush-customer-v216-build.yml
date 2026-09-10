@@ -1,8 +1,8 @@
-name: FUSH Customer v217 Commercial Release Gate
+name: FUSH Customer v219 New Company Bootstrap Hotfix
 
 on:
   push:
-    branches: [fush-customer-v217-build]
+    branches: [fush-customer-v219-build]
   workflow_dispatch:
 
 jobs:
@@ -12,13 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download and verify exact v217 source
+      - name: Download and verify exact v219 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='hSB6vBeb5MzG'
-          FILE='01a088750f917532a9598861091df813'
+          SHARE='283l9jJzGFcA'
+          FILE='01a0897b548476688596b91f29615c5c'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -39,13 +39,13 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/v217-source.zip
-          echo '02d50467014f0bc21243ba676d6bd0848390cd6f4e5f1d708535171e0731f680  /tmp/v217-source.zip' | sha256sum -c -
-          rm -rf v217-src
-          mkdir -p v217-src
-          unzip -oq /tmp/v217-source.zip -d v217-src
-          test -f v217-src/settings.gradle.kts
-          test -f v217-src/app/build.gradle.kts
+          curl -fL "$DOWNLOAD_URL" -o /tmp/v219-source.zip
+          echo '3e91bc8dfe50d9425b6fc41af636a28a20e20b67ca6eb4922a4b84eeb5b0a79c  /tmp/v219-source.zip' | sha256sum -c -
+          rm -rf v219-src
+          mkdir -p v219-src
+          unzip -oq /tmp/v219-source.zip -d v219-src
+          test -f v219-src/settings.gradle.kts
+          test -f v219-src/app/build.gradle.kts
 
       - uses: actions/setup-java@v5
         with:
@@ -64,49 +64,49 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify v217 commercial release contract
+      - name: Verify v219 new company bootstrap contract
         shell: bash
         run: |
-          cd v217-src
-          python3 tools/verify_v217_commercial_release_gate.py
+          cd v219-src
+          python3 tools/verify_v219_new_company_bootstrap.py
 
       - name: Unit tests
         shell: bash
         run: |
-          cd v217-src
+          cd v219-src
           gradle --no-daemon :app:testDebugUnitTest
 
       - name: Assemble release APK
         shell: bash
         run: |
-          cd v217-src
+          cd v219-src
           gradle --no-daemon :app:assembleRelease
 
       - name: Build release AAB
         shell: bash
         run: |
-          cd v217-src
+          cd v219-src
           gradle --no-daemon :app:bundleRelease
 
       - name: Release lint
         shell: bash
         run: |
-          cd v217-src
+          cd v219-src
           gradle --no-daemon :app:lintVitalRelease
 
       - name: Align and identify release outputs
         shell: bash
         run: |
           set -euo pipefail
-          cd v217-src
+          cd v219-src
           ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
           test -f "$APK"
           test -f "$AAB"
-          APK_OUT='FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED-ALIGNED.apk'
-          AAB_OUT='FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED.aab'
+          APK_OUT='FUSH-Customer-v219-NewCompanyBootstrapHotfix-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='FUSH-Customer-v219-NewCompanyBootstrapHotfix-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
           cp "$AAB" "$AAB_OUT"
@@ -116,10 +116,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FUSH-Customer-v217-Commercial-Release-Unsigned
+          name: FUSH-Customer-v219-Release-Unsigned
           path: |
-            v217-src/FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED-ALIGNED.apk
-            v217-src/FUSH-Customer-v217-CommercialReleaseGate-UNSIGNED.aab
-            v217-src/APK_IDENTITY.txt
-            v217-src/SHA256SUMS.txt
+            v219-src/FUSH-Customer-v219-NewCompanyBootstrapHotfix-UNSIGNED-ALIGNED.apk
+            v219-src/FUSH-Customer-v219-NewCompanyBootstrapHotfix-UNSIGNED.aab
+            v219-src/APK_IDENTITY.txt
+            v219-src/SHA256SUMS.txt
           if-no-files-found: error
