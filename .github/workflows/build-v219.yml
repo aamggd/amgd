@@ -14,59 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply v219 source changes
+      - name: Inspect v219 share page
         shell: bash
         run: |
           set -euo pipefail
-          patch -p0 < v219-cloudsync.patch
-          patch -p0 < v219-remaining.patch
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('app/build.gradle.kts')
-          s=p.read_text()
-          import re
-          s=re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 219', s, count=1)
-          s=re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "0.15.8.170-company-bootstrap-auth-hotfix"', s, count=1)
-          p.write_text(s)
-          PY
-          grep 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
-          grep 'versionCode = 219' app/build.gradle.kts
-          grep 'versionName = "0.15.8.170-company-bootstrap-auth-hotfix"' app/build.gradle.kts
-          grep 'const val FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          ! grep -R 'fallbackToDestructiveMigration' app/src/main/java
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android 36
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Unit tests
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon testReleaseUnitTest
-
-      - name: Build release APK and AAB
-        run: |
-          ./gradlew --no-daemon assembleRelease bundleRelease
-
-      - name: Collect outputs
-        run: |
-          mkdir -p /tmp/out
-          find app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) -print -exec cp {} /tmp/out/ \;
-          sha256sum /tmp/out/* > /tmp/out/SHA256SUMS.txt
-
-      - name: Upload unsigned release outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: fush-v219-unsigned
-          path: /tmp/out/*
-          if-no-files-found: error
+          curl -fLsS -A 'Mozilla/5.0' 'https://firestorage.ai/ja/f/GLpkVejOy5iG' -o /tmp/share.html
+          echo '=== SHARE PAGE LINKS ==='
+          grep -Eo 'https?://[^"<> ]+|/[^"<> ]*(download|api|file)[^"<> ]*' /tmp/share.html | head -100 || true
+          echo '=== SHARE PAGE HTML ==='
+          cat /tmp/share.html
