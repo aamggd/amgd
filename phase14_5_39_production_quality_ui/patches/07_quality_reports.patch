@@ -1,0 +1,110 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index a54001c..0c0a95a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -715,18 +754,67 @@ private fun buildProductionReportExportDocument(
+ }
+ 
+ @Composable private fun QualityTab(rows: List<QualityReportRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-        item { MetricGrid(listOf(
+-            "الدفعات" to rows.size.toString(), "فحوص فاشلة" to rows.sumOf { it.failChecks }.toString(),
+-            "NC مفتوحة" to rows.sumOf { it.openNonConformances }.toString()
+-        )) }
+-        items(rows) { r -> ReportCard(r.batchNo, "${fmtDate(r.manufactureDate)} • ${r.batchStatus}", listOf(
+-            "PASS" to r.passChecks.toString(), "FAIL" to r.failChecks.toString(), "NC مفتوحة" to r.openNonConformances.toString(),
+-            "مقبول" to qty(r.acceptedQtyBase), "مرفوض" to qty(r.rejectedQtyBase), "هالك" to qty(r.scrapQtyBase)
+-        )) }
++    val pass = rows.sumOf { it.passChecks }
++    val fail = rows.sumOf { it.failChecks }
++    val openNc = rows.sumOf { it.openNonConformances }
++    val accepted = rows.sumOf { it.acceptedQtyBase }
++    val rejected = rows.sumOf { it.rejectedQtyBase }
++    val scrap = rows.sumOf { it.scrapQtyBase }
++    val inspected = accepted + rejected
++    val acceptanceRate = ReportMath.percent(accepted, inspected)
++
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++            FushSectionHeader("مراقبة الجودة", "نتائج الفحوص وعدم المطابقة وقرارات الدفعات خلال الفترة المحددة.")
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("PASS", pass.toString(), Modifier.weight(1f), "فحوص ناجحة", FushStatusTone.Success)
++                FushMetricCard("FAIL", fail.toString(), Modifier.weight(1f), "فحوص فاشلة", if (fail > 0) FushStatusTone.Danger else FushStatusTone.Neutral)
++            }
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("NC مفتوحة", openNc.toString(), Modifier.weight(1f), "تحتاج إجراء", if (openNc > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                FushMetricCard("نسبة القبول", "%.1f%%".format(Locale.US, acceptanceRate), Modifier.weight(1f), "${qty(accepted)} مقبول", if (acceptanceRate >= 95.0) FushStatusTone.Success else FushStatusTone.Info)
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                    Text("ملخص قرارات الجودة", style = MaterialTheme.typography.titleMedium)
++                    MetricGrid(listOf(
++                        "الدفعات" to rows.size.toString(),
++                        "المقبول" to qty(accepted),
++                        "المرفوض" to qty(rejected),
++                        "الهالك" to qty(scrap)
++                    ))
++                }
++            }
++        }
++        if (rows.isEmpty()) {
++            item { Text("لا توجد دفعات جودة في الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        }
++        items(rows, key = { it.batchId }) { r ->
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column(Modifier.weight(1f)) {
++                            Text(r.batchNo, style = MaterialTheme.typography.titleMedium)
++                            Text(fmtDate(r.manufactureDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(reportProductionStatusAr(r.batchStatus), reportProductionStatusTone(r.batchStatus))
++                    }
++                    MetricGrid(listOf(
++                        "PASS" to r.passChecks.toString(), "FAIL" to r.failChecks.toString(),
++                        "NC مفتوحة" to r.openNonConformances.toString(), "مقبول" to qty(r.acceptedQtyBase),
++                        "مرفوض" to qty(r.rejectedQtyBase), "هالك" to qty(r.scrapQtyBase)
++                    ))
++                }
++            }
++        }
+     }
+ }
+ 
++
+ @Composable private fun FinanceTab(pnl: ProfitLossReport?, trial: TrialBalanceReport?, cash: CashFlowReport?) {
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+         item { pnl?.let { MetricGrid(listOf("الإيرادات" to money(it.revenue), "المصروفات" to money(it.expenses), "صافي الربح" to money(it.netProfit))) } }
+@@ -760,6 +848,28 @@ private fun buildProductionReportExportDocument(
+     }
+ }
+ 
++private fun reportProductionStatusAr(status: String): String = when (status) {
++    "PLANNED" -> "مخطط"
++    "MATERIALS_RESERVED" -> "مواد محجوزة"
++    "MATERIALS_ISSUED" -> "تم صرف المواد"
++    "PREPARATION" -> "تحضير"
++    "MIXING" -> "خلط"
++    "FILLING" -> "تعبئة"
++    "QC_HOLD", "UNDER_QC" -> "تحت الجودة"
++    "ACCEPTED", "CLOSED" -> "مقبول"
++    "REJECTED" -> "مرفوض"
++    "CANCELLED" -> "ملغي"
++    else -> status
++}
++
++private fun reportProductionStatusTone(status: String): FushStatusTone = when (status) {
++    "ACCEPTED", "CLOSED" -> FushStatusTone.Success
++    "QC_HOLD", "UNDER_QC" -> FushStatusTone.Warning
++    "REJECTED" -> FushStatusTone.Danger
++    "CANCELLED", "PLANNED" -> FushStatusTone.Neutral
++    else -> FushStatusTone.Info
++}
++
+ private fun periodRange(period: String, now: Long): Pair<Long,Long> {
+     val c = Calendar.getInstance().apply { timeInMillis = now }
+     val end = now

@@ -1,0 +1,98 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index 00bb021..0975101 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -208,33 +208,71 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 }
+             }
+         }
+-        item { Text("أوامر الصيانة المفتوحة", style = MaterialTheme.typography.titleMedium) }
+-        if (workOrders.isEmpty()) item { Text("لا توجد أوامر صيانة مفتوحة") }
+-        items(workOrders) { wo ->
++        item {
++            FushSectionHeader("أوامر الصيانة المفتوحة", "الأولوية للأوامر المتأخرة أو المرتبطة بأصول غير جاهزة.")
++        }
++        if (workOrders.isEmpty()) {
++            item { Text("لا توجد أوامر صيانة مفتوحة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        }
++        items(workOrders, key = { it.id }) { wo ->
++            val overdue = wo.dueAt != null && wo.dueAt < now
++            val asset = assetById[wo.assetId]
+             OutlinedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+-                    Text(wo.workOrderNo, style = MaterialTheme.typography.titleSmall)
+-                    Text("${wo.workType} • ${wo.problem}")
+-                    wo.dueAt?.let { Text("الاستحقاق: ${fmtDate(it)}") }
+-                    Button(onClick = { closeWorkOrder = wo }) { Text("إغلاق أمر الصيانة") }
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(wo.workOrderNo, style = MaterialTheme.typography.titleMedium)
++                            Text(asset?.let { "${it.code} — ${it.nameAr}" } ?: "أصل رقم ${wo.assetId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(if (overdue) "متأخر" else maintenanceWorkTypeAr(wo.workType), if (overdue) FushStatusTone.Danger else FushStatusTone.Info)
++                    }
++                    Text(wo.problem)
++                    wo.dueAt?.let {
++                        Text("الاستحقاق: ${fmtDate(it)}", color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    if (wo.downtimeMinutes > 0) Text("التوقف المسجل: ${wo.downtimeMinutes} دقيقة", style = MaterialTheme.typography.bodySmall)
++                    Button(onClick = { closeWorkOrder = wo }, modifier = Modifier.fillMaxWidth()) { Text("إغلاق أمر الصيانة") }
+                 }
+             }
+         }
+-        item { Text("الأعطال", style = MaterialTheme.typography.titleMedium) }
+-        items(breakdowns.take(20)) { b ->
+-            ListItem(
+-                headlineContent = { Text("${b.breakdownNo} • ${b.severity}") },
+-                supportingContent = { Text("${b.description}${if (b.recurring) " • عطل متكرر" else ""} • توقف ${b.downtimeMinutes} دقيقة") }
+-            )
+-            HorizontalDivider()
++        item {
++            FushSectionHeader("الأعطال", "إجمالي التوقف المسجل: $totalDowntime دقيقة. الأعطال المتكررة تحتاج تحليل سبب جذري.")
+         }
+-        item { Text("السلامة", style = MaterialTheme.typography.titleMedium) }
+-        items(safetyIncidents.take(20)) { s ->
+-            ListItem(
+-                headlineContent = { Text("${s.incidentNo} • ${s.incidentType}") },
+-                supportingContent = { Text("${s.area} • ${s.description} • ${s.status}") }
+-            )
+-            HorizontalDivider()
++        if (breakdowns.isEmpty()) item { Text("لا توجد أعطال مسجلة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        items(breakdowns.take(20), key = { it.id }) { b ->
++            OutlinedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text(b.breakdownNo, style = MaterialTheme.typography.titleSmall)
++                        FushStatusPill(maintenanceSeverityAr(b.severity), maintenanceSeverityTone(b.severity))
++                    }
++                    Text(assetById[b.assetId]?.let { "${it.code} — ${it.nameAr}" } ?: "أصل رقم ${b.assetId}", style = MaterialTheme.typography.bodySmall)
++                    Text(b.description)
++                    Text("${fmtDate(b.occurredAt)} • توقف ${b.downtimeMinutes} دقيقة", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                        FushStatusPill(if (b.status == "CLOSED") "مغلق" else "مفتوح", if (b.status == "CLOSED") FushStatusTone.Success else FushStatusTone.Warning)
++                        if (b.recurring) FushStatusPill("عطل متكرر", FushStatusTone.Danger)
++                    }
++                }
++            }
++        }
++        item { FushSectionHeader("السلامة", "الحوادث المفتوحة واحتياج CAPA يجب أن يظلا ظاهرين حتى الإغلاق.") }
++        if (safetyIncidents.isEmpty()) item { Text("لا توجد حوادث سلامة مسجلة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        items(safetyIncidents.take(20), key = { it.id }) { incident ->
++            OutlinedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text(incident.incidentNo, style = MaterialTheme.typography.titleSmall)
++                        FushStatusPill(
++                            if (incident.status == "CLOSED") "مغلق" else "مفتوح",
++                            if (incident.status == "CLOSED") FushStatusTone.Success else FushStatusTone.Danger
++                        )
++                    }
++                    Text("${incident.area} • ${maintenanceIncidentTypeAr(incident.incidentType)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    Text(incident.description)
++                    if (incident.capaRequired) FushStatusPill("CAPA مطلوب", FushStatusTone.Warning)
++                }
++            }
+         }
+     }
+ 

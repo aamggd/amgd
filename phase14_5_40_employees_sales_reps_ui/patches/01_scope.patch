@@ -1,0 +1,35 @@
+From 486308b013d70d204d0e8c0d76134f74eb41c228 Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:06:30 +0000
+Subject: [PATCH] scope
+
+---
+ ...IONALIZATION_7_EMPLOYEES_SALES_REPS_SCOPE.md | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+ create mode 100644 UI_PROFESSIONALIZATION_7_EMPLOYEES_SALES_REPS_SCOPE.md
+
+diff --git a/UI_PROFESSIONALIZATION_7_EMPLOYEES_SALES_REPS_SCOPE.md b/UI_PROFESSIONALIZATION_7_EMPLOYEES_SALES_REPS_SCOPE.md
+new file mode 100644
+index 0000000..7d7e272
+--- /dev/null
++++ b/UI_PROFESSIONALIZATION_7_EMPLOYEES_SALES_REPS_SCOPE.md
+@@ -0,0 +1,17 @@
++# UI Professionalization 7 — Employees & Sales Representatives
++
++Version: `0.15.4.40-ui-employees-sales-reps`
++
++## Scope
++- Professional HR dashboard with active staff, production staff and competence alerts.
++- Search and status filters for employee files.
++- Employee profile executive cards for accrued production compensation, paid amount and outstanding amount.
++- Clear training and equipment-authorization validity states.
++- Professional production-compensation and employee-voucher cards while preserving account 2200 behavior.
++- Professional sales-representative dashboard and search/status filters.
++- Sales-representative profile executive cards for sales, collections, returns and commission due.
++- Clear commission lifecycle: earned, reversed, paid and remaining due.
++- Professional commission and voucher cards while preserving account 2300 and existing payment/reversal services.
++
++## Safety boundary
++No Room schema, DAO, accounting posting, production labor accrual, employee compensation formula, commission formula, collection rule, return rule, voucher posting or reversal behavior is changed by this UI phase.
+-- 
+2.47.3

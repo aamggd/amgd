@@ -1,0 +1,277 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -13,6 +13,7 @@
+ import androidx.compose.ui.window.Dialog
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.*
+ import com.fush.erp.domain.SalesDraftLine
+ import com.fush.erp.domain.SalesMath
+ import com.fush.erp.domain.SalesService
+@@ -50,6 +51,7 @@
+     var detailInvoice by remember { mutableStateOf<SalesInvoiceSummary?>(null) }
+     var statementCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+     var customerSearch by remember { mutableStateOf("") }
++    var invoiceSearch by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
+     val filteredCustomers = remember(customers, customerSearch) {
+         val q = customerSearch.trim().lowercase(Locale.ROOT)
+@@ -59,35 +61,231 @@
+         }
+     }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    val filteredInvoices = remember(invoices, invoiceSearch) {
++        val q = invoiceSearch.trim().lowercase(Locale.ROOT)
++        if (q.isBlank()) invoices else invoices.filter { invoice ->
++            listOf(
++                invoice.invoiceNo,
++                invoice.customerName,
++                invoice.currencyCode,
++                if (invoice.paymentType == "CASH") "نقدي" else "آجل",
++            ).any { it.lowercase(Locale.ROOT).contains(q) }
++        }
++    }
++    val totalInvoiceBase = remember(invoices) { invoices.sumOf { it.totalBase } }
++    val totalOutstandingBase = remember(receivables) { receivables.sumOf { it.outstandingBase } }
++    val overdueBase = remember(receivables) { receivables.sumOf { it.overdueBase } }
++    val openCreditInvoices = remember(invoices) { invoices.count { it.paymentType == "CREDIT" && it.outstandingBase > 0.000001 } }
++
++    LazyColumn(
++        modifier.fillMaxSize().padding(16.dp),
++        verticalArrangement = Arrangement.spacedBy(14.dp),
++    ) {
+         item {
+-            Text("المبيعات", style = MaterialTheme.typography.headlineSmall)
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                FushSectionHeader(
++                    title = "المبيعات",
++                    subtitle = "الفواتير والتحصيلات والمرتجعات مع متابعة الذمم الآجلة",
++                    modifier = Modifier.weight(1f),
++                )
++                Spacer(Modifier.width(12.dp))
++                Button(
++                    onClick = { showSale = true },
++                    enabled = customers.isNotEmpty(),
++                    shape = MaterialTheme.shapes.medium,
++                ) { Text("فاتورة جديدة") }
++            }
++        }
++
++        if (customers.isEmpty()) {
++            item {
++                FushSystemState(
++                    title = "لا يوجد عملاء بعد",
++                    detail = "أنشئ عميلاً من صفحة العملاء قبل تسجيل أول فاتورة بيع.",
++                )
++            }
++        }
++
++        message?.let { text ->
++            item {
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) {
++                    Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
++                }
++            }
++        }
++
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "إجمالي الفواتير",
++                    value = salesMoney(totalInvoiceBase),
++                    helper = "بالعملة الأساسية",
++                    modifier = Modifier.weight(1f),
++                    tone = FushStatusTone.Info,
++                )
++                FushMetricCard(
++                    label = "ذمم مفتوحة",
++                    value = salesMoney(totalOutstandingBase),
++                    helper = "رصيد العملاء",
++                    modifier = Modifier.weight(1f),
++                    tone = if (totalOutstandingBase > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "متأخر السداد",
++                    value = salesMoney(overdueBase),
++                    helper = "يحتاج متابعة",
++                    modifier = Modifier.weight(1f),
++                    tone = if (overdueBase > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
++                )
++                FushMetricCard(
++                    label = "فواتير آجلة مفتوحة",
++                    value = openCreditInvoices.toString(),
++                    helper = "غير مسددة بالكامل",
++                    modifier = Modifier.weight(1f),
++                    tone = if (openCreditInvoices > 0) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++            }
++        }
++
++        item {
++            Surface(
++                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
++                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
++                shape = MaterialTheme.shapes.medium,
++            ) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Text("سياسة البيع الآجل", style = MaterialTheme.typography.titleSmall)
++                        FushStatusPill("رقابة ائتمانية", FushStatusTone.Info)
++                    }
++                    Text(
++                        "المدة القصوى 30 يومًا، مع إيقاف تلقائي عند التأخر أو تجاوز السقف الائتماني.",
++                        style = MaterialTheme.typography.bodySmall,
++                    )
++                }
++            }
++        }
++
++        item {
++            FushSectionHeader("فواتير المبيعات", "${filteredInvoices.size} من ${invoices.size} فاتورة")
+             Spacer(Modifier.height(8.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { showSale = true }, enabled = customers.isNotEmpty()) { Text("فاتورة بيع") }
+-            }
+-            if (customers.isEmpty()) Text("أضف عميلاً أولاً ثم أنشئ فاتورة بيع.", color = MaterialTheme.colorScheme.error)
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-            Spacer(Modifier.height(4.dp))
+-            Text("ضوابط الآجل: مدة قصوى 30 يوماً، وإيقاف تلقائي عند التأخر أو تجاوز السقف الائتماني.", style = MaterialTheme.typography.bodySmall)
+-        }
+-
+-        item { Text("فواتير المبيعات", style = MaterialTheme.typography.titleMedium) }
+-        items(invoices) { invoice ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Text(invoice.invoiceNo, style = MaterialTheme.typography.titleMedium)
+-                    Text("${invoice.customerName} • ${salesDate(invoice.invoiceDate)} • ${if (invoice.paymentType == "CASH") "نقدي" else "آجل"}")
+-                    Text("الإجمالي: ${salesMoney(invoice.totalOriginal)} ${invoice.currencyCode} (${salesMoney(invoice.totalBase)} أساسي)")
+-                    if (invoice.paymentType == "CREDIT") {
+-                        Text("المتبقي: ${salesMoney(invoice.outstandingBase)}${invoice.dueDate?.let { " • استحقاق ${salesDate(it)}" } ?: ""}")
+-                    }
+-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        OutlinedButton(onClick = { detailInvoice = invoice }) { Text("بيان تفصيلي") }
+-                        if (invoice.paymentType == "CREDIT" && invoice.outstandingBase > 0.000001) {
+-                            OutlinedButton(onClick = { collectInvoice = invoice }) { Text("تحصيل") }
+-                        }
+-                        OutlinedButton(onClick = { returnInvoice = invoice }) { Text("مرتجع") }
++            OutlinedTextField(
++                value = invoiceSearch,
++                onValueChange = { invoiceSearch = it },
++                modifier = Modifier.fillMaxWidth(),
++                label = { Text("بحث في الفواتير") },
++                placeholder = { Text("رقم الفاتورة، العميل، العملة أو نوع الدفع") },
++                singleLine = true,
++                shape = MaterialTheme.shapes.medium,
++            )
++        }
++
++        if (filteredInvoices.isEmpty()) {
++            item {
++                ElevatedCard(
++                    Modifier.fillMaxWidth(),
++                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                ) {
++                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                        Text(if (invoices.isEmpty()) "لا توجد فواتير مبيعات" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
++                        Text(
++                            if (invoices.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية بيع." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                            style = MaterialTheme.typography.bodyMedium,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        )
++                    }
++                }
++            }
++        }
++
++        items(filteredInvoices, key = { it.id }) { invoice ->
++            val isCredit = invoice.paymentType == "CREDIT"
++            val isPaid = invoice.outstandingBase <= 0.000001
++            val isOverdue = isCredit && !isPaid && invoice.dueDate != null && invoice.dueDate < System.currentTimeMillis()
++            val collectionTone = when {
++                isPaid -> FushStatusTone.Success
++                isOverdue -> FushStatusTone.Danger
++                else -> FushStatusTone.Warning
++            }
++            val collectionLabel = when {
++                isPaid -> "مسددة"
++                isOverdue -> "متأخرة"
++                else -> "مفتوحة"
++            }
++
++            ElevatedCard(
++                Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++            ) {
++                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically,
++                    ) {
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text(invoice.invoiceNo, style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                "${invoice.customerName} • ${salesDate(invoice.invoiceDate)}",
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            )
++                        }
++                        Spacer(Modifier.width(8.dp))
++                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                            FushStatusPill(if (isCredit) "آجل" else "نقدي", if (isCredit) FushStatusTone.Warning else FushStatusTone.Success)
++                            if (isCredit) FushStatusPill(collectionLabel, collectionTone)
++                        }
++                    }
++
++                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column {
++                            Text("الإجمالي", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text("${salesMoney(invoice.totalOriginal)} ${invoice.currencyCode}", style = MaterialTheme.typography.titleMedium)
++                        }
++                        Column(horizontalAlignment = Alignment.End) {
++                            Text("بالعملة الأساسية", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(salesMoney(invoice.totalBase), style = MaterialTheme.typography.titleMedium)
++                        }
++                    }
++
++                    if (isCredit) {
++                        Surface(
++                            color = if (isOverdue) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
++                            contentColor = if (isOverdue) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
++                            shape = MaterialTheme.shapes.small,
++                        ) {
++                            Row(
++                                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
++                                horizontalArrangement = Arrangement.SpaceBetween,
++                            ) {
++                                Text("المتبقي ${salesMoney(invoice.outstandingBase)}", style = MaterialTheme.typography.labelLarge)
++                                Text(invoice.dueDate?.let { "الاستحقاق ${salesDate(it)}" } ?: "بدون تاريخ استحقاق", style = MaterialTheme.typography.labelMedium)
++                            }
++                        }
++                    }
++
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        OutlinedButton(onClick = { detailInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("التفاصيل") }
++                        if (isCredit && !isPaid) {
++                            Button(onClick = { collectInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("تحصيل") }
++                        }
++                        OutlinedButton(onClick = { returnInvoice = invoice }, modifier = Modifier.weight(1f)) { Text("مرتجع") }
+                     }
+                 }
+             }

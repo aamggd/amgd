@@ -1,0 +1,119 @@
+name: Central Consolidation - Purchases Suppliers
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-purchases-suppliers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: '845535a92a2b1397347f08af2ce94cd15444786b'
+  PURCHASES_HANDOFF_SHA: 'b4c6c38c62f0011b1d94dde25e70f085f5e37356'
+  PURCHASES_PATCH_BLOB: 'f9c397a1ea82857cc70f7e6c43792f31401a4fdd'
+
+jobs:
+  integrate-purchases-suppliers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Cumulative Central before Purchases Suppliers"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Fetch exact validated Purchases Suppliers patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${PURCHASES_HANDOFF_SHA}/purchases_suppliers_phase1/phase1.patch" -o purchases-suppliers.patch
+          test "$(git hash-object purchases-suppliers.patch)" = "$PURCHASES_PATCH_BLOB"
+          cd work-source
+          git apply --check ../purchases-suppliers.patch
+          git apply ../purchases-suppliers.patch
+          git diff --check
+          git add -A
+          git commit -qm "Integrate Purchases Suppliers validated handoff"
+          echo "purchases_source_tree=$(git write-tree)" | tee ../purchases-source-tree.txt
+
+      - name: Purchases Suppliers domain regression
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierMovementIdentityTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          test -f central_source/app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt
+          test -f central_source/app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source purchases-source-tree.txt
+          git commit -m "Central integration: add Purchases Suppliers validated handoff"
+          git push origin HEAD:fush/integration-current

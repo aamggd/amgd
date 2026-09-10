@@ -1,0 +1,50 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt b/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+index 0f2d5f7..2e6373d 100644
+--- a/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
++++ b/app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+@@ -333,6 +333,45 @@ fun FushErrorState(
+     onAction: (() -> Unit)? = null,
+ ) = FushContentStateCard(title, detail, modifier, FushStatusTone.Danger, actionLabel = actionLabel, onAction = onAction)
+ 
++@Composable
++fun FushInlineState(
++    text: String,
++    modifier: Modifier = Modifier,
++    tone: FushStatusTone = FushStatusTone.Neutral,
++) {
++    val containerColor = when (tone) {
++        FushStatusTone.Danger -> MaterialTheme.colorScheme.errorContainer
++        FushStatusTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer
++        FushStatusTone.Info -> MaterialTheme.colorScheme.primaryContainer
++        FushStatusTone.Success -> MaterialTheme.colorScheme.secondaryContainer
++        FushStatusTone.Neutral -> MaterialTheme.colorScheme.surfaceContainer
++    }
++    val contentColor = when (tone) {
++        FushStatusTone.Danger -> MaterialTheme.colorScheme.onErrorContainer
++        FushStatusTone.Warning -> MaterialTheme.colorScheme.onTertiaryContainer
++        FushStatusTone.Info -> MaterialTheme.colorScheme.onPrimaryContainer
++        FushStatusTone.Success -> MaterialTheme.colorScheme.onSecondaryContainer
++        FushStatusTone.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
++    }
++    Surface(
++        modifier = modifier
++            .fillMaxWidth()
++            .semantics { liveRegion = if (tone == FushStatusTone.Danger) LiveRegionMode.Assertive else LiveRegionMode.Polite },
++        shape = MaterialTheme.shapes.medium,
++        color = containerColor,
++        contentColor = contentColor,
++    ) {
++        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp))
++    }
++}
++
++@Composable
++fun FushNotice(
++    message: String,
++    modifier: Modifier = Modifier,
++    tone: FushStatusTone = FushStatusTone.Info,
++) = FushInlineState(message, modifier, tone)
++
+ @Composable
+ fun FushConfirmDialog(
+     title: String,

@@ -1,0 +1,79 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+index 507c647..ed7e114 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt
+@@ -484,7 +484,7 @@ private fun TrialBalanceTab(container: AppContainer, modifier: Modifier) {
+         item {
+             FushSectionHeader("ميزان المراجعة", "تحقق من توازن الحركات والأرصدة حتى تاريخ محدد")
+             Spacer(Modifier.height(6.dp))
+-            OutlinedTextField(asOf, { asOf = it }, label = { Text("حتى تاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
++            FushDateField(asOf, { asOf = it }, "حتى تاريخ", modifier = Modifier.fillMaxWidth())
+             Button(onClick = { scope.launch { try { report = container.accountingService.trialBalance(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد الميزان") }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         }
+@@ -567,7 +567,7 @@ private fun BalanceSheetTab(container: AppContainer, modifier: Modifier) {
+         item {
+             FushSectionHeader("قائمة المركز المالي", "الأصول والالتزامات وحقوق الملكية حتى تاريخ محدد")
+             Spacer(Modifier.height(6.dp))
+-            OutlinedTextField(asOf, { asOf = it }, label = { Text("حتى تاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
++            FushDateField(asOf, { asOf = it }, "حتى تاريخ", modifier = Modifier.fillMaxWidth())
+             Button(onClick = { scope.launch { try { report = container.accountingService.balanceSheet(parseEnd(asOf)); message = null } catch (e: Exception) { message = e.message } } }) { Text("إعداد القائمة") }
+             message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+         }
+@@ -719,7 +719,7 @@ private fun ManualJournalDialog(
+             LazyColumn(Modifier.heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 item {
+                     OutlinedTextField(description, { description = it }, label = { Text("البيان") }, modifier = Modifier.fillMaxWidth())
+-                    OutlinedTextField(date, { date = it }, label = { Text("التاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
++                    FushDateField(date, { date = it }, "التاريخ", modifier = Modifier.fillMaxWidth())
+                     SelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it; if (it.isBase) rate = "1" }
+                     OutlinedTextField(rate, { rate = it }, label = { Text("سعر الصرف إلى الريال الجديد") }, modifier = Modifier.fillMaxWidth())
+                 }
+@@ -820,7 +820,7 @@ private fun VoucherDialog(
+                 OutlinedTextField(rate, { rate = it }, label = { Text("سعر الصرف") }, modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(description, { description = it }, label = { Text("البيان") }, modifier = Modifier.fillMaxWidth())
+                 OutlinedTextField(reference, { reference = it }, label = { Text("رقم المرجع/المستند") }, modifier = Modifier.fillMaxWidth())
+-                OutlinedTextField(date, { date = it }, label = { Text("التاريخ YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
++                FushDateField(date, { date = it }, "التاريخ", modifier = Modifier.fillMaxWidth())
+             }
+         },
+         confirmButton = {
+@@ -877,8 +877,8 @@ private fun AddAccountDialog(accounts: List<AccountEntity>, onDismiss: () -> Uni
+ @Composable
+ private fun DateRangeFields(from: String, onFrom: (String)->Unit, to: String, onTo: (String)->Unit) {
+     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-        OutlinedTextField(from, onFrom, label={Text("من YYYY-MM-DD")}, modifier=Modifier.weight(1f))
+-        OutlinedTextField(to, onTo, label={Text("إلى YYYY-MM-DD")}, modifier=Modifier.weight(1f))
++        FushDateField(from, onFrom, "من تاريخ", modifier=Modifier.weight(1f))
++        FushDateField(to, onTo, "إلى تاريخ", modifier=Modifier.weight(1f))
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 0c8a009..6988f7e 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -157,8 +157,8 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+                     OutlinedTextField(organizationFilter, { organizationFilter = it }, label = { Text("الفرع / المنشأة") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                     OutlinedTextField(search, { search = it }, label = { Text("بحث في البيان أو المرجع أو الطرف") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        OutlinedTextField(from, { from = it }, label = { Text("من YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
+-                        OutlinedTextField(to, { to = it }, label = { Text("إلى YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
++                        FushDateField(from, { from = it }, "من تاريخ", modifier = Modifier.weight(1f))
++                        FushDateField(to, { to = it }, "إلى تاريخ", modifier = Modifier.weight(1f))
+                     }
+                     OutlinedButton(onClick = {
+                         accountFilter = null; employeeFilter = null; repFilter = null; customerFilter = null; supplierFilter = null
+@@ -369,9 +369,9 @@ private fun AddExpenseDialog(
+                     ExpenseSelectionField("طريقة الدفع / الخزينة أو البنك", source, treasury, { "${it.nameAr} — ${it.kind}" }) { source = it }
+                     ExpenseSelectionField("نوع المصروف / حساب المصروف", account, accounts, { "${it.code} — ${it.nameAr}" }) { account = it }
+                     ExpenseSelectionField("العملة", currency, currencies, { it.nameAr }) { currency=it; if(it.isBase) rate="1" }
+-                    OutlinedTextField(amount, { amount=it }, label={Text("المبلغ")}, modifier=Modifier.fillMaxWidth())
+-                    OutlinedTextField(rate, { rate=it }, label={Text("سعر الصرف")}, modifier=Modifier.fillMaxWidth())
+-                    OutlinedTextField(date, { date=it }, label={Text("التاريخ YYYY-MM-DD")}, modifier=Modifier.fillMaxWidth())
++                    FushDecimalField(amount, { amount=it }, "المبلغ", modifier=Modifier.fillMaxWidth())
++                    FushDecimalField(rate, { rate=it }, "سعر الصرف", modifier=Modifier.fillMaxWidth())
++                    FushDateField(date, { date=it }, "التاريخ", modifier=Modifier.fillMaxWidth())
+                     OutlinedTextField(description, { description=it }, label={Text("البيان / الوصف")}, modifier=Modifier.fillMaxWidth())
+                 }
+                 item {

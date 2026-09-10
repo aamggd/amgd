@@ -1,0 +1,81 @@
+From 1d397216d5481caa4621a3c2fc5f3dc03b17fc29 Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:08:42 +0000
+Subject: [PATCH] employee profile header
+
+---
+ .../fush/erp/ui/screens/EmployeeScreens.kt    | 53 ++++++++++++++-----
+ 1 file changed, 40 insertions(+), 13 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 6433eff..eee49cd 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -311,25 +311,52 @@ private fun EmployeeProfileScreen(
+     val now = System.currentTimeMillis()
+     val tabs = listOf("الملف", "التدريب", "التصاريح", "الإنتاج", "السندات", "التدقيق")
+     val accruedProductionCompensation = productionCompensations.filter { it.isAccrued }.sumOf { it.laborCostBase }
+-    val outstandingProductionCompensation = accruedProductionCompensation - productionLaborPayments
++    val outstandingProductionCompensation = (accruedProductionCompensation - productionLaborPayments).coerceAtLeast(0.0)
++    val validTrainingCount = trainings.count { it.result == "PASS" && (it.expiresAt == null || it.expiresAt >= now) }
++    val activeAuthorizationCount = authorizations.count { it.status == "ACTIVE" && (it.expiresAt == null || it.expiresAt >= now) }
+ 
+     Column(modifier.fillMaxSize()) {
+-        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            OutlinedButton(onClick = onBack) { Text("رجوع") }
+-            Column(Modifier.weight(1f)) {
+-                Text(employee.fullNameAr, style = MaterialTheme.typography.headlineSmall)
+-                Text("${employee.code} • ${employee.jobTitle} • ${if (employee.status == "ACTIVE") "نشط" else "موقوف"}", style = MaterialTheme.typography.bodySmall)
++        ElevatedCard(Modifier.fillMaxWidth().padding(12.dp)) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
++                    OutlinedButton(onClick = onBack) { Text("رجوع") }
++                    Column(Modifier.weight(1f)) {
++                        Text(employee.fullNameAr, style = MaterialTheme.typography.headlineSmall)
++                        Text("${employee.code} • ${employee.jobTitle} • ${employee.department}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    FushStatusPill(
++                        if (employee.status == "ACTIVE") "نشط" else "موقوف",
++                        if (employee.status == "ACTIVE") FushStatusTone.Success else FushStatusTone.Warning
++                    )
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    OutlinedButton(onClick = { showEdit = true }, modifier = Modifier.weight(1f)) { Text("تعديل الملف") }
++                    OutlinedButton(onClick = { tab = 3 }, modifier = Modifier.weight(1f)) { Text("عرض المستحقات") }
++                }
++                message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+             }
+         }
+-        Row(Modifier.padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            OutlinedButton(onClick = { showEdit = true }) { Text("تعديل الملف") }
+-        }
+-        message?.let { Text(it, Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.primary) }
+-        ScrollableTabRow(selectedTabIndex = tab) {
+-            tabs.forEachIndexed { index, title ->
+-                Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
++
++        Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    "المتبقي المستحق",
++                    "${employeeMoney(outstandingProductionCompensation)} ر.ي",
++                    Modifier.weight(1f),
++                    helper = "أجور إنتاج غير مصروفة",
++                    tone = if (outstandingProductionCompensation > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
++                )
++                FushMetricCard("إجمالي المستحق", "${employeeMoney(accruedProductionCompensation)} ر.ي", Modifier.weight(1f), helper = "مرحّل إلى 2200", tone = FushStatusTone.Info)
++            }
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("المدفوع", "${employeeMoney(productionLaborPayments)} ر.ي", Modifier.weight(1f), helper = "من حساب أجور الموظفين")
++                FushMetricCard("الكفاءة السارية", validTrainingCount.toString(), Modifier.weight(1f), helper = "$activeAuthorizationCount تصريح معدات", tone = FushStatusTone.Success)
+             }
+         }
++
++        ScrollableTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 10.dp)) {
++            tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) }) }
++        }
+         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+             when (tab) {
+                 0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-- 
+2.47.3

@@ -1,0 +1,98 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index 0b28e53..0d3a1cb 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -726,7 +726,7 @@ private fun ProductionOrderDetailDialog(
+                         item {
+                             HorizontalDivider()
+                             DetailSectionTitle("فحوص الجودة")
+-                            if (d.checks.isEmpty()) Text("لا توجد فحوص جودة مسجلة.")
++                            if (d.checks.isEmpty()) FushInlineState("لا توجد فحوص جودة مسجلة.")
+                         }
+ 
+                         items(d.checks, key = { it.id }) { check ->
+@@ -750,7 +750,7 @@ private fun ProductionOrderDetailDialog(
+                         item {
+                             HorizontalDivider()
+                             DetailSectionTitle("عدم المطابقة / CAPA")
+-                            if (d.nonConformances.isEmpty()) Text("لا توجد حالات عدم مطابقة مسجلة.")
++                            if (d.nonConformances.isEmpty()) FushInlineState("لا توجد حالات عدم مطابقة مسجلة.", tone = FushStatusTone.Success)
+                         }
+ 
+                         items(d.nonConformances, key = { it.id }) { nc ->
+@@ -1087,7 +1087,7 @@ private fun NewRecipeDialog(
+             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 560.dp)) {
+                 item {
+                     if (finishedProducts.isEmpty()) {
+-                        Text("لا يوجد منتج نهائي. أضف المنتج أولًا من القائمة ← البيانات ← المواد والأصناف.", color = MaterialTheme.colorScheme.error)
++                        FushInlineState("لا يوجد منتج نهائي. أضف المنتج أولًا من القائمة ← البيانات ← المواد والأصناف.", tone = FushStatusTone.Danger)
+                     } else {
+                         SelectionField("المنتج النهائي", product?.nameAr ?: "اختر", finishedProducts, { "${it.nameAr} (${it.code})" }) { product = it }
+                     }
+@@ -1369,7 +1369,7 @@ private fun BatchQualityDialog(
+                     Spacer(Modifier.height(8.dp))
+                     Text("الفحص الكمي", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                     if (activeSpecs.isEmpty()) {
+-                        Text("لا توجد مواصفات كمية فعالة لهذا المنتج. عرّف حدود القبول وحجم العينة قبل الاعتماد.", color = MaterialTheme.colorScheme.error)
++                        FushInlineState("لا توجد مواصفات كمية فعالة لهذا المنتج. عرّف حدود القبول وحجم العينة قبل الاعتماد.", tone = FushStatusTone.Danger)
+                     } else {
+                         QualitySpecificationSelectionField(
+                             specs = activeSpecs,
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 86f7199..9f9af9e 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -366,7 +366,7 @@ private fun PurchaseInvoiceDetailDialog(
+ 
+                     HorizontalDivider()
+                     Text("تفاصيل الأصناف (${purchaseLines.size})", style = MaterialTheme.typography.titleMedium)
+-                    if (purchaseLines.isEmpty()) Text("لا توجد أسطر محفوظة لهذه الفاتورة.")
++                    if (purchaseLines.isEmpty()) FushInlineState("لا توجد أسطر محفوظة لهذه الفاتورة.")
+                     purchaseLines.forEachIndexed { index, line ->
+                         val item = itemsList.firstOrNull { it.id == line.itemId }
+                         val unit = units.firstOrNull { it.id == line.unitId }
+@@ -730,7 +730,7 @@ private fun PurchaseReturnDialog(
+                 if (purchaseLines.isEmpty()) {
+                     Text("جارٍ تحميل أصناف الفاتورة...")
+                 } else if (returnableLines.isEmpty()) {
+-                    Text("لا توجد كميات متبقية قابلة للمرتجع في هذه الفاتورة.", color = MaterialTheme.colorScheme.error)
++                    FushInlineState("لا توجد كميات متبقية قابلة للمرتجع في هذه الفاتورة.", tone = FushStatusTone.Warning)
+                 } else {
+                     returnableLines.forEach { line ->
+                         val itemName = itemsList.firstOrNull { it.id == line.itemId }?.nameAr ?: "صنف #${line.itemId}"
+@@ -857,7 +857,7 @@ private fun SupplierPaymentDialog(
+                 Text("دفع مورد", style = MaterialTheme.typography.headlineSmall)
+                 Text("${supplier.nameAr} • ${supplier.code}")
+                 if (openInvoices.isEmpty()) {
+-                    Text("لا توجد فواتير آجلة مستحقة لهذا المورد.", color = MaterialTheme.colorScheme.primary)
++                    FushInlineState("لا توجد فواتير آجلة مستحقة لهذا المورد.", tone = FushStatusTone.Success)
+                 } else {
+                     SelectionField(
+                         "الفاتورة",
+@@ -877,7 +877,7 @@ private fun SupplierPaymentDialog(
+                             { "${it.nameAr} • ${it.currencyCode}" }
+                         ) { treasury = it }
+                         if (compatibleTreasury.isEmpty()) {
+-                            Text("لا توجد خزينة نشطة بعملة ${selected.currencyCode}. أنشئها من الحسابات أولاً.", color = MaterialTheme.colorScheme.error)
++                            FushInlineState("لا توجد خزينة نشطة بعملة ${selected.currencyCode}. أنشئها من الحسابات أولًا.", tone = FushStatusTone.Danger)
+                         }
+                         OutlinedTextField(amountText, { amountText = it }, label = { Text("المبلغ المدفوع (${selected.currencyCode})") }, singleLine = true)
+                         OutlinedTextField(rateText, { rateText = it }, label = { Text("سعر الصرف بتاريخ الدفع") }, singleLine = true)
+@@ -955,7 +955,7 @@ private fun SupplierAccountDialog(
+                 Text("فواتير مفتوحة: ${openInvoices.size} • دفعات مسجلة: ${payments.size}")
+                 HorizontalDivider()
+                 Text("الحركة", style = MaterialTheme.typography.titleMedium)
+-                if (running.isEmpty()) Text("لا توجد حركة دائنة لهذا المورد.")
++                if (running.isEmpty()) FushInlineState("لا توجد حركة دائنة لهذا المورد.")
+                 running.forEach { (event, balance) ->
+                     val type = when (event.eventType) {
+                         "INVOICE" -> "فاتورة"
+@@ -997,7 +997,7 @@ private fun SupplierAgingDialog(container: AppContainer, onDismiss: () -> Unit)
+             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("أعمار ديون الموردين AP Aging", style = MaterialTheme.typography.headlineSmall)
+                 Text("حتى ${formatDate(asOf)} • جميع القيم بالعملة الأساسية")
+-                if (rows.isEmpty()) Text("لا توجد أرصدة موردين مفتوحة.")
++                if (rows.isEmpty()) FushInlineState("لا توجد أرصدة موردين مفتوحة.", tone = FushStatusTone.Success)
+                 rows.forEach { row ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

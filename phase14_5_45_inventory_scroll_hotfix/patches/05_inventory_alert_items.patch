@@ -1,0 +1,99 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index b5efaf4..c8416ca 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -370,60 +370,57 @@ private fun itemCategoryLabel(category: String): String = when (category) {
+     else -> "أخرى"
+ }
+ 
+-@Composable
+-private fun InventoryAlerts(
++private fun LazyListScope.inventoryAlertItems(
+     reorder: List<InventoryAlertRow>,
+     expiry: List<InventoryLotAlertRow>,
+-    onConfigure: () -> Unit
++    onConfigure: () -> Unit,
+ ) {
+     val now = System.currentTimeMillis()
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-        item {
++    item(key = "inventory-alerts-summary") {
++        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+             FushSectionHeader("تنبيهات المخزون", "إعادة الطلب والصلاحية التي تحتاج إجراءً")
+-            Spacer(Modifier.height(8.dp))
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "صنف × مخزن", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
+                 FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
+             }
+-            Spacer(Modifier.height(8.dp))
+             OutlinedButton(onClick = onConfigure, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) { Text("إعداد حدود إعادة الطلب حسب المخزن") }
+         }
+-        item { FushSectionHeader("إعادة الطلب", "الرصيد المتاح فقط؛ دون المنتهي أو المحجور أو الموقوف") }
+-        if (reorder.isEmpty()) {
+-            item { FushEmptyState("لا توجد تنبيهات إعادة طلب", "كل الأرصدة المتاحة أعلى من حدود إعادة الطلب الحالية.") }
+-        }
+-        items(reorder, key = { "reorder-${it.warehouseId}-${it.itemId}" }) { row ->
+-            val tone = if (row.quantityBase <= 0.000000001) FushStatusTone.Danger else FushStatusTone.Warning
+-            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+-                            Text("${row.warehouseName} (${row.warehouseCode}) • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill("متاح ${fmtQty(row.quantityBase)}", tone)
++    }
++    item(key = "inventory-alerts-reorder-header") { FushSectionHeader("إعادة الطلب", "الرصيد المتاح فقط؛ دون المنتهي أو المحجور أو الموقوف") }
++    if (reorder.isEmpty()) {
++        item(key = "inventory-alerts-reorder-empty") { FushEmptyState("لا توجد تنبيهات إعادة طلب", "كل الأرصدة المتاحة أعلى من حدود إعادة الطلب الحالية.") }
++    }
++    items(reorder, key = { "reorder-${it.warehouseId}-${it.itemId}" }) { row ->
++        val tone = if (row.quantityBase <= 0.000000001) FushStatusTone.Danger else FushStatusTone.Warning
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                        Text("${row.warehouseName} (${row.warehouseCode}) • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     }
+-                    Text("حد إعادة الطلب ${fmtQty(row.reorderLevel)} ${row.baseUnitName}", style = MaterialTheme.typography.bodySmall)
++                    FushStatusPill("متاح ${fmtQty(row.quantityBase)}", tone)
+                 }
++                Text("حد إعادة الطلب ${fmtQty(row.reorderLevel)} ${row.baseUnitName}", style = MaterialTheme.typography.bodySmall)
+             }
+         }
+-        item { FushSectionHeader("الصلاحية", "التشغيلات المنتهية أو التي تنتهي خلال 30 يومًا") }
+-        if (expiry.isEmpty()) {
+-            item { FushEmptyState("لا توجد تنبيهات صلاحية", "لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يومًا.") }
+-        }
+-        items(expiry) { row ->
+-            val expired = row.expiryDate?.let { it < now } == true
+-            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+-                            Text("${row.warehouseName} • تشغيلة ${row.lotNo ?: "بدون رقم"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill(if (expired) "منتهية" else "قريبة الانتهاء", if (expired) FushStatusTone.Danger else FushStatusTone.Warning)
++    }
++    item(key = "inventory-alerts-expiry-header") { FushSectionHeader("الصلاحية", "التشغيلات المنتهية أو التي تنتهي خلال 30 يومًا") }
++    if (expiry.isEmpty()) {
++        item(key = "inventory-alerts-expiry-empty") { FushEmptyState("لا توجد تنبيهات صلاحية", "لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يومًا.") }
++    }
++    items(expiry, key = { "expiry-${it.warehouseId}-${it.itemId}-${it.lotNo}-${it.expiryDate}" }) { row ->
++        val expired = row.expiryDate?.let { it < now } == true
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                        Text("${row.warehouseName} • تشغيلة ${row.lotNo ?: "بدون رقم"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     }
+-                    Text("الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "بدون تاريخ"} • الرصيد ${fmtQty(row.quantityBase)}", style = MaterialTheme.typography.bodySmall)
++                    FushStatusPill(if (expired) "منتهية" else "قريبة الانتهاء", if (expired) FushStatusTone.Danger else FushStatusTone.Warning)
+                 }
++                Text("الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "بدون تاريخ"} • الرصيد ${fmtQty(row.quantityBase)}", style = MaterialTheme.typography.bodySmall)
+             }
+         }
+     }

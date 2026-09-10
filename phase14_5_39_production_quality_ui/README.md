@@ -1,0 +1,21 @@
+# FUSH ERP Mobile — UI Professionalization 6: Production & Quality
+
+Baseline: `0.15.4.38-ui-inventory-master-data`
+Target: `0.15.4.39-ui-production-quality`
+
+## Scope
+Presentation and usability improvements for recipes, production orders, material issue workflow, batch quality decisions, production cost visibility and production/quality reports.
+
+## Implemented
+- Production workspace KPIs for active orders, QC hold, active recipes and completed orders.
+- Clear production actions for new orders, recipe versions and production/quality reports.
+- Search and status filtering for production orders.
+- Professional recipe and production-order cards with lifecycle status and current-stage guidance.
+- Improved material-availability and production-detail context while preserving the existing material reservation/issue workflow.
+- Production detail executive summary for planned, actual, accepted output and total actual cost.
+- Quality decision dashboard with PASS, FAIL and open non-conformance counts before batch release.
+- Cleaner batch quality context while retaining quantitative samples, descriptive checks, specifications and CAPA workflows.
+- Professional production and quality report dashboards with plan achievement, acceptance, scrap, costs and batch status cards.
+
+## Safety boundary
+No recipe quantities, production-order transitions, material reservation/issue logic, FEFO allocation, stock posting, production cost formulas, employee compensation calculation, quality acceptance rules, sample evaluation, CAPA logic, batch acceptance/rejection posting, or database schema are intentionally changed.

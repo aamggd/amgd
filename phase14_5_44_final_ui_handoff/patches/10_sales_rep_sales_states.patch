@@ -1,0 +1,80 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+index abf33c4..0ae096a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesRepresentativeScreens.kt
+@@ -239,7 +239,7 @@ private fun SalesRepresentativeProfile(
+                 }
+                 1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("العملاء التابعون", "${customers.size} عميل مرتبط بالمندوب") }
+-                    if (customers.isEmpty()) item { Text("لا يوجد عملاء مرتبطون بهذا المندوب.") }
++                    if (customers.isEmpty()) item { FushInlineState("لا يوجد عملاء مرتبطون بهذا المندوب.") }
+                     items(customers, key = { it.id }) { c ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+@@ -251,7 +251,7 @@ private fun SalesRepresentativeProfile(
+                 }
+                 2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("فواتير المبيعات", "الفواتير المرتبطة بهوية المندوب الثابتة") }
+-                    if (invoices.isEmpty()) item { Text("لا توجد فواتير مرتبطة بهذا المندوب.") }
++                    if (invoices.isEmpty()) item { FushInlineState("لا توجد فواتير مرتبطة بهذا المندوب.") }
+                     items(invoices, key = { it.id }) { inv ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+@@ -273,7 +273,7 @@ private fun SalesRepresentativeProfile(
+                             tone = if (due > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
+                         )
+                     }
+-                    if (commissions.isEmpty()) item { Text("لا توجد عمولات مكتسبة بعد. العمولة تستحق بعد التحصيل.") }
++                    if (commissions.isEmpty()) item { FushInlineState("لا توجد عمولات مكتسبة بعد. العمولة تستحق بعد التحصيل.") }
+                     items(commissions, key = { it.id }) { c ->
+                         val net = c.earnedBase - c.reversedBase
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -290,7 +290,7 @@ private fun SalesRepresentativeProfile(
+                 }
+                 4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("سندات عمولة المندوب", "كل سند مرتبط بالمندوب؛ السند المرحل يُصحح بالعكس ولا يُحذف") }
+-                    if (vouchers.isEmpty()) item { Text("لا توجد سندات مرتبطة بهذا المندوب.") }
++                    if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا المندوب.") }
+                     items(vouchers, key = { it.id }) { v ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@@ -307,7 +307,7 @@ private fun SalesRepresentativeProfile(
+                 }
+                 else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                     item { FushSectionHeader("سجل التدقيق", "الأحداث والتعديلات المرتبطة بملف المندوب") }
+-                    if (audits.isEmpty()) item { Text("لا توجد أحداث تدقيق.") }
++                    if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق.") }
+                     items(audits, key = { it.id }) { a ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index becb69c..e4045d5 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -438,7 +438,7 @@ private fun SalesInvoiceDetailDialog(
+                     HorizontalDivider()
+                     Text("تفاصيل الأصناف (${saleLines.size})", style = MaterialTheme.typography.titleMedium)
+                     if (saleLines.isEmpty()) {
+-                        Text("لا توجد أسطر محفوظة لهذه الفاتورة.")
++                        FushInlineState("لا توجد أسطر محفوظة لهذه الفاتورة.")
+                     }
+                     saleLines.forEachIndexed { index, line ->
+                         val item = itemsList.firstOrNull { it.id == line.itemId }
+@@ -619,7 +619,7 @@ private fun CustomerAccountStatementDialog(
+                 Text(if (closing >= 0.0) "الرصيد المستحق على العميل: ${salesMoney(closing)} ريال" else "رصيد لصالح العميل: ${salesMoney(-closing)} ريال", style = MaterialTheme.typography.titleMedium, color = if (closing > 0.000001) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                 HorizontalDivider()
+                 Text("الحركة التفصيلية", style = MaterialTheme.typography.titleMedium)
+-                if (running.isEmpty()) Text("لا توجد حركات على حساب هذا العميل.")
++                if (running.isEmpty()) FushInlineState("لا توجد حركات على حساب هذا العميل.")
+                 running.forEach { (event, balance) ->
+                     val type = when (event.eventType) {
+                         "INVOICE" -> "فاتورة بيع"
+@@ -774,7 +774,7 @@ private fun SalesInvoiceDialog(
+                 if (salesReps.isNotEmpty()) {
+                     SalesSelectionField("مندوب المبيعات", salesRep?.let { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" } ?: "بدون مندوب", salesReps, { "${it.code} — ${it.fullNameAr} • ${salesMoneyRaw(it.commissionRatePct)}%" }) { salesRep = it }
+                 } else {
+-                    Text("لا يوجد مندوب مبيعات نشط. يمكن ترحيل الفاتورة بدون مندوب أو إضافته من قسم مناديب المبيعات.", style = MaterialTheme.typography.bodySmall)
++                    FushInlineState("لا يوجد مندوب مبيعات نشط. يمكن ترحيل الفاتورة بدون مندوب أو إضافته من قسم مناديب المبيعات.", tone = FushStatusTone.Info)
+                 }
+                 SalesSelectionField("المخزن", warehouse?.nameAr ?: "اختر", warehouses, { it.nameAr }) { warehouse = it }
+                 SalesSelectionField("العملة", currency?.nameAr ?: "اختر", currencies, { it.nameAr }) { currency = it }

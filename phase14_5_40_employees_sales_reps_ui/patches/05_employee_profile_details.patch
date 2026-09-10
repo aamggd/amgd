@@ -1,0 +1,211 @@
+From 75655fedc67f864f41da3638852447a677ecdd6c Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:08:42 +0000
+Subject: [PATCH] employee profile details
+
+---
+ .../fush/erp/ui/screens/EmployeeScreens.kt    | 141 ++++++++++--------
+ 1 file changed, 79 insertions(+), 62 deletions(-)
+
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index eee49cd..22d4be5 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -359,116 +359,133 @@ private fun EmployeeProfileScreen(
+         }
+         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+             when (tab) {
+-                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    item { FushSectionHeader("المعلومات الأساسية", "البيانات الوظيفية المعتمدة لهذا الموظف") }
+                     item {
+-                        Text("المعلومات الأساسية", style = MaterialTheme.typography.titleLarge)
+-                        Text("الكود: ${employee.code}")
+-                        Text("الاسم: ${employee.fullNameAr}")
+-                        if (employee.fullNameEn.isNotBlank()) Text("English: ${employee.fullNameEn}")
+-                        Text("المسمى الوظيفي: ${employee.jobTitle}")
+-                        Text("القسم: ${employee.department}")
+-                        Text("الهاتف: ${employee.phone.ifBlank { "—" }}")
+-                        Text("تاريخ التوظيف: ${fmtDate(employee.hireDate)}")
+-                        Text("الحالة: ${if (employee.status == "ACTIVE") "نشط" else "موقوف"}")
+-                        if (employee.notes.isNotBlank()) Text("ملاحظات: ${employee.notes}")
++                        ElevatedCard(Modifier.fillMaxWidth()) {
++                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Text("الكود: ${employee.code}")
++                                Text("الاسم: ${employee.fullNameAr}")
++                                if (employee.fullNameEn.isNotBlank()) Text("English: ${employee.fullNameEn}")
++                                Text("المسمى الوظيفي: ${employee.jobTitle}")
++                                Text("القسم: ${employee.department}")
++                                Text("الهاتف: ${employee.phone.ifBlank { "—" }}")
++                                Text("تاريخ التوظيف: ${fmtDate(employee.hireDate)}")
++                                if (employee.notes.isNotBlank()) Text("ملاحظات: ${employee.notes}", color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
++                    item {
++                        FushSectionHeader("ملخص الملف", "نظرة سريعة على النشاط والارتباطات")
+                     }
+                     item {
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp)) {
+-                                Text("ملخص الملف", style = MaterialTheme.typography.titleMedium)
+-                                Text("سجلات التدريب: ${trainings.size}")
+-                                Text("التدريب الساري: ${trainings.count { it.result == "PASS" && (it.expiresAt == null || it.expiresAt >= now) }}")
+-                                Text("التصاريح النشطة: ${authorizations.count { it.status == "ACTIVE" && (it.expiresAt == null || it.expiresAt >= now) }}")
++                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Text("سجلات التدريب: ${trainings.size} • الساري: $validTrainingCount")
++                                Text("تصاريح المعدات: ${authorizations.size} • النشط: $activeAuthorizationCount")
+                                 Text("أوامر الإنتاج المرتبطة: ${productionCompensations.size}")
+-                                Text("أجور/عمولات إنتاج مستحقة: ${employeeMoney(accruedProductionCompensation)} ريال")
+-                                Text("المدفوع من حساب 2200: ${employeeMoney(productionLaborPayments)} ريال")
+-                                Text("المتبقي المستحق: ${employeeMoney(outstandingProductionCompensation)} ريال")
+                                 Text("السندات المرتبطة: ${vouchers.size}")
+                             }
+                         }
+                     }
+                 }
+-                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("التدريب والكفاءة", style = MaterialTheme.typography.titleLarge) }
++                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("التدريب والكفاءة", "صلاحية الموظف للمهام تعتمد على التدريب ومدة سريانه") }
+                     if (trainings.isEmpty()) item { Text("لا توجد سجلات تدريب لهذا الموظف.") }
+                     items(trainings, key = { it.id }) { row ->
++                        val expired = row.expiresAt != null && row.expiresAt < now
++                        val valid = row.result == "PASS" && !expired
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text(row.courseTitle, style = MaterialTheme.typography.titleMedium)
+-                                Text("النتيجة: ${row.result} • ملاحظة عملية: ${if (row.practicalObserved) "نعم" else "لا"}")
+-                                Text("أكمل: ${fmtDate(row.completedAt)} • الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "مفتوحة"}")
+-                                if (row.expiresAt != null && row.expiresAt < now) Text("منتهي", color = MaterialTheme.colorScheme.error)
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text(row.courseTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                                    FushStatusPill(if (expired) "منتهي" else row.result, if (valid) FushStatusTone.Success else FushStatusTone.Warning)
++                                }
++                                Text("ملاحظة عملية: ${if (row.practicalObserved) "نعم" else "لا"}")
++                                Text("أكمل: ${fmtDate(row.completedAt)} • الصلاحية: ${row.expiresAt?.let(::fmtDate) ?: "مفتوحة"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+                         }
+                     }
+                 }
+-                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("تصاريح المعدات", style = MaterialTheme.typography.titleLarge) }
++                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("تصاريح المعدات", "الترخيص التشغيلي المرتبط بالمعدة والتدريب المؤهل") }
+                     if (authorizations.isEmpty()) item { Text("لا توجد تصاريح لهذا الموظف.") }
+                     items(authorizations, key = { it.id }) { row ->
++                        val expired = row.expiresAt != null && row.expiresAt < now
++                        val active = row.status == "ACTIVE" && !expired
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text("${row.authorizationNo} — ${row.assetName}", style = MaterialTheme.typography.titleMedium)
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text("${row.authorizationNo} — ${row.assetName}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
++                                    FushStatusPill(if (active) "ساري" else if (expired) "منتهي" else row.status, if (active) FushStatusTone.Success else FushStatusTone.Warning)
++                                }
+                                 Text("التدريب: ${row.courseTitle}")
+-                                Text("الإصدار: ${fmtDate(row.issuedAt)} • الانتهاء: ${row.expiresAt?.let(::fmtDate) ?: "مفتوح"}")
+-                                Text("الحالة: ${row.status}")
++                                Text("الإصدار: ${fmtDate(row.issuedAt)} • الانتهاء: ${row.expiresAt?.let(::fmtDate) ?: "مفتوح"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+                         }
+                     }
+                 }
+-                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    item { FushSectionHeader("استحقاقات الإنتاج", "الاستحقاق ينشأ من أمر الإنتاج ويُرحّل إلى حساب 2200 قبل الصرف") }
+                     item {
+-                        Text("استحقاقات الإنتاج", style = MaterialTheme.typography.titleLarge)
+-                        Text("كل عمولة/أجر دفعة يرتبط بهذا الموظف عبر أمر الإنتاج. يصبح المبلغ مستحقاً عند ترحيل نتيجة الدفعة إلى حساب 2200.", style = MaterialTheme.typography.bodySmall)
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                            FushMetricCard("المستحق", "${employeeMoney(accruedProductionCompensation)} ر.ي", Modifier.weight(1f), tone = FushStatusTone.Info)
++                            FushMetricCard("المدفوع", "${employeeMoney(productionLaborPayments)} ر.ي", Modifier.weight(1f), tone = FushStatusTone.Success)
++                        }
+                     }
+                     item {
+-                        ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text("إجمالي المستحق: ${employeeMoney(accruedProductionCompensation)} ريال")
+-                                Text("المدفوع: ${employeeMoney(productionLaborPayments)} ريال")
+-                                Text("المتبقي: ${employeeMoney(outstandingProductionCompensation)} ريال", style = MaterialTheme.typography.titleMedium)
+-                                Text("لصرف المستحق استخدم سند صرف على حساب 2200 واختر هذا الموظف.", style = MaterialTheme.typography.bodySmall)
+-                            }
+-                        }
++                        FushMetricCard(
++                            "المتبقي المطلوب تسويته",
++                            "${employeeMoney(outstandingProductionCompensation)} ر.ي",
++                            Modifier.fillMaxWidth(),
++                            helper = "يُصرف بسند صرف على حساب 2200 مع اختيار الموظف نفسه",
++                            tone = if (outstandingProductionCompensation > 0.000001) FushStatusTone.Warning else FushStatusTone.Success
++                        )
+                     }
+                     if (productionCompensations.isEmpty()) item { Text("لا توجد أوامر إنتاج مرتبطة بهذا الموظف.") }
+                     items(productionCompensations, key = { it.orderId }) { row ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text("${row.orderNo} • ${fmtDate(row.plannedDate)}", style = MaterialTheme.typography.titleMedium)
+-                                Text("عمولة/أجر الدفعة: ${employeeMoney(row.laborCostBase)} ريال")
+-                                Text("حالة الأمر: ${row.orderStatus}")
+-                                Text(if (row.isAccrued) "تم ترحيل الاستحقاق إلى حساب 2200" else "غير مستحق بعد — ينتظر ترحيل نتيجة الدفعة", color = if (row.isAccrued) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text(row.orderNo, style = MaterialTheme.typography.titleMedium)
++                                    FushStatusPill(
++                                        if (row.isAccrued) "مستحق" else "بانتظار الترحيل",
++                                        if (row.isAccrued) FushStatusTone.Success else FushStatusTone.Warning
++                                    )
++                                }
++                                Text("تاريخ التخطيط: ${fmtDate(row.plannedDate)} • حالة الأمر: ${row.orderStatus}")
++                                Text("أجر/عمولة الدفعة: ${employeeMoney(row.laborCostBase)} ريال", style = MaterialTheme.typography.titleSmall)
++                                Text(if (row.isAccrued) "تم ترحيل الاستحقاق إلى حساب 2200" else "لا يمكن اعتباره مستحقًا قبل ترحيل نتيجة الدفعة", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+                         }
+                     }
+                 }
+-                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item {
+-                        Text("السندات المرتبطة بالموظف", style = MaterialTheme.typography.titleLarge)
+-                        Text("الحساب 2200 مخصص لأجور الموظفين المستحقة. السند المرحل لا يحذف؛ التصحيح بالعكس.", style = MaterialTheme.typography.bodySmall)
+-                    }
++                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("السندات المرتبطة بالموظف", "السند المرحل لا يُحذف؛ أي تصحيح يتم بقيد عكسي مستقل") }
+                     if (vouchers.isEmpty()) item { Text("لا توجد سندات مرتبطة بهذا الموظف.") }
+                     items(vouchers, key = { it.id }) { voucher ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text("${fmtDate(voucher.voucherDate)} • ${voucher.voucherNo}")
+-                                Text("${if (voucher.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${employeeMoney(voucher.amountBase)} ريال • ${voucher.status}")
+-                                Text(voucher.description, style = MaterialTheme.typography.bodySmall)
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                                    Text(voucher.voucherNo, style = MaterialTheme.typography.titleMedium)
++                                    FushStatusPill(voucher.status, if (voucher.status == "POSTED") FushStatusTone.Success else FushStatusTone.Warning)
++                                }
++                                Text("${fmtDate(voucher.voucherDate)} • ${if (voucher.voucherType == "PAYMENT") "سند صرف" else "سند قبض"} • ${employeeMoney(voucher.amountBase)} ريال")
++                                Text(voucher.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                 if (voucher.status == "POSTED") OutlinedButton(onClick = { reverseVoucher = voucher }) { Text("عكس السند") }
+                             }
+                         }
+                     }
+                 }
+-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    item { Text("سجل التدقيق", style = MaterialTheme.typography.titleLarge) }
++                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    item { FushSectionHeader("سجل التدقيق", "تاريخ التغييرات والإجراءات المرتبطة بملف الموظف") }
+                     if (audits.isEmpty()) item { Text("لا توجد أحداث تدقيق لهذا الموظف.") }
+                     items(audits, key = { it.id }) { audit ->
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+-                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                                Text("${employeeDateTime(audit.eventAt)} • ${audit.action}")
++                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                                Text("${employeeDateTime(audit.eventAt)} • ${audit.action}", style = MaterialTheme.typography.titleSmall)
+                                 if (audit.reason.isNotBlank()) Text(audit.reason)
+-                                if (audit.newValue.isNotBlank()) Text(audit.newValue, style = MaterialTheme.typography.bodySmall)
++                                if (audit.newValue.isNotBlank()) Text(audit.newValue, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+                         }
+                     }
+-- 
+2.47.3

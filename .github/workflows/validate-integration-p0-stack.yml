@@ -1,0 +1,154 @@
+name: Validate FUSH P0 Integration Stack
+
+on:
+  push:
+    branches:
+      - 'fush/integration-current-p0-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-p0-stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout candidate integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Download exact Central 14.5.54 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.54-Printing-Integrated-Build
+          path: artifacts/base54
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31909754750
+
+      - name: Restore exact Central 14.5.54 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP=artifacts/base54/FushERP-Mobile-Phase14.5.54-Printing-Integrated-Source.zip
+          test -s "$ZIP"
+          mkdir -p restored work
+          unzip -q "$ZIP" -d restored
+          BASE=$(find restored -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" work/
+          cd work
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+          git add -A
+          TREE=$(git write-tree)
+          echo "BASELINE_SOURCE_TREE=$TREE"
+          test "$TREE" = '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -s app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' app/src/main/java app/build.gradle.kts
+
+      - name: Apply cumulative accepted P0 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          STACK=integration_current/P0_PATCH_STACK.tsv
+          test -f "$STACK"
+          while IFS=$'\t' read -r mode path handoff patchid label; do
+            [ -z "${mode:-}" ] && continue
+            case "$mode" in
+              '#'* ) continue ;;
+              none ) echo "No application patch: $label" ;;
+              raw )
+                test -s "$path"
+                (cd work && git apply --check "../$path" && git apply "../$path")
+                ;;
+              xz_b64 )
+                test -s "$path"
+                tmp=$(mktemp)
+                base64 -d "$path" | xz -dc > "$tmp"
+                (cd work && git apply --check "$tmp" && git apply "$tmp")
+                rm -f "$tmp"
+                ;;
+              * ) echo "Unknown patch mode: $mode" >&2; exit 1 ;;
+            esac
+          done < "$STACK"
+          cd work
+          git diff --check
+
+      - name: Domain regression selectors
+        shell: bash
+        run: |
+          set -euo pipefail
+          TESTS=integration_current/P0_DOMAIN_TESTS.txt
+          test -f "$TESTS"
+          while IFS= read -r selector; do
+            [ -z "${selector:-}" ] && continue
+            case "$selector" in '#'* ) continue ;; esac
+            echo "Running domain regression: $selector"
+            (cd work && gradle --no-daemon :app:testDebugUnitTest --tests "$selector")
+          done < "$TESTS"
+
+      - name: UI localization parity regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          def keys(path):
+              root=ET.parse(path).getroot()
+              return {x.attrib.get('name') for x in root if x.tag in {'string','plurals','string-array'} and x.attrib.get('name')}
+          a=keys(Path('work/app/src/main/res/values/strings.xml'))
+          b=keys(Path('work/app/src/main/res/values-ar/strings.xml'))
+          assert a == b, f'resource parity mismatch default-only={sorted(a-b)[:20]} ar-only={sorted(b-a)[:20]}'
+          print(f'UI_RESOURCE_PARITY_PASS={len(a)}')
+          PY
+
+      - name: Unit tests
+        working-directory: work
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
+      - name: Release build
+        working-directory: work
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Validate package Room and no destructive migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=work/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery'" apk-badging.txt
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' work/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -s work/app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' work/app/src/main/java work/app/build.gradle.kts
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 "$APK"

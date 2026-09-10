@@ -1,0 +1,209 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -260,26 +260,188 @@
+     val filtered = remember(suppliers, search) {
+         val q = search.trim().lowercase(Locale.ROOT)
+         if (q.isBlank()) suppliers else suppliers.filter {
+-            listOf(it.nameAr, it.nameEn, it.code, it.phone, it.address).any { x -> x.lowercase(Locale.ROOT).contains(q) }
+-        }
+-    }
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++            listOf(it.nameAr, it.nameEn, it.code, it.phone, it.address, it.currencyCode).any { x -> x.lowercase(Locale.ROOT).contains(q) }
++        }
++    }
++    val totalOutstanding = remember(balances) { balances.sumOf { it.outstandingBase } }
++    val totalOverdue = remember(balances) { balances.sumOf { it.overdueBase } }
++    val creditTermsCount = remember(suppliers) { suppliers.count { it.paymentTermsDays > 0 } }
++
++    LazyColumn(
++        modifier.fillMaxSize().padding(16.dp),
++        verticalArrangement = Arrangement.spacedBy(14.dp),
++    ) {
+         item {
+-            Text("الموردون", style = MaterialTheme.typography.headlineSmall)
+-            Text("ملف مستقل لكل مورد: كشف حساب، فواتير، دفعات، سندات، مرتجعات، مرفقات وتدقيق.", style = MaterialTheme.typography.bodySmall)
+-            Spacer(Modifier.height(8.dp))
+-            Button(onClick = { showAdd = true }) { Text("مورد جديد") }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-            OutlinedTextField(search, { search = it }, label = { Text("بحث عن المورد") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+-        }
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                FushSectionHeader(
++                    title = "الموردون",
++                    subtitle = "ملفات الموردين والفواتير والدفعات والالتزامات في مكان واحد",
++                    modifier = Modifier.weight(1f),
++                )
++                Spacer(Modifier.width(12.dp))
++                Button(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("مورد جديد") }
++            }
++        }
++
++        message?.let { text ->
++            item {
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) {
++                    Text(text, Modifier.fillMaxWidth().padding(12.dp), style = MaterialTheme.typography.bodyMedium)
++                }
++            }
++        }
++
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "عدد الموردين",
++                    value = suppliers.size.toString(),
++                    helper = "مورد مسجل",
++                    modifier = Modifier.weight(1f),
++                    tone = FushStatusTone.Info,
++                )
++                FushMetricCard(
++                    label = "إجمالي المستحق",
++                    value = partyMoney(totalOutstanding),
++                    helper = "بالعملة الأساسية",
++                    modifier = Modifier.weight(1f),
++                    tone = if (totalOutstanding > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++                )
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard(
++                    label = "متأخر السداد",
++                    value = partyMoney(totalOverdue),
++                    helper = "التزام يحتاج متابعة",
++                    modifier = Modifier.weight(1f),
++                    tone = if (totalOverdue > 0.000001) FushStatusTone.Danger else FushStatusTone.Success,
++                )
++                FushMetricCard(
++                    label = "موردون بشروط أجل",
++                    value = creditTermsCount.toString(),
++                    helper = "شروط دفع أكبر من صفر",
++                    modifier = Modifier.weight(1f),
++                    tone = FushStatusTone.Info,
++                )
++            }
++        }
++
++        item {
++            OutlinedTextField(
++                value = search,
++                onValueChange = { search = it },
++                label = { Text("بحث عن المورد") },
++                placeholder = { Text("الاسم، الكود، الهاتف، العنوان أو العملة") },
++                modifier = Modifier.fillMaxWidth(),
++                singleLine = true,
++                shape = MaterialTheme.shapes.medium,
++                supportingText = { Text("يعرض ${filtered.size} من ${suppliers.size} مورد") },
++            )
++        }
++
++        if (filtered.isEmpty()) {
++            item {
++                ElevatedCard(
++                    Modifier.fillMaxWidth(),
++                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                ) {
++                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
++                        Text(if (suppliers.isEmpty()) "لا يوجد موردون بعد" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
++                        Text(
++                            if (suppliers.isEmpty()) "أنشئ أول ملف مورد لتبدأ إدارة المشتريات والالتزامات." else "جرّب البحث باسم أو كود مختلف.",
++                            style = MaterialTheme.typography.bodyMedium,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        )
++                    }
++                }
++            }
++        }
++
+         items(filtered, key = { it.id }) { supplier ->
+-            val b = balances.firstOrNull { it.supplierId == supplier.id }
+-            ElevatedCard(onClick = { selected = supplier }, modifier = Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+-                    Text(supplier.nameAr, style = MaterialTheme.typography.titleMedium)
+-                    Text("${supplier.code} • ${supplier.currencyCode} • أجل ${supplier.paymentTermsDays} يوم")
+-                    Text("الرصيد المستحق للمورد: ${partyMoney(b?.outstandingBase ?: 0.0)}", style = MaterialTheme.typography.bodySmall)
+-                    Text("فتح ملف المورد ←", color = MaterialTheme.colorScheme.primary)
++            val balance = balances.firstOrNull { it.supplierId == supplier.id }
++            val outstanding = balance?.outstandingBase ?: 0.0
++            val overdue = balance?.overdueBase ?: 0.0
++            val balanceTone = when {
++                overdue > 0.000001 -> FushStatusTone.Danger
++                outstanding > 0.000001 -> FushStatusTone.Warning
++                else -> FushStatusTone.Success
++            }
++
++            ElevatedCard(
++                onClick = { selected = supplier },
++                modifier = Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++            ) {
++                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        verticalAlignment = Alignment.CenterVertically,
++                        horizontalArrangement = Arrangement.spacedBy(12.dp),
++                    ) {
++                        FushUserAvatar(supplier.nameAr)
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text(supplier.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text(
++                                supplier.code,
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            )
++                        }
++                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                            FushStatusPill(supplier.currencyCode, FushStatusTone.Info)
++                            FushStatusPill(
++                                if (supplier.paymentTermsDays > 0) "أجل ${supplier.paymentTermsDays} يوم" else "نقدي",
++                                if (supplier.paymentTermsDays > 0) FushStatusTone.Warning else FushStatusTone.Success,
++                            )
++                        }
++                    }
++
++                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically,
++                    ) {
++                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text("المستحق للمورد", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(partyMoney(outstanding), style = MaterialTheme.typography.titleLarge)
++                        }
++                        FushStatusPill(
++                            when {
++                                overdue > 0.000001 -> "متأخر ${partyMoney(overdue)}"
++                                outstanding > 0.000001 -> "التزام مفتوح"
++                                else -> "لا يوجد مستحق"
++                            },
++                            balanceTone,
++                        )
++                    }
++
++                    Row(
++                        Modifier.fillMaxWidth(),
++                        horizontalArrangement = Arrangement.SpaceBetween,
++                        verticalAlignment = Alignment.CenterVertically,
++                    ) {
++                        Text(
++                            supplier.address.ifBlank { supplier.phone.ifBlank { "لا توجد بيانات اتصال" } },
++                            style = MaterialTheme.typography.bodySmall,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant,
++                            modifier = Modifier.weight(1f),
++                        )
++                        Spacer(Modifier.width(10.dp))
++                        Text("فتح ملف المورد ←", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
++                    }
+                 }
+             }
+         }

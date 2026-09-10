@@ -1,0 +1,144 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index a54001c..0c0a95a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -11,6 +11,10 @@ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.*
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.export.ReportExportDocument
+ import com.fush.erp.ui.export.ReportExportTable
+@@ -240,39 +244,61 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+     val acceptanceRate = ReportMath.percent(accepted, actual)
+     val scrapRate = ReportMath.percent(scrap, actual)
+ 
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+         item {
+-            SectionTitle("مؤشرات الإنتاج للفترة")
+-            MetricGrid(listOf(
+-                "أوامر الإنتاج" to rows.size.toString(),
+-                "المخطط" to qty(planned),
+-                "الناتج الفعلي" to qty(actual),
+-                "المقبول الإجمالي" to qty(accepted),
+-                "مقبول 60 مل" to qty(accepted60),
+-                "مقبول 200 مل" to qty(accepted200),
+-                "المرفوض" to qty(rejected),
+-                "الهالك" to qty(scrap),
+-                "تحقيق الخطة" to "%.1f%%".format(Locale.US, planAchievement),
+-                "نسبة القبول" to "%.1f%%".format(Locale.US, acceptanceRate),
+-                "نسبة الهالك" to "%.1f%%".format(Locale.US, scrapRate),
+-                "تكلفة المواد" to money(materialCost),
+-                "تكلفة العمالة" to money(laborCost),
+-                "إجمالي تكلفة الإنتاج" to money(totalCost),
+-                "متوسط تكلفة المقبول/وحدة" to money(ReportMath.unitCost(totalCost, accepted))
+-            ))
++            FushSectionHeader("أداء الإنتاج", "قراءة تنفيذ الخطة، جودة الناتج والتكلفة الفعلية خلال الفترة المحددة.")
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("تحقيق الخطة", "%.1f%%".format(Locale.US, planAchievement), Modifier.weight(1f), "${qty(actual)} من ${qty(planned)}", if (planAchievement >= 95.0) FushStatusTone.Success else FushStatusTone.Info)
++                FushMetricCard("نسبة القبول", "%.1f%%".format(Locale.US, acceptanceRate), Modifier.weight(1f), "${qty(accepted)} وحدة", if (acceptanceRate >= 95.0) FushStatusTone.Success else FushStatusTone.Warning)
++            }
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("نسبة الهالك", "%.1f%%".format(Locale.US, scrapRate), Modifier.weight(1f), "${qty(scrap)} وحدة", if (scrapRate > 5.0) FushStatusTone.Danger else FushStatusTone.Neutral)
++                FushMetricCard("أوامر الإنتاج", rows.size.toString(), Modifier.weight(1f), "خلال الفترة", FushStatusTone.Neutral)
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Text("الكميات والجودة", style = MaterialTheme.typography.titleMedium)
++                    MetricGrid(listOf(
++                        "المخطط" to qty(planned),
++                        "الناتج الفعلي" to qty(actual),
++                        "المقبول الإجمالي" to qty(accepted),
++                        "المرفوض" to qty(rejected),
++                        "مقبول 60 مل" to qty(accepted60),
++                        "مقبول 200 مل" to qty(accepted200)
++                    ))
++                }
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Text("التكلفة الفعلية", style = MaterialTheme.typography.titleMedium)
++                    MetricGrid(listOf(
++                        "تكلفة المواد" to money(materialCost),
++                        "تكلفة العمالة" to money(laborCost),
++                        "إجمالي تكلفة الإنتاج" to money(totalCost),
++                        "تكلفة المقبول/وحدة" to money(ReportMath.unitCost(totalCost, accepted))
++                    ))
++                }
++            }
+         }
+         item {
+             maintenance?.let {
+-                SectionTitle("الصيانة المرتبطة بالفترة")
++                FushSectionHeader("الصيانة وتأثيرها", "مؤشرات توقف وصيانة المعدات المرتبطة بفترة الإنتاج.")
++                Spacer(Modifier.height(6.dp))
+                 MetricGrid(listOf(
+                     "أوامر الصيانة" to it.workOrderCount.toString(), "مفتوحة" to it.openCount.toString(),
+                     "توقف/دقيقة" to it.downtimeMinutes.toString(), "تكلفة الصيانة" to money(it.costBase)
+                 ))
+             }
+         }
+-        item { SectionTitle("استهلاك المواد الفعلي") }
++        item { FushSectionHeader("استهلاك المواد", "الكميات والتكلفة التاريخية الفعلية للمواد المصروفة إلى أوامر الإنتاج.") }
+         if (materialUsage.isEmpty()) {
+-            item { Text("لا توجد مواد مصروفة للإنتاج في هذه الفترة.", style = MaterialTheme.typography.bodySmall) }
++            item { Text("لا توجد مواد مصروفة للإنتاج في هذه الفترة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         }
+         items(materialUsage, key = { it.itemId }) { m ->
+             ReportCard("${m.itemName} — ${m.code}", "استخدمت في ${m.orderCount} أمر إنتاج", listOf(
+@@ -281,23 +307,36 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+                 "إجمالي تكلفة المادة" to money(m.totalCostBase)
+             ))
+         }
+-        item { SectionTitle("أوامر الإنتاج") }
++        item { FushSectionHeader("أوامر الإنتاج", "تفاصيل الخطة والناتج والتكلفة لكل أمر.") }
+         if (rows.isEmpty()) {
+-            item { Text("لا توجد أوامر إنتاج في الفترة المحددة.", style = MaterialTheme.typography.bodySmall) }
++            item { Text("لا توجد أوامر إنتاج في الفترة المحددة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+         }
+         items(rows, key = { it.orderId }) { r ->
+             val yield = ReportMath.percent(r.acceptedQtyBase, r.plannedQtyBase)
+             val activityDate = r.manufactureDate ?: r.plannedDate
+-            ReportCard(r.orderNo, "${r.productName} • ${r.batchNo ?: "بدون دفعة"} • ${fmtDate(activityDate)} • ${r.status}", listOf(
+-                "مخطط" to qty(r.plannedQtyBase), "فعلي" to qty(r.actualQtyBase), "مقبول" to qty(r.acceptedQtyBase),
+-                "مرفوض" to qty(r.rejectedQtyBase), "هالك" to qty(r.scrapQtyBase), "العائد" to "%.1f%%".format(Locale.US, yield),
+-                "مواد" to money(r.materialCostBase), "عمالة" to money(r.laborCostBase), "تكلفة فعلية" to money(r.actualCostBase),
+-                "تكلفة المقبول/وحدة" to money(ReportMath.unitCost(r.actualCostBase, r.acceptedQtyBase))
+-            ))
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++                        Column(Modifier.weight(1f)) {
++                            Text(r.orderNo, style = MaterialTheme.typography.titleMedium)
++                            Text("${r.productName} • ${r.batchNo ?: "بدون دفعة"} • ${fmtDate(activityDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(reportProductionStatusAr(r.status), reportProductionStatusTone(r.status))
++                    }
++                    MetricGrid(listOf(
++                        "مخطط" to qty(r.plannedQtyBase), "فعلي" to qty(r.actualQtyBase),
++                        "مقبول" to qty(r.acceptedQtyBase), "مرفوض" to qty(r.rejectedQtyBase),
++                        "هالك" to qty(r.scrapQtyBase), "العائد" to "%.1f%%".format(Locale.US, yield),
++                        "مواد" to money(r.materialCostBase), "عمالة" to money(r.laborCostBase),
++                        "تكلفة فعلية" to money(r.actualCostBase), "تكلفة المقبول/وحدة" to money(ReportMath.unitCost(r.actualCostBase, r.acceptedQtyBase))
++                    ))
++                }
++            }
+         }
+     }
+ }
+ 
++
+ private fun buildCurrentReportExportDocument(
+     tab: String,
+     periodLabel: String,

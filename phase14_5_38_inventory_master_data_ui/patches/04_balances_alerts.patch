@@ -1,0 +1,200 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-14 00:25:39.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-15 01:42:52.317426820 +0000
+@@ -207,69 +235,87 @@
+     val now = System.currentTimeMillis()
+     var selectedWarehouseId by remember { mutableStateOf<Long?>(null) }
+     var selectedCategory by remember { mutableStateOf<String?>(null) }
++    var search by remember { mutableStateOf("") }
+ 
+-    val filtered = remember(rows, selectedWarehouseId, selectedCategory) {
++    val filtered = remember(rows, selectedWarehouseId, selectedCategory, search) {
++        val q = search.trim().lowercase(Locale.ROOT)
+         rows.filter { row ->
+             (selectedWarehouseId == null || row.warehouseId == selectedWarehouseId) &&
+-                (selectedCategory == null || row.category == selectedCategory)
++                (selectedCategory == null || row.category == selectedCategory) &&
++                (q.isBlank() || listOf(row.nameAr, row.code, row.warehouseName, itemCategoryLabel(row.category)).any { it.lowercase(Locale.ROOT).contains(q) })
+         }
+     }
+     val grouped = remember(filtered) { filtered.groupBy { it.warehouseId } }
+ 
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+-            Text("الأرصدة الحالية حسب المخزن", style = MaterialTheme.typography.titleLarge)
+-            Text("افصل الرصيد حسب المخزن الفعلي ثم صفِّه إلى منتج نهائي أو مواد خام أو مواد تغليف.", style = MaterialTheme.typography.bodySmall)
+-            Spacer(Modifier.height(6.dp))
+-            Text("المخزن", style = MaterialTheme.typography.titleSmall)
++            FushSectionHeader("الأرصدة الحالية", "الرصيد مفصول حسب المخزن الفعلي ونوع الصنف")
++            Spacer(Modifier.height(8.dp))
++            OutlinedTextField(
++                value = search,
++                onValueChange = { search = it },
++                modifier = Modifier.fillMaxWidth(),
++                label = { Text("بحث في المخزون") },
++                placeholder = { Text("اسم الصنف، الكود أو المخزن") },
++                singleLine = true,
++                shape = MaterialTheme.shapes.medium,
++                supportingText = { Text("يعرض ${filtered.size} من ${rows.size} رصيد") },
++            )
++            Text("المخزن", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                 item { FilterChip(selected = selectedWarehouseId == null, onClick = { selectedWarehouseId = null }, label = { Text("كل المخازن") }) }
+                 items(warehouses.filter { it.isActive }) { wh ->
+-                    FilterChip(
+-                        selected = selectedWarehouseId == wh.id,
+-                        onClick = { selectedWarehouseId = wh.id },
+-                        label = { Text(warehouseShortName(wh)) }
+-                    )
++                    FilterChip(selected = selectedWarehouseId == wh.id, onClick = { selectedWarehouseId = wh.id }, label = { Text(warehouseShortName(wh)) })
+                 }
+             }
+-            Spacer(Modifier.height(6.dp))
+-            Text("نوع الصنف", style = MaterialTheme.typography.titleSmall)
++            Text("نوع الصنف", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                 item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("الكل") }) }
+-                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { selectedCategory = "FINISHED_GOOD" }, label = { Text("المنتج النهائي") }) }
+-                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { selectedCategory = "RAW_MATERIAL" }, label = { Text("المواد الخام") }) }
+-                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { selectedCategory = "PACKAGING" }, label = { Text("مواد التغليف") }) }
++                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { selectedCategory = "FINISHED_GOOD" }, label = { Text("منتج نهائي") }) }
++                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { selectedCategory = "RAW_MATERIAL" }, label = { Text("مواد خام") }) }
++                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { selectedCategory = "PACKAGING" }, label = { Text("تغليف") }) }
+             }
+         }
+ 
+         if (filtered.isEmpty()) {
+-            item { Text("لا يوجد رصيد مطابق لهذا المخزن/النوع.") }
++            item {
++                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
++                    Text("لا يوجد رصيد مطابق للفلاتر الحالية.", Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
++            }
+         }
+ 
+         warehouses.filter { wh -> grouped.containsKey(wh.id) }.forEach { wh ->
+             item {
+-                Spacer(Modifier.height(4.dp))
+-                Text(warehouseDisplayName(wh), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+-                if (wh.location.isNotBlank()) Text(wh.location, style = MaterialTheme.typography.bodySmall)
++                FushSectionHeader(warehouseDisplayName(wh), wh.location.takeIf { it.isNotBlank() })
+             }
+             items(grouped[wh.id].orEmpty(), key = { "${it.warehouseId}-${it.itemId}" }) { row ->
+                 val itemLots = lots.filter { it.warehouseId == row.warehouseId && it.itemId == row.itemId && it.quantityBase > 0.000000001 }
+                 val sellable = itemLots.filter { (it.expiryDate == null || it.expiryDate >= now) && it.controlStatus == "ACCEPTED" }.sumOf { it.quantityBase }
+                 val expired = itemLots.filter { it.expiryDate != null && it.expiryDate < now }.sumOf { it.quantityBase }
+                 val controlled = itemLots.filter { it.controlStatus != "ACCEPTED" }.sumOf { it.quantityBase }
+-                ElevatedCard(Modifier.fillMaxWidth()) {
+-                    ListItem(
+-                        headlineContent = { Text(row.nameAr) },
+-                        supportingContent = {
+-                            Column {
+-                                Text("${row.code} • ${itemCategoryLabel(row.category)}")
+-                                if (itemLots.isNotEmpty()) {
+-                                    Text("الكلي ${fmtQty(row.quantityBase)} • متاح ${fmtQty(sellable)} • منتهي ${fmtQty(expired)} • محجور/موقوف ${fmtQty(controlled)}")
+-                                }
++                ElevatedCard(
++                    Modifier.fillMaxWidth(),
++                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++                ) {
++                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                            Column(Modifier.weight(1f)) {
++                                Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                                Text("${row.code} • ${itemCategoryLabel(row.category)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                             }
+-                        },
+-                        trailingContent = { Text("${fmtQty(row.quantityBase)} ${row.baseUnitName}") }
+-                    )
++                            FushStatusPill("${fmtQty(row.quantityBase)} ${row.baseUnitName}", FushStatusTone.Info)
++                        }
++                        if (itemLots.isNotEmpty()) {
++                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                                FushStatusPill("متاح ${fmtQty(sellable)}", FushStatusTone.Success)
++                                if (expired > 0.000000001) FushStatusPill("منتهي ${fmtQty(expired)}", FushStatusTone.Danger)
++                                if (controlled > 0.000000001) FushStatusPill("محجور ${fmtQty(controlled)}", FushStatusTone.Warning)
++                            }
++                        }
++                    }
+                 }
+             }
+         }
+@@ -307,35 +353,54 @@
+     expiry: List<InventoryLotAlertRow>,
+     onConfigure: () -> Unit
+ ) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++    val now = System.currentTimeMillis()
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+-            Text("تنبيهات إعادة الطلب حسب المخزن", style = MaterialTheme.typography.titleLarge)
+-            Text("يعتمد التنبيه على الرصيد المتاح فعلياً داخل المخزن المحدد فقط، ويستبعد التشغيلات المنتهية والمحجورة والموقوفة والمرتجعة.", style = MaterialTheme.typography.bodySmall)
+-            Spacer(Modifier.height(4.dp))
+-            OutlinedButton(onClick = onConfigure, modifier = Modifier.fillMaxWidth()) { Text("إعداد حدود إعادة الطلب حسب المخزن") }
++            FushSectionHeader("تنبيهات المخزون", "إعادة الطلب والصلاحية التي تحتاج إجراءً")
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "صنف × مخزن", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
++                FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
++            }
++            Spacer(Modifier.height(8.dp))
++            OutlinedButton(onClick = onConfigure, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium) { Text("إعداد حدود إعادة الطلب حسب المخزن") }
++        }
++        item { FushSectionHeader("إعادة الطلب", "الرصيد المتاح فقط؛ دون المنتهي أو المحجور أو الموقوف") }
++        if (reorder.isEmpty()) {
++            item { Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أصناف عند حد إعادة الطلب أو أقل.", Modifier.fillMaxWidth().padding(14.dp)) } }
+         }
+-        if (reorder.isEmpty()) item { Text("لا توجد أصناف عند حد إعادة الطلب أو أقل في المخازن المعرّفة.") }
+         items(reorder, key = { "reorder-${it.warehouseId}-${it.itemId}" }) { row ->
+-            Card(Modifier.fillMaxWidth()) {
+-                ListItem(
+-                    headlineContent = { Text(row.nameAr) },
+-                    supportingContent = { Text("${row.warehouseName} (${row.warehouseCode}) • ${row.code} • الحد ${fmtQty(row.reorderLevel)} ${row.baseUnitName}") },
+-                    trailingContent = { Text(fmtQty(row.quantityBase), color = MaterialTheme.colorScheme.error) }
+-                )
++            val tone = if (row.quantityBase <= 0.000000001) FushStatusTone.Danger else FushStatusTone.Warning
++            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.warehouseName} (${row.warehouseCode}) • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill("متاح ${fmtQty(row.quantityBase)}", tone)
++                    }
++                    Text("حد إعادة الطلب ${fmtQty(row.reorderLevel)} ${row.baseUnitName}", style = MaterialTheme.typography.bodySmall)
++                }
+             }
+         }
+-        item {
+-            Spacer(Modifier.height(8.dp))
+-            Text("الصلاحية خلال 30 يوماً", style = MaterialTheme.typography.titleLarge)
++        item { FushSectionHeader("الصلاحية", "التشغيلات المنتهية أو التي تنتهي خلال 30 يومًا") }
++        if (expiry.isEmpty()) {
++            item { Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يومًا.", Modifier.fillMaxWidth().padding(14.dp)) } }
+         }
+-        if (expiry.isEmpty()) item { Text("لا توجد تشغيلات منتهية أو قريبة الانتهاء خلال 30 يوماً.") }
+         items(expiry) { row ->
+-            Card(Modifier.fillMaxWidth()) {
+-                ListItem(
+-                    headlineContent = { Text(row.nameAr) },
+-                    supportingContent = { Text("${row.warehouseName} • تشغيلة ${row.lotNo ?: "بدون رقم"} • ${row.expiryDate?.let(::fmtDate) ?: "بدون صلاحية"}") },
+-                    trailingContent = { Text(fmtQty(row.quantityBase)) }
+-                )
++            val expired = row.expiryDate?.let { it < now } == true
++            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.warehouseName} • تشغيلة ${row.lotNo ?: "بدون رقم"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(if (expired) "منتهية" else "قريبة الانتهاء", if (expired) FushStatusTone.Danger else FushStatusTone.Warning)
++                    }
++                    Text("الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "بدون تاريخ"} • الرصيد ${fmtQty(row.quantityBase)}", style = MaterialTheme.typography.bodySmall)
++                }
+             }
+         }
+     }

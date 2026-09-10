@@ -1,0 +1,26 @@
+# FUSH ERP Mobile — UI Professionalization Phase 9
+
+## Phase
+14.5.42 — Reports, Analytics & Adaptive Layout
+
+## UI scope
+- Professional report workspace with a dedicated wide-screen navigation panel.
+- Phone layout keeps compact horizontal period/report filters.
+- Tablet/large-screen layout uses a persistent primary NavigationRail in the application shell.
+- Report KPI grids expand from 2 columns on phones to 3/4 columns on wider screens.
+- Report detail cards use multi-column metric presentation when space allows.
+- Added executive summaries for sales, purchases, inventory and finance using existing report data only.
+- Financial report presentation highlights net profit and trial-balance equality without changing accounting formulas.
+- Existing PDF/Excel/share/print report export actions remain unchanged.
+
+## Explicitly unchanged
+- Room schema and migrations.
+- DAO queries and report source data.
+- Accounting formulas and posting.
+- Sales/purchase/inventory/production/quality business calculations.
+- Export document data and historical report calculations.
+- User permissions and navigation authorization.
+
+## Responsive breakpoint
+- 840dp and above: wide/tablet workspace with NavigationRail and report side panel.
+- Below 840dp: existing mobile navigation pattern and compact report controls.

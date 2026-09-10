@@ -1,0 +1,146 @@
+name: Central Consolidation - Audit Controls P0
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-audit-controls-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: 'a1ae8b67a621cafb9b3b6652b5ef83c9ac1fa0ac'
+  HANDOFF_SHA: '03505e60d12926a9edfcd26b5a6e43264a98d423'
+  CATALOG_BLOB: '5e7149019f8fed60cf392f0621b478ffcb6c9e97'
+  TEST_BLOB: 'c3d1bb2b74a65f261d02a257df6a20af2872d7e8'
+
+jobs:
+  integrate-audit-controls-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore and verify current Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Current Central before Audit Controls P0"
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+
+      - name: Fetch exact Audit Controls P0 application handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/phase14_5_54_audit_controls/p0/AuditEventCatalog.kt" -o AuditEventCatalog.kt
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${HANDOFF_SHA}/phase14_5_54_audit_controls/p0/AuditEventCatalogTest.kt" -o AuditEventCatalogTest.kt
+          test "$(git hash-object AuditEventCatalog.kt)" = "$CATALOG_BLOB"
+          test "$(git hash-object AuditEventCatalogTest.kt)" = "$TEST_BLOB"
+          cd work-source
+          TARGET_MAIN=app/src/main/java/com/fush/erp/domain/audit/AuditEventCatalog.kt
+          TARGET_TEST=app/src/test/java/com/fush/erp/domain/audit/AuditEventCatalogTest.kt
+          test ! -e "$TARGET_MAIN"
+          test ! -e "$TARGET_TEST"
+          mkdir -p "$(dirname "$TARGET_MAIN")" "$(dirname "$TARGET_TEST")"
+          cp ../AuditEventCatalog.kt "$TARGET_MAIN"
+          cp ../AuditEventCatalogTest.kt "$TARGET_TEST"
+          git diff --check
+          git add -A
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --name-only | grep -qx "$TARGET_MAIN"
+          git diff --cached --name-only | grep -qx "$TARGET_TEST"
+          git commit -qm "Integrate Audit Controls P0 mandatory event catalog"
+          echo "audit_p0_source_tree=$(git write-tree)" | tee ../audit-p0-source-tree.txt
+
+      - name: Audit Controls domain regression
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.audit.AuditEventCatalogTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main app/build.gradle.kts
+          ! grep -R -nE 'deleteDatabase\(|clearAllTables\(' app/src/main/java/com/fush/erp
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          test -f central_source/app/src/main/java/com/fush/erp/domain/audit/AuditEventCatalog.kt
+          test -f central_source/app/src/test/java/com/fush/erp/domain/audit/AuditEventCatalogTest.kt
+          grep -q 'AndroidKeyStore' central_source/app/src/main/java/com/fush/erp/backup/BackupEncryptionKeyProvider.kt
+          grep -q 'ADMIN_IDLE_MINUTES = 3L' central_source/app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'FushDimensions' central_source/app/src/main/java/com/fush/erp/ui/FushDesignSystem.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p central_integration_records
+          cat > central_integration_records/audit-controls-p0.md <<EOF
+          # Central Integration Record — Audit Controls P0
+          - Source handoff SHA: ${HANDOFF_SHA}
+          - Application payload: exact AuditEventCatalog.kt + AuditEventCatalogTest.kt only
+          - Application ID: com.fush.erp.recovery
+          - Room schema: 34 unchanged
+          - Migrations: none
+          - Destructive migration: absent
+          - Audit domain regression: PASS
+          - Full unit tests: PASS
+          - Release build: PASS
+          - Result: SUCCESS
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source audit-p0-source-tree.txt central_integration_records/audit-controls-p0.md
+          git commit -m "Central integration: add Audit Controls P0"
+          git push origin HEAD:fush/integration-current

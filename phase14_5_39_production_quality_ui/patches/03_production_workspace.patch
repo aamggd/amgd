@@ -1,0 +1,205 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+index eb1442e..15e934f 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ProductionScreens.kt
+@@ -3,15 +3,22 @@ package com.fush.erp.ui.screens
+ import android.widget.Toast
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.LazyRow
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.platform.LocalContext
++import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.ProductionMath
++import com.fush.erp.ui.FushMetricCard
++import com.fush.erp.ui.FushSectionHeader
++import com.fush.erp.ui.FushStatusPill
++import com.fush.erp.ui.FushStatusTone
+ import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.export.ReportExportDocument
+ import com.fush.erp.ui.export.ReportExportTable
+@@ -39,41 +46,139 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+     var availabilityDialog by remember { mutableStateOf<MaterialAvailabilityDialogState?>(null) }
+     var detailOrderId by remember { mutableStateOf<Long?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
++    var orderSearch by remember { mutableStateOf("") }
++    var orderFilter by remember { mutableStateOf("الكل") }
++
++    val activeRecipes = recipes.count { it.status == "ACTIVE" }
++    val activeOrders = orders.count { it.status !in setOf("CLOSED", "REJECTED", "CANCELLED") }
++    val qualityHoldOrders = orders.count { it.status == "QC_HOLD" }
++    val completedOrders = orders.count { it.status == "CLOSED" }
++    val filteredOrders = orders.filter { order ->
++        val matchesSearch = orderSearch.isBlank() ||
++            order.orderNo.contains(orderSearch, ignoreCase = true) ||
++            order.productName.contains(orderSearch, ignoreCase = true) ||
++            (order.batchNo?.contains(orderSearch, ignoreCase = true) == true)
++        val matchesFilter = when (orderFilter) {
++            "نشطة" -> order.status !in setOf("CLOSED", "REJECTED", "CANCELLED")
++            "تحت الجودة" -> order.status == "QC_HOLD"
++            "مكتملة" -> order.status == "CLOSED"
++            "مرفوضة" -> order.status == "REJECTED"
++            else -> true
++        }
++        matchesSearch && matchesFilter
++    }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
++        item {
++            FushSectionHeader(
++                title = "الإنتاج والجودة",
++                subtitle = "متابعة دورة التصنيع من الوصفة وحجز المواد حتى الإفراج النهائي عن الدفعة وتثبيت التكلفة الفعلية."
++            )
++        }
+         item {
+-            Text("الإنتاج والجودة", style = MaterialTheme.typography.headlineSmall)
+-            Text("وصفة بإصدار ثابت → أمر إنتاج → حجز وصرف → تحضير → خلط → تعبئة → فحص جودة → قبول/رفض → تكلفة فعلية.")
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("أوامر نشطة", activeOrders.toString(), Modifier.weight(1f), "قيد التنفيذ", FushStatusTone.Info)
++                FushMetricCard("تحت الجودة", qualityHoldOrders.toString(), Modifier.weight(1f), "بانتظار قرار", if (qualityHoldOrders > 0) FushStatusTone.Warning else FushStatusTone.Success)
++            }
+             Spacer(Modifier.height(8.dp))
+-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { showNewOrder = true }, enabled = recipes.any { it.status == "ACTIVE" }) { Text("أمر إنتاج جديد") }
+-                OutlinedButton(onClick = { showNewRecipe = true }) { Text("وصفة جديدة") }
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushMetricCard("وصفات فعالة", activeRecipes.toString(), Modifier.weight(1f), "إصدارات تشغيل", FushStatusTone.Neutral)
++                FushMetricCard("مكتملة", completedOrders.toString(), Modifier.weight(1f), "أوامر مغلقة", FushStatusTone.Success)
++            }
++        }
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Text("إجراءات التشغيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        Button(
++                            onClick = { showNewOrder = true },
++                            enabled = activeRecipes > 0,
++                            modifier = Modifier.weight(1f)
++                        ) { Text("أمر إنتاج جديد") }
++                        OutlinedButton(onClick = { showNewRecipe = true }, modifier = Modifier.weight(1f)) { Text("وصفة جديدة") }
++                    }
++                    OutlinedButton(onClick = { onNavigate("تقارير الإنتاج") }, modifier = Modifier.fillMaxWidth()) {
++                        Text("تقارير الإنتاج والجودة والتكلفة")
++                    }
++                    if (activeRecipes == 0) {
++                        Text(
++                            "أنشئ وصفة فعالة أولًا قبل إنشاء أمر إنتاج.",
++                            style = MaterialTheme.typography.bodySmall,
++                            color = MaterialTheme.colorScheme.tertiary
++                        )
++                    }
++                    message?.let {
++                        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
++                            Text(it, modifier = Modifier.padding(10.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
++                        }
++                    }
++                }
+             }
+-            OutlinedButton(onClick = { onNavigate("تقارير الإنتاج") }, modifier = Modifier.fillMaxWidth()) {
+-                Text("تقارير الإنتاج والتحليل")
++        }
++        item {
++            FushSectionHeader("الوصفات المعتمدة", "كل إصدار يحافظ على كميات المواد المرجعية للدفعة ولا يغيّر الإصدارات المستخدمة سابقًا.")
++        }
++        if (recipes.isEmpty()) {
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Text("لا توجد وصفات إنتاج حتى الآن.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                }
+             }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+-        item { Text("الوصفات", style = MaterialTheme.typography.titleMedium) }
+-        items(recipes) { recipe ->
++        items(recipes, key = { "recipe-${it.id}" }) { recipe ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    Text("${recipe.productName} — إصدار ${recipe.versionNo}", style = MaterialTheme.typography.titleMedium)
+-                    Text("${recipe.code} • الناتج المرجعي المتوقع ${formatProductionQty(recipe.targetOutputQtyBase)} عبوة • ${recipe.status}")
+-                    Text("كميات مواد الوصفة ثابتة للدفعة الواحدة؛ الناتج المخطط والفعلي قد يزيد أو ينقص.", style = MaterialTheme.typography.bodySmall)
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(recipe.productName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
++                            Text("${recipe.code} • إصدار ${recipe.versionNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(
++                            if (recipe.status == "ACTIVE") "فعالة" else "موقوفة",
++                            if (recipe.status == "ACTIVE") FushStatusTone.Success else FushStatusTone.Neutral
++                        )
++                    }
++                    DetailLine("الناتج المرجعي", "${formatProductionQty(recipe.targetOutputQtyBase)} عبوة")
++                    Text("الكميات المرجعية ثابتة للدفعة؛ الناتج المخطط والفعلي قد يختلفان حسب أمر الإنتاج.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                         if (recipe.status == "ACTIVE") {
+-                            OutlinedButton(onClick = { versionRecipe = recipe }) { Text("إنشاء إصدار جديد") }
+-                        }
+-                        TextButton(onClick = { deleteRecipe = recipe }) {
+-                            Text("حذف", color = MaterialTheme.colorScheme.error)
++                            OutlinedButton(onClick = { versionRecipe = recipe }) { Text("إصدار جديد") }
+                         }
++                        TextButton(onClick = { deleteRecipe = recipe }) { Text("حذف", color = MaterialTheme.colorScheme.error) }
+                     }
+                 }
+             }
+         }
+-        item { Text("أوامر الإنتاج", style = MaterialTheme.typography.titleMedium) }
+-        items(orders) { order ->
++        item {
++            FushSectionHeader("أوامر الإنتاج", "تابع المرحلة الحالية واتخذ الإجراء التالي من بطاقة الأمر نفسها.")
++            Spacer(Modifier.height(8.dp))
++            OutlinedTextField(
++                value = orderSearch,
++                onValueChange = { orderSearch = it },
++                label = { Text("بحث برقم الأمر أو المنتج أو الدفعة") },
++                singleLine = true,
++                modifier = Modifier.fillMaxWidth()
++            )
++            Spacer(Modifier.height(6.dp))
++            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                items(listOf("الكل", "نشطة", "تحت الجودة", "مكتملة", "مرفوضة")) { filter ->
++                    FilterChip(selected = orderFilter == filter, onClick = { orderFilter = filter }, label = { Text(filter) })
++                }
++            }
++        }
++        if (filteredOrders.isEmpty()) {
++            item {
++                ElevatedCard(Modifier.fillMaxWidth()) {
++                    Text(
++                        if (orders.isEmpty()) "لا توجد أوامر إنتاج حتى الآن." else "لا توجد أوامر تطابق البحث أو التصفية الحالية.",
++                        Modifier.padding(16.dp),
++                        color = MaterialTheme.colorScheme.onSurfaceVariant
++                    )
++                }
++            }
++        }
++        items(filteredOrders, key = { "order-${it.id}" }) { order ->
+             ProductionOrderCard(
+                 order = order,
+                 onDetails = { detailOrderId = order.id },
+@@ -85,14 +190,8 @@ fun ProductionScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                                 "PLANNED" -> {
+                                     val rows = container.productionService.materialAvailability(order.id)
+                                     val canReserve = rows.all { it.isAvailable }
+-                                    if (canReserve) {
+-                                        container.productionService.reserveMaterials(order.id)
+-                                    }
+-                                    availabilityDialog = MaterialAvailabilityDialogState(
+-                                        orderNo = order.orderNo,
+-                                        rows = rows,
+-                                        reserved = canReserve
+-                                    )
++                                    if (canReserve) container.productionService.reserveMaterials(order.id)
++                                    availabilityDialog = MaterialAvailabilityDialogState(order.orderNo, rows, canReserve)
+                                     message = null
+                                 }
+                                 "MATERIALS_RESERVED" -> {

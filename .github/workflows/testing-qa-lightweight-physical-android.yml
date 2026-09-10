@@ -1,0 +1,253 @@
+name: Testing QA Lightweight Qualification - Physical Android Device
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fush/testing-qa
+    paths:
+      - 'qa/qualification/physical-device-trigger.txt'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CENTRAL_SHA: 'ff9b2a1a1a3fd1ad47f454db56a638141bd3000c'
+  CENTRAL_SOURCE_TREE: '6a58e2c72d86cb16c7fcd7452a799501ff085bfa'
+  APP_ID: 'com.fush.erp.recovery'
+  ROOM_SCHEMA: '35'
+  CENTRAL_CANDIDATE_RUN_ID: '31986737748'
+  CENTRAL_CANDIDATE_NAME: 'FushERP-Wave1-Remediations-Ready-For-Final-QA'
+  CENTRAL_CANDIDATE_APK: 'FushERP-Wave1-Remediations-QA-unsigned.apk'
+  CENTRAL_CANDIDATE_SHA256: 'aede057ba8f373676ae4ece9a4feef941fa9d1ece905d69988b526f56307f434'
+
+jobs:
+  qualify-physical-android:
+    name: Lightweight qualification on physical Android device only
+    runs-on: [self-hosted, windows, x64, android-device]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout QA branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require authorized physical Android device
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+
+          $adb = Get-Command adb -ErrorAction SilentlyContinue
+          if (-not $adb) {
+            @"
+          STATUS=QA INFRASTRUCTURE / PHYSICAL DEVICE UNAVAILABLE
+          REASON=ADB_NOT_FOUND
+          ACTION=FAIL FAST
+          FULL_FINAL_QA=NOT RUN
+          FINAL_PART2C=NOT RUN
+          "@ | Set-Content -Encoding utf8 evidence/QA-INFRASTRUCTURE.txt
+            Get-Content evidence/QA-INFRASTRUCTURE.txt
+            throw 'QA INFRASTRUCTURE / PHYSICAL DEVICE UNAVAILABLE'
+          }
+
+          $deviceLines = @(& adb devices -l 2>&1)
+          $deviceLines | Set-Content -Encoding utf8 evidence/adb-devices.txt
+
+          $physical = @()
+          foreach ($line in $deviceLines) {
+            if ($line -match '^(\S+)\s+device(?:\s|$)') {
+              $serial = $Matches[1]
+              if ($serial -like 'emulator-*') { continue }
+              $qemu = ((& adb -s $serial shell getprop ro.kernel.qemu 2>$null) | Out-String).Trim()
+              if ($qemu -eq '1') { continue }
+              $physical += $serial
+            }
+          }
+
+          if ($physical.Count -eq 0) {
+            @"
+          STATUS=QA INFRASTRUCTURE / PHYSICAL DEVICE UNAVAILABLE
+          REASON=NO_AUTHORIZED_PHYSICAL_ANDROID_DEVICE
+          ACTION=FAIL FAST
+          FULL_FINAL_QA=NOT RUN
+          FINAL_PART2C=NOT RUN
+          "@ | Set-Content -Encoding utf8 evidence/QA-INFRASTRUCTURE.txt
+            Get-Content evidence/QA-INFRASTRUCTURE.txt
+            throw 'QA INFRASTRUCTURE / PHYSICAL DEVICE UNAVAILABLE'
+          }
+
+          $serial = $physical[0]
+          "ANDROID_SERIAL=$serial" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AUTHORIZED_PHYSICAL_DEVICE=$serial" | Set-Content -Encoding utf8 evidence/physical-device-selection.txt
+          & adb -s $serial shell getprop ro.product.manufacturer | Add-Content evidence/physical-device-selection.txt
+          & adb -s $serial shell getprop ro.product.model | Add-Content evidence/physical-device-selection.txt
+          & adb -s $serial shell getprop ro.build.version.release | Add-Content evidence/physical-device-selection.txt
+          & adb -s $serial shell getprop ro.build.version.sdk | Add-Content evidence/physical-device-selection.txt
+          Get-Content evidence/physical-device-selection.txt
+
+      - name: Prove exact Central identity and prepare disposable test copy
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue exact-source, work-source, exact-archive
+          Remove-Item -Force -ErrorAction SilentlyContinue exact-central.zip
+          New-Item -ItemType Directory -Force -Path exact-source, work-source, exact-archive | Out-Null
+
+          git fetch origin fush/integration-current
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch integration-current failed' }
+          $actualHead = (git rev-parse origin/fush/integration-current).Trim()
+          if ($actualHead -ne $env:CENTRAL_SHA) { throw "Central HEAD mismatch: $actualHead" }
+
+          git fetch origin $env:CENTRAL_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch exact Central SHA failed' }
+          $actualTree = (git rev-parse "$($env:CENTRAL_SHA):central_source").Trim()
+          if ($actualTree -ne $env:CENTRAL_SOURCE_TREE) { throw "Central source tree mismatch: $actualTree" }
+
+          git archive --format=zip --output=exact-central.zip $env:CENTRAL_SHA central_source
+          if ($LASTEXITCODE -ne 0) { throw 'git archive exact Central failed' }
+          Expand-Archive -Path exact-central.zip -DestinationPath exact-archive -Force
+          Get-ChildItem -Force exact-archive/central_source | Copy-Item -Destination exact-source -Recurse -Force
+          Get-ChildItem -Force exact-source | Copy-Item -Destination work-source -Recurse -Force
+
+          $appIdHit = Select-String -Path exact-source/app/build.gradle.kts -SimpleMatch 'applicationId = "com.fush.erp.recovery"'
+          if (-not $appIdHit) { throw 'Application ID mismatch' }
+          $roomHit = Select-String -Path exact-source/app/src/main/java/com/fush/erp/data/FushDatabase.kt -SimpleMatch 'FUSH_DB_SCHEMA_VERSION = 35'
+          if (-not $roomHit) { throw 'Room schema mismatch' }
+
+          $env:CENTRAL_SHA | Set-Content -Encoding utf8 evidence/central-head.txt
+          $env:CENTRAL_SOURCE_TREE | Set-Content -Encoding utf8 evidence/central-source-tree.txt
+          $appIdHit.Line | Set-Content -Encoding utf8 evidence/application-id.txt
+          $roomHit.Line | Set-Content -Encoding utf8 evidence/room-schema.txt
+
+      - name: Inject qualification-only tests and compatible Room test runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $buildFile = 'work-source/app/build.gradle.kts'
+          @'
+
+          // QA LIGHTWEIGHT PHYSICAL DEVICE QUALIFICATION ONLY — disposable work copy, never Central.
+          android {
+              sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+          }
+
+          configurations.configureEach {
+              if (name.contains("AndroidTest", ignoreCase = true)) {
+                  resolutionStrategy.force(
+                      "org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3",
+                      "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
+                  )
+              }
+          }
+
+          dependencies {
+              androidTestImplementation(libs.junit)
+              androidTestImplementation(libs.androidx.room.testing)
+              androidTestImplementation("androidx.test:core-ktx:1.7.0")
+              androidTestImplementation("androidx.test.ext:junit-ktx:1.3.0")
+              androidTestImplementation("androidx.test:runner:1.7.0")
+              androidTestImplementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3")
+              androidTestImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+          }
+          '@ | Add-Content -Encoding utf8 $buildFile
+
+          New-Item -ItemType Directory -Force -Path work-source/app/src/androidTest/java/com/fush/erp/data | Out-Null
+          New-Item -ItemType Directory -Force -Path work-source/app/src/androidTest/java/com/fush/erp/qa | Out-Null
+          Copy-Item qa/qualification/AccountingP1Migration34To35QualificationTest.kt work-source/app/src/androidTest/java/com/fush/erp/data/AccountingP1Migration34To35Test.kt -Force
+          Copy-Item qa/p1/Wave1P1ReleaseCandidateTest.kt work-source/app/src/androidTest/java/com/fush/erp/qa/Wave1P1ReleaseCandidateTest.kt -Force
+
+          if (Select-String -Path qa/qualification/run_physical_device_qualification.ps1 -Pattern '!\s*grep') {
+            throw 'Negated grep style checks are forbidden in physical-device harness'
+          }
+
+      - name: Download exact Central APK evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.CENTRAL_CANDIDATE_NAME }}
+          path: exact-central-candidate
+          github-token: ${{ github.token }}
+          run-id: ${{ env.CENTRAL_CANDIDATE_RUN_ID }}
+
+      - name: Verify exact Central APK evidence hash
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $apk = Join-Path 'exact-central-candidate' $env:CENTRAL_CANDIDATE_APK
+          if (-not (Test-Path $apk)) { throw 'Exact Central candidate APK missing' }
+          $hash = (Get-FileHash -Algorithm SHA256 $apk).Hash.ToLowerInvariant()
+          $hash | Set-Content -Encoding utf8 evidence/exact-central-candidate.sha256
+          if ($hash -ne $env:CENTRAL_CANDIDATE_SHA256.ToLowerInvariant()) {
+            throw "Exact Central candidate SHA256 mismatch: $hash"
+          }
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmd /c "echo y|sdkmanager --licenses >nul 2>&1"
+          & sdkmanager "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;36.0.0"
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Prepare deterministic QA-only signer
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $androidDir = Join-Path $env:USERPROFILE '.android'
+          New-Item -ItemType Directory -Force -Path $androidDir | Out-Null
+          $keystore = Join-Path $androidDir 'debug.keystore'
+          if (-not (Test-Path $keystore)) {
+            & keytool -genkeypair -v -keystore $keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+            if ($LASTEXITCODE -ne 0) { throw 'QA debug keystore creation failed' }
+          }
+          (& keytool -list -v -keystore $keystore -storepass android 2>&1 | Out-String) | Set-Content -Encoding utf8 evidence/qa-test-signer.txt
+
+      - name: Run physical-device lightweight qualification only
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File qa/qualification/run_physical_device_qualification.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Physical-device qualification failed with exit code $LASTEXITCODE" }
+
+      - name: Record qualification failure only
+        if: failure()
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path evidence | Out-Null
+          if (-not (Test-Path evidence/LIGHTWEIGHT-PHYSICAL-DEVICE-QUALIFICATION-STATUS.txt)) {
+            @"
+          STATUS=QA HARNESS LIGHTWEIGHT QUALIFICATION — PHYSICAL ANDROID DEVICE FAILED
+          Exact Central HEAD=$($env:CENTRAL_SHA)
+          Exact Central source tree=$($env:CENTRAL_SOURCE_TREE)
+          Room schema=$($env:ROOM_SCHEMA)
+          Application ID=$($env:APP_ID)
+          Business Logic changes by QA=NONE
+          Full Final QA=NOT RUN
+          Final Part2C=NOT RUN
+          "@ | Set-Content -Encoding utf8 evidence/LIGHTWEIGHT-PHYSICAL-DEVICE-QUALIFICATION-FAILURE.txt
+          }
+
+      - name: Upload physical-device qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-QA-Lightweight-Physical-Android-${{ github.run_id }}
+          path: |
+            evidence/**
+          if-no-files-found: warn

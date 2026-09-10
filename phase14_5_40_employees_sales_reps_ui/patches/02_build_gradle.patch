@@ -1,0 +1,26 @@
+From 400518ccd6263d02b4eba6935b390c39d444792f Mon Sep 17 00:00:00 2001
+From: OpenAI UI <ui@local.invalid>
+Date: Sat, 15 Aug 2026 02:06:30 +0000
+Subject: [PATCH] version
+
+---
+ app/build.gradle.kts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 8335178..da9629b 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@ android {
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 78
+-        versionName = "0.15.4.39-ui-production-quality"
++        versionCode = 79
++        versionName = "0.15.4.40-ui-employees-sales-reps"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+-- 
+2.47.3

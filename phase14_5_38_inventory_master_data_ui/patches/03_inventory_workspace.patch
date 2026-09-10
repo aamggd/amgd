@@ -1,0 +1,86 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-14 00:25:39.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-15 01:42:52.317426820 +0000
+@@ -6,11 +6,13 @@
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.window.Dialog
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -43,27 +45,53 @@
+     var lotToControl by remember { mutableStateOf<InventoryLotAlertRow?>(null) }
+     var message by remember { mutableStateOf<String?>(null) }
+ 
++    val stockedLocations = remember(balances) { balances.count { abs(it.quantityBase) > 0.000000001 } }
++    val activeWarehouses = remember(warehouses) { warehouses.count { it.isActive } }
++
+     Column(modifier.fillMaxSize().padding(12.dp)) {
+-        Text("المخزون المتقدم والجرد", style = MaterialTheme.typography.headlineSmall)
+-        Spacer(Modifier.height(6.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f)) { Text("بدء جرد") }
+-            Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f)) { Text("تحويل مخزني") }
+-        }
+-        Spacer(Modifier.height(6.dp))
+-        OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.fillMaxWidth()) { Text("رصيد افتتاحي") }
+-        Spacer(Modifier.height(6.dp))
+-        OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
+-        Spacer(Modifier.height(6.dp))
+-        OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.fillMaxWidth()) { Text("إدارة المواد والأصناف والوحدات") }
+-        Spacer(Modifier.height(6.dp))
+-        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
++        FushSectionHeader(
++            title = "المخزون والمستودعات",
++            subtitle = "الأرصدة والجرد والتحويلات والتشغيلات والصلاحية والتنبيهات من مساحة واحدة",
++        )
++        Spacer(Modifier.height(10.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++            FushMetricCard("مواقع رصيد", stockedLocations.toString(), Modifier.weight(1f), "صنف × مخزن", FushStatusTone.Info)
++            FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "تنبيه نشط", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
++        }
++        Spacer(Modifier.height(8.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++            FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة منتهية/قريبة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
++            FushMetricCard("المخازن النشطة", activeWarehouses.toString(), Modifier.weight(1f), "من ${warehouses.size} مخزن", FushStatusTone.Info)
++        }
++        Spacer(Modifier.height(12.dp))
++        FushSectionHeader("إجراءات سريعة", "ابدأ الجرد أو التحويل ثم أكمل التفاصيل قبل الترحيل")
++        Spacer(Modifier.height(7.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty()) { Text("بدء جرد") }
++            Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f), enabled = warehouses.size > 1) { Text("تحويل مخزني") }
++        }
++        Spacer(Modifier.height(7.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty() && itemsList.isNotEmpty()) { Text("رصيد افتتاحي") }
++            OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.weight(1f)) { Text("الأصناف والوحدات") }
++        }
++        Spacer(Modifier.height(7.dp))
++        OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
++        Spacer(Modifier.height(10.dp))
++        LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+             items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
+                 FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
+             }
+         }
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+-        Spacer(Modifier.height(4.dp))
++        message?.let { text ->
++            Spacer(Modifier.height(8.dp))
++            Surface(
++                color = MaterialTheme.colorScheme.secondaryContainer,
++                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                shape = MaterialTheme.shapes.medium,
++            ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
++        }
++        Spacer(Modifier.height(8.dp))
+ 
+         when (section) {
+             "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })

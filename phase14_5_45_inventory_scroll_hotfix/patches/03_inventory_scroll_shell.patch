@@ -1,0 +1,154 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index d43aca1..54bde8e 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -2,6 +2,7 @@ package com.fush.erp.ui.screens
+ 
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.LazyListScope
+ import androidx.compose.foundation.lazy.LazyRow
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.material3.*
+@@ -35,6 +36,9 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     val warehouses by container.db.warehouseDao().observeAll().collectAsState(initial = emptyList())
+     val itemsList by container.db.itemDao().observeAll().collectAsState(initial = emptyList())
+     var section by remember { mutableStateOf("الأرصدة") }
++    var selectedWarehouseId by remember { mutableStateOf<Long?>(null) }
++    var selectedCategory by remember { mutableStateOf<String?>(null) }
++    var inventorySearch by remember { mutableStateOf("") }
+     var showOpening by remember { mutableStateOf(false) }
+     var showLegacyLotAssignment by remember { mutableStateOf(false) }
+     var showStartCount by remember { mutableStateOf(false) }
+@@ -47,59 +51,85 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+ 
+     val stockedLocations = remember(balances) { balances.count { abs(it.quantityBase) > 0.000000001 } }
+     val activeWarehouses = remember(warehouses) { warehouses.count { it.isActive } }
+-
+-    Column(modifier.fillMaxSize().padding(12.dp)) {
+-        FushSectionHeader(
+-            title = "المخزون والمستودعات",
+-            subtitle = "الأرصدة والجرد والتحويلات والتشغيلات والصلاحية والتنبيهات من مساحة واحدة",
+-        )
+-        Spacer(Modifier.height(10.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-            FushMetricCard("مواقع رصيد", stockedLocations.toString(), Modifier.weight(1f), "صنف × مخزن", FushStatusTone.Info)
+-            FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "تنبيه نشط", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
+-        }
+-        Spacer(Modifier.height(8.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-            FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة منتهية/قريبة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
+-            FushMetricCard("المخازن النشطة", activeWarehouses.toString(), Modifier.weight(1f), "من ${warehouses.size} مخزن", FushStatusTone.Info)
+-        }
+-        Spacer(Modifier.height(12.dp))
+-        FushSectionHeader("إجراءات سريعة", "ابدأ الجرد أو التحويل ثم أكمل التفاصيل قبل الترحيل")
+-        Spacer(Modifier.height(7.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty()) { Text("بدء جرد") }
+-            Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f), enabled = warehouses.size > 1) { Text("تحويل مخزني") }
+-        }
+-        Spacer(Modifier.height(7.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-            OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty() && itemsList.isNotEmpty()) { Text("رصيد افتتاحي") }
+-            OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.weight(1f)) { Text("الأصناف والوحدات") }
++    val filteredBalances = remember(balances, selectedWarehouseId, selectedCategory, inventorySearch) {
++        val q = inventorySearch.trim().lowercase(Locale.ROOT)
++        balances.filter { row ->
++            (selectedWarehouseId == null || row.warehouseId == selectedWarehouseId) &&
++                (selectedCategory == null || row.category == selectedCategory) &&
++                (q.isBlank() || listOf(row.nameAr, row.code, row.warehouseName, itemCategoryLabel(row.category)).any { it.lowercase(Locale.ROOT).contains(q) })
+         }
+-        Spacer(Modifier.height(7.dp))
+-        OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) { Text("ربط رصيد قديم بتشغيلة وصلاحية") }
+-        Spacer(Modifier.height(10.dp))
+-        LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+-            items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
+-                FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++    }
++    val groupedBalances = remember(filteredBalances) { filteredBalances.groupBy { it.warehouseId } }
++
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(12.dp),
++        verticalArrangement = Arrangement.spacedBy(9.dp),
++    ) {
++        item(key = "inventory-overview") {
++            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                FushSectionHeader(
++                    title = "المخزون والمستودعات",
++                    subtitle = "الأرصدة والجرد والتحويلات والتشغيلات والصلاحية والتنبيهات من مساحة واحدة",
++                )
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushMetricCard("مواقع رصيد", stockedLocations.toString(), Modifier.weight(1f), "صنف × مخزن", FushStatusTone.Info)
++                    FushMetricCard("إعادة الطلب", reorder.size.toString(), Modifier.weight(1f), "تنبيه نشط", if (reorder.isNotEmpty()) FushStatusTone.Danger else FushStatusTone.Success)
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushMetricCard("صلاحية 30 يوم", expiry.size.toString(), Modifier.weight(1f), "تشغيلة منتهية/قريبة", if (expiry.isNotEmpty()) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushMetricCard("المخازن النشطة", activeWarehouses.toString(), Modifier.weight(1f), "من ${warehouses.size} مخزن", FushStatusTone.Info)
++                }
++                Spacer(Modifier.height(4.dp))
++                FushSectionHeader("إجراءات سريعة", "ابدأ الجرد أو التحويل ثم أكمل التفاصيل قبل الترحيل")
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Button(onClick = { showStartCount = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty()) { Text("بدء جرد") }
++                    Button(onClick = { showStartTransfer = true }, modifier = Modifier.weight(1f), enabled = warehouses.size > 1) { Text("تحويل مخزني") }
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    OutlinedButton(onClick = { showOpening = true }, modifier = Modifier.weight(1f), enabled = warehouses.isNotEmpty() && itemsList.isNotEmpty()) { Text("رصيد افتتاحي") }
++                    OutlinedButton(onClick = onOpenMasterData, modifier = Modifier.weight(1f)) { Text("الأصناف والوحدات") }
++                }
++                OutlinedButton(onClick = { showLegacyLotAssignment = true }, modifier = Modifier.fillMaxWidth(), enabled = lots.isNotEmpty()) {
++                    Text("ربط رصيد قديم بتشغيلة وصلاحية")
++                }
++                LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
++                    items(listOf("الأرصدة", "تنبيهات", "الجرد", "التحويلات", "التشغيلات", "الحركة")) { label ->
++                        FilterChip(selected = section == label, onClick = { section = label }, label = { Text(label) })
++                    }
++                }
+             }
+         }
++
+         message?.let { text ->
+-            Spacer(Modifier.height(8.dp))
+-            Surface(
+-                color = MaterialTheme.colorScheme.secondaryContainer,
+-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                shape = MaterialTheme.shapes.medium,
+-            ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
++            item(key = "inventory-message") {
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) { Text(text, Modifier.fillMaxWidth().padding(11.dp), style = MaterialTheme.typography.bodyMedium) }
++            }
+         }
+-        Spacer(Modifier.height(8.dp))
+ 
+         when (section) {
+-            "تنبيهات" -> InventoryAlerts(reorder, expiry, onConfigure = { showReorderPolicies = true })
+-            "الجرد" -> InventoryCounts(counts, onEdit = { editCountId = it })
+-            "التحويلات" -> InventoryTransfers(transfers, onOpen = { editTransferId = it })
+-            "التشغيلات" -> InventoryLots(lots, onControl = { lotToControl = it })
+-            "الحركة" -> InventoryMovements(movements)
+-            else -> InventoryBalances(balances, lots, warehouses)
++            "تنبيهات" -> inventoryAlertItems(reorder, expiry, onConfigure = { showReorderPolicies = true })
++            "الجرد" -> inventoryCountItems(counts, onEdit = { editCountId = it })
++            "التحويلات" -> inventoryTransferItems(transfers, onOpen = { editTransferId = it })
++            "التشغيلات" -> inventoryLotItems(lots, onControl = { lotToControl = it })
++            "الحركة" -> inventoryMovementItems(movements)
++            else -> inventoryBalanceItems(
++                rows = balances,
++                filtered = filteredBalances,
++                grouped = groupedBalances,
++                lots = lots,
++                warehouses = warehouses,
++                selectedWarehouseId = selectedWarehouseId,
++                selectedCategory = selectedCategory,
++                search = inventorySearch,
++                onWarehouseSelected = { selectedWarehouseId = it },
++                onCategorySelected = { selectedCategory = it },
++                onSearchChange = { inventorySearch = it },
++            )
+         }
+     }
+ 

@@ -1,0 +1,210 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+index 567bcbe..3207256 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/GovernanceScreen.kt
+@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ 
+ @Composable
+@@ -23,19 +24,43 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+     var showChange by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
+ 
++    val pendingApprovals = approvals.count { it.status == "PENDING" }
++    val activeChanges = changes.count { it.status == "SUBMITTED" || it.status == "DRAFT" }
++
+     Column(modifier.fillMaxSize().padding(12.dp)) {
+-        Text("الحوكمة والتدقيق", style = MaterialTheme.typography.headlineSmall)
+-        Text("إجراءات ووثائق مضبوطة • إدارة تغيير • موافقات • سجل تدقيق غير قابل للحذف", style = MaterialTheme.typography.bodySmall)
++        FushSectionHeader(
++            title = "الحوكمة والتدقيق",
++            subtitle = "الوثائق المضبوطة، إدارة التغيير، الموافقات وفصل المهام مع سجل تدقيق غير قابل للحذف من الواجهة.",
++        )
++        Spacer(Modifier.height(10.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            FushMetricCard("الوثائق", documents.size.toString(), Modifier.weight(1f), helper = "الإصدارات المسجلة")
++            FushMetricCard("تغييرات نشطة", activeChanges.toString(), Modifier.weight(1f), helper = "مسودة أو مرسلة", tone = if (activeChanges > 0) FushStatusTone.Warning else FushStatusTone.Success)
++        }
+         Spacer(Modifier.height(8.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            FushMetricCard("موافقات معلقة", pendingApprovals.toString(), Modifier.weight(1f), helper = "تحتاج قرارًا", tone = if (pendingApprovals > 0) FushStatusTone.Warning else FushStatusTone.Success)
++            FushMetricCard("أحداث التدقيق", audit.size.toString(), Modifier.weight(1f), helper = "آخر الأحداث المحملة")
++        }
++        Spacer(Modifier.height(10.dp))
+         ScrollableTabRow(selectedTabIndex = tab) {
+             listOf("الوثائق", "التغييرات", "الموافقات", "التدقيق").forEachIndexed { index, title ->
+                 Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
+             }
+         }
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 6.dp)) }
++        message?.let {
++            FushNotice(
++                message = it,
++                modifier = Modifier.padding(vertical = 6.dp),
++                tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
++            )
++        }
+         when (tab) {
+             0 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                item { Button(onClick = { showDocument = true }) { Text("وثيقة / إجراء جديد") } }
++                item { Button(onClick = { showDocument = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("وثيقة / إجراء جديد") } }
++                if (documents.isEmpty()) item {
++                    FushEmptyState("لا توجد وثائق مضبوطة", "أنشئ أول وثيقة أو إجراء ليظهر سجل الإصدارات وحالة الاعتماد هنا.")
++                }
+                 items(documents) { d ->
+                     ListItem(
+                         headlineContent = { Text("${d.documentCode} — ${d.titleAr}") },
+@@ -55,7 +80,10 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                 }
+             }
+             1 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                item { Button(onClick = { showChange = true }) { Text("طلب تغيير جديد") } }
++                item { Button(onClick = { showChange = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("طلب تغيير جديد") } }
++                if (changes.isEmpty()) item {
++                    FushEmptyState("لا توجد طلبات تغيير", "طلبات التغيير المقترحة والمعتمدة ستظهر هنا مع أثرها وحالتها.")
++                }
+                 items(changes) { c ->
+                     ListItem(
+                         headlineContent = { Text("${c.requestNo} — ${c.subject}") },
+@@ -91,10 +119,15 @@ fun GovernanceScreen(container: AppContainer, user: UserEntity, modifier: Modifi
+                         }
+                     )
+                 }
+-                if (approvals.isEmpty()) item { Text("لا توجد موافقات معلقة.") }
++                if (approvals.isEmpty()) item {
++                    FushEmptyState("لا توجد موافقات", "لا توجد طلبات موافقة مسجلة أو معلقة حاليًا.")
++                }
+             }
+             else -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                item { Text("آخر 200 حدث. لا يوجد حذف من الواجهة.", style = MaterialTheme.typography.bodySmall) }
++                item { FushInlineState("آخر 200 حدث. لا يوجد حذف من الواجهة.", tone = FushStatusTone.Info) }
++                if (audit.isEmpty()) item {
++                    FushEmptyState("لا توجد أحداث تدقيق", "ستظهر هنا عمليات الإنشاء والاعتماد والرفض والتغييرات المسجلة.")
++                }
+                 items(audit) { e ->
+                     ListItem(
+                         headlineContent = { Text("${e.action} • ${e.entityType} #${e.entityId}") },
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+index a4b3e4b..9bcd026 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/RiskControlScreen.kt
+@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
+ import com.fush.erp.domain.RiskControlMath
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ 
+ @Composable
+@@ -35,26 +36,37 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+     var message by remember { mutableStateOf<String?>(null) }
+ 
+     Column(modifier.fillMaxSize().padding(12.dp)) {
+-        Text("المخاطر والرقابة الداخلية", style = MaterialTheme.typography.headlineSmall)
+-        Text("سجل مخاطر • ضوابط رقابية • اختبارات • استثناءات • فصل المهام", style = MaterialTheme.typography.bodySmall)
+-        Spacer(Modifier.height(8.dp))
+-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            SmallMetric("مخاطر مفتوحة", openRisks.toString(), Modifier.weight(1f))
+-            SmallMetric("عالية", highRisks.toString(), Modifier.weight(1f))
+-            SmallMetric("استثناءات", openExceptions.toString(), Modifier.weight(1f))
+-            SmallMetric("متأخرة", overdueExceptions.toString(), Modifier.weight(1f))
++        FushSectionHeader(
++            title = "المخاطر والرقابة الداخلية",
++            subtitle = "سجل المخاطر والضوابط والاختبارات والاستثناءات مع فصل المهام ومتابعة البنود المتأخرة.",
++        )
++        Spacer(Modifier.height(10.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            FushMetricCard("مخاطر مفتوحة", openRisks.toString(), Modifier.weight(1f), tone = if (openRisks > 0) FushStatusTone.Warning else FushStatusTone.Success)
++            FushMetricCard("مخاطر عالية", highRisks.toString(), Modifier.weight(1f), tone = if (highRisks > 0) FushStatusTone.Danger else FushStatusTone.Success)
+         }
+         Spacer(Modifier.height(8.dp))
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++            FushMetricCard("استثناءات مفتوحة", openExceptions.toString(), Modifier.weight(1f), tone = if (openExceptions > 0) FushStatusTone.Warning else FushStatusTone.Success)
++            FushMetricCard("استثناءات متأخرة", overdueExceptions.toString(), Modifier.weight(1f), tone = if (overdueExceptions > 0) FushStatusTone.Danger else FushStatusTone.Success)
++        }
++        Spacer(Modifier.height(10.dp))
+         ScrollableTabRow(selectedTabIndex = tab) {
+             listOf("المخاطر", "الضوابط", "الاختبارات", "الاستثناءات", "فصل المهام").forEachIndexed { index, title ->
+                 Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) })
+             }
+         }
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(vertical = 6.dp)) }
++        message?.let {
++            FushNotice(
++                message = it,
++                modifier = Modifier.padding(vertical = 6.dp),
++                tone = if (it.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success,
++            )
++        }
+ 
+         when (tab) {
+             0 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                item { Button(onClick = { showRisk = true }) { Text("إضافة خطر") } }
++                item { Button(onClick = { showRisk = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("إضافة خطر") } }
+                 items(risks) { r ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+@@ -67,10 +79,11 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                         }
+                     }
+                 }
+-                if (risks.isEmpty()) item { Text("لا توجد مخاطر مسجلة بعد.") }
++                if (risks.isEmpty()) item { FushEmptyState("لا توجد مخاطر مسجلة", "أضف أول خطر وحدد الاحتمال والأثر وخطة المعالجة والمسؤول.") }
+             }
+             1 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                item { Button(onClick = { showControl = true }) { Text("إضافة ضابط رقابي") } }
++                item { Button(onClick = { showControl = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("إضافة ضابط رقابي") } }
++                if (controls.isEmpty()) item { FushEmptyState("لا توجد ضوابط رقابية", "اربط الضوابط بالمخاطر وحدد التكرار والمسؤول والدليل المطلوب.") }
+                 items(controls) { c ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp)) {
+@@ -83,8 +96,9 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 }
+             }
+             2 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                item { Button(enabled = controls.isNotEmpty(), onClick = { showTest = true }) { Text("اختبار ضابط") } }
+-                item { Text("أي نتيجة FAIL تنشئ استثناءً مفتوحًا تلقائيًا.", style = MaterialTheme.typography.bodySmall) }
++                item { Button(enabled = controls.isNotEmpty(), onClick = { showTest = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("اختبار ضابط") } }
++                item { FushInlineState("أي نتيجة FAIL تنشئ استثناءً مفتوحًا تلقائيًا.", tone = FushStatusTone.Info) }
++                if (tests.isEmpty()) item { FushEmptyState("لا توجد اختبارات رقابية", "سجّل اختبارًا لأحد الضوابط لتوثيق النتيجة والدليل والملاحظات.") }
+                 items(tests) { t ->
+                     val c = controls.firstOrNull { it.id == t.controlId }
+                     ListItem(
+@@ -95,7 +109,8 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+                 }
+             }
+             3 -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                item { Button(onClick = { showManualException = true }) { Text("استثناء يدوي") } }
++                item { Button(onClick = { showManualException = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("استثناء يدوي") } }
++                if (exceptions.isEmpty()) item { FushEmptyState("لا توجد استثناءات رقابية", "الاستثناءات الناتجة عن فشل الضوابط أو المسجلة يدويًا ستظهر هنا.") }
+                 items(exceptions) { e ->
+                     ElevatedCard(Modifier.fillMaxWidth()) {
+                         Column(Modifier.padding(12.dp)) {
+@@ -117,9 +132,9 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             }
+             else -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                 item {
+-                    Text("قواعد فصل المهام", style = MaterialTheme.typography.titleLarge)
+-                    Text("المبدأ: منشئ العملية لا يعتمد نفس العملية عندما تنص القاعدة على اختلاف المستخدم.", style = MaterialTheme.typography.bodySmall)
++                    FushSectionHeader("قواعد فصل المهام", "منشئ العملية لا يعتمد نفس العملية عندما تتطلب القاعدة مستخدمًا مختلفًا.")
+                 }
++                if (rules.isEmpty()) item { FushEmptyState("لا توجد قواعد فصل مهام", "ستظهر هنا قواعد الفصل بين المنشئ والمعتمد عند تعريفها.") }
+                 items(rules) { rule ->
+                     ListItem(
+                         headlineContent = { Text("${rule.ruleCode} — ${rule.actionKey}") },
+@@ -193,11 +208,6 @@ fun RiskControlScreen(container: AppContainer, user: UserEntity, modifier: Modif
+     }
+ }
+ 
+-@Composable
+-private fun SmallMetric(label: String, value: String, modifier: Modifier = Modifier) {
+-    ElevatedCard(modifier) { Column(Modifier.padding(8.dp)) { Text(value, style = MaterialTheme.typography.titleLarge); Text(label, style = MaterialTheme.typography.labelSmall) } }
+-}
+-
+ private fun riskBandAr(score: Int): String = when (RiskControlMath.band(score)) {
+     "CRITICAL" -> "حرج"
+     "HIGH" -> "عالٍ"

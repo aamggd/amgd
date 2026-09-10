@@ -1,0 +1,146 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-14 00:25:39.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt	2026-08-15 01:42:52.317426820 +0000
+@@ -461,16 +526,26 @@
+ 
+ @Composable
+ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-        item { Text("محاضر الجرد", style = MaterialTheme.typography.titleLarge) }
+-        if (rows.isEmpty()) item { Text("لا توجد محاضر جرد بعد.") }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++        item { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
++        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد محاضر جرد بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp)) {
+-                    Text(row.countNo, style = MaterialTheme.typography.titleMedium)
+-                    Text("${row.warehouseName} • ${fmtDate(row.countDate)} • ${statusAr(row.status)}")
+-                    Text("الأسطر: ${row.lineCount} • أسطر بفروق: ${row.varianceLines} • قيمة الفرق: ${fmtMoney(row.varianceValueBase)}")
+-                    if (row.status == "DRAFT") TextButton(onClick = { onEdit(row.id) }) { Text("إدخال الكميات / الترحيل") }
++            val draft = row.status == "DRAFT"
++            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(row.countNo, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.warehouseName} • ${fmtDate(row.countDate)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
++                    }
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                        FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
++                        FushStatusPill("${row.varianceLines} بفروق", if (row.varianceLines > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                    }
++                    Text("قيمة الفرق: ${fmtMoney(row.varianceValueBase)}", style = MaterialTheme.typography.bodyMedium)
++                    if (draft) Button(onClick = { onEdit(row.id) }, modifier = Modifier.fillMaxWidth()) { Text("إدخال الكميات / الترحيل") }
+                 }
+             }
+         }
+@@ -479,22 +554,27 @@
+ 
+ @Composable
+ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-        item {
+-            Text("التشغيلات والحجر", style = MaterialTheme.typography.titleLarge)
+-            Text("الحالات المحجورة أو الموقوفة لا تدخل في البيع أو صرف الإنتاج.", style = MaterialTheme.typography.bodySmall)
+-        }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++        item { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
++        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أرصدة تشغيلات حالياً.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp)) {
+-                    Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+-                    Text("${row.warehouseName} • ${row.code}")
+-                    Text("التشغيلة: ${row.lotNo ?: "بدون رقم"} • الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "—"}")
+-                    Text("الرصيد: ${fmtQty(row.quantityBase)} • القيمة: ${fmtMoney(row.inventoryValueBase)}")
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+-                        AssistChip(onClick = {}, label = { Text(statusAr(row.controlStatus)) })
+-                        TextButton(onClick = { onControl(row) }) { Text("تغيير الحالة") }
++            val tone = when (row.controlStatus) {
++                "ACCEPTED" -> FushStatusTone.Success
++                "QUARANTINED", "HOLD" -> FushStatusTone.Warning
++                else -> FushStatusTone.Danger
++            }
++            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.warehouseName} • ${row.code}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(statusAr(row.controlStatus), tone)
+                     }
++                    Text("التشغيلة: ${row.lotNo ?: "بدون رقم"} • الصلاحية: ${row.expiryDate?.let(::fmtDate) ?: "—"}", style = MaterialTheme.typography.bodyMedium)
++                    Text("الرصيد ${fmtQty(row.quantityBase)} • القيمة ${fmtMoney(row.inventoryValueBase)}", style = MaterialTheme.typography.bodySmall)
++                    OutlinedButton(onClick = { onControl(row) }, modifier = Modifier.fillMaxWidth()) { Text("تغيير حالة التشغيلة") }
+                 }
+             }
+         }
+@@ -503,37 +583,46 @@
+ 
+ @Composable
+ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-        item { Text("آخر 500 حركة مخزون", style = MaterialTheme.typography.titleLarge) }
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
++        item { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
++        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد حركات مخزون حتى الآن.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+-            ListItem(
+-                headlineContent = { Text(row.itemName) },
+-                supportingContent = { Text("${fmtDate(row.movementDate)} • ${row.warehouseName} • ${movementAr(row.movementType)} • ${row.lotNo ?: "—"}") },
+-                trailingContent = { Text((if (row.quantityBase > 0) "+" else "") + fmtQty(row.quantityBase)) }
+-            )
+-            HorizontalDivider()
++            val inbound = row.quantityBase > 0
++            Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small) {
++                Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(row.itemName, style = MaterialTheme.typography.titleSmall)
++                        Text("${fmtDate(row.movementDate)} • ${row.warehouseName} • ${movementAr(row.movementType)} • ${row.lotNo ?: "—"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    FushStatusPill((if (inbound) "+" else "") + fmtQty(row.quantityBase), if (inbound) FushStatusTone.Success else FushStatusTone.Warning)
++                }
++            }
+         }
+     }
+ }
+ 
+ @Composable
+ private fun InventoryTransfers(rows: List<WarehouseTransferSummaryRow>, onOpen: (Long) -> Unit) {
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
++    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item {
+-            Text("التحويلات بين المستودعات", style = MaterialTheme.typography.titleLarge)
+-            Text("التحويل المرحّل ينشئ حركة إخراج من المصدر وحركة إدخال للوجهة بنفس التشغيلة والصلاحية والتكلفة، بدون قيد مالي لأنه لا يغيّر إجمالي قيمة المخزون.", style = MaterialTheme.typography.bodySmall)
++            FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
+         }
+-        if (rows.isEmpty()) item { Text("لا توجد تحويلات مخزنية بعد.") }
++        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تحويلات مخزنية بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
+         items(rows) { row ->
+-            ElevatedCard(Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
++            val draft = row.status == "DRAFT"
++            ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                         Text(row.transferNo, style = MaterialTheme.typography.titleMedium)
+-                        AssistChip(onClick = {}, label = { Text(statusAr(row.status)) })
++                        FushStatusPill(statusAr(row.status), if (draft) FushStatusTone.Warning else FushStatusTone.Success)
++                    }
++                    Text("${row.fromWarehouseName} ← ${row.toWarehouseName} • ${fmtDate(row.transferDate)}", style = MaterialTheme.typography.bodyMedium)
++                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                        FushStatusPill("${row.lineCount} سطر", FushStatusTone.Info)
++                        FushStatusPill("كمية ${fmtQty(row.totalQtyBase)}", FushStatusTone.Neutral)
+                     }
+-                    Text("${row.fromWarehouseName} ← ${row.toWarehouseName} • ${fmtDate(row.transferDate)}")
+-                    Text("الأسطر: ${row.lineCount} • الكمية: ${fmtQty(row.totalQtyBase)} • القيمة المنقولة: ${fmtMoney(row.totalValueBase)}")
+-                    TextButton(onClick = { onOpen(row.id) }) { Text(if (row.status == "DRAFT") "فتح وإكمال التحويل" else "عرض التفاصيل") }
++                    Text("القيمة المنقولة: ${fmtMoney(row.totalValueBase)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    OutlinedButton(onClick = { onOpen(row.id) }, modifier = Modifier.fillMaxWidth()) { Text(if (draft) "فتح وإكمال التحويل" else "عرض التفاصيل") }
+                 }
+             }
+         }

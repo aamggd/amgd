@@ -1,0 +1,60 @@
+name: Build Frozen UI47 Snapshot For Integration
+
+on:
+  push:
+    branches: [fush/integration-final-14.5.48]
+    paths: ['.github/workflows/build-ui47-snapshot-for-integration.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.43-Integrated-Professional-UI-Build
+          path: a/ui43
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31861273525
+      - name: Reconstruct UI47
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q a/ui43/FushERP-Mobile-Phase14.5.43-Integrated-Professional-UI-Source.zip
+          UI=FushERP_Mobile_Phase5
+          rm -rf "$UI/.git" "$UI/app/build" "$UI/.gradle" "$UI/.kotlin" "$UI/build"
+          git -C "$UI" init -q
+          git -C "$UI" config user.email integration@fush.local
+          git -C "$UI" config user.name FUSH
+          git -C "$UI" add -A && git -C "$UI" commit -qm ui43
+          HOME='app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt'
+          for n in 01_scope 02_handoff_manifest 03_build_gradle 04_shared_inline_states 05_governance_risk 06_planning_geography 07_operations_state_consistency 08_people_profile_states 09_production_purchase_states 10_sales_rep_sales_states; do
+            p="$GITHUB_WORKSPACE/phase14_5_44_final_ui_handoff/patches/${n}.patch"
+            if [ "$n" = 07_operations_state_consistency ]; then
+              git -C "$UI" apply --check --exclude="$HOME" "$p" && git -C "$UI" apply --exclude="$HOME" "$p"
+              (cd "$UI" && python3 "$GITHUB_WORKSPACE/integration_ui_14_5_44/resolve_home_shell_07.py")
+            else
+              git -C "$UI" apply --check "$p" && git -C "$UI" apply "$p"
+            fi
+          done
+          for d in phase14_5_45_inventory_scroll_hotfix phase14_5_46_scroll_profile_polish phase14_5_47_professional_forms_ui; do
+            while IFS= read -r p; do git -C "$UI" apply --check "$p" && git -C "$UI" apply "$p"; done < <(find "$GITHUB_WORKSPACE/$d/patches" -maxdepth 1 -name '*.patch' -type f | sort -V)
+          done
+          git -C "$UI" diff --check
+          grep -q 'versionCode = 86' "$UI/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 27' "$UI/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          rm -rf "$UI/.git"
+          zip -qr FushERP-Mobile-Phase14.5.47-Frozen-UI-Source.zip "$UI"
+          sha256sum FushERP-Mobile-Phase14.5.47-Frozen-UI-Source.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.47-Frozen-UI-Source
+          path: |
+            FushERP-Mobile-Phase14.5.47-Frozen-UI-Source.zip
+            SHA256SUMS.txt
+          retention-days: 7

@@ -1,0 +1,163 @@
+name: Central Consolidation - Accounting P0
+
+on:
+  push:
+    branches:
+      - fush/integration-current
+    paths:
+      - .github/workflows/central-consolidation-accounting-p0.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASELINE_ARTIFACT_ID: '9253417429'
+  BASELINE_SOURCE_SHA256: '8adc047bc38703fcb460344b4ddd2c7f18f0c47c3ca1a6c62a51d3ef590450a1'
+  BASELINE_SOURCE_TREE: '1b6af7bcaa86138ae75ea3d905db4bdba0fe04ff'
+  ACCOUNTING_PATCH_SHA256: 'c16ae280137aa3dc8777011e36d93af00e2ed0c34f9178ddcc0c99dc9fbc100c'
+  ACCOUNTING_PATCH_COMMIT: 'b4b1138498c7cc1f7593fc6b646dd7574585e556'
+
+jobs:
+  integrate-accounting-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration-current
+        uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore exact Central 14.5.54 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf baseline-artifact baseline-unpack work-source central_source
+          mkdir -p baseline-artifact baseline-unpack
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/aamggd/amgd/actions/artifacts/${BASELINE_ARTIFACT_ID}/zip" \
+            -o baseline-artifact.zip
+          unzip -q baseline-artifact.zip -d baseline-artifact
+          SOURCE_ZIP="$(find baseline-artifact -type f -name '*Source.zip' -print -quit)"
+          test -n "$SOURCE_ZIP"
+          echo "${BASELINE_SOURCE_SHA256}  ${SOURCE_ZIP}" | sha256sum -c -
+          unzip -q "$SOURCE_ZIP" -d baseline-unpack
+          SETTINGS="$(find baseline-unpack -type f -name settings.gradle.kts -print -quit)"
+          test -n "$SETTINGS"
+          SRC_ROOT="$(dirname "$SETTINGS")"
+          cp -a "$SRC_ROOT" work-source
+
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE="$(git write-tree)"
+          echo "baseline_tree=$TREE"
+          test "$TREE" = "$BASELINE_SOURCE_TREE"
+          git commit -qm "Central Phase 14.5.54 exact baseline"
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Fetch and apply exact Accounting P0 handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL \
+            "https://raw.githubusercontent.com/aamggd/amgd/${ACCOUNTING_PATCH_COMMIT}/fush_accounting/rebase/ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.patch" \
+            -o accounting-p0.patch
+          echo "${ACCOUNTING_PATCH_SHA256}  accounting-p0.patch" | sha256sum -c -
+          cd work-source
+          git apply --check ../accounting-p0.patch
+          git apply ../accounting-p0.patch
+          git diff --check
+          git add -A
+          test "$(git status --short | wc -l)" -eq 3
+          test -f ACCOUNTING_P0_INTEGRATION_CONTRACT_14_5_54.md
+          test -f app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt
+          test -f app/src/test/java/com/fush/erp/domain/AccountingIntegrationContractTest.kt
+          git commit -qm "Integrate Accounting P0 contract"
+          echo "accounting_source_tree=$(git write-tree)" | tee ../accounting-source-tree.txt
+
+      - name: Domain regression - Accounting P0
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.AccountingIntegrationContractTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        shell: bash
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        shell: bash
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central invariant checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Materialize Central working source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir -p central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          test -f central_source/settings.gradle.kts
+          test -f central_source/app/src/main/java/com/fush/erp/domain/AccountingIntegrationContract.kt
+
+      - name: Commit actual Central Integration source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source accounting-source-tree.txt
+          # Whitespace in the inherited 14.5.54 baseline is historical. New patch
+          # whitespace has already been checked above against the exact baseline.
+          git commit -m "Central integration: materialize 14.5.54 + Accounting P0"
+          git push origin HEAD:fush/integration-current

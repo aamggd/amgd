@@ -1,0 +1,11 @@
+# Central Integration Record — Audit Controls P0
+- Source handoff SHA: 03505e60d12926a9edfcd26b5a6e43264a98d423
+- Application payload: exact AuditEventCatalog.kt + AuditEventCatalogTest.kt only
+- Application ID: com.fush.erp.recovery
+- Room schema: 34 unchanged
+- Migrations: none
+- Destructive migration: absent
+- Audit domain regression: PASS
+- Full unit tests: PASS
+- Release build: PASS
+- Result: SUCCESS

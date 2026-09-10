@@ -1,0 +1,121 @@
+name: Central Consolidation - Expenses
+
+on:
+  push:
+    branches: [fush/integration-current]
+    paths:
+      - '.github/workflows/central-consolidation-expenses.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  INPUT_TREE: 'a7c7868c154bdd7161115b86ea25f66cdf402fc0'
+  EXPENSES_HANDOFF_SHA: '4d47133226a37543842aa59f6782f25986a866aa'
+  EXPENSES_PATCH_SHA256: 'c0d8532434c2f9d9fd18c128df299e8ceb63ccfee8b33fb205aec02a894fcdc5'
+
+jobs:
+  integrate-expenses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fush/integration-current
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Restore cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a central_source work-source
+          cd work-source
+          git init -q
+          git config user.name central-integration-ci
+          git config user.email central-integration-ci@users.noreply.github.com
+          git add -A
+          TREE=$(git write-tree)
+          echo "input_tree=$TREE"
+          test "$TREE" = "$INPUT_TREE"
+          git commit -qm "Cumulative Central before Expenses"
+          test -f app/src/main/java/com/fush/erp/domain/TreasuryMovementType.kt
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+
+      - name: Fetch exact validated Expenses P0 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://raw.githubusercontent.com/aamggd/amgd/${EXPENSES_HANDOFF_SHA}/phase_expenses_p0/payload.patch.gz.b64" -o expenses-payload.b64
+          base64 -d expenses-payload.b64 | gzip -dc > expenses.patch
+          echo "${EXPENSES_PATCH_SHA256}  expenses.patch" | sha256sum -c -
+          cd work-source
+          git am ../expenses.patch
+          git diff HEAD^ --check
+          test -f app/src/main/java/com/fush/erp/domain/ExpenseClassificationPolicy.kt
+          git add -A
+          echo "expenses_source_tree=$(git write-tree)" | tee ../expenses-source-tree.txt
+
+      - name: Expenses domain regression
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'ExpenseClassificationPolicy' app/src/main/java/com/fush/erp/domain/ExpenseClassificationPolicy.kt
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.ExpenseReportAnalyticsTest'
+
+      - name: Full unit tests
+        working-directory: work-source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Release build
+        working-directory: work-source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Central safety checks
+        working-directory: work-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f app/schemas/com.fush.erp.data.FushDatabase/34.json
+          grep -R -q 'MIGRATION_32_33_SECURITY' app/src/main/java
+          grep -R -Eq 'Migration\(33, *34\)|MIGRATION_33_34' app/src/main/java
+          ! grep -R -n 'fallbackToDestructiveMigration' app/src/main
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+          ${ANDROID_HOME}/build-tools/36.0.0/zipalign -c -P 16 -v 4 app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Replace Central source with cumulative tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf central_source
+          mkdir central_source
+          git -C work-source archive --format=tar HEAD | tar -x -C central_source
+          test -f central_source/app/src/main/java/com/fush/erp/domain/ExpenseClassificationPolicy.kt
+          test -f central_source/app/src/main/java/com/fush/erp/domain/TreasuryMovementType.kt
+
+      - name: Commit actual cumulative Central source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add central_source expenses-source-tree.txt
+          git commit -m "Central integration: add Expenses P0"
+          git push origin HEAD:fush/integration-current

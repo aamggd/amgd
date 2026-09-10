@@ -1,0 +1,168 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 00:43:38.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 01:38:18.910454370 +0000
+@@ -173,43 +256,102 @@
+     val suppliers by container.db.supplierDao().observeAll().collectAsState(initial = emptyList())
+     val employees by container.db.employeeDao().observeActiveEmployees().collectAsState(initial = emptyList())
+     val salesReps by container.db.salesRepresentativeDao().observeActive().collectAsState(initial = emptyList())
+-    val tableScroll = rememberScrollState()
+     var voucherType by remember { mutableStateOf<String?>(null) }
+     var showAdd by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++    val totalBalance = remember(balances) { balances.sumOf { it.balanceBase } }
++    val cashBalance = remember(balances) { balances.filter { it.kind == "CASH" }.sumOf { it.balanceBase } }
++    val bankBalance = remember(balances) { balances.filter { it.kind == "BANK" }.sumOf { it.balanceBase } }
++
++    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+-            Text("الخزينة والبنوك", style = MaterialTheme.typography.headlineSmall)
+-            Text("الأرصدة مرتبة في جدول. اسحب أفقياً لعرض كل الأعمدة.", style = MaterialTheme.typography.bodySmall)
+-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                listOf("RECEIPT" to "سند قبض", "PAYMENT" to "سند صرف", "INCOME" to "إيراد", "TRANSFER" to "تحويل").forEach { (type, title) ->
+-                    Button(onClick = { voucherType = type }) { Text(title) }
+-                }
+-                OutlinedButton(onClick = { showAdd = true }) { Text("إضافة خزينة/بنك") }
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                FushSectionHeader(
++                    title = "الخزينة والبنوك",
++                    subtitle = "الأرصدة الدفترية والسندات والتحويلات بين الصناديق والحسابات البنكية",
++                    modifier = Modifier.weight(1f),
++                )
++                Spacer(Modifier.width(10.dp))
++                OutlinedButton(onClick = { showAdd = true }, shape = MaterialTheme.shapes.medium) { Text("إضافة حساب") }
+             }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+-        if (balances.isNotEmpty()) {
++        message?.let { text ->
+             item {
+-                AccountingTableHeader(tableScroll, listOf(
+-                    "الاسم" to 220, "النوع" to 100, "الكود" to 120,
+-                    "العملة" to 110, "الرصيد الدفتري" to 160, "البنك/الحساب" to 240
+-                ))
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) { Text(text, Modifier.fillMaxWidth().padding(12.dp)) }
+             }
+         }
+-        items(balances, key = { it.id }) { row ->
+-            AccountingTableRow(
+-                tableScroll,
+-                listOf(
+-                    row.nameAr to 220,
+-                    row.kind to 100,
+-                    row.code to 120,
+-                    row.currencyCode to 110,
+-                    money(row.balanceBase) to 160,
+-                    listOf(row.bankName, row.accountNumber).filter { it.isNotBlank() }.joinToString(" ") to 240
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("إجمالي السيولة", money(totalBalance), Modifier.weight(1f), "الرصيد الدفتري", FushStatusTone.Info)
++                FushMetricCard("الصناديق", money(cashBalance), Modifier.weight(1f), "${balances.count { it.kind == "CASH" }} صندوق", FushStatusTone.Success)
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("البنوك", money(bankBalance), Modifier.weight(1f), "${balances.count { it.kind == "BANK" }} حساب", FushStatusTone.Info)
++                FushMetricCard("حسابات الخزينة", balances.size.toString(), Modifier.weight(1f), "صناديق وبنوك", FushStatusTone.Neutral)
++            }
++        }
++        item {
++            FushSectionHeader("إجراءات سريعة", "كل سند يُرحّل محاسبيًا وفق الحساب والطرف المحدد")
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("سند قبض") }
++                Button(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("سند صرف") }
++            }
++            Spacer(Modifier.height(8.dp))
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                OutlinedButton(onClick = { voucherType = "INCOME" }, modifier = Modifier.weight(1f), enabled = balances.isNotEmpty()) { Text("إيراد") }
++                OutlinedButton(onClick = { voucherType = "TRANSFER" }, modifier = Modifier.weight(1f), enabled = balances.size > 1) { Text("تحويل") }
++            }
++        }
++        item { FushSectionHeader("الحسابات النقدية", "${balances.size} حساب خزينة أو بنك") }
++        if (balances.isEmpty()) {
++            item {
++                FushSystemState(
++                    title = "لا توجد خزينة أو حساب بنكي",
++                    detail = "أضف أول حساب خزينة أو بنك قبل تسجيل السندات والتحويلات.",
+                 )
+-            )
++            }
++        }
++        items(balances, key = { it.id }) { row ->
++            ElevatedCard(
++                Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++            ) {
++                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.code} • ${row.currencyCode}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                        }
++                        FushStatusPill(if (row.kind == "BANK") "بنك" else "صندوق", if (row.kind == "BANK") FushStatusTone.Info else FushStatusTone.Success)
++                    }
++                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column {
++                            Text("الرصيد الدفتري", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            Text(money(row.balanceBase), style = MaterialTheme.typography.headlineSmall)
++                        }
++                        if (row.kind == "BANK") {
++                            Column(horizontalAlignment = Alignment.End) {
++                                Text(row.bankName.ifBlank { "حساب بنكي" }, style = MaterialTheme.typography.labelLarge)
++                                if (row.accountNumber.isNotBlank()) Text(row.accountNumber, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                            }
++                        }
++                    }
++                }
++            }
+         }
+     }
+ 
+@@ -245,11 +387,31 @@
+     val currencies by container.db.currencyDao().observeAll().collectAsState(initial = emptyList())
+     var show by remember { mutableStateOf(false) }
+     var message by remember { mutableStateOf<String?>(null) }
+-    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-        Text("القيد اليدوي", style = MaterialTheme.typography.headlineSmall)
+-        Text("المبالغ تُدخل بعملة القيد ثم تُحوّل إلى الريال الجديد بسعر الصرف المسجل. يجب أن يتوازن القيد قبل الترحيل.")
+-        Button(onClick = { show = true }) { Text("إنشاء قيد يدوي") }
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
++    Column(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
++        FushSectionHeader(
++            title = "القيد اليدوي",
++            subtitle = "استخدمه للقيود المحاسبية التي لا تنشأ من عملية تشغيلية داخل النظام",
++        )
++        Surface(
++            color = MaterialTheme.colorScheme.tertiaryContainer,
++            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
++            shape = MaterialTheme.shapes.medium,
++        ) {
++            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
++                Text("ضوابط قبل الترحيل", style = MaterialTheme.typography.titleSmall)
++                Text("يجب أن يتوازن مجموع المدين والدائن. المبالغ تُدخل بعملة القيد ثم تُحوّل إلى العملة الأساسية بسعر الصرف المسجل.", style = MaterialTheme.typography.bodyMedium)
++            }
++        }
++        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++            FushMetricCard("حسابات الترحيل", accounts.count { it.isPosting }.toString(), Modifier.weight(1f), "متاحة للقيد", FushStatusTone.Info)
++            FushMetricCard("العملات", currencies.size.toString(), Modifier.weight(1f), "عملة معرفة", FushStatusTone.Neutral)
++        }
++        Button(onClick = { show = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp), shape = MaterialTheme.shapes.medium) { Text("إنشاء قيد يدوي") }
++        message?.let { text ->
++            Surface(color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer, shape = MaterialTheme.shapes.medium) {
++                Text(text, Modifier.fillMaxWidth().padding(12.dp))
++            }
++        }
+     }
+     if (show) {
+         ManualJournalDialog(accounts.filter { it.isPosting }, currencies, onDismiss = { show = false }) { description, date, currency, rate, lines ->

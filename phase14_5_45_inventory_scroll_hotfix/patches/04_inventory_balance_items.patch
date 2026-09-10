@@ -1,0 +1,152 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 54bde8e..b5efaf4 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -256,34 +256,26 @@ fun AdvancedInventoryScreen(container: AppContainer, user: UserEntity, modifier:
+     }
+ }
+ 
+-@Composable
+-private fun InventoryBalances(
++private fun LazyListScope.inventoryBalanceItems(
+     rows: List<WarehouseStockBalanceRow>,
++    filtered: List<WarehouseStockBalanceRow>,
++    grouped: Map<Long, List<WarehouseStockBalanceRow>>,
+     lots: List<InventoryLotAlertRow>,
+-    warehouses: List<WarehouseEntity>
++    warehouses: List<WarehouseEntity>,
++    selectedWarehouseId: Long?,
++    selectedCategory: String?,
++    search: String,
++    onWarehouseSelected: (Long?) -> Unit,
++    onCategorySelected: (String?) -> Unit,
++    onSearchChange: (String) -> Unit,
+ ) {
+     val now = System.currentTimeMillis()
+-    var selectedWarehouseId by remember { mutableStateOf<Long?>(null) }
+-    var selectedCategory by remember { mutableStateOf<String?>(null) }
+-    var search by remember { mutableStateOf("") }
+-
+-    val filtered = remember(rows, selectedWarehouseId, selectedCategory, search) {
+-        val q = search.trim().lowercase(Locale.ROOT)
+-        rows.filter { row ->
+-            (selectedWarehouseId == null || row.warehouseId == selectedWarehouseId) &&
+-                (selectedCategory == null || row.category == selectedCategory) &&
+-                (q.isBlank() || listOf(row.nameAr, row.code, row.warehouseName, itemCategoryLabel(row.category)).any { it.lowercase(Locale.ROOT).contains(q) })
+-        }
+-    }
+-    val grouped = remember(filtered) { filtered.groupBy { it.warehouseId } }
+-
+-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-        item {
++    item(key = "inventory-balances-filters") {
++        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+             FushSectionHeader("الأرصدة الحالية", "الرصيد مفصول حسب المخزن الفعلي ونوع الصنف")
+-            Spacer(Modifier.height(8.dp))
+             OutlinedTextField(
+                 value = search,
+-                onValueChange = { search = it },
++                onValueChange = onSearchChange,
+                 modifier = Modifier.fillMaxWidth(),
+                 label = { Text("بحث في المخزون") },
+                 placeholder = { Text("اسم الصنف، الكود أو المخزن") },
+@@ -293,58 +285,58 @@ private fun InventoryBalances(
+             )
+             Text("المخزن", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-                item { FilterChip(selected = selectedWarehouseId == null, onClick = { selectedWarehouseId = null }, label = { Text("كل المخازن") }) }
++                item { FilterChip(selected = selectedWarehouseId == null, onClick = { onWarehouseSelected(null) }, label = { Text("كل المخازن") }) }
+                 items(warehouses.filter { it.isActive }) { wh ->
+-                    FilterChip(selected = selectedWarehouseId == wh.id, onClick = { selectedWarehouseId = wh.id }, label = { Text(warehouseShortName(wh)) })
++                    FilterChip(selected = selectedWarehouseId == wh.id, onClick = { onWarehouseSelected(wh.id) }, label = { Text(warehouseShortName(wh)) })
+                 }
+             }
+             Text("نوع الصنف", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+-                item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("الكل") }) }
+-                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { selectedCategory = "FINISHED_GOOD" }, label = { Text("منتج نهائي") }) }
+-                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { selectedCategory = "RAW_MATERIAL" }, label = { Text("مواد خام") }) }
+-                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { selectedCategory = "PACKAGING" }, label = { Text("تغليف") }) }
++                item { FilterChip(selected = selectedCategory == null, onClick = { onCategorySelected(null) }, label = { Text("الكل") }) }
++                item { FilterChip(selected = selectedCategory == "FINISHED_GOOD", onClick = { onCategorySelected("FINISHED_GOOD") }, label = { Text("منتج نهائي") }) }
++                item { FilterChip(selected = selectedCategory == "RAW_MATERIAL", onClick = { onCategorySelected("RAW_MATERIAL") }, label = { Text("مواد خام") }) }
++                item { FilterChip(selected = selectedCategory == "PACKAGING", onClick = { onCategorySelected("PACKAGING") }, label = { Text("تغليف") }) }
+             }
+         }
++    }
+ 
+-        if (filtered.isEmpty()) {
+-            item {
+-                FushEmptyState(
+-                    title = "لا يوجد رصيد مطابق للفلاتر الحالية",
+-                    detail = "غيّر المخزن أو نوع الصنف أو عبارة البحث لعرض أرصدة أخرى.",
+-                )
+-            }
++    if (filtered.isEmpty()) {
++        item(key = "inventory-balances-empty") {
++            FushEmptyState(
++                title = "لا يوجد رصيد مطابق للفلاتر الحالية",
++                detail = "غيّر المخزن أو نوع الصنف أو عبارة البحث لعرض أرصدة أخرى.",
++            )
+         }
++    }
+ 
+-        warehouses.filter { wh -> grouped.containsKey(wh.id) }.forEach { wh ->
+-            item {
+-                FushSectionHeader(warehouseDisplayName(wh), wh.location.takeIf { it.isNotBlank() })
+-            }
+-            items(grouped[wh.id].orEmpty(), key = { "${it.warehouseId}-${it.itemId}" }) { row ->
+-                val itemLots = lots.filter { it.warehouseId == row.warehouseId && it.itemId == row.itemId && it.quantityBase > 0.000000001 }
+-                val sellable = itemLots.filter { (it.expiryDate == null || it.expiryDate >= now) && it.controlStatus == "ACCEPTED" }.sumOf { it.quantityBase }
+-                val expired = itemLots.filter { it.expiryDate != null && it.expiryDate < now }.sumOf { it.quantityBase }
+-                val controlled = itemLots.filter { it.controlStatus != "ACCEPTED" }.sumOf { it.quantityBase }
+-                ElevatedCard(
+-                    Modifier.fillMaxWidth(),
+-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+-                ) {
+-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                            Column(Modifier.weight(1f)) {
+-                                Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
+-                                Text("${row.code} • ${itemCategoryLabel(row.category)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                            }
+-                            FushStatusPill("${fmtQty(row.quantityBase)} ${row.baseUnitName}", FushStatusTone.Info)
++    warehouses.filter { wh -> grouped.containsKey(wh.id) }.forEach { wh ->
++        item(key = "warehouse-header-${wh.id}") {
++            FushSectionHeader(warehouseDisplayName(wh), wh.location.takeIf { it.isNotBlank() })
++        }
++        items(grouped[wh.id].orEmpty(), key = { "${it.warehouseId}-${it.itemId}" }) { row ->
++            val itemLots = lots.filter { it.warehouseId == row.warehouseId && it.itemId == row.itemId && it.quantityBase > 0.000000001 }
++            val sellable = itemLots.filter { (it.expiryDate == null || it.expiryDate >= now) && it.controlStatus == "ACCEPTED" }.sumOf { it.quantityBase }
++            val expired = itemLots.filter { it.expiryDate != null && it.expiryDate < now }.sumOf { it.quantityBase }
++            val controlled = itemLots.filter { it.controlStatus != "ACCEPTED" }.sumOf { it.quantityBase }
++            ElevatedCard(
++                Modifier.fillMaxWidth(),
++                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
++                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
++            ) {
++                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
++                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                        Column(Modifier.weight(1f)) {
++                            Text(row.nameAr, style = MaterialTheme.typography.titleMedium)
++                            Text("${row.code} • ${itemCategoryLabel(row.category)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                         }
+-                        if (itemLots.isNotEmpty()) {
+-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-                                FushStatusPill("متاح ${fmtQty(sellable)}", FushStatusTone.Success)
+-                                if (expired > 0.000000001) FushStatusPill("منتهي ${fmtQty(expired)}", FushStatusTone.Danger)
+-                                if (controlled > 0.000000001) FushStatusPill("محجور ${fmtQty(controlled)}", FushStatusTone.Warning)
+-                            }
++                        FushStatusPill("${fmtQty(row.quantityBase)} ${row.baseUnitName}", FushStatusTone.Info)
++                    }
++                    if (itemLots.isNotEmpty()) {
++                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
++                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                            FushStatusPill("متاح ${fmtQty(sellable)}", FushStatusTone.Success)
++                            if (expired > 0.000000001) FushStatusPill("منتهي ${fmtQty(expired)}", FushStatusTone.Danger)
++                            if (controlled > 0.000000001) FushStatusPill("محجور ${fmtQty(controlled)}", FushStatusTone.Warning)
+                         }
+                     }
+                 }

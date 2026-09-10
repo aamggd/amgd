@@ -1,0 +1,124 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index fbed8f9..311e1c4 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
+ import androidx.activity.result.contract.ActivityResultContracts
+ import androidx.compose.foundation.layout.*
+ import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.LazyListScope
+ import androidx.compose.foundation.lazy.items
+ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.foundation.verticalScroll
+@@ -656,7 +657,7 @@ private fun SupplierProfileScreen(container: AppContainer, user: UserEntity, sup
+ @Composable
+ private fun PartyInfoCustomer(c: CustomerEntity) {
+     Column(
+-        Modifier.verticalScroll(rememberScrollState()),
++        Modifier.fillMaxWidth(),
+         verticalArrangement = Arrangement.spacedBy(12.dp),
+     ) {
+         FushSectionHeader("المعلومات الأساسية", "بيانات التعريف والسياسة التجارية للعميل")
+@@ -711,7 +712,7 @@ private fun CustomerInfoRow(label: String, value: String, divider: Boolean = tru
+ @Composable
+ private fun PartyInfoSupplier(s: SupplierEntity) {
+     Column(
+-        Modifier.verticalScroll(rememberScrollState()),
++        Modifier.fillMaxWidth(),
+         verticalArrangement = Arrangement.spacedBy(12.dp),
+     ) {
+         FushSectionHeader("المعلومات الأساسية", "بيانات المورد وشروط الدفع")
+@@ -759,62 +760,45 @@ private fun SupplierInfoRow(label: String, value: String, divider: Boolean = tru
+     if (divider) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+ }
+ 
+-@Composable
+-private fun CustomerLedgerTab(rows: List<Pair<CustomerLedgerEventRow,Double>>) {
+-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+-        item {
+-            val balance = rows.lastOrNull()?.second ?: 0.0
+-            FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات العميل")
+-            Spacer(Modifier.height(8.dp))
+-            FushMetricCard(
+-                label = "الرصيد الحالي",
+-                value = partyMoney(balance),
+-                helper = partyBalanceTextCustomer(balance),
+-                modifier = Modifier.fillMaxWidth(),
+-                tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+-            )
+-        }
+-        if (rows.isEmpty()) {
+-            item {
+-                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+-                    FushInlineState("لا توجد حركات على حساب العميل حتى الآن.")
++private fun LazyListScope.customerLedgerItems(rows: List<Pair<CustomerLedgerEventRow,Double>>) {
++    item {
++        val balance = rows.lastOrNull()?.second ?: 0.0
++        FushSectionHeader("كشف الحساب", "سجل زمني موحّد لجميع حركات العميل")
++        Spacer(Modifier.height(8.dp))
++        FushMetricCard(
++            label = "الرصيد الحالي",
++            value = partyMoney(balance),
++            helper = partyBalanceTextCustomer(balance),
++            modifier = Modifier.fillMaxWidth(),
++            tone = if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++        )
++    }
++    if (rows.isEmpty()) item { FushInlineState("لا توجد حركات على حساب العميل حتى الآن.") }
++    items(rows) { (event, balance) ->
++        ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
++            Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
++                    Column(Modifier.weight(1f)) {
++                        Text(partyEventLabel(event.eventType), style = MaterialTheme.typography.titleSmall)
++                        Text("${partyDate(event.eventDate)} • ${event.referenceNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    }
++                    FushStatusPill("رصيد ${partyMoney(balance)}", if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
+                 }
+-            }
+-        }
+-        items(rows) { (event, balance) ->
+-            ElevatedCard(
+-                Modifier.fillMaxWidth(),
+-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-            ) {
+-                Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+-                        Column(Modifier.weight(1f)) {
+-                            Text(partyEventLabel(event.eventType), style = MaterialTheme.typography.titleSmall)
+-                            Text("${partyDate(event.eventDate)} • ${event.referenceNo}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+-                        }
+-                        FushStatusPill("رصيد ${partyMoney(balance)}", if (balance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success)
++                if (event.invoiceNo.isNotBlank()) Text("المرجع: ${event.invoiceNo}", style = MaterialTheme.typography.bodySmall)
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f), shape = MaterialTheme.shapes.small) {
++                        Column(Modifier.padding(9.dp)) { Text("مدين", style = MaterialTheme.typography.labelSmall); Text(partyMoney(event.debitBase), style = MaterialTheme.typography.titleSmall) }
+                     }
+-                    if (event.invoiceNo.isNotBlank()) Text("المرجع: ${event.invoiceNo}", style = MaterialTheme.typography.bodySmall)
+-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f), shape = MaterialTheme.shapes.small) {
+-                            Column(Modifier.padding(9.dp)) {
+-                                Text("مدين", style = MaterialTheme.typography.labelSmall)
+-                                Text(partyMoney(event.debitBase), style = MaterialTheme.typography.titleSmall)
+-                            }
+-                        }
+-                        Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f), shape = MaterialTheme.shapes.small) {
+-                            Column(Modifier.padding(9.dp)) {
+-                                Text("دائن", style = MaterialTheme.typography.labelSmall)
+-                                Text(partyMoney(event.creditBase), style = MaterialTheme.typography.titleSmall)
+-                            }
+-                        }
++                    Surface(Modifier.weight(1f), color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f), shape = MaterialTheme.shapes.small) {
++                        Column(Modifier.padding(9.dp)) { Text("دائن", style = MaterialTheme.typography.labelSmall); Text(partyMoney(event.creditBase), style = MaterialTheme.typography.titleSmall) }
+                     }
+-                    if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                 }
++                if (event.notes.isNotBlank()) Text(event.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+             }
+         }
+     }
+ }
++
+ @Composable
+ private fun SupplierLedgerTab(rows: List<Pair<SupplierLedgerEventRow,Double>>) {
+     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {

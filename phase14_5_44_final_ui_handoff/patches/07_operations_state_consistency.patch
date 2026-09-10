@@ -1,0 +1,271 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+index 8723241..d43aca1 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
+@@ -503,7 +503,7 @@ private fun WarehouseReorderPolicyDialog(
+                 Spacer(Modifier.height(6.dp))
+                 Text("السياسات الحالية", style = MaterialTheme.typography.titleMedium)
+                 if (policies.isEmpty()) {
+-                    Text("لا توجد سياسات بعد. الحدود القديمة تُرحّل تلقائياً للمخزن التشغيلي عند الترقية إذا كانت أكبر من صفر.", style = MaterialTheme.typography.bodySmall)
++                    FushInlineState("لا توجد سياسات بعد. الحدود القديمة تُرحّل تلقائياً للمخزن التشغيلي عند الترقية إذا كانت أكبر من صفر.")
+                 } else {
+                     LazyColumn(Modifier.heightIn(max = 260.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                         items(policies, key = { it.id }) { policy ->
+@@ -529,7 +529,7 @@ private fun WarehouseReorderPolicyDialog(
+ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long) -> Unit) {
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("محاضر الجرد", "الجرد المسودّة والفروق ونتيجة الترحيل") }
+-        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد محاضر جرد بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
++        if (rows.isEmpty()) item { FushEmptyState("لا توجد محاضر جرد", "ابدأ أول جرد مخزني لتظهر المحاضر والفروقات هنا.") }
+         items(rows) { row ->
+             val draft = row.status == "DRAFT"
+             ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+@@ -557,7 +557,7 @@ private fun InventoryCounts(rows: List<InventoryCountSummaryRow>, onEdit: (Long)
+ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (InventoryLotAlertRow) -> Unit) {
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+         item { FushSectionHeader("التشغيلات والحجر", "المحجور أو الموقوف لا يدخل في البيع أو صرف الإنتاج") }
+-        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أرصدة تشغيلات حالياً.", Modifier.fillMaxWidth().padding(16.dp)) } }
++        if (rows.isEmpty()) item { FushEmptyState("لا توجد أرصدة تشغيلات", "أرصدة التشغيلات المتاحة والمحجوزة ستظهر هنا عند توفرها.") }
+         items(rows) { row ->
+             val tone = when (row.controlStatus) {
+                 "ACCEPTED" -> FushStatusTone.Success
+@@ -586,7 +586,7 @@ private fun InventoryLots(rows: List<InventoryLotAlertRow>, onControl: (Inventor
+ private fun InventoryMovements(rows: List<InventoryMovementRow>) {
+     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+         item { FushSectionHeader("حركة المخزون", "آخر ${rows.size} حركة مخزون مسجلة") }
+-        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد حركات مخزون حتى الآن.", Modifier.fillMaxWidth().padding(16.dp)) } }
++        if (rows.isEmpty()) item { FushEmptyState("لا توجد حركات مخزون", "ستظهر هنا حركات الإدخال والإخراج والتحويل بعد تنفيذها.") }
+         items(rows) { row ->
+             val inbound = row.quantityBase > 0
+             Surface(color = MaterialTheme.colorScheme.surfaceContainerLowest, shape = MaterialTheme.shapes.small) {
+@@ -608,7 +608,7 @@ private fun InventoryTransfers(rows: List<WarehouseTransferSummaryRow>, onOpen:
+         item {
+             FushSectionHeader("التحويلات بين المستودعات", "التحويل يحافظ على التشغيلة والصلاحية والتكلفة ولا يغيّر إجمالي قيمة المخزون")
+         }
+-        if (rows.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تحويلات مخزنية بعد.", Modifier.fillMaxWidth().padding(16.dp)) } }
++        if (rows.isEmpty()) item { FushEmptyState("لا توجد تحويلات مخزنية", "أنشئ تحويلًا بين المخازن لتظهر مستندات التحويل هنا.") }
+         items(rows) { row ->
+             val draft = row.status == "DRAFT"
+             ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+@@ -721,7 +721,7 @@ private fun WarehouseTransferDialog(
+                     Button(onClick = { showAddLine = true }, modifier = Modifier.fillMaxWidth()) { Text("إضافة صنف / تشغيلة") }
+                 }
+                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+-                    if (lines.isEmpty()) item { Text("لا توجد أصناف في التحويل.") }
++                    if (lines.isEmpty()) item { FushInlineState("لا توجد أصناف في التحويل.") }
+                     items(lines, key = { it.id }) { line ->
+                         Card(Modifier.fillMaxWidth()) {
+                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+@@ -868,7 +868,7 @@ private fun WarehouseTransferLineDialog(
+                     error = null
+                 }
+                 if (lots.isEmpty()) {
+-                    Text("لا يوجد رصيد لهذا الصنف في مخزن المصدر.", color = MaterialTheme.colorScheme.error)
++                    FushInlineState("لا يوجد رصيد لهذا الصنف في مخزن المصدر.", tone = FushStatusTone.Danger)
+                 } else {
+                     SelectionField(
+                         "التشغيلة / الرصيد",
+@@ -1149,7 +1149,7 @@ private fun LegacyLotAssignmentDialog(
+             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                 Text("هذه العملية لا تضيف ولا تحذف مخزوناً. تنقل نفس الكمية ونفس القيمة من الرصيد القديم غير المكتمل إلى تشغيلة/صلاحية صحيحة، مع تسجيلها في سجل التدقيق.", style = MaterialTheme.typography.bodySmall)
+                 if (candidates.isEmpty()) {
+-                    Text("لا يوجد حالياً رصيد قديم يحتاج استكمال رقم تشغيلة أو تاريخ صلاحية.", color = MaterialTheme.colorScheme.primary)
++                    FushInlineState("لا يوجد حاليًا رصيد قديم يحتاج استكمال رقم تشغيلة أو تاريخ صلاحية.", tone = FushStatusTone.Success)
+                 } else {
+                     SelectionField(
+                         "الرصيد القديم",
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+index 52c0330..0c8a009 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+@@ -20,6 +20,8 @@ import com.fush.erp.ui.FushMetricCard
+ import com.fush.erp.ui.FushSectionHeader
+ import com.fush.erp.ui.FushStatusPill
+ import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.FushInlineState
++import com.fush.erp.ui.FushEmptyState
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.*
+@@ -177,7 +179,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+                             }
+                             Text(expenseMoney(it.second), style = MaterialTheme.typography.titleMedium)
+                         }
+-                    } ?: Text("لا توجد بيانات مصروفات ضمن الفلاتر الحالية.", color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    } ?: FushInlineState("لا توجد بيانات مصروفات ضمن الفلاتر الحالية.")
+                     topCenter?.let {
+                         HorizontalDivider()
+                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+@@ -202,7 +204,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+         if (filtered.isEmpty()) {
+             item {
+                 ElevatedCard(Modifier.fillMaxWidth()) {
+-                    Text("لا توجد حركات مصروف مطابقة للفلاتر الحالية.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    FushEmptyState("لا توجد حركات مصروف", "لا توجد حركات مطابقة للفلاتر الحالية.", Modifier.padding(18.dp))
+                 }
+             }
+         }
+@@ -235,7 +237,7 @@ fun ExpenseManagementTab(container: AppContainer, user: UserEntity, modifier: Mo
+             }
+         }
+         item { FushSectionHeader("مساهمة مندوبي المبيعات", "صافي المساهمة = صافي المبيعات − صافي تكلفة البضاعة − المصروفات المباشرة.") }
+-        if (repContribution.isEmpty()) item { Text("لا توجد بيانات مندوبي مبيعات.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (repContribution.isEmpty()) item { FushInlineState("لا توجد بيانات مساهمة لمناديب المبيعات ضمن الفترة الحالية.") }
+         items(repContribution, key = { it.salesRepId }) { row ->
+             ElevatedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index a2e3ed7..34074b6 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -448,7 +448,7 @@ private fun DashboardScreen(
+             FushSectionHeader("القرارات والتنبيهات", "ابدأ بالحالات الحرجة ثم انتقل إلى التنبيهات التشغيلية")
+             if (alerts.isEmpty()) {
+                 Card(Modifier.fillMaxWidth()) {
+-                    Text("لا توجد تنبيهات تشغيلية معلقة حاليًا.", modifier = Modifier.padding(16.dp))
++                    FushInlineState("لا توجد تنبيهات تشغيلية معلقة حاليًا.", modifier = Modifier.padding(8.dp), tone = FushStatusTone.Success)
+                 }
+             } else {
+                 alerts.take(4).forEach { alert ->
+@@ -786,7 +786,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+                 }
+                 "الوحدات" -> {
+                     item { FushSectionHeader("الوحدات", "${filteredUnits.size} من ${units.size} وحدة") }
+-                    if (filteredUnits.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد وحدات مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    if (filteredUnits.isEmpty()) item { FushInlineState("لا توجد وحدات مطابقة للبحث.") }
+                     items(filteredUnits) { unit ->
+                         ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+@@ -807,7 +807,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+                 }
+                 "المخازن" -> {
+                     item { FushSectionHeader("المخازن", "${filteredWarehouses.size} من ${warehouses.size} مخزن") }
+-                    if (filteredWarehouses.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد مخازن مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    if (filteredWarehouses.isEmpty()) item { FushInlineState("لا توجد مخازن مطابقة للبحث.") }
+                     items(filteredWarehouses) { warehouse ->
+                         ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+                             Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+@@ -828,7 +828,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+                 }
+                 "التحويلات" -> {
+                     item { FushSectionHeader("تحويلات الوحدات", "${filteredConversions.size} من ${conversions.size} تحويل") }
+-                    if (filteredConversions.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد تحويلات وحدات مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    if (filteredConversions.isEmpty()) item { FushInlineState("لا توجد تحويلات وحدات مطابقة للبحث.") }
+                     items(filteredConversions) { conversion ->
+                         val item = itemsList.firstOrNull { it.id == conversion.itemId }
+                         val unit = units.firstOrNull { it.id == conversion.unitId }
+@@ -856,7 +856,7 @@ private fun MasterDataScreen(container: AppContainer, user: UserEntity, modifier
+                 }
+                 else -> {
+                     item { FushSectionHeader("المواد والأصناف", "${filteredItems.size} من ${itemsList.size} صنف") }
+-                    if (filteredItems.isEmpty()) item { Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) { Text("لا توجد أصناف مطابقة.", Modifier.fillMaxWidth().padding(14.dp)) } }
++                    if (filteredItems.isEmpty()) item { FushInlineState("لا توجد أصناف مطابقة للبحث.") }
+                     items(filteredItems) { item ->
+                         val baseUnit = units.firstOrNull { it.id == item.baseUnitId }
+                         ElevatedCard(Modifier.fillMaxWidth(), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index acb77d8..f8deb8a 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -17,6 +17,8 @@ import com.fush.erp.ui.FushMetricCard
+ import com.fush.erp.ui.FushSectionHeader
+ import com.fush.erp.ui.FushStatusPill
+ import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.FushInlineState
++import com.fush.erp.ui.FushEmptyState
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+ import java.util.Date
+@@ -158,7 +160,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+         if (filteredAssets.isEmpty()) {
+             item {
+                 ElevatedCard(Modifier.fillMaxWidth()) {
+-                    Text("لا توجد أصول مطابقة للبحث أو الفلاتر الحالية.", Modifier.padding(18.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
++                    FushEmptyState("لا توجد أصول مطابقة", "غيّر البحث أو الفلاتر، أو أضف أصلًا تشغيليًا جديدًا.", Modifier.padding(18.dp))
+                 }
+             }
+         }
+@@ -212,7 +214,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             FushSectionHeader("أوامر الصيانة المفتوحة", "الأولوية للأوامر المتأخرة أو المرتبطة بأصول غير جاهزة.")
+         }
+         if (workOrders.isEmpty()) {
+-            item { Text("لا توجد أوامر صيانة مفتوحة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            item { FushInlineState("لا توجد أوامر صيانة مفتوحة.") }
+         }
+         items(workOrders, key = { it.id }) { wo ->
+             val overdue = wo.dueAt != null && wo.dueAt < now
+@@ -238,7 +240,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+         item {
+             FushSectionHeader("الأعطال", "إجمالي التوقف المسجل: $totalDowntime دقيقة. الأعطال المتكررة تحتاج تحليل سبب جذري.")
+         }
+-        if (breakdowns.isEmpty()) item { Text("لا توجد أعطال مسجلة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (breakdowns.isEmpty()) item { FushInlineState("لا توجد أعطال مسجلة.", tone = FushStatusTone.Success) }
+         items(breakdowns.take(20), key = { it.id }) { b ->
+             OutlinedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@@ -257,7 +259,7 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+             }
+         }
+         item { FushSectionHeader("السلامة", "الحوادث المفتوحة واحتياج CAPA يجب أن يظلا ظاهرين حتى الإغلاق.") }
+-        if (safetyIncidents.isEmpty()) item { Text("لا توجد حوادث سلامة مسجلة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (safetyIncidents.isEmpty()) item { FushInlineState("لا توجد حوادث سلامة مسجلة.", tone = FushStatusTone.Success) }
+         items(safetyIncidents.take(20), key = { it.id }) { incident ->
+             OutlinedCard(Modifier.fillMaxWidth()) {
+                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index bf61ffb..b17a517 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -17,6 +17,7 @@ import com.fush.erp.ui.FushMetricCard
+ import com.fush.erp.ui.FushSectionHeader
+ import com.fush.erp.ui.FushStatusPill
+ import com.fush.erp.ui.FushStatusTone
++import com.fush.erp.ui.FushInlineState
+ import com.fush.erp.ui.export.ReportExportActions
+ import com.fush.erp.ui.export.ReportExportDocument
+ import com.fush.erp.ui.export.ReportExportTable
+@@ -358,7 +359,7 @@ private fun ReportTabContent(
+             ))
+         }
+         item { SectionTitle("المشتريات حسب المورد") }
+-        if (rows.isEmpty()) item { Text("لا توجد مشتريات في الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (rows.isEmpty()) item { FushInlineState("لا توجد مشتريات في الفترة المحددة.") }
+         items(rows) { r -> ReportCard(r.supplierName, "${r.invoiceCount} فاتورة", listOf(
+             "الإجمالي" to money(r.grossPurchasesBase), "المرتجع" to money(r.returnsBase), "الصافي" to money(r.netPurchasesBase)
+         )) }
+@@ -383,7 +384,7 @@ private fun ReportTabContent(
+                 "قيمته" to money(topValue?.inventoryValueBase ?: 0.0)
+             ))
+         }
+-        if (rows.isEmpty()) item { Text("لا توجد أرصدة مخزون متاحة للتقرير.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++        if (rows.isEmpty()) item { FushInlineState("لا توجد أرصدة مخزون متاحة للتقرير.") }
+         items(rows) { r -> ReportCard("${r.itemName} — ${r.code}", r.baseUnitName, listOf(
+             "الرصيد" to qty(r.quantityBase), "القيمة" to money(r.inventoryValueBase),
+             "إعادة الطلب" to qty(r.reorderLevel), "الحالة" to if (r.reorderLevel > 0 && r.quantityBase <= r.reorderLevel) "إعادة طلب" else "طبيعي"
+@@ -464,7 +465,7 @@ private fun ReportTabContent(
+         }
+         item { FushSectionHeader("استهلاك المواد", "الكميات والتكلفة التاريخية الفعلية للمواد المصروفة إلى أوامر الإنتاج.") }
+         if (materialUsage.isEmpty()) {
+-            item { Text("لا توجد مواد مصروفة للإنتاج في هذه الفترة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            item { FushInlineState("لا توجد مواد مصروفة للإنتاج في هذه الفترة.") }
+         }
+         items(materialUsage, key = { it.itemId }) { m ->
+             ReportCard("${m.itemName} — ${m.code}", "استخدمت في ${m.orderCount} أمر إنتاج", listOf(
+@@ -475,7 +476,7 @@ private fun ReportTabContent(
+         }
+         item { FushSectionHeader("أوامر الإنتاج", "تفاصيل الخطة والناتج والتكلفة لكل أمر.") }
+         if (rows.isEmpty()) {
+-            item { Text("لا توجد أوامر إنتاج في الفترة المحددة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            item { FushInlineState("لا توجد أوامر إنتاج في الفترة المحددة.") }
+         }
+         items(rows, key = { it.orderId }) { r ->
+             val yield = ReportMath.percent(r.acceptedQtyBase, r.plannedQtyBase)
+@@ -957,7 +958,7 @@ private fun buildProductionReportExportDocument(
+             }
+         }
+         if (rows.isEmpty()) {
+-            item { Text("لا توجد دفعات جودة في الفترة المحددة.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
++            item { FushInlineState("لا توجد دفعات جودة في الفترة المحددة.") }
+         }
+         items(rows, key = { it.batchId }) { r ->
+             ElevatedCard(Modifier.fillMaxWidth()) {

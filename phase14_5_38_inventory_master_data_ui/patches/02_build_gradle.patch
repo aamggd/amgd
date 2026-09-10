@@ -1,0 +1,13 @@
+--- a/app/build.gradle.kts	2026-08-15 01:37:20.652377549 +0000
++++ b/app/build.gradle.kts	2026-08-15 01:42:04.960662516 +0000
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 76
+-        versionName = "0.15.4.37-ui-accounting-treasury"
++        versionCode = 77
++        versionName = "0.15.4.38-ui-inventory-master-data"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }

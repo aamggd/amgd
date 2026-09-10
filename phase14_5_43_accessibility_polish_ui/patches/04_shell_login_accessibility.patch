@@ -1,0 +1,78 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+index 8e70cb3..a2e3ed7 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+@@ -11,6 +11,9 @@ import androidx.compose.runtime.*
+ import androidx.compose.runtime.saveable.rememberSaveable
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
++import androidx.compose.ui.semantics.clearAndSetSemantics
++import androidx.compose.ui.semantics.contentDescription
++import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.BuildConfig
+ import com.fush.erp.ui.*
+@@ -171,7 +174,10 @@ fun HomeShell(container: AppContainer, user: UserEntity, onLogout: () -> Unit) {
+                         }
+                     },
+                     navigationIcon = {
+-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
++                        IconButton(
++                            onClick = { scope.launch { drawerState.open() } },
++                            modifier = Modifier.semantics { contentDescription = "فتح القائمة الرئيسية" },
++                        ) {
+                             NavGlyph("≡", selected = true)
+                         }
+                     },
+@@ -557,7 +563,9 @@ private fun NavGlyph(
+     selected: Boolean = false,
+ ) {
+     Surface(
+-        modifier = Modifier.size(30.dp),
++        modifier = Modifier
++            .size(30.dp)
++            .clearAndSetSemantics {},
+         shape = MaterialTheme.shapes.small,
+         color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
+index 4185138..3f3f7cd 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/LoginScreen.kt
+@@ -10,6 +10,10 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.Brush
+ import androidx.compose.ui.platform.LocalFocusManager
++import androidx.compose.ui.semantics.LiveRegionMode
++import androidx.compose.ui.semantics.liveRegion
++import androidx.compose.ui.semantics.semantics
++import androidx.compose.ui.semantics.stateDescription
+ import androidx.compose.ui.text.input.ImeAction
+ import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.ui.unit.dp
+@@ -98,14 +102,23 @@ fun LoginScreen(container: AppContainer, onLogin: (UserEntity) -> Unit) {
+                     keyboardActions = KeyboardActions(onDone = { focus.clearFocus(); submit() }),
+                     isError = error != null,
+                     supportingText = {
+-                        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
++                        error?.let {
++                            Text(
++                                it,
++                                color = MaterialTheme.colorScheme.error,
++                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
++                            )
++                        }
+                     },
+                 )
+ 
+                 Button(
+                     onClick = ::submit,
+                     enabled = !busy && username.isNotBlank() && password.isNotBlank(),
+-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .heightIn(min = 52.dp)
++                        .semantics { stateDescription = if (busy) "جاري التحقق من بيانات الدخول" else "جاهز لتسجيل الدخول" },
+                     shape = MaterialTheme.shapes.medium,
+                 ) {
+                     if (busy) {

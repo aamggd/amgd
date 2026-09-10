@@ -1,0 +1,18 @@
+# FUSH ERP Mobile — UI Professionalization Phase 8
+
+Version: `0.15.4.41-ui-assets-maintenance-expenses`
+
+## Scope
+- Professional operational-asset and maintenance dashboard.
+- Asset search and status/criticality filters.
+- Clear asset readiness, inspection and calibration due states.
+- Work-order overdue visibility and asset context.
+- Risk-aware breakdown and safety-incident cards.
+- Professional operating-expense dashboard with totals, transaction count, average expense and maintenance spend.
+- Clear top expense accounts and cost centers.
+- Improved expense movement cards and sales-representative contribution presentation.
+
+## Safety boundary
+This phase is presentation-only. It does not change Room schema/migrations, maintenance plans, asset status transition rules, inspection/calibration rules, work-order completion logic, downtime calculations, expense dimensions, voucher posting, chart-of-accounts behavior, accounting journal entries, or sales-representative contribution formulas.
+
+The current source contains an operational equipment/asset register and accounting fixed-asset accounts, but no independent fixed-asset depreciation register/schedule UI. This phase therefore does not invent depreciation transactions or formulas.

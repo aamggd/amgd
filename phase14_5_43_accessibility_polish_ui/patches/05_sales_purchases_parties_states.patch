@@ -1,0 +1,108 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index 0a530ae..11cb136 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -137,19 +137,10 @@ fun CustomersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+ 
+         if (filtered.isEmpty()) {
+             item {
+-                ElevatedCard(
+-                    Modifier.fillMaxWidth(),
+-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-                ) {
+-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                        Text(if (customers.isEmpty()) "لا يوجد عملاء بعد" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
+-                        Text(
+-                            if (customers.isEmpty()) "أنشئ أول ملف عميل لتبدأ إدارة المبيعات والذمم." else "جرّب البحث باسم أو كود مختلف.",
+-                            style = MaterialTheme.typography.bodyMedium,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        )
+-                    }
+-                }
++                FushEmptyState(
++                    title = if (customers.isEmpty()) "لا يوجد عملاء بعد" else "لا توجد نتائج مطابقة",
++                    detail = if (customers.isEmpty()) "أنشئ أول ملف عميل لتبدأ إدارة المبيعات والذمم." else "جرّب البحث باسم أو كود مختلف.",
++                )
+             }
+         }
+ 
+@@ -351,19 +342,10 @@ fun SuppliersScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+ 
+         if (filtered.isEmpty()) {
+             item {
+-                ElevatedCard(
+-                    Modifier.fillMaxWidth(),
+-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-                ) {
+-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                        Text(if (suppliers.isEmpty()) "لا يوجد موردون بعد" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
+-                        Text(
+-                            if (suppliers.isEmpty()) "أنشئ أول ملف مورد لتبدأ إدارة المشتريات والالتزامات." else "جرّب البحث باسم أو كود مختلف.",
+-                            style = MaterialTheme.typography.bodyMedium,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        )
+-                    }
+-                }
++                FushEmptyState(
++                    title = if (suppliers.isEmpty()) "لا يوجد موردون بعد" else "لا توجد نتائج مطابقة",
++                    detail = if (suppliers.isEmpty()) "أنشئ أول ملف مورد لتبدأ إدارة المشتريات والالتزامات." else "جرّب البحث باسم أو كود مختلف.",
++                )
+             }
+         }
+ 
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+index 583701e..86f7199 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PurchaseScreens.kt
+@@ -179,19 +179,10 @@ fun PurchasesScreen(container: AppContainer, user: UserEntity, modifier: Modifie
+ 
+         if (filteredPurchases.isEmpty()) {
+             item {
+-                ElevatedCard(
+-                    Modifier.fillMaxWidth(),
+-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-                ) {
+-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                        Text(if (purchases.isEmpty()) "لا توجد فواتير مشتريات" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
+-                        Text(
+-                            if (purchases.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية شراء." else "غيّر عبارة البحث لعرض فواتير أخرى.",
+-                            style = MaterialTheme.typography.bodyMedium,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        )
+-                    }
+-                }
++                FushEmptyState(
++                    title = if (purchases.isEmpty()) "لا توجد فواتير مشتريات" else "لا توجد نتائج مطابقة",
++                    detail = if (purchases.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية شراء." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                )
+             }
+         }
+ 
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+index c2b0274..becb69c 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+@@ -194,19 +194,10 @@ fun SalesScreen(container: AppContainer, user: UserEntity, modifier: Modifier =
+ 
+         if (filteredInvoices.isEmpty()) {
+             item {
+-                ElevatedCard(
+-                    Modifier.fillMaxWidth(),
+-                    colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest),
+-                ) {
+-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+-                        Text(if (invoices.isEmpty()) "لا توجد فواتير مبيعات" else "لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
+-                        Text(
+-                            if (invoices.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية بيع." else "غيّر عبارة البحث لعرض فواتير أخرى.",
+-                            style = MaterialTheme.typography.bodyMedium,
+-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        )
+-                    }
+-                }
++                FushEmptyState(
++                    title = if (invoices.isEmpty()) "لا توجد فواتير مبيعات" else "لا توجد نتائج مطابقة",
++                    detail = if (invoices.isEmpty()) "ستظهر الفواتير هنا بعد ترحيل أول عملية بيع." else "غيّر عبارة البحث لعرض فواتير أخرى.",
++                )
+             }
+         }
+ 

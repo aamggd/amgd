@@ -1,0 +1,13 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 72
+-        versionName = "0.15.4.33-expense-dimensions-reporting"
++        versionCode = 73
++        versionName = "0.15.4.34-ui-professionalization-1"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }

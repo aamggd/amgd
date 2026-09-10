@@ -1,0 +1,179 @@
+name: Build FUSH Final Integrated Updates 14.5.52 R3
+
+on:
+  push:
+    branches: [fush/integration-updates-14.5.52-release]
+    paths:
+      - '.github/workflows/build-final-integration-14.5.52-r3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download validated final 14.5.48 source
+        uses: actions/download-artifact@v4
+        with:
+          name: FushERP-Phase14.5.48-Final-Integrated-Build
+          path: artifacts/base48
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 31870087495
+
+      - name: Reconstruct and verify 14.5.52 integration payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD=integration_14_5_52/payload
+          test "$(find "$PAYLOAD" -maxdepth 1 -type f -name 'chunk_*.b64' | wc -l)" -eq 9
+          cat "$PAYLOAD"/chunk_00.b64 "$PAYLOAD"/chunk_01.b64 "$PAYLOAD"/chunk_02.b64 \
+              "$PAYLOAD"/chunk_03.b64 "$PAYLOAD"/chunk_04.b64 "$PAYLOAD"/chunk_05.b64 \
+              "$PAYLOAD"/chunk_06.b64 "$PAYLOAD"/chunk_07.b64 "$PAYLOAD"/chunk_08.b64 > integrated-14.5.52.patch.gz.b64
+          echo '8e1ba7f68263a7d107c50b794f5cd14ff7810e68cc14155ed39c418ee3535161  integrated-14.5.52.patch.gz.b64' | sha256sum -c -
+          base64 -d integrated-14.5.52.patch.gz.b64 > integrated-14.5.52.patch.gz
+          echo 'c10d0f04d854684fc258ffe6683d6a70352257b160e6878fe2a691cef1a6edf0  integrated-14.5.52.patch.gz' | sha256sum -c -
+          gzip -dc integrated-14.5.52.patch.gz > integrated-14.5.52.patch
+          echo '4f2cded03d35668227617fe7087689cd7b4e613e56a0ce2b005ee98d3f337463  integrated-14.5.52.patch' | sha256sum -c -
+          echo '8fef76899a8f53619ab68ac6ddb94e3854395d098fd433fc4a6ae6a737d89445  integration_14_5_52/compat/01_compile_compat_fix.patch' | sha256sum -c -
+
+      - name: Reproduce and apply audited compatibility fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artifacts/base48/FushERP-Mobile-Phase14.5.48-Final-Integrated-Source.zip
+          mkdir -p sources/base48 final-repo
+          unzip -q artifacts/base48/FushERP-Mobile-Phase14.5.48-Final-Integrated-Source.zip -d sources/base48
+          BASE=$(find sources/base48 -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$BASE"
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' "$BASE/" final-repo/
+          cd final-repo
+          git init -q
+          git config user.email integration@fush.local
+          git config user.name FUSH
+          git add -A
+          git commit -qm baseline-14.5.48
+          BASE_TREE=$(git write-tree)
+          echo "BASE_TREE=$BASE_TREE"
+          test "$BASE_TREE" = '0eb08bebe459a691255cd8e521bae07f7b618632'
+
+          git apply --check ../integrated-14.5.52.patch
+          git apply ../integrated-14.5.52.patch
+          git diff --check
+          git add -A
+          git commit -qm integrated-14.5.52
+          INTEGRATED_TREE=$(git write-tree)
+          echo "INTEGRATED_TREE=$INTEGRATED_TREE"
+          test "$INTEGRATED_TREE" = '769c4ecd7f7a31ae2c009c05c0258d55574f9a0c'
+
+          git apply --check ../integration_14_5_52/compat/01_compile_compat_fix.patch
+          git apply ../integration_14_5_52/compat/01_compile_compat_fix.patch
+          git diff --check
+          git add -A
+          git commit -qm compile-compat-fix
+          FINAL_TREE=$(git write-tree)
+          echo "FINAL_TREE=$FINAL_TREE"
+          test "$FINAL_TREE" = 'a350a09957e1591dbecb270533d25314aa422a27'
+
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          grep -q 'versionCode = 91' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.52-integrated-updates"' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 34' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_32_33_SECURITY' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'MIGRATION_33_34_FIXED_ASSETS' app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'object : Migration(33, 34)' app/src/main/java/com/fush/erp/data/Migrations.kt
+          grep -q 'REPORTS_EXPORT' app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+          grep -q 'val LocalFushSnackbar' app/src/main/java/com/fush/erp/ui/ProfessionalComponents.kt
+          grep -q 'implementation(libs.androidx.compose.material.icons.core)' app/build.gradle.kts
+          grep -q 'import com.fush.erp.ui.FushOperationMessage' app/src/main/java/com/fush/erp/ui/screens/ExpenseScreens.kt
+          grep -q 'import com.fush.erp.ui.FushDialogForm' app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+          test -s app/src/main/res/values/strings.xml
+          test -s app/src/main/res/values-ar/strings.xml
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' app/src/main/java
+
+      - name: Unit tests
+        working-directory: final-repo
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
+      - name: Release build
+        working-directory: final-repo
+        run: gradle --no-daemon :app:assembleRelease --stacktrace
+
+      - name: Validate package version schema and align APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO=final-repo
+          APK="$REPO/app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          grep -q "package: name='com.fush.erp.recovery' versionCode='91' versionName='0.15.4.52-integrated-updates'" apk-badging.txt
+          test -s "$REPO/app/schemas/com.fush.erp.data.FushDatabase/34.json"
+          grep -q '"version": 34' "$REPO/app/schemas/com.fush.erp.data.FushDatabase/34.json"
+          ! grep -R -n -E 'fallbackToDestructiveMigration|fallbackToDestructiveMigrationFrom' "$REPO/app/src/main/java"
+          mkdir -p final-output/apksigner/lib
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$APK" final-output/FushERP-Phase14.5.52-Integrated-Updates-aligned-unsigned.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -c -v 4 final-output/FushERP-Phase14.5.52-Integrated-Updates-aligned-unsigned.apk
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" final-output/apksigner/apksigner
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" final-output/apksigner/lib/apksigner.jar
+          chmod +x final-output/apksigner/apksigner
+          sha256sum final-output/FushERP-Phase14.5.52-Integrated-Updates-aligned-unsigned.apk > final-output/FushERP-Phase14.5.52-Integrated-Updates-aligned-unsigned.apk.sha256
+
+      - name: Package full validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf FushERP_Mobile_Phase14_5_52_Integrated_Updates
+          mkdir FushERP_Mobile_Phase14_5_52_Integrated_Updates
+          rsync -a --exclude='.git' --exclude='.gradle' --exclude='.kotlin' --exclude='build' --exclude='app/build' final-repo/ FushERP_Mobile_Phase14_5_52_Integrated_Updates/
+          zip -qr final-output/FushERP-Mobile-Phase14.5.52-Integrated-Updates-Source.zip FushERP_Mobile_Phase14_5_52_Integrated_Updates
+          sha256sum final-output/FushERP-Mobile-Phase14.5.52-Integrated-Updates-Source.zip > final-output/FushERP-Mobile-Phase14.5.52-Integrated-Updates-Source.zip.sha256
+          cat > final-output/FushERP-Phase14.5.52-INTEGRATION-REPORT.txt <<'EOF'
+          FUSH ERP Mobile — Integrated Updates Phase 14.5.52
+          App ID: com.fush.erp.recovery
+          versionCode: 91
+          versionName: 0.15.4.52-integrated-updates
+          Room schema: 34
+          Baseline source tree: 0eb08bebe459a691255cd8e521bae07f7b618632
+          Integrated source tree before audited compile fix: 769c4ecd7f7a31ae2c009c05c0258d55574f9a0c
+          Validated final source tree: a350a09957e1591dbecb270533d25314aa422a27
+          Integration patch SHA256: 4f2cded03d35668227617fe7087689cd7b4e613e56a0ce2b005ee98d3f337463
+          Compatibility fix SHA256: 8fef76899a8f53619ab68ac6ddb94e3854395d098fd433fc4a6ae6a737d89445
+
+          Integrated updates: Accounting 14.5.40-14.5.41; Reports/Printing 14.5.47-14.5.51; Professional UI 14.5.48-14.5.50; existing users/permissions security retained.
+          Database upgrade: schema 33 -> 34 through MIGRATION_33_34_FIXED_ASSETS. Security migration 32 -> 33 remains registered.
+          Audited compatibility fix: restored Material icons dependency and missing shared UI component imports; no accounting, inventory, security or Room logic changed.
+          Validation gates: deterministic source fingerprints, no destructive Room fallback, Unit Tests, Release Build, package/version/schema checks, zipalign.
+          Signing is performed outside GitHub with the permanent FUSH certificate.
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FushERP-Phase14.5.52-Integrated-Updates-Build
+          path: final-output/
+          if-no-files-found: error
+          retention-days: 7

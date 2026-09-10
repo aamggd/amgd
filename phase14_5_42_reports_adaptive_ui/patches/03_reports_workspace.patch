@@ -1,0 +1,255 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+index 0c0a95a..6f0ed77 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt
+@@ -1,6 +1,8 @@
+ package com.fush.erp.ui.screens
+ 
+ import androidx.compose.foundation.layout.*
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
+ import androidx.compose.foundation.lazy.LazyColumn
+ import androidx.compose.foundation.lazy.LazyRow
+ import androidx.compose.foundation.lazy.items
+@@ -21,6 +23,7 @@ import com.fush.erp.ui.export.ReportExportTable
+ import java.text.NumberFormat
+ import java.text.SimpleDateFormat
+ import java.util.*
++import kotlin.math.abs
+ 
+ @Composable
+ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initialTab: String = "ملخص") {
+@@ -74,68 +77,180 @@ fun ReportsScreen(container: AppContainer, modifier: Modifier = Modifier, initia
+             }
+         } catch (e: Exception) {
+             error = e.message ?: "تعذر إعداد التقرير"
+-        } finally { loading = false }
++        } finally {
++            loading = false
++        }
++    }
++
++    val exportDocument = remember(
++        tab, period, from, to, executive, customers, salesProductQuantities, provinces, commissions, suppliers,
++        inventory, production, productionMaterials, quality, maintenance, pnl, trial, cash
++    ) {
++        buildCurrentReportExportDocument(
++            tab = tab,
++            periodLabel = period,
++            from = from,
++            to = to,
++            executive = executive,
++            customers = customers,
++            salesProductQuantities = salesProductQuantities,
++            provinces = provinces,
++            commissions = commissions,
++            suppliers = suppliers,
++            inventory = inventory,
++            production = production,
++            productionMaterials = productionMaterials,
++            quality = quality,
++            maintenance = maintenance,
++            pnl = pnl,
++            trial = trial,
++            cash = cash
++        )
+     }
+ 
+-    Column(modifier.fillMaxSize().padding(12.dp)) {
+-        Text("التقارير الشاملة", style = MaterialTheme.typography.headlineSmall)
+-        Text("الفترة: ${fmtDate(from)} — ${fmtDate(to)}", style = MaterialTheme.typography.bodySmall)
+-        Spacer(Modifier.height(8.dp))
+-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            items(listOf("اليوم", "هذا الشهر", "30 يوم", "هذه السنة", "كل الفترة")) { p ->
+-                FilterChip(selected = period == p, onClick = { period = p }, label = { Text(p) })
++    BoxWithConstraints(modifier.fillMaxSize()) {
++        val wide = maxWidth >= 840.dp
++        if (wide) {
++            Row(
++                Modifier.fillMaxSize().padding(16.dp),
++                horizontalArrangement = Arrangement.spacedBy(16.dp)
++            ) {
++                ReportNavigationPanel(
++                    period = period,
++                    onPeriodChange = { period = it },
++                    tab = tab,
++                    onTabChange = { tab = it },
++                    modifier = Modifier.width(220.dp).fillMaxHeight()
++                )
++                VerticalDivider(Modifier.fillMaxHeight(), color = MaterialTheme.colorScheme.outlineVariant)
++                Column(Modifier.weight(1f).fillMaxHeight()) {
++                    ReportWorkspaceHeader(tab, period, from, to)
++                    ReportLoadingAndExport(loading, error, exportDocument, tab)
++                    Box(Modifier.weight(1f).fillMaxWidth()) {
++                        ReportTabContent(tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory, production, productionMaterials, maintenance, quality, pnl, trial, cash)
++                    }
++                }
+             }
+-        }
+-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+-            items(listOf("ملخص", "المبيعات", "المشتريات", "المخزون", "الإنتاج", "الجودة", "المالية")) { t ->
+-                FilterChip(selected = tab == t, onClick = { tab = t }, label = { Text(t) })
++        } else {
++            Column(Modifier.fillMaxSize().padding(12.dp)) {
++                ReportWorkspaceHeader(tab, period, from, to)
++                Spacer(Modifier.height(8.dp))
++                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                    items(reportPeriods) { p ->
++                        FilterChip(selected = period == p, onClick = { period = p }, label = { Text(p) })
++                    }
++                }
++                Spacer(Modifier.height(4.dp))
++                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                    items(reportTabs) { t ->
++                        FilterChip(selected = tab == t, onClick = { tab = t }, label = { Text(t) })
++                    }
++                }
++                ReportLoadingAndExport(loading, error, exportDocument, tab)
++                Box(Modifier.weight(1f).fillMaxWidth()) {
++                    ReportTabContent(tab, executive, customers, salesProductQuantities, provinces, commissions, suppliers, inventory, production, productionMaterials, maintenance, quality, pnl, trial, cash)
++                }
+             }
+         }
+-        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 6.dp)) }
++    }
++}
++
++private val reportPeriods = listOf("اليوم", "هذا الشهر", "30 يوم", "هذه السنة", "كل الفترة")
++private val reportTabs = listOf("ملخص", "المبيعات", "المشتريات", "المخزون", "الإنتاج", "الجودة", "المالية")
+ 
+-        val exportDocument = remember(
+-            tab, period, from, to, executive, customers, salesProductQuantities, provinces, commissions, suppliers,
+-            inventory, production, productionMaterials, quality, maintenance, pnl, trial, cash
++@Composable
++private fun ReportWorkspaceHeader(tab: String, period: String, from: Long, to: Long) {
++    FushSectionHeader(
++        title = reportTitle(tab),
++        subtitle = "$period • ${fmtDate(from)} — ${fmtDate(to)}"
++    )
++}
++
++@Composable
++private fun ReportNavigationPanel(
++    period: String,
++    onPeriodChange: (String) -> Unit,
++    tab: String,
++    onTabChange: (String) -> Unit,
++    modifier: Modifier = Modifier
++) {
++    ElevatedCard(modifier) {
++        Column(
++            Modifier.fillMaxSize().padding(14.dp).verticalScroll(rememberScrollState()),
++            verticalArrangement = Arrangement.spacedBy(8.dp)
+         ) {
+-            buildCurrentReportExportDocument(
+-                tab = tab,
+-                periodLabel = period,
+-                from = from,
+-                to = to,
+-                executive = executive,
+-                customers = customers,
+-                salesProductQuantities = salesProductQuantities,
+-                provinces = provinces,
+-                commissions = commissions,
+-                suppliers = suppliers,
+-                inventory = inventory,
+-                production = production,
+-                productionMaterials = productionMaterials,
+-                quality = quality,
+-                maintenance = maintenance,
+-                pnl = pnl,
+-                trial = trial,
+-                cash = cash
+-            )
++            Text("مركز التقارير", style = MaterialTheme.typography.titleLarge)
++            Text("اختر الفترة ونوع التحليل. يبقى التقرير في مساحة عمل مستقلة على الشاشات الواسعة.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            HorizontalDivider(Modifier.padding(vertical = 4.dp))
++            Text("الفترة", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            reportPeriods.forEach { p ->
++                FilterChip(
++                    selected = period == p,
++                    onClick = { onPeriodChange(p) },
++                    label = { Text(p) },
++                    modifier = Modifier.fillMaxWidth()
++                )
++            }
++            HorizontalDivider(Modifier.padding(vertical = 4.dp))
++            Text("التقرير", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
++            reportTabs.forEach { t ->
++                FilterChip(
++                    selected = tab == t,
++                    onClick = { onTabChange(t) },
++                    label = { Text(t) },
++                    modifier = Modifier.fillMaxWidth()
++                )
++            }
+         }
+-        ReportExportActions(
+-            document = exportDocument,
+-            baseName = reportBaseName(tab),
+-            printJobName = "${reportTitle(tab)} — Fush ERP",
+-            enabled = !loading && error == null,
+-            modifier = Modifier.padding(vertical = 8.dp)
+-        )
++    }
++}
+ 
+-        when (tab) {
+-            "ملخص" -> ExecutiveTab(executive)
+-            "المبيعات" -> SalesTab(customers, salesProductQuantities, provinces, commissions)
+-            "المشتريات" -> PurchasesTab(suppliers)
+-            "المخزون" -> InventoryTab(inventory)
+-            "الإنتاج" -> ProductionTab(production, productionMaterials, maintenance)
+-            "الجودة" -> QualityTab(quality)
+-            "المالية" -> FinanceTab(pnl, trial, cash)
+-        }
++@Composable
++private fun ReportLoadingAndExport(
++    loading: Boolean,
++    error: String?,
++    exportDocument: ReportExportDocument,
++    tab: String
++) {
++    if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
++    error?.let {
++        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 6.dp))
++    }
++    ReportExportActions(
++        document = exportDocument,
++        baseName = reportBaseName(tab),
++        printJobName = "${reportTitle(tab)} — Fush ERP",
++        enabled = !loading && error == null,
++        modifier = Modifier.padding(vertical = 8.dp)
++    )
++}
++
++@Composable
++private fun ReportTabContent(
++    tab: String,
++    executive: ExecutiveReportRow?,
++    customers: List<CustomerSalesReportRow>,
++    salesProductQuantities: List<ProductSalesQuantityReportRow>,
++    provinces: List<ProvinceProfitabilityRow>,
++    commissions: List<CommissionReportRow>,
++    suppliers: List<SupplierPurchaseReportRow>,
++    inventory: List<InventoryValuationReportRow>,
++    production: List<ProductionPerformanceReportRow>,
++    productionMaterials: List<ProductionMaterialUsageReportRow>,
++    maintenance: MaintenanceReportRow?,
++    quality: List<QualityReportRow>,
++    pnl: ProfitLossReport?,
++    trial: TrialBalanceReport?,
++    cash: CashFlowReport?
++) {
++    when (tab) {
++        "ملخص" -> ExecutiveTab(executive)
++        "المبيعات" -> SalesTab(customers, salesProductQuantities, provinces, commissions)
++        "المشتريات" -> PurchasesTab(suppliers)
++        "المخزون" -> InventoryTab(inventory)
++        "الإنتاج" -> ProductionTab(production, productionMaterials, maintenance)
++        "الجودة" -> QualityTab(quality)
++        "المالية" -> FinanceTab(pnl, trial, cash)
+     }
+ }
+ 

@@ -1,0 +1,104 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+index 1ef825f..100d932 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/EmployeeScreens.kt
+@@ -321,8 +321,13 @@ private fun EmployeeProfileScreen(
+     val validTrainingCount = trainings.count { it.result == "PASS" && (it.expiresAt == null || it.expiresAt >= now) }
+     val activeAuthorizationCount = authorizations.count { it.status == "ACTIVE" && (it.expiresAt == null || it.expiresAt >= now) }
+ 
+-    Column(modifier.fillMaxSize()) {
+-        ElevatedCard(Modifier.fillMaxWidth().padding(12.dp)) {
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
++        verticalArrangement = Arrangement.spacedBy(10.dp),
++    ) {
++        item {
++            ElevatedCard(Modifier.fillMaxWidth()) {
+             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                     OutlinedButton(onClick = onBack) { Text("رجوع") }
+@@ -342,8 +347,10 @@ private fun EmployeeProfileScreen(
+                 message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+             }
+         }
++        }
+ 
+-        Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        item {
++        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                 FushMetricCard(
+                     "المتبقي المستحق",
+@@ -359,13 +366,15 @@ private fun EmployeeProfileScreen(
+                 FushMetricCard("الكفاءة السارية", validTrainingCount.toString(), Modifier.weight(1f), helper = "$activeAuthorizationCount تصريح معدات", tone = FushStatusTone.Success)
+             }
+         }
++        }
+ 
++        item {
+         ScrollableTabRow(selectedTabIndex = tab, modifier = Modifier.padding(top = 10.dp)) {
+             tabs.forEachIndexed { index, title -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(title) }) }
+         }
+-        Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+-            when (tab) {
+-                0 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++        }
++        when (tab) {
++                0 -> {
+                     item { FushSectionHeader("المعلومات الأساسية", "البيانات الوظيفية المعتمدة لهذا الموظف") }
+                     item {
+                         ElevatedCard(Modifier.fillMaxWidth()) {
+@@ -395,7 +404,7 @@ private fun EmployeeProfileScreen(
+                         }
+                     }
+                 }
+-                1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                1 -> {
+                     item { FushSectionHeader("التدريب والكفاءة", "صلاحية الموظف للمهام تعتمد على التدريب ومدة سريانه") }
+                     if (trainings.isEmpty()) item { FushInlineState("لا توجد سجلات تدريب لهذا الموظف.") }
+                     items(trainings, key = { it.id }) { row ->
+@@ -413,7 +422,7 @@ private fun EmployeeProfileScreen(
+                         }
+                     }
+                 }
+-                2 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                2 -> {
+                     item { FushSectionHeader("تصاريح المعدات", "الترخيص التشغيلي المرتبط بالمعدة والتدريب المؤهل") }
+                     if (authorizations.isEmpty()) item { FushInlineState("لا توجد تصاريح تشغيل مرتبطة بهذا الموظف.") }
+                     items(authorizations, key = { it.id }) { row ->
+@@ -431,7 +440,7 @@ private fun EmployeeProfileScreen(
+                         }
+                     }
+                 }
+-                3 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                3 -> {
+                     item { FushSectionHeader("استحقاقات الإنتاج", "الاستحقاق ينشأ من أمر الإنتاج ويُرحّل إلى حساب 2200 قبل الصرف") }
+                     item {
+                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+@@ -466,7 +475,7 @@ private fun EmployeeProfileScreen(
+                         }
+                     }
+                 }
+-                4 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                4 -> {
+                     item { FushSectionHeader("السندات المرتبطة بالموظف", "السند المرحل لا يُحذف؛ أي تصحيح يتم بقيد عكسي مستقل") }
+                     if (vouchers.isEmpty()) item { FushInlineState("لا توجد سندات مرتبطة بهذا الموظف.") }
+                     items(vouchers, key = { it.id }) { voucher ->
+@@ -483,7 +492,7 @@ private fun EmployeeProfileScreen(
+                         }
+                     }
+                 }
+-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
++                else -> {
+                     item { FushSectionHeader("سجل التدقيق", "تاريخ التغييرات والإجراءات المرتبطة بملف الموظف") }
+                     if (audits.isEmpty()) item { FushInlineState("لا توجد أحداث تدقيق لهذا الموظف.") }
+                     items(audits, key = { it.id }) { audit ->
+@@ -497,7 +506,6 @@ private fun EmployeeProfileScreen(
+                     }
+                 }
+             }
+-        }
+     }
+ 
+     if (showEdit) {

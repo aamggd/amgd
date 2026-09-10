@@ -1,0 +1,62 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt b/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
+index 3496f65..9227a03 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/BackupRestoreScreen.kt
+@@ -19,6 +19,7 @@ import com.fush.erp.backup.BackupResult
+ import com.fush.erp.backup.RestoreInspection
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.UserEntity
++import com.fush.erp.ui.*
+ import kotlinx.coroutines.launch
+ import java.text.DateFormat
+ import java.util.Date
+@@ -55,15 +56,23 @@ fun BackupRestoreScreen(container: AppContainer, user: UserEntity, modifier: Mod
+             .padding(16.dp),
+         verticalArrangement = Arrangement.spacedBy(12.dp)
+     ) {
+-        Text("النسخ الاحتياطي والاستعادة", style = MaterialTheme.typography.headlineSmall)
+-        Text("Phase 15.1 • ${BuildConfig.VERSION_NAME}")
++        FushSectionHeader(
++            title = "النسخ الاحتياطي والاستعادة",
++            subtitle = "Phase 15.1 • ${BuildConfig.VERSION_NAME}",
++        )
+         Text("قاعدة البيانات: schema ${BackupRestoreManager.CURRENT_SCHEMA_VERSION}. يتم فحص سلامة النسخة وبصمة SHA-256، وتطبق الاستعادة باستبدال ذري مع نسخة رجوع داخلية.")
+ 
+         startupRestoreError?.let {
+-            Card { Text("لم تُطبق الاستعادة السابقة، وتم الإبقاء على قاعدة البيانات الحالية. السبب: $it", modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
++            FushErrorState(
++                title = "لم تُطبق الاستعادة السابقة",
++                detail = "تم الإبقاء على قاعدة البيانات الحالية دون استبدال. السبب: $it",
++            )
+         }
+         if (!isAdmin) {
+-            Card { Text("النسخ الاحتياطي والاستعادة متاحان لمدير النظام فقط.", modifier = Modifier.padding(16.dp)) }
++            FushEmptyState(
++                title = "صلاحية مدير النظام مطلوبة",
++                detail = "النسخ الاحتياطي والاستعادة متاحان لمدير النظام فقط لحماية قاعدة البيانات.",
++            )
+         }
+ 
+         Card {
+@@ -108,8 +117,19 @@ fun BackupRestoreScreen(container: AppContainer, user: UserEntity, modifier: Mod
+             }
+         }
+ 
+-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+-        message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
++        if (busy) {
++            FushLoadingState(
++                title = "جاري تنفيذ عملية النسخ الاحتياطي",
++                detail = "لا تغلق التطبيق أثناء فحص الملف أو إنشاء النسخة.",
++            )
++        }
++        message?.let {
++            Surface(
++                color = MaterialTheme.colorScheme.primaryContainer,
++                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
++                shape = MaterialTheme.shapes.medium,
++            ) { Text(it, Modifier.fillMaxWidth().padding(14.dp)) }
++        }
+     }
+ 
+     inspection?.let { info ->

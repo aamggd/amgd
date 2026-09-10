@@ -1,0 +1,169 @@
+--- a/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 00:43:38.000000000 +0000
++++ b/app/src/main/java/com/fush/erp/ui/screens/AccountingScreens.kt	2026-08-15 01:38:18.910454370 +0000
+@@ -9,10 +9,12 @@
+ import androidx.compose.foundation.rememberScrollState
+ import androidx.compose.material3.*
+ import androidx.compose.runtime.*
++import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.unit.dp
+ import com.fush.erp.data.AppContainer
+ import com.fush.erp.data.entity.*
++import com.fush.erp.ui.*
+ import com.fush.erp.domain.*
+ import kotlinx.coroutines.launch
+ import java.text.SimpleDateFormat
+@@ -26,9 +28,26 @@
+     val tabs = listOf("اليومية", "الخزينة", "المصروفات", "قيد يدوي", "الأستاذ", "ميزان المراجعة", "قائمة الدخل", "المركز المالي", "التدفق النقدي")
+     var selected by remember { mutableIntStateOf(0) }
+     Column(modifier.fillMaxSize()) {
+-        ScrollableTabRow(selectedTabIndex = selected) {
++        Column(
++            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
++            verticalArrangement = Arrangement.spacedBy(4.dp),
++        ) {
++            FushSectionHeader(
++                title = "الحسابات والخزينة",
++                subtitle = "القيود والسندات والأرصدة والتقارير المالية من مساحة عمل موحّدة",
++            )
++        }
++        ScrollableTabRow(
++            selectedTabIndex = selected,
++            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++            edgePadding = 10.dp,
++        ) {
+             tabs.forEachIndexed { index, title ->
+-                Tab(selected = selected == index, onClick = { selected = index }, text = { Text(title) })
++                Tab(
++                    selected = selected == index,
++                    onClick = { selected = index },
++                    text = { Text(title, maxLines = 1) },
++                )
+             }
+         }
+         when (selected) {
+@@ -56,32 +75,92 @@
+     var reverseReason by remember { mutableStateOf("") }
+     var message by remember { mutableStateOf<String?>(null) }
+     var showAddAccount by remember { mutableStateOf(false) }
++    var journalSearch by remember { mutableStateOf("") }
+ 
+     LaunchedEffect(selected?.id) {
+         details = selected?.let { container.accountingService.journalDetails(it.id) } ?: emptyList()
+         reverseReason = ""
+     }
+ 
+-    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
++    val filteredHeaders = remember(headers, journalSearch) {
++        val q = journalSearch.trim().lowercase(Locale.ROOT)
++        if (q.isBlank()) headers else headers.filter { row ->
++            listOf(row.entryNo, row.description, row.sourceType, row.currencyCode)
++                .any { it.lowercase(Locale.ROOT).contains(q) }
++        }
++    }
++    val activeEntries = remember(headers) { headers.count { !it.isReversed } }
++    val reversedEntries = remember(headers) { headers.count { it.isReversed } }
++    val debitMovement = remember(headers) { headers.filter { !it.isReversed }.sumOf { it.debitTotal } }
++
++    LazyColumn(modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+         item {
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+-                Column {
+-                    Text("دفتر اليومية", style = MaterialTheme.typography.headlineSmall)
+-                    Text("آخر 500 قيد مرحل. اسحب الجدول أفقياً لعرض كل الأعمدة.", style = MaterialTheme.typography.bodySmall)
+-                }
+-                OutlinedButton(onClick = { showAddAccount = true }) { Text("حساب جديد") }
++            Row(
++                Modifier.fillMaxWidth(),
++                horizontalArrangement = Arrangement.SpaceBetween,
++                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                FushSectionHeader(
++                    title = "دفتر اليومية",
++                    subtitle = "القيود المرحلة ومصادرها مع إمكانية فتح تفاصيل كل قيد",
++                    modifier = Modifier.weight(1f),
++                )
++                Spacer(Modifier.width(10.dp))
++                OutlinedButton(onClick = { showAddAccount = true }, shape = MaterialTheme.shapes.medium) { Text("حساب جديد") }
++            }
++        }
++        message?.let { text ->
++            item {
++                Surface(
++                    color = MaterialTheme.colorScheme.secondaryContainer,
++                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
++                    shape = MaterialTheme.shapes.medium,
++                ) { Text(text, Modifier.fillMaxWidth().padding(12.dp)) }
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("قيود نشطة", activeEntries.toString(), Modifier.weight(1f), "من آخر ${headers.size} قيد", FushStatusTone.Info)
++                FushMetricCard("إجمالي حركة المدين", money(debitMovement), Modifier.weight(1f), "بالعملة الأساسية", FushStatusTone.Neutral)
++            }
++        }
++        item {
++            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                FushMetricCard("قيود معكوسة", reversedEntries.toString(), Modifier.weight(1f), "تصحيحات موثقة", if (reversedEntries > 0) FushStatusTone.Warning else FushStatusTone.Success)
++                FushMetricCard("حسابات الدليل", accounts.size.toString(), Modifier.weight(1f), "حساب معرف", FushStatusTone.Info)
+             }
+-            message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+         }
+-        if (headers.isNotEmpty()) {
++        item {
++            OutlinedTextField(
++                value = journalSearch,
++                onValueChange = { journalSearch = it },
++                modifier = Modifier.fillMaxWidth(),
++                label = { Text("بحث في اليومية") },
++                placeholder = { Text("رقم القيد، البيان، المصدر أو العملة") },
++                singleLine = true,
++                shape = MaterialTheme.shapes.medium,
++                supportingText = { Text("يعرض ${filteredHeaders.size} من ${headers.size} قيد") },
++            )
++        }
++        if (filteredHeaders.isNotEmpty()) {
+             item {
+                 AccountingTableHeader(tableScroll, listOf(
+                     "التاريخ" to 105, "رقم القيد" to 180, "البيان" to 320,
+                     "المصدر" to 155, "مدين" to 125, "دائن" to 125
+                 ))
+             }
++        } else {
++            item {
++                Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
++                    Text(
++                        if (headers.isEmpty()) "لا توجد قيود مرحلة حتى الآن." else "لا توجد قيود مطابقة لعبارة البحث.",
++                        Modifier.fillMaxWidth().padding(16.dp),
++                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++                    )
++                }
++            }
+         }
+-        items(headers, key = { it.id }) { h ->
++        items(filteredHeaders, key = { it.id }) { h ->
+             AccountingTableRow(
+                 scroll = tableScroll,
+                 values = listOf(
+@@ -105,7 +184,11 @@
+             text = {
+                 Column(Modifier.heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                     Text(header.description)
+-                    Text("التاريخ ${formatDate(header.entryDate)} • العملة ${header.currencyCode} • سعر الصرف ${header.exchangeRate}", style = MaterialTheme.typography.bodySmall)
++                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                        FushStatusPill(header.sourceType, FushStatusTone.Info)
++                        if (header.isReversed) FushStatusPill("معكوس", FushStatusTone.Warning)
++                    }
++                    Text("التاريخ ${formatDate(header.entryDate)} • العملة ${header.currencyCode} • سعر الصرف ${header.exchangeRate}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                     if (details.isNotEmpty()) {
+                         AccountingTableHeader(detailScroll, listOf(
+                             "الكود" to 100, "الحساب" to 220, "مدين" to 120, "دائن" to 120, "ملاحظة" to 260
+@@ -126,7 +209,7 @@
+                     val canReverse = header.sourceType in AccountingService.REVERSIBLE_SOURCE_TYPES && !header.isReversed
+                     if (canReverse) {
+                         HorizontalDivider()
+-                        OutlinedTextField(reverseReason, { reverseReason = it }, label = { Text("سبب عكس القيد") }, modifier = Modifier.fillMaxWidth())
++                        OutlinedTextField(reverseReason, { reverseReason = it }, label = { Text("سبب عكس القيد") }, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.medium)
+                     } else if (header.sourceType !in AccountingService.REVERSIBLE_SOURCE_TYPES && header.sourceType != "REVERSAL") {
+                         Text("هذا القيد مرتبط بعملية تشغيلية ويُعكس من شاشة العملية الأصلية.", color = MaterialTheme.colorScheme.tertiary)
+                     }

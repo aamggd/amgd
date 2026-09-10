@@ -1,0 +1,158 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+index ab9d20a..b5f2f71 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/PartyScreens.kt
+@@ -461,86 +461,78 @@ private fun CustomerProfileScreen(container: AppContainer, user: UserEntity, cus
+     val running = remember(events) { var b=0.0; events.map { b += it.debitBase-it.creditBase; it to b } }
+     val currentBalance = running.lastOrNull()?.second ?: 0.0
+ 
+-    Column(modifier.fillMaxSize()) {
+-        Column(
+-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+-            verticalArrangement = Arrangement.spacedBy(10.dp),
+-        ) {
+-            Row(
+-                Modifier.fillMaxWidth(),
+-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+-                verticalAlignment = Alignment.CenterVertically,
+-            ) {
+-                OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text("رجوع") }
+-                FushUserAvatar(customer.nameAr)
+-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+-                    Text(customer.nameAr, style = MaterialTheme.typography.titleLarge)
+-                    Text(
+-                        "${customer.code} • ${customer.province} • ${customer.currencyCode}",
+-                        style = MaterialTheme.typography.bodySmall,
+-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
++    LazyColumn(
++        modifier = modifier.fillMaxSize(),
++        contentPadding = PaddingValues(12.dp),
++        verticalArrangement = Arrangement.spacedBy(10.dp),
++    ) {
++        item {
++            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
++                Row(
++                    Modifier.fillMaxWidth(),
++                    horizontalArrangement = Arrangement.spacedBy(10.dp),
++                    verticalAlignment = Alignment.CenterVertically,
++                ) {
++                    OutlinedButton(onClick = onBack, shape = MaterialTheme.shapes.medium) { Text("رجوع") }
++                    FushUserAvatar(customer.nameAr)
++                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
++                        Text(customer.nameAr, style = MaterialTheme.typography.titleLarge)
++                        Text(
++                            "${customer.code} • ${customer.province} • ${customer.currencyCode}",
++                            style = MaterialTheme.typography.bodySmall,
++                            color = MaterialTheme.colorScheme.onSurfaceVariant,
++                        )
++                    }
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
++                    FushStatusPill(if (customer.isActive) "نشط" else "غير نشط", if (customer.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
++                    FushStatusPill(if (customer.allowCredit) "الآجل مسموح" else "نقدي", if (customer.allowCredit) FushStatusTone.Warning else FushStatusTone.Success)
++                    FushStatusPill("تصنيف ${customer.classification}", FushStatusTone.Info)
++                }
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
++                    FushMetricCard(
++                        label = "الرصيد الحالي",
++                        value = partyMoney(currentBalance),
++                        helper = "بالعملة الأساسية",
++                        modifier = Modifier.weight(1f),
++                        tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
++                    )
++                    FushMetricCard(
++                        label = "فواتير المبيعات",
++                        value = invoices.size.toString(),
++                        helper = "${receipts.size} تحصيل • ${returns.size} مرتجع",
++                        modifier = Modifier.weight(1f),
++                        tone = FushStatusTone.Info,
+                     )
+                 }
+-            }
+-
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+-                FushStatusPill(if (customer.isActive) "نشط" else "غير نشط", if (customer.isActive) FushStatusTone.Success else FushStatusTone.Neutral)
+-                FushStatusPill(if (customer.allowCredit) "الآجل مسموح" else "نقدي", if (customer.allowCredit) FushStatusTone.Warning else FushStatusTone.Success)
+-                FushStatusPill("تصنيف ${customer.classification}", FushStatusTone.Info)
+-            }
+-
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+-                FushMetricCard(
+-                    label = "الرصيد الحالي",
+-                    value = partyMoney(currentBalance),
+-                    helper = "بالعملة الأساسية",
+-                    modifier = Modifier.weight(1f),
+-                    tone = if (currentBalance > 0.000001) FushStatusTone.Warning else FushStatusTone.Success,
+-                )
+-                FushMetricCard(
+-                    label = "فواتير المبيعات",
+-                    value = invoices.size.toString(),
+-                    helper = "${receipts.size} تحصيل • ${returns.size} مرتجع",
+-                    modifier = Modifier.weight(1f),
+-                    tone = FushStatusTone.Info,
+-                )
+-            }
+-
+-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+-                Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }
+-                OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }
+-            }
+-
+-            message?.let { text ->
+-                Surface(
+-                    color = MaterialTheme.colorScheme.secondaryContainer,
+-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+-                    shape = MaterialTheme.shapes.small,
+-                ) {
+-                    Text(text, Modifier.fillMaxWidth().padding(10.dp), style = MaterialTheme.typography.bodySmall)
++                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                    Button(onClick = { voucherType = "RECEIPT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند قبض") }
++                    OutlinedButton(onClick = { voucherType = "PAYMENT" }, modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.medium) { Text("سند صرف") }
++                }
++                message?.let { text ->
++                    FushNotice(text, tone = if (text.startsWith("تعذر")) FushStatusTone.Danger else FushStatusTone.Success)
+                 }
+             }
+         }
+-
+-        ScrollableTabRow(
+-            selectedTabIndex = tab,
+-            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+-            edgePadding = 10.dp,
+-        ) {
+-            tabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
+-        }
+-        Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp)) {
+-            when(tab) {
+-                0 -> PartyInfoCustomer(customer)
+-                1 -> CustomerLedgerTab(running)
+-                2 -> SimpleEntityList(if(invoices.isEmpty()) "لا توجد فواتير مبيعات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") "نقدي" else "آجل"}" }
+-                3 -> SimpleEntityList(if(receipts.isEmpty()) "لا توجد تحصيلات." else null, receipts) { r -> "${partyDate(r.receiptDate)} • ${r.receiptNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
+-                4 -> VoucherList(vouchers, onReverse = { reverseVoucher = it })
+-                5 -> SimpleEntityList(if(returns.isEmpty()) "لا توجد مرتجعات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
+-                6 -> SimpleEntityList(if(commissions.isEmpty()) "لا توجد عمولات مرتبطة بمبيعات العميل." else null, commissions) { r -> "فاتورة #${r.invoiceId} • مستحق ${partyMoney(r.earnedBase)} • معكوس ${partyMoney(r.reversedBase)} • ${r.beneficiary}" }
+-                7 -> AttachmentTab(container, user, customerId = customer.id, supplierId = null, attachments = attachments, onMessage = { message=it })
+-                else -> AuditTab(audits)
+-            }
++        item {
++            ScrollableTabRow(
++                selectedTabIndex = tab,
++                containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
++                edgePadding = 10.dp,
++            ) {
++                tabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
++            }
++        }
++        when (tab) {
++            0 -> item { PartyInfoCustomer(customer) }
++            1 -> customerLedgerItems(running)
++            2 -> profileSimpleEntityItems(if (invoices.isEmpty()) "لا توجد فواتير مبيعات." else null, invoices) { r -> "${partyDate(r.invoiceDate)} • ${r.invoiceNo} • ${partyMoney(r.totalBase)} • ${if(r.paymentType=="CASH") "نقدي" else "آجل"}" }
++            3 -> profileSimpleEntityItems(if (receipts.isEmpty()) "لا توجد تحصيلات." else null, receipts) { r -> "${partyDate(r.receiptDate)} • ${r.receiptNo} • ${partyMoney(r.amountBase)} • ${r.notes}" }
++            4 -> voucherItems(vouchers, onReverse = { reverseVoucher = it })
++            5 -> profileSimpleEntityItems(if (returns.isEmpty()) "لا توجد مرتجعات." else null, returns) { r -> "${partyDate(r.returnDate)} • ${r.returnNo} • ${partyMoney(r.totalBase)} • ${r.reason}" }
++            6 -> profileSimpleEntityItems(if (commissions.isEmpty()) "لا توجد عمولات مرتبطة بمبيعات العميل." else null, commissions) { r -> "فاتورة #${r.invoiceId} • مستحق ${partyMoney(r.earnedBase)} • معكوس ${partyMoney(r.reversedBase)} • ${r.beneficiary}" }
++            7 -> item { AttachmentTab(container, user, customerId = customer.id, supplierId = null, attachments = attachments, onMessage = { message=it }) }
++            else -> auditItems(audits)
+         }
+     }
+     voucherType?.let { type ->

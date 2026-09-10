@@ -1,0 +1,218 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+new file mode 100644
+index 0000000..4b28291
+--- /dev/null
++++ b/app/src/main/java/com/fush/erp/ui/ProfessionalFormComponents.kt
+@@ -0,0 +1,212 @@
++package com.fush.erp.ui
++
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.material3.DatePicker
++import androidx.compose.material3.DatePickerDialog
++import androidx.compose.material3.DropdownMenu
++import androidx.compose.material3.DropdownMenuItem
++import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.OutlinedButton
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.material3.rememberDatePickerState
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.input.KeyboardType
++import androidx.compose.foundation.text.KeyboardOptions
++import androidx.compose.ui.unit.dp
++import java.text.SimpleDateFormat
++import java.util.Date
++import java.util.Locale
++import java.util.TimeZone
++
++private const val FUSH_DATE_PATTERN = "yyyy-MM-dd"
++
++private fun parseDatePickerMillis(text: String): Long? = runCatching {
++    SimpleDateFormat(FUSH_DATE_PATTERN, Locale.US).apply {
++        isLenient = false
++        timeZone = TimeZone.getTimeZone("UTC")
++    }.parse(text.trim())?.time
++}.getOrNull()
++
++private fun formatDatePickerMillis(value: Long): String =
++    SimpleDateFormat(FUSH_DATE_PATTERN, Locale.US).apply {
++        timeZone = TimeZone.getTimeZone("UTC")
++    }.format(Date(value))
++
++/**
++ * UI-only date input. The stored value remains the existing yyyy-MM-dd string so
++ * domain parsing/posting behavior is unchanged; the picker only helps the user fill it.
++ */
++@OptIn(ExperimentalMaterial3Api::class)
++@Composable
++fun FushDateField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String,
++    modifier: Modifier = Modifier,
++    enabled: Boolean = true,
++    optional: Boolean = false,
++) {
++    var showPicker by remember { mutableStateOf(false) }
++
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        placeholder = { Text(FUSH_DATE_PATTERN) },
++        singleLine = true,
++        enabled = enabled,
++        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Date),
++        trailingIcon = {
++            TextButton(
++                onClick = { showPicker = true },
++                enabled = enabled,
++                modifier = Modifier.heightIn(min = 48.dp),
++            ) { Text("اختيار") }
++        },
++        modifier = modifier,
++    )
++
++    if (showPicker) {
++        val initialMillis = remember(value) { parseDatePickerMillis(value) }
++        val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
++        DatePickerDialog(
++            onDismissRequest = { showPicker = false },
++            confirmButton = {
++                TextButton(
++                    onClick = {
++                        pickerState.selectedDateMillis?.let { onValueChange(formatDatePickerMillis(it)) }
++                        showPicker = false
++                    },
++                    enabled = pickerState.selectedDateMillis != null,
++                    modifier = Modifier.heightIn(min = 48.dp),
++                ) { Text("اعتماد") }
++            },
++            dismissButton = {
++                Row {
++                    if (optional && value.isNotBlank()) {
++                        TextButton(
++                            onClick = {
++                                onValueChange("")
++                                showPicker = false
++                            },
++                            modifier = Modifier.heightIn(min = 48.dp),
++                        ) { Text("مسح") }
++                    }
++                    TextButton(
++                        onClick = { showPicker = false },
++                        modifier = Modifier.heightIn(min = 48.dp),
++                    ) { Text("إلغاء") }
++                }
++            },
++        ) {
++            DatePicker(state = pickerState)
++        }
++    }
++}
++
++/** Requests a decimal-capable IME without changing the value accepted by existing validation logic. */
++@Composable
++fun FushDecimalField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String,
++    modifier: Modifier = Modifier,
++    enabled: Boolean = true,
++    isError: Boolean = false,
++) {
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        singleLine = true,
++        enabled = enabled,
++        isError = isError,
++        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
++        modifier = modifier,
++    )
++}
++
++/** Requests a numeric IME while leaving final range/required validation to the existing screen logic. */
++@Composable
++fun FushIntegerField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String,
++    modifier: Modifier = Modifier,
++    enabled: Boolean = true,
++    isError: Boolean = false,
++) {
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        singleLine = true,
++        enabled = enabled,
++        isError = isError,
++        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
++        modifier = modifier,
++    )
++}
++
++@Composable
++fun FushPhoneField(
++    value: String,
++    onValueChange: (String) -> Unit,
++    label: String = "الهاتف",
++    modifier: Modifier = Modifier,
++    enabled: Boolean = true,
++) {
++    OutlinedTextField(
++        value = value,
++        onValueChange = onValueChange,
++        label = { Text(label) },
++        singleLine = true,
++        enabled = enabled,
++        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
++        modifier = modifier,
++    )
++}
++
++
++@Composable
++fun FushCodeSelectionField(
++    label: String,
++    current: String,
++    options: List<String>,
++    optionLabel: (String) -> String,
++    modifier: Modifier = Modifier,
++    enabled: Boolean = true,
++    onSelected: (String) -> Unit,
++) {
++    var expanded by remember { mutableStateOf(false) }
++    Box(modifier) {
++        OutlinedButton(
++            onClick = { expanded = true },
++            enabled = enabled,
++            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
++        ) {
++            Text("$label: ${optionLabel(current)}", modifier = Modifier.weight(1f))
++        }
++        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
++            options.forEach { option ->
++                DropdownMenuItem(
++                    text = { Text(optionLabel(option)) },
++                    onClick = {
++                        onSelected(option)
++                        expanded = false
++                    },
++                )
++            }
++        }
++    }
++}

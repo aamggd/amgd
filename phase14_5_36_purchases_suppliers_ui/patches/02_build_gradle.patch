@@ -1,0 +1,13 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 74
+-        versionName = "0.15.4.35-ui-sales-customers"
++        versionCode = 75
++        versionName = "0.15.4.36-ui-purchases-suppliers"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }

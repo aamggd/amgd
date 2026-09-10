@@ -1,0 +1,85 @@
+diff --git a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+index 0975101..acb77d8 100644
+--- a/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
++++ b/app/src/main/java/com/fush/erp/ui/screens/MaintenanceScreens.kt
+@@ -364,9 +364,77 @@ fun MaintenanceScreen(container: AppContainer, user: UserEntity, modifier: Modif
+     }
+ }
+ 
+-@Composable
+-private fun MaintenanceMetric(label: String, value: String, modifier: Modifier = Modifier) {
+-    ElevatedCard(modifier) { Column(Modifier.padding(10.dp)) { Text(value, style = MaterialTheme.typography.titleLarge); Text(label, style = MaterialTheme.typography.labelSmall) } }
++private fun maintenanceStatusFilterAr(value: String) = when (value) {
++    "ALL" -> "كل الحالات"
++    "ACTIVE" -> "جاهز"
++    "OUT_OF_SERVICE" -> "متوقف"
++    "UNDER_MAINTENANCE" -> "تحت الصيانة"
++    else -> value
++}
++
++private fun maintenanceCriticalityFilterAr(value: String) = if (value == "ALL") "كل درجات الأهمية" else maintenanceCriticalityAr(value)
++
++private fun maintenanceAssetStatusTone(status: String) = when (status) {
++    "ACTIVE" -> FushStatusTone.Success
++    "OUT_OF_SERVICE" -> FushStatusTone.Danger
++    "UNDER_MAINTENANCE" -> FushStatusTone.Warning
++    else -> FushStatusTone.Neutral
++}
++
++private fun maintenanceCriticalityTone(value: String) = when (value) {
++    "CRITICAL" -> FushStatusTone.Danger
++    "HIGH" -> FushStatusTone.Warning
++    "MEDIUM" -> FushStatusTone.Info
++    else -> FushStatusTone.Neutral
++}
++
++private fun maintenanceSeverityTone(value: String) = when (value) {
++    "CRITICAL" -> FushStatusTone.Danger
++    "HIGH" -> FushStatusTone.Warning
++    "MEDIUM" -> FushStatusTone.Info
++    else -> FushStatusTone.Neutral
++}
++
++private fun maintenanceCriticalityAr(value: String) = when (value) {
++    "LOW" -> "منخفضة"
++    "MEDIUM" -> "متوسطة"
++    "HIGH" -> "عالية"
++    "CRITICAL" -> "حرجة"
++    else -> value
++}
++
++private fun maintenanceSeverityAr(value: String) = when (value) {
++    "LOW" -> "منخفض"
++    "MEDIUM" -> "متوسط"
++    "HIGH" -> "عالٍ"
++    "CRITICAL" -> "حرج"
++    else -> value
++}
++
++private fun maintenanceAssetTypeAr(value: String) = when (value) {
++    "FILLING_MACHINE" -> "آلة تعبئة"
++    "BURNER" -> "شعلة"
++    "VESSEL" -> "وعاء / خزان"
++    "MEASURING_TOOL" -> "أداة قياس"
++    "SAFETY_EQUIPMENT" -> "معدات سلامة"
++    "OTHER" -> "أخرى"
++    else -> value
++}
++
++private fun maintenanceWorkTypeAr(value: String) = when (value) {
++    "PREVENTIVE" -> "وقائي"
++    "CORRECTIVE" -> "تصحيحي"
++    else -> value
++}
++
++private fun maintenanceIncidentTypeAr(value: String) = when (value) {
++    "ACCIDENT" -> "حادث"
++    "NEAR_MISS" -> "شبه حادث"
++    "SPILL" -> "انسكاب"
++    "FIRE" -> "حريق"
++    "GAS_LEAK" -> "تسرب غاز"
++    "OTHER" -> "أخرى"
++    else -> value
+ }
+ 
+ @Composable
