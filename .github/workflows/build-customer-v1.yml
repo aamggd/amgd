@@ -19,18 +19,12 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='NgoYu80Xs4Mz'
-          FILE='01a08e1b0483755295d033edc11afdac'
+          SHARE='YPnbnIk-5eKD'
+          FILE='01a08e3cc82077dea4c266a73bc15a00'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
-          curl -fsS -c "$COOKIE" -b "$COOKIE" \
-            -H 'Content-Type: application/json' \
-            -X POST "$BASE/shares/$SHARE/cushion-sessions" \
-            --data '{"password":null}' \
-            -o /tmp/cushion.json
-          curl -fsS -c "$COOKIE" -b "$COOKIE" \
-            -X POST "$BASE/shares/$SHARE/files/$FILE/download" \
-            -o /tmp/download.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
           DOWNLOAD_URL="$(python3 - <<'PY'
           import json
           with open('/tmp/download.json', encoding='utf-8') as f:
@@ -42,9 +36,8 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/customer-v1-source.zip
-          echo '240284b4ad92c66bbc76d32aa20349b8228caf2729d5bf3cdcb2fc4cf998216b  /tmp/customer-v1-source.zip' | sha256sum -c -
-          rm -rf customer-v1-src
-          mkdir -p customer-v1-src
+          echo '94941dd37345bf32c33beb680bbb8929712d99c202957fad803d2e0379938090  /tmp/customer-v1-source.zip' | sha256sum -c -
+          rm -rf customer-v1-src && mkdir -p customer-v1-src
           unzip -oq /tmp/customer-v1-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           test -f customer-v1-src/app/build.gradle.kts
@@ -53,6 +46,8 @@ jobs:
           grep 'versionName = "1.0.0"' customer-v1-src/app/build.gradle.kts
           grep 'const val FUSH_DB_SCHEMA_VERSION = 55' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
+          test -f customer-v1-src/app/src/main/res/drawable-nodpi/ic_shibani_soft_logo.png
+          grep 'ic_shibani_soft_foreground' customer-v1-src/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -146,10 +141,9 @@ jobs:
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
-          test -f "$APK"
-          test -f "$AAB"
-          APK_OUT='FUSH_Customer_V1-UNSIGNED-ALIGNED.apk'
-          AAB_OUT='FUSH_Customer_V1-UNSIGNED.aab'
+          test -f "$APK" && test -f "$AAB"
+          APK_OUT='FUSH_Customer_V1-ShibaniSoft-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='FUSH_Customer_V1-ShibaniSoft-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
           cp "$AAB" "$AAB_OUT"
@@ -163,10 +157,10 @@ jobs:
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-Customer-V1-Unsigned
+          name: FUSH-Customer-V1-ShibaniSoft-Unsigned
           path: |
-            customer-v1-src/FUSH_Customer_V1-UNSIGNED-ALIGNED.apk
-            customer-v1-src/FUSH_Customer_V1-UNSIGNED.aab
+            customer-v1-src/FUSH_Customer_V1-ShibaniSoft-UNSIGNED-ALIGNED.apk
+            customer-v1-src/FUSH_Customer_V1-ShibaniSoft-UNSIGNED.aab
             customer-v1-src/APK_IDENTITY.txt
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
