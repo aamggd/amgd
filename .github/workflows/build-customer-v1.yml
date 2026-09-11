@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.4 Room 55 to 56 Bootstrap Hotfix R3
+name: Build SHIBANI SOFT ERP v1.0.4 Room 55 to 56 Bootstrap Hotfix R4
 
 on:
   push:
@@ -12,13 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.4 R3 source
+      - name: Download and verify exact SHIBANI v1.0.4 R4 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='K4QLvXml1sR1'
-          FILE='01a08f796680777d8b3024f09b5c38ec'
+          SHARE='Wo1Z6doNlXZ1'
+          FILE='01a08f7f936d77289102780838cb9576'
           COOKIE=/tmp/firestorage.cookies
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
@@ -28,7 +28,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/source.zip
-          echo 'a93d11585e5dd38fab9a08f77cc9ee13094d32cc7507b794a22b4f7636a328b1  /tmp/source.zip' | sha256sum -c -
+          echo 'dae9fbe0d2fc2f74ceb572a0d7ffb498740bafdef0b65a28ffb531db54c8ce5f  /tmp/source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir customer-v1-src
           unzip -oq /tmp/source.zip -d customer-v1-src
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
@@ -43,13 +43,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK 36
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
@@ -82,7 +80,6 @@ jobs:
 
       - name: Compile Android tests
         run: cd customer-v1-src && gradle --no-daemon :app:compileDebugAndroidTestKotlin
-
       - name: Test production bootstrap migration 55 to 56 on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -91,7 +88,6 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.AccountingWaveBRoomBootstrap55To56Test
-
       - name: Test direct migration 55 to 56 data preservation on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -107,7 +103,6 @@ jobs:
         run: cd customer-v1-src && gradle --no-daemon :app:bundleRelease
       - name: Release lint
         run: cd customer-v1-src && gradle --no-daemon :app:lintVitalRelease
-
       - name: Align and identify outputs
         shell: bash
         run: |
