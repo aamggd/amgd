@@ -1,9 +1,8 @@
-name: Build SHIBANI SOFT ERP v1.0.4 Room 55 to 56 Bootstrap Hotfix
+name: Build SHIBANI SOFT ERP v1.0.4 Room 55 to 56 Bootstrap Hotfix R3
 
 on:
   push:
-    branches:
-      - fush-customer-v1-build
+    branches: [fush-customer-v1-build]
   workflow_dispatch:
 
 jobs:
@@ -11,33 +10,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.4 source
+      - name: Download and verify exact SHIBANI v1.0.4 R3 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='NAXfs1h4--Jc'
-          FILE='01a08f7520c6750ca4497dd6c943fa93'
+          SHARE='K4QLvXml1sR1'
+          FILE='01a08f796680777d8b3024f09b5c38ec'
           COOKIE=/tmp/firestorage.cookies
-          rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
           curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
           DOWNLOAD_URL="$(python3 - <<'PY'
           import json
-          with open('/tmp/download.json', encoding='utf-8') as f:
-              data=json.load(f)
-          url=data.get('downloadUrl')
-          if not url: raise SystemExit('downloadUrl missing')
-          print(url)
+          print(json.load(open('/tmp/download.json'))['downloadUrl'])
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v104-source.zip
-          echo 'dea928b598f6075954091e0e8464892fd838669d82c5f90cc297ae276ba10e09  /tmp/shibani-v104-source.zip' | sha256sum -c -
-          rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-v104-source.zip -d customer-v1-src
+          curl -fL "$DOWNLOAD_URL" -o /tmp/source.zip
+          echo 'a93d11585e5dd38fab9a08f77cc9ee13094d32cc7507b794a22b4f7636a328b1  /tmp/source.zip' | sha256sum -c -
+          rm -rf customer-v1-src && mkdir customer-v1-src
+          unzip -oq /tmp/source.zip -d customer-v1-src
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 5' customer-v1-src/app/build.gradle.kts
           grep 'versionName = "1.0.4"' customer-v1-src/app/build.gradle.kts
@@ -46,31 +39,31 @@ jobs:
           grep 'MIGRATION_55_56_LOCAL_COMPANY_IDENTITY' customer-v1-src/app/src/main/java/com/fush/erp/data/AppContainer.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      - uses: android-actions/setup-android@v3
       - name: Install Android SDK 36
-        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
 
-      - name: Set up Gradle 9.4.1
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify Room 55 to 56 bootstrap hotfix
+      - name: Verify Room bootstrap hotfix
         run: cd customer-v1-src && python3 tools/verify_shibani_room55_56_bootstrap_hotfix.py
-
-      - name: Verify P0 central license lock regression
+      - name: Verify P0 license lock regression
         run: cd customer-v1-src && python3 tools/verify_shibani_license_locked_gate.py
+      - name: Verify commercial closeout regression
+        run: cd customer-v1-src && python3 tools/verify_shibani_commercial_closeout.py
+      - name: Verify Local Only regression
+        run: cd customer-v1-src && python3 tools/verify_shibani_local_only_flow_fix.py
+      - name: Verify customer flow regression
+        run: cd customer-v1-src && python3 tools/verify_shibani_customer_client_flow.py
 
       - name: Unit tests
         shell: bash
@@ -80,63 +73,53 @@ jobs:
           python3 - <<'PY'
           import glob, xml.etree.ElementTree as ET
           total=failures=errors=skipped=0
-          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
-              root=ET.parse(path).getroot()
-              total += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0)); skipped += int(root.attrib.get('skipped',0))
-          summary=f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}'
-          print(summary)
-          open('UNIT_TEST_SUMMARY.txt','w').write(summary+'\n')
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); total+=int(r.attrib.get('tests',0)); failures+=int(r.attrib.get('failures',0)); errors+=int(r.attrib.get('errors',0)); skipped+=int(r.attrib.get('skipped',0))
+          s=f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}'
+          print(s); open('UNIT_TEST_SUMMARY.txt','w').write(s+'\n')
           if total == 0 or failures or errors: raise SystemExit(1)
           PY
 
       - name: Compile Android tests
         run: cd customer-v1-src && gradle --no-daemon :app:compileDebugAndroidTestKotlin
 
-      - name: Run real Room 55 to 56 production bootstrap migration on emulator
+      - name: Test production bootstrap migration 55 to 56 on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd customer-v1-src
-            gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.AccountingWaveBRoomBootstrap55To56Test
+          script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.AccountingWaveBRoomBootstrap55To56Test
 
-      - name: Run direct Room 55 to 56 migration preservation test on emulator
+      - name: Test direct migration 55 to 56 data preservation on emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd customer-v1-src
-            gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.LocalCompanyIdentityMigrationTest
+          script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.LocalCompanyIdentityMigrationTest
 
       - name: Assemble release APK
         run: cd customer-v1-src && gradle --no-daemon :app:assembleRelease
-
       - name: Build release AAB
         run: cd customer-v1-src && gradle --no-daemon :app:bundleRelease
-
       - name: Release lint
         run: cd customer-v1-src && gradle --no-daemon :app:lintVitalRelease
 
-      - name: Align and identify release outputs
+      - name: Align and identify outputs
         shell: bash
         run: |
           set -euo pipefail
           cd customer-v1-src
           ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
-          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
-          AAB='app/build/outputs/bundle/release/app-release.aab'
           APK_OUT='SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED-ALIGNED.apk'
           AAB_OUT='SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED.aab'
-          "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
+          "$ZIPALIGN" -f -v 4 app/build/outputs/apk/release/app-release-unsigned.apk "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
-          cp "$AAB" "$AAB_OUT"
+          cp app/build/outputs/bundle/release/app-release.aab "$AAB_OUT"
           "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
           grep "package: name='com.shibanisoft.erp' versionCode='5' versionName='1.0.4'" APK_IDENTITY.txt
           unzip -t "$AAB_OUT" >/dev/null
@@ -145,8 +128,7 @@ jobs:
           cp "$ANDROID_HOME/build-tools/36.1.0/apksigner" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.1.0/lib/apksigner.jar" signing-tools/lib/
 
-      - name: Upload unsigned release outputs
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: SHIBANI-SOFT-ERP-v1.0.4-Room55To56BootstrapHotfix-Unsigned
           path: |
@@ -156,6 +138,5 @@ jobs:
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
             customer-v1-src/app/build/outputs/androidTest-results/connected/**
-            customer-v1-src/signing-tools/apksigner
-            customer-v1-src/signing-tools/lib/apksigner.jar
+            customer-v1-src/signing-tools/**
           if-no-files-found: error
