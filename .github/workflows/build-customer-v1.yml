@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate
+name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R4
 
 on:
   push:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.3 source
+      - name: Download and verify exact SHIBANI v1.0.3 R4 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='Yu43OwoCh3mt'
-          FILE='01a08f32b5f075f185eb76a3ea691e93'
+          SHARE='20doIjGHx56Y'
+          FILE='01a08f35573174518109ba09a3a791dd'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -35,10 +35,10 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-source.zip
-          echo '810d4157dbff52f8aeb0e5995be581b7c3a99d1cff62c03d13457c5ee36d0145  /tmp/shibani-v103-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-r4-source.zip
+          echo 'd1a4d732b0a3958cb288d2fbbce55a6f58eaf7ca46206bf8cb4a244d17a96e6e  /tmp/shibani-v103-r4-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-v103-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-v103-r4-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 4' customer-v1-src/app/build.gradle.kts
@@ -46,6 +46,7 @@ jobs:
           grep 'const val FUSH_DB_SCHEMA_VERSION = 56' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep 'const val EXPECTED_APPLICATION_ID = "com.shibanisoft.erp"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
           grep 'EXPECTED_CERT_SHA256 = "22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
+          test -f customer-v1-src/app/src/androidTest/java/com/fush/erp/data/LicenseLockedOperationalWriteIntegrationTest.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
           ! grep -R -E 'sb_secret_[A-Za-z0-9_-]{8,}|service[_-]?role[[:space:]]*=' customer-v1-src/app/build.gradle.kts customer-v1-src/app/src/main 2>/dev/null
 
@@ -134,7 +135,7 @@ jobs:
           cd customer-v1-src
           gradle --no-daemon :app:compileDebugAndroidTestKotlin
 
-      - name: Run ASLMY license-lock test on Android emulator
+      - name: Run license-lock operational write test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
