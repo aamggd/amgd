@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R5
+name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R6
 
 on:
   push:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.3 R5 source
+      - name: Download and verify exact SHIBANI v1.0.3 R6 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='NlkzAqPK_Yd4'
-          FILE='01a08f3b444371129508ef05daadcc40'
+          SHARE='2A7QvZeyChnW'
+          FILE='01a08f42d553736ea88bd0d6bf9ec954'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -28,17 +28,16 @@ jobs:
           DOWNLOAD_URL="$(python3 - <<'PY'
           import json
           with open('/tmp/download.json', encoding='utf-8') as f:
-              data = json.load(f)
-          url = data.get('downloadUrl')
-          if not url:
-              raise SystemExit('downloadUrl missing')
+              data=json.load(f)
+          url=data.get('downloadUrl')
+          if not url: raise SystemExit('downloadUrl missing')
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-r5-source.zip
-          echo 'e084c093d4719d8f9148a6a832e6fbb951bb3641fbd735b897d5f0c726697cec  /tmp/shibani-v103-r5-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-r6-source.zip
+          echo 'ce22d8d124a6d7c023df2eebe1328fea4f8cfa66bc0704539f15b03428d75288  /tmp/shibani-v103-r6-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-v103-r5-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-v103-r6-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 4' customer-v1-src/app/build.gradle.kts
@@ -71,46 +70,19 @@ jobs:
           gradle-version: '9.4.1'
 
       - name: Verify P0 central license lock
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_shibani_license_locked_gate.py
-
+        run: cd customer-v1-src && python3 tools/verify_shibani_license_locked_gate.py
       - name: Verify commercial closeout regression
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_shibani_commercial_closeout.py
-
+        run: cd customer-v1-src && python3 tools/verify_shibani_commercial_closeout.py
       - name: Verify Local Only flow regression
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_shibani_local_only_flow_fix.py
-
+        run: cd customer-v1-src && python3 tools/verify_shibani_local_only_flow_fix.py
       - name: Verify release identity
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_shibani_release_identity_hotfix.py
-
+        run: cd customer-v1-src && python3 tools/verify_shibani_release_identity_hotfix.py
       - name: Verify auth clarity regression
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_v220_cloud_auth_error_clarity.py
-
+        run: cd customer-v1-src && python3 tools/verify_v220_cloud_auth_error_clarity.py
       - name: Verify Customer inventory and operational sync regression
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_customer_v1_release.py
-
+        run: cd customer-v1-src && python3 tools/verify_customer_v1_release.py
       - name: Verify SHIBANI customer flow
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_shibani_customer_client_flow.py
+        run: cd customer-v1-src && python3 tools/verify_shibani_customer_client_flow.py
 
       - name: Unit tests
         shell: bash
@@ -122,7 +94,7 @@ jobs:
           total=failures=errors=skipped=0
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              total += int(root.attrib.get('tests', 0)); failures += int(root.attrib.get('failures', 0)); errors += int(root.attrib.get('errors', 0)); skipped += int(root.attrib.get('skipped', 0))
+              total += int(root.attrib.get('tests',0)); failures += int(root.attrib.get('failures',0)); errors += int(root.attrib.get('errors',0)); skipped += int(root.attrib.get('skipped',0))
           summary=f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}'
           print(summary)
           open('UNIT_TEST_SUMMARY.txt','w').write(summary+'\n')
@@ -130,10 +102,7 @@ jobs:
           PY
 
       - name: Compile Android tests
-        shell: bash
-        run: |
-          cd customer-v1-src
-          gradle --no-daemon :app:compileDebugAndroidTestKotlin
+        run: cd customer-v1-src && gradle --no-daemon :app:compileDebugAndroidTestKotlin
 
       - name: Run license-lock operational write test on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -145,22 +114,11 @@ jobs:
           script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.LicenseLockedOperationalWriteIntegrationTest
 
       - name: Assemble release APK
-        shell: bash
-        run: |
-          cd customer-v1-src
-          gradle --no-daemon :app:assembleRelease
-
+        run: cd customer-v1-src && gradle --no-daemon :app:assembleRelease
       - name: Build release AAB
-        shell: bash
-        run: |
-          cd customer-v1-src
-          gradle --no-daemon :app:bundleRelease
-
+        run: cd customer-v1-src && gradle --no-daemon :app:bundleRelease
       - name: Release lint
-        shell: bash
-        run: |
-          cd customer-v1-src
-          gradle --no-daemon :app:lintVitalRelease
+        run: cd customer-v1-src && gradle --no-daemon :app:lintVitalRelease
 
       - name: Align and identify release outputs
         shell: bash
