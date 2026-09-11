@@ -19,8 +19,8 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='YgvUOQMvhnHA'
-          FILE='01a08f2ec78d76358d4b3b8ea35249f2'
+          SHARE='Yu43OwoCh3mt'
+          FILE='01a08f32b5f075f185eb76a3ea691e93'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -36,7 +36,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-source.zip
-          echo '4eebd64bdb0c27ae364f2293ebb4f3c82b6135c2d5b069c3b0cc0b910073ba3b  /tmp/shibani-v103-source.zip' | sha256sum -c -
+          echo '810d4157dbff52f8aeb0e5995be581b7c3a99d1cff62c03d13457c5ee36d0145  /tmp/shibani-v103-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
           unzip -oq /tmp/shibani-v103-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
