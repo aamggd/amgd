@@ -1,4 +1,4 @@
-name: Build FUSH Customer V1
+name: Build SHIBANI SOFT ERP Customer Flow
 
 on:
   push:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact Customer V1 source
+      - name: Download and verify exact SHIBANI customer source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='YPnbnIk-5eKD'
-          FILE='01a08e3cc82077dea4c266a73bc15a00'
+          SHARE='d4L6A8AkQZzy'
+          FILE='01a08e6de24673f59c2a0aae4a94f8d9'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -35,19 +35,21 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/customer-v1-source.zip
-          echo '94941dd37345bf32c33beb680bbb8929712d99c202957fad803d2e0379938090  /tmp/customer-v1-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-customer-source.zip
+          echo '22831cdcd45ef7440974439b554cfd38ea8135679e68d9e902091eb22925b7db  /tmp/shibani-customer-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/customer-v1-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-customer-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           test -f customer-v1-src/app/build.gradle.kts
-          grep 'applicationId = "com.fush.erp.recovery"' customer-v1-src/app/build.gradle.kts
+          grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 1' customer-v1-src/app/build.gradle.kts
           grep 'versionName = "1.0.0"' customer-v1-src/app/build.gradle.kts
           grep 'const val FUSH_DB_SCHEMA_VERSION = 55' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
+          ! grep -R -E 'sb_secret_|service[_-]?role' customer-v1-src/app/build.gradle.kts customer-v1-src/app/src/main 2>/dev/null
+          test -f customer-v1-src/cloud/supabase/014_shibani_customer_client_guard.sql
+          test -f customer-v1-src/cloud/supabase/015_shibani_subscription_entitlement_authority.sql
           test -f customer-v1-src/app/src/main/res/drawable-nodpi/ic_shibani_soft_logo.png
-          grep 'ic_shibani_soft_foreground' customer-v1-src/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -69,23 +71,23 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify inherited v219 company bootstrap regression
-        shell: bash
-        run: |
-          cd customer-v1-src
-          python3 tools/verify_v219_company_bootstrap_regression_v220.py
-
-      - name: Verify inherited v220 auth clarity contract
+      - name: Verify auth clarity regression
         shell: bash
         run: |
           cd customer-v1-src
           python3 tools/verify_v220_cloud_auth_error_clarity.py
 
-      - name: Verify Customer V1 release contract
+      - name: Verify Customer V1 inventory and Local Only regression
         shell: bash
         run: |
           cd customer-v1-src
           python3 tools/verify_customer_v1_release.py
+
+      - name: Verify SHIBANI customer-only flow
+        shell: bash
+        run: |
+          cd customer-v1-src
+          python3 tools/verify_shibani_customer_client_flow.py
 
       - name: Unit tests
         shell: bash
@@ -101,9 +103,10 @@ jobs:
               failures += int(root.attrib.get('failures', 0))
               errors += int(root.attrib.get('errors', 0))
               skipped += int(root.attrib.get('skipped', 0))
-          print(f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}')
+          summary=f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}'
+          print(summary)
           with open('UNIT_TEST_SUMMARY.txt','w') as f:
-              f.write(f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}\n')
+              f.write(summary+'\n')
           if total == 0 or failures or errors:
               raise SystemExit(1)
           PY
@@ -142,12 +145,13 @@ jobs:
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
           test -f "$APK" && test -f "$AAB"
-          APK_OUT='FUSH_Customer_V1-ShibaniSoft-UNSIGNED-ALIGNED.apk'
-          AAB_OUT='FUSH_Customer_V1-ShibaniSoft-UNSIGNED.aab'
+          APK_OUT='SHIBANI_SOFT_ERP_v1.0.0-CustomerFlow-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.0-CustomerFlow-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
           cp "$AAB" "$AAB_OUT"
           "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
+          grep "package: name='com.shibanisoft.erp' versionCode='1' versionName='1.0.0'" APK_IDENTITY.txt
           unzip -t "$AAB_OUT" >/dev/null
           sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
           mkdir -p signing-tools/lib
@@ -157,10 +161,10 @@ jobs:
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-Customer-V1-ShibaniSoft-Unsigned
+          name: SHIBANI-SOFT-ERP-CustomerFlow-Unsigned
           path: |
-            customer-v1-src/FUSH_Customer_V1-ShibaniSoft-UNSIGNED-ALIGNED.apk
-            customer-v1-src/FUSH_Customer_V1-ShibaniSoft-UNSIGNED.aab
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.0-CustomerFlow-UNSIGNED-ALIGNED.apk
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.0-CustomerFlow-UNSIGNED.aab
             customer-v1-src/APK_IDENTITY.txt
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
