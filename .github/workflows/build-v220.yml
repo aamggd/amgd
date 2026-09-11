@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
           SHARE='JMnnYTmhDZNo'
-          FILE='01a08dea7c39749da0ec406f1cf0d1ab'
+          FILE='01a08ded33c2726ebb817a7f76278dfc'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" \
@@ -42,7 +42,7 @@ jobs:
           PY
           )"
           curl -fL "$DOWNLOAD_URL" -o /tmp/v220-source.zip
-          echo '1758fd46cb382a8eae2673729ab85b2021146c67d30439d3c5c232f6c2038aaf  /tmp/v220-source.zip' | sha256sum -c -
+          echo '8f5b22fd090d7d88653849df65ed7af442fc23b250df5402848854397b348e54  /tmp/v220-source.zip' | sha256sum -c -
           rm -rf v220-src
           mkdir -p v220-src
           unzip -oq /tmp/v220-source.zip -d v220-src
@@ -74,11 +74,11 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify inherited v219 company bootstrap contract
+      - name: Verify inherited v219 company bootstrap regression
         shell: bash
         run: |
           cd v220-src
-          python3 tools/verify_v219_company_bootstrap_hotfix.py
+          python3 tools/verify_v219_company_bootstrap_regression_v220.py
 
       - name: Verify v220 auth error clarity contract
         shell: bash
