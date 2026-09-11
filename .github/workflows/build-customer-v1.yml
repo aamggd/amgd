@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.2 Commercial Closeout
+name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate
 
 on:
   push:
@@ -9,18 +9,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.2 source
+      - name: Download and verify exact SHIBANI v1.0.3 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='1RRwFi_4H_kw'
-          FILE='01a08f12afb876a4880310a05ab04adf'
+          SHARE='amcQRgH57YYF'
+          FILE='01a08f29574877aa9bcdab4454953f25'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -35,21 +35,17 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v102-source.zip
-          echo '9f89778f06ae203222843bb32380e5121df83f87856fd1f3d54b7119ffb39312  /tmp/shibani-v102-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-source.zip
+          echo '109ed6caceb1c1b37a1027005360f603c76d29bf3b906469c170f3091762c5ab  /tmp/shibani-v103-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-v102-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-v103-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
-          test -f customer-v1-src/app/build.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
-          grep 'versionCode = 3' customer-v1-src/app/build.gradle.kts
-          grep 'versionName = "1.0.2"' customer-v1-src/app/build.gradle.kts
+          grep 'versionCode = 4' customer-v1-src/app/build.gradle.kts
+          grep 'versionName = "1.0.3"' customer-v1-src/app/build.gradle.kts
+          grep 'const val FUSH_DB_SCHEMA_VERSION = 56' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep 'const val EXPECTED_APPLICATION_ID = "com.shibanisoft.erp"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
           grep 'EXPECTED_CERT_SHA256 = "22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
-          grep 'const val FUSH_DB_SCHEMA_VERSION = 56' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          test -f customer-v1-src/cloud/supabase/016_shibani_local_only_license_activation.sql
-          test -f customer-v1-src/cloud/supabase/017_shibani_commercial_closeout.sql
-          test -f customer-v1-src/app/src/main/java/com/fush/erp/data/V1_0_2LocalCompanyIdentityMigration.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
           ! grep -R -E 'sb_secret_[A-Za-z0-9_-]{8,}|service[_-]?role[[:space:]]*=' customer-v1-src/app/build.gradle.kts customer-v1-src/app/src/main 2>/dev/null
 
@@ -73,7 +69,13 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify commercial closeout
+      - name: Verify P0 central license lock
+        shell: bash
+        run: |
+          cd customer-v1-src
+          python3 tools/verify_shibani_license_locked_gate.py
+
+      - name: Verify commercial closeout regression
         shell: bash
         run: |
           cd customer-v1-src
@@ -119,23 +121,27 @@ jobs:
           total=failures=errors=skipped=0
           for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               root=ET.parse(path).getroot()
-              total += int(root.attrib.get('tests', 0))
-              failures += int(root.attrib.get('failures', 0))
-              errors += int(root.attrib.get('errors', 0))
-              skipped += int(root.attrib.get('skipped', 0))
+              total += int(root.attrib.get('tests', 0)); failures += int(root.attrib.get('failures', 0)); errors += int(root.attrib.get('errors', 0)); skipped += int(root.attrib.get('skipped', 0))
           summary=f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}'
           print(summary)
-          with open('UNIT_TEST_SUMMARY.txt','w') as f:
-              f.write(summary+'\n')
-          if total == 0 or failures or errors:
-              raise SystemExit(1)
+          open('UNIT_TEST_SUMMARY.txt','w').write(summary+'\n')
+          if total == 0 or failures or errors: raise SystemExit(1)
           PY
 
-      - name: Compile Android migration tests
+      - name: Compile Android tests
         shell: bash
         run: |
           cd customer-v1-src
           gradle --no-daemon :app:compileDebugAndroidTestKotlin
+
+      - name: Run ASLMY license-lock test on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.LicenseLockedOperationalWriteIntegrationTest
 
       - name: Assemble release APK
         shell: bash
@@ -164,14 +170,13 @@ jobs:
           AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
-          test -f "$APK" && test -f "$AAB"
-          APK_OUT='SHIBANI_SOFT_ERP_v1.0.2-CommercialCloseout-UNSIGNED-ALIGNED.apk'
-          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.2-CommercialCloseout-UNSIGNED.aab'
+          APK_OUT='SHIBANI_SOFT_ERP_v1.0.3-LicenseLockedGate-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.3-LicenseLockedGate-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
           cp "$AAB" "$AAB_OUT"
           "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
-          grep "package: name='com.shibanisoft.erp' versionCode='3' versionName='1.0.2'" APK_IDENTITY.txt
+          grep "package: name='com.shibanisoft.erp' versionCode='4' versionName='1.0.3'" APK_IDENTITY.txt
           unzip -t "$AAB_OUT" >/dev/null
           sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
           mkdir -p signing-tools/lib
@@ -181,13 +186,14 @@ jobs:
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
         with:
-          name: SHIBANI-SOFT-ERP-v1.0.2-CommercialCloseout-Unsigned
+          name: SHIBANI-SOFT-ERP-v1.0.3-LicenseLockedGate-Unsigned
           path: |
-            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.2-CommercialCloseout-UNSIGNED-ALIGNED.apk
-            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.2-CommercialCloseout-UNSIGNED.aab
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.3-LicenseLockedGate-UNSIGNED-ALIGNED.apk
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.3-LicenseLockedGate-UNSIGNED.aab
             customer-v1-src/APK_IDENTITY.txt
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
+            customer-v1-src/app/build/outputs/androidTest-results/connected/**
             customer-v1-src/signing-tools/apksigner
             customer-v1-src/signing-tools/lib/apksigner.jar
           if-no-files-found: error
