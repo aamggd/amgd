@@ -1,0 +1,169 @@
+name: Build FUSH ERP Mobile v220
+
+on:
+  push:
+    branches:
+      - fush-customer-v220-cloud-auth-error-clarity-build
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify exact v220 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file'
+          SHARE='JMnnYTmhDZNo'
+          FILE='01a08dea7c39749da0ec406f1cf0d1ab'
+          COOKIE=/tmp/firestorage.cookies
+          rm -f "$COOKIE"
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -H 'Content-Type: application/json' \
+            -X POST "$BASE/shares/$SHARE/cushion-sessions" \
+            --data '{"password":null}' \
+            -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" \
+            -X POST "$BASE/shares/$SHARE/files/$FILE/download" \
+            -o /tmp/download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          with open('/tmp/download.json', encoding='utf-8') as f:
+              data = json.load(f)
+          url = data.get('downloadUrl')
+          if not url:
+              raise SystemExit('downloadUrl missing')
+          print(url)
+          PY
+          )"
+          curl -fL "$DOWNLOAD_URL" -o /tmp/v220-source.zip
+          echo '1758fd46cb382a8eae2673729ab85b2021146c67d30439d3c5c232f6c2038aaf  /tmp/v220-source.zip' | sha256sum -c -
+          rm -rf v220-src
+          mkdir -p v220-src
+          unzip -oq /tmp/v220-source.zip -d v220-src
+          test -f v220-src/settings.gradle.kts
+          test -f v220-src/app/build.gradle.kts
+          grep 'applicationId = "com.fush.erp.recovery"' v220-src/app/build.gradle.kts
+          grep 'versionCode = 220' v220-src/app/build.gradle.kts
+          grep 'versionName = "0.15.8.171-cloud-auth-error-clarity"' v220-src/app/build.gradle.kts
+          grep 'const val FUSH_DB_SCHEMA_VERSION = 55' v220-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R 'fallbackToDestructiveMigration' v220-src/app/src/main/java
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Verify inherited v219 company bootstrap contract
+        shell: bash
+        run: |
+          cd v220-src
+          python3 tools/verify_v219_company_bootstrap_hotfix.py
+
+      - name: Verify v220 auth error clarity contract
+        shell: bash
+        run: |
+          cd v220-src
+          python3 tools/verify_v220_cloud_auth_error_clarity.py
+
+      - name: Unit tests
+        shell: bash
+        run: |
+          cd v220-src
+          gradle --no-daemon :app:testDebugUnitTest
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              total += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0))
+              errors += int(root.attrib.get('errors', 0))
+              skipped += int(root.attrib.get('skipped', 0))
+          print(f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}')
+          with open('UNIT_TEST_SUMMARY.txt','w') as f:
+              f.write(f'UNIT_TESTS total={total} failures={failures} errors={errors} skipped={skipped}\n')
+          if total == 0 or failures or errors:
+              raise SystemExit(1)
+          PY
+
+      - name: Compile Android migration tests
+        shell: bash
+        run: |
+          cd v220-src
+          gradle --no-daemon :app:compileDebugAndroidTestKotlin
+
+      - name: Assemble release APK
+        shell: bash
+        run: |
+          cd v220-src
+          gradle --no-daemon :app:assembleRelease
+
+      - name: Build release AAB
+        shell: bash
+        run: |
+          cd v220-src
+          gradle --no-daemon :app:bundleRelease
+
+      - name: Release lint
+        shell: bash
+        run: |
+          cd v220-src
+          gradle --no-daemon :app:lintVitalRelease
+
+      - name: Align and identify release outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd v220-src
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
+          APK='app/build/outputs/apk/release/app-release-unsigned.apk'
+          AAB='app/build/outputs/bundle/release/app-release.aab'
+          test -f "$APK"
+          test -f "$AAB"
+          APK_OUT='FUSH_ERP_Mobile_v220-CloudAuthErrorClarity-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='FUSH_ERP_Mobile_v220-CloudAuthErrorClarity-UNSIGNED.aab'
+          "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
+          "$ZIPALIGN" -c -v 4 "$APK_OUT"
+          cp "$AAB" "$AAB_OUT"
+          "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
+          unzip -t "$AAB_OUT" >/dev/null
+          sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
+          mkdir -p signing-tools/lib
+          cp "$ANDROID_HOME/build-tools/36.1.0/apksigner" signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.1.0/lib/apksigner.jar" signing-tools/lib/
+
+      - name: Upload unsigned release outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v220-CloudAuthErrorClarity-Unsigned
+          path: |
+            v220-src/FUSH_ERP_Mobile_v220-CloudAuthErrorClarity-UNSIGNED-ALIGNED.apk
+            v220-src/FUSH_ERP_Mobile_v220-CloudAuthErrorClarity-UNSIGNED.aab
+            v220-src/APK_IDENTITY.txt
+            v220-src/SHA256SUMS.txt
+            v220-src/UNIT_TEST_SUMMARY.txt
+            v220-src/signing-tools/apksigner
+            v220-src/signing-tools/lib/apksigner.jar
+          if-no-files-found: error
