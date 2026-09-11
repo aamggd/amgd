@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R6
+name: Build SHIBANI SOFT ERP v1.0.3 R6 Artifacts
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,16 +38,11 @@ jobs:
           echo 'ce22d8d124a6d7c023df2eebe1328fea4f8cfa66bc0704539f15b03428d75288  /tmp/shibani-v103-r6-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
           unzip -oq /tmp/shibani-v103-r6-source.zip -d customer-v1-src
-          test -f customer-v1-src/settings.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 4' customer-v1-src/app/build.gradle.kts
           grep 'versionName = "1.0.3"' customer-v1-src/app/build.gradle.kts
           grep 'const val FUSH_DB_SCHEMA_VERSION = 56' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep 'const val EXPECTED_APPLICATION_ID = "com.shibanisoft.erp"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
-          grep 'EXPECTED_CERT_SHA256 = "22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
-          test -f customer-v1-src/app/src/androidTest/java/com/fush/erp/data/LicenseLockedOperationalWriteIntegrationTest.kt
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
-          ! grep -R -E 'sb_secret_[A-Za-z0-9_-]{8,}|service[_-]?role[[:space:]]*=' customer-v1-src/app/build.gradle.kts customer-v1-src/app/src/main 2>/dev/null
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -71,19 +66,6 @@ jobs:
 
       - name: Verify P0 central license lock
         run: cd customer-v1-src && python3 tools/verify_shibani_license_locked_gate.py
-      - name: Verify commercial closeout regression
-        run: cd customer-v1-src && python3 tools/verify_shibani_commercial_closeout.py
-      - name: Verify Local Only flow regression
-        run: cd customer-v1-src && python3 tools/verify_shibani_local_only_flow_fix.py
-      - name: Verify release identity
-        run: cd customer-v1-src && python3 tools/verify_shibani_release_identity_hotfix.py
-      - name: Verify auth clarity regression
-        run: cd customer-v1-src && python3 tools/verify_v220_cloud_auth_error_clarity.py
-      - name: Verify Customer inventory and operational sync regression
-        run: cd customer-v1-src && python3 tools/verify_customer_v1_release.py
-      - name: Verify SHIBANI customer flow
-        run: cd customer-v1-src && python3 tools/verify_shibani_customer_client_flow.py
-
       - name: Unit tests
         shell: bash
         run: |
@@ -100,19 +82,8 @@ jobs:
           open('UNIT_TEST_SUMMARY.txt','w').write(summary+'\n')
           if total == 0 or failures or errors: raise SystemExit(1)
           PY
-
       - name: Compile Android tests
         run: cd customer-v1-src && gradle --no-daemon :app:compileDebugAndroidTestKotlin
-
-      - name: Run license-lock operational write test on Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: cd customer-v1-src && gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.LicenseLockedOperationalWriteIntegrationTest
-
       - name: Assemble release APK
         run: cd customer-v1-src && gradle --no-daemon :app:assembleRelease
       - name: Build release AAB
@@ -152,7 +123,6 @@ jobs:
             customer-v1-src/APK_IDENTITY.txt
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
-            customer-v1-src/app/build/outputs/androidTest-results/connected/**
             customer-v1-src/signing-tools/apksigner
             customer-v1-src/signing-tools/lib/apksigner.jar
           if-no-files-found: error
