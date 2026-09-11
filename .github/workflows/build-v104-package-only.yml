@@ -1,0 +1,105 @@
+name: Package SHIBANI SOFT ERP v1.0.4 Hotfix
+
+on:
+  push:
+    branches: [fush-customer-v1-build]
+    paths:
+      - '.github/workflows/build-v104-package-only.yml'
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify exact SHIBANI v1.0.4 R4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file'
+          SHARE='Wo1Z6doNlXZ1'
+          FILE='01a08f7f936d77289102780838cb9576'
+          COOKIE=/tmp/firestorage.cookies
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
+          curl -fsS -c "$COOKIE" -b "$COOKIE" -X POST "$BASE/shares/$SHARE/files/$FILE/download" -o /tmp/download.json
+          DOWNLOAD_URL="$(python3 - <<'PY'
+          import json
+          print(json.load(open('/tmp/download.json'))['downloadUrl'])
+          PY
+          )"
+          curl -fL "$DOWNLOAD_URL" -o /tmp/source.zip
+          echo 'dae9fbe0d2fc2f74ceb572a0d7ffb498740bafdef0b65a28ffb531db54c8ce5f  /tmp/source.zip' | sha256sum -c -
+          rm -rf src && mkdir src
+          unzip -oq /tmp/source.zip -d src
+          grep 'applicationId = "com.shibanisoft.erp"' src/app/build.gradle.kts
+          grep 'versionCode = 5' src/app/build.gradle.kts
+          grep 'versionName = "1.0.4"' src/app/build.gradle.kts
+          grep 'const val FUSH_DB_SCHEMA_VERSION = 56' src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep 'MIGRATION_55_56_LOCAL_COMPANY_IDENTITY' src/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt
+          ! grep -R 'fallbackToDestructiveMigration' src/app/src/main/java
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Static release gates
+        run: |
+          cd src
+          python3 tools/verify_shibani_room55_56_bootstrap_hotfix.py
+          python3 tools/verify_shibani_license_locked_gate.py
+          python3 tools/verify_shibani_commercial_closeout.py
+          python3 tools/verify_shibani_local_only_flow_fix.py
+          python3 tools/verify_shibani_customer_client_flow.py
+
+      - name: Unit tests
+        run: cd src && gradle --no-daemon :app:testDebugUnitTest
+      - name: Compile Android tests
+        run: cd src && gradle --no-daemon :app:compileDebugAndroidTestKotlin
+      - name: Assemble release APK
+        run: cd src && gradle --no-daemon :app:assembleRelease
+      - name: Build release AAB
+        run: cd src && gradle --no-daemon :app:bundleRelease
+      - name: Release lint
+        run: cd src && gradle --no-daemon :app:lintVitalRelease
+
+      - name: Align and identify release outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd src
+          ZIPALIGN="$ANDROID_HOME/build-tools/36.1.0/zipalign"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
+          APK_OUT='SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED.aab'
+          "$ZIPALIGN" -f -v 4 app/build/outputs/apk/release/app-release-unsigned.apk "$APK_OUT"
+          "$ZIPALIGN" -c -v 4 "$APK_OUT"
+          cp app/build/outputs/bundle/release/app-release.aab "$AAB_OUT"
+          "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
+          grep "package: name='com.shibanisoft.erp' versionCode='5' versionName='1.0.4'" APK_IDENTITY.txt
+          unzip -t "$AAB_OUT" >/dev/null
+          sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
+          mkdir -p signing-tools/lib
+          cp "$ANDROID_HOME/build-tools/36.1.0/apksigner" signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.1.0/lib/apksigner.jar" signing-tools/lib/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHIBANI-SOFT-ERP-v1.0.4-Room55To56BootstrapHotfix-Package
+          path: |
+            src/SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED-ALIGNED.apk
+            src/SHIBANI_SOFT_ERP_v1.0.4-Room55To56BootstrapHotfix-UNSIGNED.aab
+            src/APK_IDENTITY.txt
+            src/SHA256SUMS.txt
+            src/signing-tools/**
+          if-no-files-found: error
