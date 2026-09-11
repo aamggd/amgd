@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R4
+name: Build SHIBANI SOFT ERP v1.0.3 License Locked Gate R5
 
 on:
   push:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI v1.0.3 R4 source
+      - name: Download and verify exact SHIBANI v1.0.3 R5 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='20doIjGHx56Y'
-          FILE='01a08f35573174518109ba09a3a791dd'
+          SHARE='NlkzAqPK_Yd4'
+          FILE='01a08f3b444371129508ef05daadcc40'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -35,10 +35,10 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-r4-source.zip
-          echo 'd1a4d732b0a3958cb288d2fbbce55a6f58eaf7ca46206bf8cb4a244d17a96e6e  /tmp/shibani-v103-r4-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v103-r5-source.zip
+          echo 'e084c093d4719d8f9148a6a832e6fbb951bb3641fbd735b897d5f0c726697cec  /tmp/shibani-v103-r5-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-v103-r4-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-v103-r5-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
           grep 'versionCode = 4' customer-v1-src/app/build.gradle.kts
