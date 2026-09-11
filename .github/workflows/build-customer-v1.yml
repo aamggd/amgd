@@ -1,4 +1,4 @@
-name: Build SHIBANI SOFT ERP Release Identity Hotfix
+name: Build SHIBANI SOFT ERP v1.0.1 Local Only Flow Fix
 
 on:
   push:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download and verify exact SHIBANI hotfix source
+      - name: Download and verify exact SHIBANI v1.0.1 source
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://api.firestorage.ai/dev/file'
-          SHARE='gDnEb9Svq4dt'
-          FILE='01a08e913c7e7252b5acffbc413d9d83'
+          SHARE='M6BGMinRL4iq'
+          FILE='01a08ebbf1c274c0830ccf25306915f6'
           COOKIE=/tmp/firestorage.cookies
           rm -f "$COOKIE"
           curl -fsS -c "$COOKIE" -b "$COOKIE" -H 'Content-Type: application/json' -X POST "$BASE/shares/$SHARE/cushion-sessions" --data '{"password":null}' -o /tmp/cushion.json
@@ -35,18 +35,19 @@ jobs:
           print(url)
           PY
           )"
-          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-hotfix-source.zip
-          echo 'f198db923b812a11b1de74c510e6356a159849ef30808b25863d8554c93d4874  /tmp/shibani-hotfix-source.zip' | sha256sum -c -
+          curl -fL "$DOWNLOAD_URL" -o /tmp/shibani-v101-source.zip
+          echo '890ff5431b2e0a48bbbb3324f0ed1989e488e955bd564f87b12044dd04962508  /tmp/shibani-v101-source.zip' | sha256sum -c -
           rm -rf customer-v1-src && mkdir -p customer-v1-src
-          unzip -oq /tmp/shibani-hotfix-source.zip -d customer-v1-src
+          unzip -oq /tmp/shibani-v101-source.zip -d customer-v1-src
           test -f customer-v1-src/settings.gradle.kts
           test -f customer-v1-src/app/build.gradle.kts
           grep 'applicationId = "com.shibanisoft.erp"' customer-v1-src/app/build.gradle.kts
-          grep 'versionCode = 1' customer-v1-src/app/build.gradle.kts
-          grep 'versionName = "1.0.0"' customer-v1-src/app/build.gradle.kts
+          grep 'versionCode = 2' customer-v1-src/app/build.gradle.kts
+          grep 'versionName = "1.0.1"' customer-v1-src/app/build.gradle.kts
           grep 'const val EXPECTED_APPLICATION_ID = "com.shibanisoft.erp"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
           grep 'EXPECTED_CERT_SHA256 = "22D5E2A8BD48DDD2339ABDC4748648B509E02D046524D6E118FBE05088155586"' customer-v1-src/app/src/main/java/com/fush/erp/domain/ReleaseIdentityVerifier.kt
           grep 'const val FUSH_DB_SCHEMA_VERSION = 55' customer-v1-src/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          test -f customer-v1-src/cloud/supabase/016_shibani_local_only_license_activation.sql
           ! grep -R 'fallbackToDestructiveMigration' customer-v1-src/app/src/main/java
           ! grep -R -E 'sb_secret_[A-Za-z0-9_-]{8,}|service[_-]?role[[:space:]]*=' customer-v1-src/app/build.gradle.kts customer-v1-src/app/src/main 2>/dev/null
 
@@ -70,7 +71,13 @@ jobs:
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify release identity hotfix
+      - name: Verify Local Only flow fix
+        shell: bash
+        run: |
+          cd customer-v1-src
+          python3 tools/verify_shibani_local_only_flow_fix.py
+
+      - name: Verify release identity
         shell: bash
         run: |
           cd customer-v1-src
@@ -82,7 +89,7 @@ jobs:
           cd customer-v1-src
           python3 tools/verify_v220_cloud_auth_error_clarity.py
 
-      - name: Verify Customer V1 inventory and Local Only regression
+      - name: Verify Customer inventory and operational sync regression
         shell: bash
         run: |
           cd customer-v1-src
@@ -150,13 +157,13 @@ jobs:
           APK='app/build/outputs/apk/release/app-release-unsigned.apk'
           AAB='app/build/outputs/bundle/release/app-release.aab'
           test -f "$APK" && test -f "$AAB"
-          APK_OUT='SHIBANI_SOFT_ERP_v1.0.0-ReleaseIdentityHotfix-UNSIGNED-ALIGNED.apk'
-          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.0-ReleaseIdentityHotfix-UNSIGNED.aab'
+          APK_OUT='SHIBANI_SOFT_ERP_v1.0.1-LocalOnlyFlowFix-UNSIGNED-ALIGNED.apk'
+          AAB_OUT='SHIBANI_SOFT_ERP_v1.0.1-LocalOnlyFlowFix-UNSIGNED.aab'
           "$ZIPALIGN" -f -v 4 "$APK" "$APK_OUT"
           "$ZIPALIGN" -c -v 4 "$APK_OUT"
           cp "$AAB" "$AAB_OUT"
           "$AAPT2" dump badging "$APK_OUT" | head -20 | tee APK_IDENTITY.txt
-          grep "package: name='com.shibanisoft.erp' versionCode='1' versionName='1.0.0'" APK_IDENTITY.txt
+          grep "package: name='com.shibanisoft.erp' versionCode='2' versionName='1.0.1'" APK_IDENTITY.txt
           unzip -t "$AAB_OUT" >/dev/null
           sha256sum "$APK_OUT" "$AAB_OUT" > SHA256SUMS.txt
           mkdir -p signing-tools/lib
@@ -166,10 +173,10 @@ jobs:
       - name: Upload unsigned release outputs
         uses: actions/upload-artifact@v4
         with:
-          name: SHIBANI-SOFT-ERP-ReleaseIdentityHotfix-Unsigned
+          name: SHIBANI-SOFT-ERP-v1.0.1-LocalOnlyFlowFix-Unsigned
           path: |
-            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.0-ReleaseIdentityHotfix-UNSIGNED-ALIGNED.apk
-            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.0-ReleaseIdentityHotfix-UNSIGNED.aab
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.1-LocalOnlyFlowFix-UNSIGNED-ALIGNED.apk
+            customer-v1-src/SHIBANI_SOFT_ERP_v1.0.1-LocalOnlyFlowFix-UNSIGNED.aab
             customer-v1-src/APK_IDENTITY.txt
             customer-v1-src/SHA256SUMS.txt
             customer-v1-src/UNIT_TEST_SUMMARY.txt
