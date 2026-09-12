@@ -1,0 +1,759 @@
+name: FAZ v1.0.23 Gate1B Supplier Provenance
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate1b-provenance.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1A-SupplierMovementMath
+          path: gate1a
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34672892427
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Prepare Gate1A source and Android SDK
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find gate1a -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 52' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+
+      - name: RED - provenance planner test must fail before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          TEST="$ROOT/app/src/test/java/com/fush/erp/domain/SupplierStockProvenancePlannerTest.kt"
+          mkdir -p "$(dirname "$TEST")"
+          cat > "$TEST" <<'KOTLIN'
+          package com.fush.erp.domain
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class SupplierStockProvenancePlannerTest {
+              @Test
+              fun `sale splits one sku across supplier sources without mixing availability`() {
+                  val plan = SupplierStockProvenancePlanner.consume(
+                      12.0,
+                      listOf(
+                          SupplierStockSourceBalance(10L, 1L, 5.0, 100.0, 1000L, "EXACT"),
+                          SupplierStockSourceBalance(20L, 2L, 10.0, 110.0, 2000L, "EXACT")
+                      )
+                  )
+                  assertTrue(plan.isComplete)
+                  assertEquals(2, plan.takes.size)
+                  assertEquals(5.0, plan.takes[0].quantityBase, 1e-9)
+                  assertEquals(1L, plan.takes[0].supplierId)
+                  assertEquals(7.0, plan.takes[1].quantityBase, 1e-9)
+                  assertEquals(2L, plan.takes[1].supplierId)
+              }
+
+              @Test
+              fun `planner reports shortage instead of borrowing from nonexistent supplier stock`() {
+                  val plan = SupplierStockProvenancePlanner.consume(
+                      8.0,
+                      listOf(SupplierStockSourceBalance(10L, 1L, 5.0, 100.0, 1000L, "EXACT"))
+                  )
+                  assertFalse(plan.isComplete)
+                  assertEquals(3.0, plan.shortageQtyBase, 1e-9)
+              }
+
+              @Test
+              fun `restore never exceeds quantity consumed from original source allocation`() {
+                  val plan = SupplierStockProvenancePlanner.restore(
+                      6.0,
+                      listOf(
+                          SupplierStockRestorableAllocation(100L, 10L, 1L, 4.0, 100.0),
+                          SupplierStockRestorableAllocation(200L, 20L, 2L, 5.0, 110.0)
+                      )
+                  )
+                  assertTrue(plan.isComplete)
+                  assertEquals(4.0, plan.takes[0].quantityBase, 1e-9)
+                  assertEquals(2.0, plan.takes[1].quantityBase, 1e-9)
+              }
+
+              @Test
+              fun `unattributed source remains unattributed`() {
+                  val plan = SupplierStockProvenancePlanner.consume(
+                      2.0,
+                      listOf(SupplierStockSourceBalance(30L, null, 3.0, 90.0, 0L, "UNATTRIBUTED"))
+                  )
+                  assertTrue(plan.isComplete)
+                  assertEquals(null, plan.takes.single().supplierId)
+                  assertEquals("UNATTRIBUTED", plan.takes.single().attributionStatus)
+              }
+          }
+          KOTLIN
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierStockProvenancePlannerTest' > "$GITHUB_WORKSPACE/red1b.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -Eq 'SupplierStockProvenancePlanner|SupplierStockSourceBalance|Unresolved reference|unresolved reference' "$GITHUB_WORKSPACE/red1b.log"
+          echo 'GATE1B_RED=PASS'
+
+      - name: GREEN - add Room53 entities DAO migration planner service and hooks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+
+          cat > "$ROOT/app/src/main/java/com/fush/erp/data/entity/SupplierStockProvenanceEntities.kt" <<'KOTLIN'
+          package com.fush.erp.data.entity
+
+          import androidx.room.Entity
+          import androidx.room.ForeignKey
+          import androidx.room.Index
+          import androidx.room.PrimaryKey
+
+          @Entity(
+              tableName = "supplier_stock_sources",
+              foreignKeys = [
+                  ForeignKey(entity = SupplierEntity::class, parentColumns = ["id"], childColumns = ["supplierId"]),
+                  ForeignKey(entity = WarehouseEntity::class, parentColumns = ["id"], childColumns = ["warehouseId"]),
+                  ForeignKey(entity = ItemEntity::class, parentColumns = ["id"], childColumns = ["itemId"]),
+                  ForeignKey(entity = StockMovementEntity::class, parentColumns = ["id"], childColumns = ["sourceMovementId"])
+              ],
+              indices = [
+                  Index("supplierId"),
+                  Index("warehouseId"),
+                  Index("itemId"),
+                  Index(value = ["sourceMovementId"], unique = true),
+                  Index(value = ["sourceReferenceType", "sourceReferenceId"]),
+                  Index(value = ["warehouseId", "itemId", "lotNo", "expiryDate", "sourceDate"])
+              ]
+          )
+          data class SupplierStockSourceEntity(
+              @PrimaryKey(autoGenerate = true) val id: Long = 0,
+              val supplierId: Long?,
+              val warehouseId: Long,
+              val itemId: Long,
+              val lotNo: String? = null,
+              val expiryDate: Long? = null,
+              val sourceDate: Long,
+              val sourceType: String,
+              val sourceMovementId: Long? = null,
+              val sourceReferenceType: String,
+              val sourceReferenceId: Long? = null,
+              val originalQuantityBase: Double,
+              val unitCostBase: Double,
+              val attributionStatus: String,
+              val createdAt: Long = System.currentTimeMillis()
+          )
+
+          @Entity(
+              tableName = "supplier_stock_allocations",
+              foreignKeys = [
+                  ForeignKey(entity = SupplierStockSourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"]),
+                  ForeignKey(entity = StockMovementEntity::class, parentColumns = ["id"], childColumns = ["stockMovementId"])
+              ],
+              indices = [
+                  Index("sourceId"),
+                  Index("stockMovementId"),
+                  Index("reversesAllocationId"),
+                  Index(value = ["businessReferenceType", "businessReferenceId"])
+              ]
+          )
+          data class SupplierStockAllocationEntity(
+              @PrimaryKey(autoGenerate = true) val id: Long = 0,
+              val sourceId: Long,
+              val stockMovementId: Long,
+              val movementType: String,
+              val businessReferenceType: String,
+              val businessReferenceId: Long,
+              val quantityBase: Double,
+              val unitCostBase: Double,
+              val inventoryValueDeltaBase: Double,
+              val reversesAllocationId: Long? = null,
+              val createdAt: Long = System.currentTimeMillis()
+          )
+
+          data class SupplierStockSourceBalanceRow(
+              val sourceId: Long,
+              val supplierId: Long?,
+              val warehouseId: Long,
+              val itemId: Long,
+              val lotNo: String?,
+              val expiryDate: Long?,
+              val sourceDate: Long,
+              val unitCostBase: Double,
+              val attributionStatus: String,
+              val availableQuantityBase: Double
+          )
+          KOTLIN
+
+          cat > "$ROOT/app/src/main/java/com/fush/erp/data/dao/SupplierStockProvenanceDao.kt" <<'KOTLIN'
+          package com.fush.erp.data.dao
+
+          import androidx.room.Dao
+          import androidx.room.Insert
+          import androidx.room.OnConflictStrategy
+          import androidx.room.Query
+          import com.fush.erp.data.entity.SupplierStockAllocationEntity
+          import com.fush.erp.data.entity.SupplierStockSourceBalanceRow
+          import com.fush.erp.data.entity.SupplierStockSourceEntity
+
+          @Dao
+          interface SupplierStockProvenanceDao {
+              @Insert(onConflict = OnConflictStrategy.ABORT)
+              suspend fun insertSource(row: SupplierStockSourceEntity): Long
+
+              @Insert(onConflict = OnConflictStrategy.ABORT)
+              suspend fun insertAllocation(row: SupplierStockAllocationEntity): Long
+
+              @Query("SELECT * FROM supplier_stock_sources WHERE id = :id LIMIT 1")
+              suspend fun sourceById(id: Long): SupplierStockSourceEntity?
+
+              @Query("SELECT * FROM supplier_stock_sources WHERE sourceReferenceType = :type AND sourceReferenceId = :referenceId ORDER BY id LIMIT 1")
+              suspend fun sourceByReference(type: String, referenceId: Long): SupplierStockSourceEntity?
+
+              @Query("""
+                  SELECT s.id AS sourceId, s.supplierId AS supplierId, s.warehouseId AS warehouseId,
+                         s.itemId AS itemId, s.lotNo AS lotNo, s.expiryDate AS expiryDate,
+                         s.sourceDate AS sourceDate, s.unitCostBase AS unitCostBase,
+                         s.attributionStatus AS attributionStatus,
+                         s.originalQuantityBase + COALESCE(SUM(a.quantityBase), 0) AS availableQuantityBase
+                  FROM supplier_stock_sources s
+                  LEFT JOIN supplier_stock_allocations a ON a.sourceId = s.id
+                  WHERE s.warehouseId = :warehouseId AND s.itemId = :itemId
+                    AND TRIM(COALESCE(s.lotNo, '')) = TRIM(COALESCE(:lotNo, ''))
+                    AND COALESCE(s.expiryDate, -1) = COALESCE(:expiryDate, -1)
+                  GROUP BY s.id
+                  HAVING s.originalQuantityBase + COALESCE(SUM(a.quantityBase), 0) > 0.000000001
+                  ORDER BY s.sourceDate ASC, s.id ASC
+              """)
+              suspend fun availableSources(
+                  warehouseId: Long,
+                  itemId: Long,
+                  lotNo: String?,
+                  expiryDate: Long?
+              ): List<SupplierStockSourceBalanceRow>
+
+              @Query("SELECT originalQuantityBase + COALESCE((SELECT SUM(quantityBase) FROM supplier_stock_allocations WHERE sourceId = :sourceId), 0) FROM supplier_stock_sources WHERE id = :sourceId")
+              suspend fun availableQuantity(sourceId: Long): Double?
+
+              @Query("SELECT * FROM supplier_stock_allocations WHERE businessReferenceType = :type AND businessReferenceId = :referenceId ORDER BY id")
+              suspend fun allocationsForBusinessReference(type: String, referenceId: Long): List<SupplierStockAllocationEntity>
+
+              @Query("SELECT COALESCE(SUM(quantityBase), 0) FROM supplier_stock_allocations WHERE reversesAllocationId = :allocationId")
+              suspend fun restoredQuantityForAllocation(allocationId: Long): Double
+
+              @Query("SELECT * FROM supplier_stock_allocations WHERE stockMovementId = :stockMovementId ORDER BY id")
+              suspend fun allocationsForMovement(stockMovementId: Long): List<SupplierStockAllocationEntity>
+          }
+          KOTLIN
+
+          cat > "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierStockProvenancePlanner.kt" <<'KOTLIN'
+          package com.fush.erp.domain
+
+          import kotlin.math.min
+
+          data class SupplierStockSourceBalance(
+              val sourceId: Long,
+              val supplierId: Long?,
+              val availableQuantityBase: Double,
+              val unitCostBase: Double,
+              val sourceDate: Long,
+              val attributionStatus: String
+          )
+
+          data class SupplierStockTake(
+              val sourceId: Long,
+              val supplierId: Long?,
+              val quantityBase: Double,
+              val unitCostBase: Double,
+              val attributionStatus: String,
+              val reversesAllocationId: Long? = null
+          )
+
+          data class SupplierStockConsumePlan(
+              val requestedQtyBase: Double,
+              val takes: List<SupplierStockTake>,
+              val shortageQtyBase: Double
+          ) {
+              val isComplete: Boolean get() = shortageQtyBase <= SupplierStockProvenancePlanner.EPS
+          }
+
+          data class SupplierStockRestorableAllocation(
+              val allocationId: Long,
+              val sourceId: Long,
+              val supplierId: Long?,
+              val restorableQuantityBase: Double,
+              val unitCostBase: Double
+          )
+
+          object SupplierStockProvenancePlanner {
+              const val EPS = 1e-9
+
+              fun consume(requiredQtyBase: Double, sources: List<SupplierStockSourceBalance>): SupplierStockConsumePlan {
+                  require(requiredQtyBase >= -EPS) { "الكمية المطلوبة غير صالحة" }
+                  var remaining = requiredQtyBase.coerceAtLeast(0.0)
+                  val takes = mutableListOf<SupplierStockTake>()
+                  sources.sortedWith(compareBy<SupplierStockSourceBalance>({ it.sourceDate }, { it.sourceId })).forEach { source ->
+                      if (remaining <= EPS) return@forEach
+                      val qty = min(remaining, source.availableQuantityBase.coerceAtLeast(0.0))
+                      if (qty > EPS) {
+                          takes += SupplierStockTake(source.sourceId, source.supplierId, qty, source.unitCostBase, source.attributionStatus)
+                          remaining -= qty
+                      }
+                  }
+                  return SupplierStockConsumePlan(requiredQtyBase, takes, remaining.coerceAtLeast(0.0))
+              }
+
+              fun restore(requiredQtyBase: Double, originals: List<SupplierStockRestorableAllocation>): SupplierStockConsumePlan {
+                  require(requiredQtyBase >= -EPS) { "كمية الاسترجاع غير صالحة" }
+                  var remaining = requiredQtyBase.coerceAtLeast(0.0)
+                  val takes = mutableListOf<SupplierStockTake>()
+                  originals.forEach { original ->
+                      if (remaining <= EPS) return@forEach
+                      val qty = min(remaining, original.restorableQuantityBase.coerceAtLeast(0.0))
+                      if (qty > EPS) {
+                          takes += SupplierStockTake(
+                              sourceId = original.sourceId,
+                              supplierId = original.supplierId,
+                              quantityBase = qty,
+                              unitCostBase = original.unitCostBase,
+                              attributionStatus = if (original.supplierId == null) "UNATTRIBUTED" else "EXACT",
+                              reversesAllocationId = original.allocationId
+                          )
+                          remaining -= qty
+                      }
+                  }
+                  return SupplierStockConsumePlan(requiredQtyBase, takes, remaining.coerceAtLeast(0.0))
+              }
+          }
+          KOTLIN
+
+          cat > "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierStockProvenanceService.kt" <<'KOTLIN'
+          package com.fush.erp.domain
+
+          import com.fush.erp.data.FushDatabase
+          import com.fush.erp.data.entity.SupplierStockAllocationEntity
+          import com.fush.erp.data.entity.SupplierStockSourceEntity
+          import kotlin.math.abs
+
+          class SupplierStockProvenanceService(private val db: FushDatabase) {
+              private val dao get() = db.supplierStockProvenanceDao()
+
+              suspend fun recordPurchaseSource(
+                  stockMovementId: Long,
+                  supplierId: Long,
+                  purchaseLineId: Long,
+                  warehouseId: Long,
+                  itemId: Long,
+                  lotNo: String?,
+                  expiryDate: Long?,
+                  sourceDate: Long,
+                  quantityBase: Double,
+                  unitCostBase: Double
+              ): Long {
+                  require(quantityBase > SupplierStockProvenancePlanner.EPS) { "كمية مصدر الشراء يجب أن تكون موجبة" }
+                  return dao.insertSource(
+                      SupplierStockSourceEntity(
+                          supplierId = supplierId,
+                          warehouseId = warehouseId,
+                          itemId = itemId,
+                          lotNo = lotNo,
+                          expiryDate = expiryDate,
+                          sourceDate = sourceDate,
+                          sourceType = "PURCHASE",
+                          sourceMovementId = stockMovementId,
+                          sourceReferenceType = "PURCHASE_LINE",
+                          sourceReferenceId = purchaseLineId,
+                          originalQuantityBase = quantityBase,
+                          unitCostBase = unitCostBase,
+                          attributionStatus = "EXACT"
+                      )
+                  )
+              }
+
+              suspend fun consumePurchaseReturn(
+                  stockMovementId: Long,
+                  purchaseLineId: Long,
+                  purchaseReturnLineId: Long,
+                  quantityBase: Double,
+                  unitCostBase: Double
+              ) {
+                  val source = requireNotNull(dao.sourceByReference("PURCHASE_LINE", purchaseLineId)) {
+                      "مصدر المورد لسطر الشراء غير موجود"
+                  }
+                  val available = dao.availableQuantity(source.id) ?: 0.0
+                  require(available + SupplierStockProvenancePlanner.EPS >= quantityBase) {
+                      "كمية مرتجع الشراء تتجاوز الكمية المتبقية من مصدر المورد الأصلي"
+                  }
+                  dao.insertAllocation(
+                      SupplierStockAllocationEntity(
+                          sourceId = source.id,
+                          stockMovementId = stockMovementId,
+                          movementType = "PURCHASE_RETURN",
+                          businessReferenceType = "PURCHASE_RETURN_LINE",
+                          businessReferenceId = purchaseReturnLineId,
+                          quantityBase = -quantityBase,
+                          unitCostBase = unitCostBase,
+                          inventoryValueDeltaBase = -quantityBase * unitCostBase
+                      )
+                  )
+              }
+
+              suspend fun allocateSale(
+                  stockMovementId: Long,
+                  salesAllocationId: Long,
+                  warehouseId: Long,
+                  itemId: Long,
+                  lotNo: String?,
+                  expiryDate: Long?,
+                  movementDate: Long,
+                  quantityBase: Double,
+                  movementUnitCostBase: Double
+              ) {
+                  val available = dao.availableSources(warehouseId, itemId, lotNo, expiryDate)
+                      .map { SupplierStockSourceBalance(it.sourceId, it.supplierId, it.availableQuantityBase, it.unitCostBase, it.sourceDate, it.attributionStatus) }
+                  var plan = SupplierStockProvenancePlanner.consume(quantityBase, available)
+                  if (!plan.isComplete) {
+                      val fallbackId = dao.insertSource(
+                          SupplierStockSourceEntity(
+                              supplierId = null,
+                              warehouseId = warehouseId,
+                              itemId = itemId,
+                              lotNo = lotNo,
+                              expiryDate = expiryDate,
+                              sourceDate = movementDate,
+                              sourceType = "UNATTRIBUTED_INFLOW",
+                              sourceMovementId = null,
+                              sourceReferenceType = "PROVENANCE_GAP",
+                              sourceReferenceId = stockMovementId,
+                              originalQuantityBase = plan.shortageQtyBase,
+                              unitCostBase = movementUnitCostBase,
+                              attributionStatus = "UNATTRIBUTED"
+                          )
+                      )
+                      val fallback = SupplierStockSourceBalance(fallbackId, null, plan.shortageQtyBase, movementUnitCostBase, movementDate, "UNATTRIBUTED")
+                      plan = SupplierStockConsumePlan(plan.requestedQtyBase, plan.takes + SupplierStockProvenancePlanner.consume(plan.shortageQtyBase, listOf(fallback)).takes, 0.0)
+                  }
+                  require(plan.isComplete) { "تعذر تخصيص كامل كمية البيع إلى مصادر المخزون" }
+                  plan.takes.forEach { take ->
+                      dao.insertAllocation(
+                          SupplierStockAllocationEntity(
+                              sourceId = take.sourceId,
+                              stockMovementId = stockMovementId,
+                              movementType = "SALE",
+                              businessReferenceType = "SALES_ALLOCATION",
+                              businessReferenceId = salesAllocationId,
+                              quantityBase = -take.quantityBase,
+                              unitCostBase = movementUnitCostBase,
+                              inventoryValueDeltaBase = -take.quantityBase * movementUnitCostBase
+                          )
+                      )
+                  }
+                  val allocated = dao.allocationsForMovement(stockMovementId).sumOf { abs(it.quantityBase) }
+                  require(abs(allocated - quantityBase) <= 0.000001) { "تخصيص مصدر المورد لا يساوي كمية حركة البيع" }
+              }
+
+              suspend fun restoreSalesReturn(
+                  stockMovementId: Long,
+                  salesReturnAllocationId: Long,
+                  originalSalesAllocationId: Long,
+                  quantityBase: Double
+              ) {
+                  val originals = dao.allocationsForBusinessReference("SALES_ALLOCATION", originalSalesAllocationId)
+                      .filter { it.quantityBase < -SupplierStockProvenancePlanner.EPS }
+                      .map { row ->
+                          val source = requireNotNull(dao.sourceById(row.sourceId)) { "مصدر المورد الأصلي غير موجود" }
+                          val restored = dao.restoredQuantityForAllocation(row.id).coerceAtLeast(0.0)
+                          SupplierStockRestorableAllocation(
+                              allocationId = row.id,
+                              sourceId = row.sourceId,
+                              supplierId = source.supplierId,
+                              restorableQuantityBase = (-row.quantityBase - restored).coerceAtLeast(0.0),
+                              unitCostBase = row.unitCostBase
+                          )
+                      }
+                  val plan = SupplierStockProvenancePlanner.restore(quantityBase, originals)
+                  require(plan.isComplete) { "كمية مرتجع البيع تتجاوز تخصيص مصدر المورد الأصلي" }
+                  plan.takes.forEach { take ->
+                      dao.insertAllocation(
+                          SupplierStockAllocationEntity(
+                              sourceId = take.sourceId,
+                              stockMovementId = stockMovementId,
+                              movementType = "SALES_RETURN",
+                              businessReferenceType = "SALES_RETURN_ALLOCATION",
+                              businessReferenceId = salesReturnAllocationId,
+                              quantityBase = take.quantityBase,
+                              unitCostBase = take.unitCostBase,
+                              inventoryValueDeltaBase = take.quantityBase * take.unitCostBase,
+                              reversesAllocationId = take.reversesAllocationId
+                          )
+                      )
+                  }
+              }
+          }
+          KOTLIN
+
+          cat > "$ROOT/app/src/main/java/com/fush/erp/data/SupplierStockProvenanceMigration.kt" <<'KOTLIN'
+          package com.fush.erp.data
+
+          import androidx.room.migration.Migration
+          import androidx.sqlite.db.SupportSQLiteDatabase
+
+          internal const val SQL_CREATE_SUPPLIER_STOCK_SOURCES = """
+          CREATE TABLE IF NOT EXISTS `supplier_stock_sources` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `supplierId` INTEGER, `warehouseId` INTEGER NOT NULL, `itemId` INTEGER NOT NULL, `lotNo` TEXT, `expiryDate` INTEGER, `sourceDate` INTEGER NOT NULL, `sourceType` TEXT NOT NULL, `sourceMovementId` INTEGER, `sourceReferenceType` TEXT NOT NULL, `sourceReferenceId` INTEGER, `originalQuantityBase` REAL NOT NULL, `unitCostBase` REAL NOT NULL, `attributionStatus` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`supplierId`) REFERENCES `suppliers`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`warehouseId`) REFERENCES `warehouses`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`itemId`) REFERENCES `items`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`sourceMovementId`) REFERENCES `stock_movements`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )
+          """
+          internal const val SQL_CREATE_SUPPLIER_STOCK_ALLOCATIONS = """
+          CREATE TABLE IF NOT EXISTS `supplier_stock_allocations` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sourceId` INTEGER NOT NULL, `stockMovementId` INTEGER NOT NULL, `movementType` TEXT NOT NULL, `businessReferenceType` TEXT NOT NULL, `businessReferenceId` INTEGER NOT NULL, `quantityBase` REAL NOT NULL, `unitCostBase` REAL NOT NULL, `inventoryValueDeltaBase` REAL NOT NULL, `reversesAllocationId` INTEGER, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`sourceId`) REFERENCES `supplier_stock_sources`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION , FOREIGN KEY(`stockMovementId`) REFERENCES `stock_movements`(`id`) ON UPDATE NO ACTION ON DELETE NO ACTION )
+          """
+          internal const val SQL_INDEX_SOURCES_SUPPLIER = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_sources_supplierId` ON `supplier_stock_sources` (`supplierId`)"
+          internal const val SQL_INDEX_SOURCES_WAREHOUSE = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_sources_warehouseId` ON `supplier_stock_sources` (`warehouseId`)"
+          internal const val SQL_INDEX_SOURCES_ITEM = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_sources_itemId` ON `supplier_stock_sources` (`itemId`)"
+          internal const val SQL_INDEX_SOURCES_MOVEMENT = "CREATE UNIQUE INDEX IF NOT EXISTS `index_supplier_stock_sources_sourceMovementId` ON `supplier_stock_sources` (`sourceMovementId`)"
+          internal const val SQL_INDEX_SOURCES_REFERENCE = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_sources_sourceReferenceType_sourceReferenceId` ON `supplier_stock_sources` (`sourceReferenceType`, `sourceReferenceId`)"
+          internal const val SQL_INDEX_SOURCES_LOT = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_sources_warehouseId_itemId_lotNo_expiryDate_sourceDate` ON `supplier_stock_sources` (`warehouseId`, `itemId`, `lotNo`, `expiryDate`, `sourceDate`)"
+          internal const val SQL_INDEX_ALLOC_SOURCE = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_allocations_sourceId` ON `supplier_stock_allocations` (`sourceId`)"
+          internal const val SQL_INDEX_ALLOC_MOVEMENT = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_allocations_stockMovementId` ON `supplier_stock_allocations` (`stockMovementId`)"
+          internal const val SQL_INDEX_ALLOC_REVERSES = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_allocations_reversesAllocationId` ON `supplier_stock_allocations` (`reversesAllocationId`)"
+          internal const val SQL_INDEX_ALLOC_REFERENCE = "CREATE INDEX IF NOT EXISTS `index_supplier_stock_allocations_businessReferenceType_businessReferenceId` ON `supplier_stock_allocations` (`businessReferenceType`, `businessReferenceId`)"
+          internal const val SQL_BACKFILL_LEGACY_SOURCES = """
+          INSERT INTO supplier_stock_sources (supplierId, warehouseId, itemId, lotNo, expiryDate, sourceDate, sourceType, sourceMovementId, sourceReferenceType, sourceReferenceId, originalQuantityBase, unitCostBase, attributionStatus, createdAt)
+          SELECT NULL, warehouseId, itemId, lotNo, expiryDate, 0, 'LEGACY_OPENING', NULL, 'MIGRATION_52_53', NULL,
+                 SUM(quantityBase),
+                 CASE WHEN ABS(SUM(quantityBase)) > 0.000000001 THEN SUM(quantityBase * unitCostBase) / SUM(quantityBase) ELSE 0 END,
+                 'UNATTRIBUTED', 0
+          FROM stock_movements
+          GROUP BY warehouseId, itemId, lotNo, expiryDate
+          HAVING SUM(quantityBase) > 0.000000001
+          """
+          internal const val SQL_SOURCE_NO_UPDATE = "CREATE TRIGGER IF NOT EXISTS trg_supplier_stock_sources_no_update BEFORE UPDATE ON supplier_stock_sources BEGIN SELECT RAISE(ABORT, 'supplier stock sources are immutable'); END"
+          internal const val SQL_SOURCE_NO_DELETE = "CREATE TRIGGER IF NOT EXISTS trg_supplier_stock_sources_no_delete BEFORE DELETE ON supplier_stock_sources BEGIN SELECT RAISE(ABORT, 'supplier stock sources are immutable'); END"
+          internal const val SQL_ALLOC_NO_UPDATE = "CREATE TRIGGER IF NOT EXISTS trg_supplier_stock_allocations_no_update BEFORE UPDATE ON supplier_stock_allocations BEGIN SELECT RAISE(ABORT, 'supplier stock allocations are immutable'); END"
+          internal const val SQL_ALLOC_NO_DELETE = "CREATE TRIGGER IF NOT EXISTS trg_supplier_stock_allocations_no_delete BEFORE DELETE ON supplier_stock_allocations BEGIN SELECT RAISE(ABORT, 'supplier stock allocations are immutable'); END"
+
+          private val SUPPLIER_PROVENANCE_52_53_SQL = listOf(
+              SQL_CREATE_SUPPLIER_STOCK_SOURCES,
+              SQL_CREATE_SUPPLIER_STOCK_ALLOCATIONS,
+              SQL_INDEX_SOURCES_SUPPLIER,
+              SQL_INDEX_SOURCES_WAREHOUSE,
+              SQL_INDEX_SOURCES_ITEM,
+              SQL_INDEX_SOURCES_MOVEMENT,
+              SQL_INDEX_SOURCES_REFERENCE,
+              SQL_INDEX_SOURCES_LOT,
+              SQL_INDEX_ALLOC_SOURCE,
+              SQL_INDEX_ALLOC_MOVEMENT,
+              SQL_INDEX_ALLOC_REVERSES,
+              SQL_INDEX_ALLOC_REFERENCE,
+              SQL_BACKFILL_LEGACY_SOURCES,
+              SQL_SOURCE_NO_UPDATE,
+              SQL_SOURCE_NO_DELETE,
+              SQL_ALLOC_NO_UPDATE,
+              SQL_ALLOC_NO_DELETE
+          )
+
+          val MIGRATION_52_53_SUPPLIER_PROVENANCE = object : Migration(52, 53) {
+              override fun migrate(db: SupportSQLiteDatabase) {
+                  SUPPLIER_PROVENANCE_52_53_SQL.forEach(db::execSQL)
+              }
+          }
+          KOTLIN
+
+          python - "$ROOT" <<'PY'
+          from pathlib import Path
+          import sys
+          root=Path(sys.argv[1])
+
+          # FushDatabase: schema 53, entities and DAO.
+          p=root/'app/src/main/java/com/fush/erp/data/FushDatabase.kt'
+          s=p.read_text()
+          s=s.replace('const val FUSH_DB_SCHEMA_VERSION = 52','const val FUSH_DB_SCHEMA_VERSION = 53')
+          anchor='        SupplierVariantPriceEntity::class\n'
+          if anchor not in s: raise SystemExit('entity anchor missing')
+          s=s.replace(anchor, '        SupplierVariantPriceEntity::class,\n        SupplierStockSourceEntity::class,\n        SupplierStockAllocationEntity::class\n',1)
+          anchor='    abstract fun productMasterDao(): ProductMasterDao\n'
+          if anchor not in s: raise SystemExit('dao anchor missing')
+          s=s.replace(anchor, anchor+'    abstract fun supplierStockProvenanceDao(): SupplierStockProvenanceDao\n',1)
+          p.write_text(s)
+
+          # Every Room builder that already knows 51->52 must also know 52->53.
+          for p in (root/'app/src/main/java').rglob('*.kt'):
+              s=p.read_text()
+              if 'MIGRATION_51_52_PRODUCT_MASTER' in s and '.addMigrations' in s and 'MIGRATION_52_53_SUPPLIER_PROVENANCE' not in s:
+                  s=s.replace('MIGRATION_51_52_PRODUCT_MASTER).build()', 'MIGRATION_51_52_PRODUCT_MASTER, MIGRATION_52_53_SUPPLIER_PROVENANCE).build()')
+                  s=s.replace('MIGRATION_51_52_PRODUCT_MASTER\n', 'MIGRATION_51_52_PRODUCT_MASTER,\n            MIGRATION_52_53_SUPPLIER_PROVENANCE\n')
+                  p.write_text(s)
+
+          # PurchaseService hooks.
+          p=root/'app/src/main/java/com/fush/erp/domain/PurchaseService.kt'; s=p.read_text()
+          s=s.replace('    private val numbering = AutoNumberService(db)\n', '    private val numbering = AutoNumberService(db)\n    private val supplierStockProvenance = SupplierStockProvenanceService(db)\n',1)
+          old='''            db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = request.invoiceDate,\n                    warehouseId = request.warehouseId,\n                    itemId = line.itemId,\n                    movementType = "PURCHASE",\n                    quantityBase = line.baseQuantity,\n                    unitCostBase = unitCostBase,\n                    referenceType = "PURCHASE_LINE",\n                    referenceId = lineId,\n                    lotNo = line.lotNo,\n                    expiryDate = line.expiryDate\n                )\n            )'''
+          new='''            val stockMovementId = db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = request.invoiceDate,\n                    warehouseId = request.warehouseId,\n                    itemId = line.itemId,\n                    movementType = "PURCHASE",\n                    quantityBase = line.baseQuantity,\n                    unitCostBase = unitCostBase,\n                    referenceType = "PURCHASE_LINE",\n                    referenceId = lineId,\n                    lotNo = line.lotNo,\n                    expiryDate = line.expiryDate\n                )\n            )\n            supplierStockProvenance.recordPurchaseSource(\n                stockMovementId = stockMovementId, supplierId = supplier.id, purchaseLineId = lineId,\n                warehouseId = request.warehouseId, itemId = line.itemId, lotNo = line.lotNo, expiryDate = line.expiryDate,\n                sourceDate = request.invoiceDate, quantityBase = line.baseQuantity, unitCostBase = unitCostBase\n            )'''
+          if old not in s: raise SystemExit('purchase stock movement anchor missing')
+          s=s.replace(old,new,1)
+
+          old='''            db.purchaseDao().insertReturnLine(\n                PurchaseReturnLineEntity('''
+          if old not in s: raise SystemExit('purchase return line anchor missing')
+          s=s.replace(old, '''            val purchaseReturnLineId = db.purchaseDao().insertReturnLine(\n                PurchaseReturnLineEntity(''',1)
+          old='''            db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = request.returnDate,\n                    warehouseId = invoice.warehouseId,\n                    itemId = line.itemId,\n                    movementType = "PURCHASE_RETURN",\n                    quantityBase = -preparedLine.baseQuantity,\n                    unitCostBase = line.unitCostBase,\n                    referenceType = "PURCHASE_RETURN",\n                    referenceId = returnId,\n                    lotNo = line.lotNo,\n                    expiryDate = line.expiryDate\n                )\n            )'''
+          new='''            val stockMovementId = db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = request.returnDate,\n                    warehouseId = invoice.warehouseId,\n                    itemId = line.itemId,\n                    movementType = "PURCHASE_RETURN",\n                    quantityBase = -preparedLine.baseQuantity,\n                    unitCostBase = line.unitCostBase,\n                    referenceType = "PURCHASE_RETURN",\n                    referenceId = returnId,\n                    lotNo = line.lotNo,\n                    expiryDate = line.expiryDate\n                )\n            )\n            supplierStockProvenance.consumePurchaseReturn(\n                stockMovementId = stockMovementId, purchaseLineId = line.id,\n                purchaseReturnLineId = purchaseReturnLineId, quantityBase = preparedLine.baseQuantity, unitCostBase = line.unitCostBase\n            )'''
+          if old not in s: raise SystemExit('purchase return stock movement anchor missing')
+          s=s.replace(old,new,1); p.write_text(s)
+
+          # SalesService hooks.
+          p=root/'app/src/main/java/com/fush/erp/domain/SalesService.kt'; s=p.read_text()
+          s=s.replace('    private val numbering = AutoNumberService(db)\n', '    private val numbering = AutoNumberService(db)\n    private val supplierStockProvenance = SupplierStockProvenanceService(db)\n',1)
+          old='''            db.salesDao().insertAllocation(\n                SalesAllocationEntity('''
+          if old not in s: raise SystemExit('sales allocation anchor missing')
+          # Only first occurrence is sale posting allocation.
+          s=s.replace(old, '''            val salesAllocationId = db.salesDao().insertAllocation(\n                SalesAllocationEntity(''',1)
+          old='''            db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = movementDate,\n                    warehouseId = warehouseId,\n                    itemId = itemId,\n                    movementType = "SALE",\n                    quantityBase = -take.quantityBase,\n                    unitCostBase = p.unitCost,\n                    referenceType = "SALES_LINE",\n                    referenceId = salesLineId,\n                    lotNo = lot.lotNo,\n                    expiryDate = lot.expiryDate\n                )\n            )'''
+          new='''            val stockMovementId = db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = movementDate,\n                    warehouseId = warehouseId,\n                    itemId = itemId,\n                    movementType = "SALE",\n                    quantityBase = -take.quantityBase,\n                    unitCostBase = p.unitCost,\n                    referenceType = "SALES_LINE",\n                    referenceId = salesLineId,\n                    lotNo = lot.lotNo,\n                    expiryDate = lot.expiryDate\n                )\n            )\n            supplierStockProvenance.allocateSale(\n                stockMovementId = stockMovementId, salesAllocationId = salesAllocationId, warehouseId = warehouseId,\n                itemId = itemId, lotNo = lot.lotNo, expiryDate = lot.expiryDate, movementDate = movementDate,\n                quantityBase = take.quantityBase, movementUnitCostBase = p.unitCost\n            )'''
+          if old not in s: raise SystemExit('sale stock movement anchor missing')
+          s=s.replace(old,new,1)
+
+          old='''            db.salesDao().insertReturnAllocation(\n                SalesReturnAllocationEntity('''
+          if old not in s: raise SystemExit('sales return allocation anchor missing')
+          s=s.replace(old, '''            val salesReturnAllocationId = db.salesDao().insertReturnAllocation(\n                SalesReturnAllocationEntity(''',1)
+          old='''            db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = returnDate,\n                    warehouseId = invoice.warehouseId,\n                    itemId = allocation.itemId,\n                    movementType = "SALES_RETURN",\n                    quantityBase = qtyBase,\n                    unitCostBase = allocation.unitCostBase,\n                    referenceType = "SALES_RETURN",\n                    referenceId = returnId,\n                    lotNo = allocation.lotNo,\n                    expiryDate = allocation.expiryDate\n                )\n            )'''
+          new='''            val stockMovementId = db.stockDao().insertMovement(\n                StockMovementEntity(\n                    movementDate = returnDate,\n                    warehouseId = invoice.warehouseId,\n                    itemId = allocation.itemId,\n                    movementType = "SALES_RETURN",\n                    quantityBase = qtyBase,\n                    unitCostBase = allocation.unitCostBase,\n                    referenceType = "SALES_RETURN",\n                    referenceId = returnId,\n                    lotNo = allocation.lotNo,\n                    expiryDate = allocation.expiryDate\n                )\n            )\n            supplierStockProvenance.restoreSalesReturn(\n                stockMovementId = stockMovementId, salesReturnAllocationId = salesReturnAllocationId,\n                originalSalesAllocationId = allocation.id, quantityBase = qtyBase\n            )'''
+          if old not in s: raise SystemExit('sales return movement anchor missing')
+          s=s.replace(old,new,1); p.write_text(s)
+          PY
+
+      - name: Migration 52 to 53 smoke - preserve ledger and backfill only unattributed current stock
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          python - "$ROOT/app/src/main/java/com/fush/erp/data/SupplierStockProvenanceMigration.kt" <<'PY'
+          import re, sqlite3, sys
+          from pathlib import Path
+          text=Path(sys.argv[1]).read_text()
+          sqls=dict(re.findall(r'internal const val (SQL_[A-Z0-9_]+)\s*=\s*"""(.*?)"""', text, re.S))
+          one=dict(re.findall(r'internal const val (SQL_[A-Z0-9_]+)\s*=\s*"([^"]*)"', text))
+          sqls.update(one)
+          expected=[
+            'SQL_CREATE_SUPPLIER_STOCK_SOURCES','SQL_CREATE_SUPPLIER_STOCK_ALLOCATIONS',
+            'SQL_INDEX_SOURCES_SUPPLIER','SQL_INDEX_SOURCES_WAREHOUSE','SQL_INDEX_SOURCES_ITEM','SQL_INDEX_SOURCES_MOVEMENT','SQL_INDEX_SOURCES_REFERENCE','SQL_INDEX_SOURCES_LOT',
+            'SQL_INDEX_ALLOC_SOURCE','SQL_INDEX_ALLOC_MOVEMENT','SQL_INDEX_ALLOC_REVERSES','SQL_INDEX_ALLOC_REFERENCE',
+            'SQL_BACKFILL_LEGACY_SOURCES','SQL_SOURCE_NO_UPDATE','SQL_SOURCE_NO_DELETE','SQL_ALLOC_NO_UPDATE','SQL_ALLOC_NO_DELETE'
+          ]
+          missing=[x for x in expected if x not in sqls]
+          assert not missing, missing
+          db=sqlite3.connect(':memory:')
+          db.executescript('''
+          CREATE TABLE suppliers(id INTEGER PRIMARY KEY);
+          CREATE TABLE warehouses(id INTEGER PRIMARY KEY);
+          CREATE TABLE items(id INTEGER PRIMARY KEY);
+          CREATE TABLE stock_movements(
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            movementDate INTEGER NOT NULL, warehouseId INTEGER NOT NULL, itemId INTEGER NOT NULL,
+            movementType TEXT NOT NULL, quantityBase REAL NOT NULL, unitCostBase REAL NOT NULL,
+            referenceType TEXT NOT NULL, referenceId INTEGER NOT NULL, lotNo TEXT, expiryDate INTEGER, createdAt INTEGER NOT NULL DEFAULT 0
+          );
+          INSERT INTO warehouses(id) VALUES(1); INSERT INTO items(id) VALUES(100),(200);
+          INSERT INTO stock_movements(movementDate,warehouseId,itemId,movementType,quantityBase,unitCostBase,referenceType,referenceId,lotNo,expiryDate)
+          VALUES (1,1,100,'PURCHASE',10,5,'X',1,'L1',1000),
+                 (2,1,100,'SALE',-4,5,'X',2,'L1',1000),
+                 (3,1,200,'PURCHASE',3,7,'X',3,NULL,NULL),
+                 (4,1,200,'SALE',-3,7,'X',4,NULL,NULL);
+          ''')
+          before=list(db.execute('SELECT id,movementDate,warehouseId,itemId,movementType,quantityBase,unitCostBase,lotNo,expiryDate FROM stock_movements ORDER BY id'))
+          for name in expected: db.execute(sqls[name])
+          after=list(db.execute('SELECT id,movementDate,warehouseId,itemId,movementType,quantityBase,unitCostBase,lotNo,expiryDate FROM stock_movements ORDER BY id'))
+          assert before == after, 'legacy stock movements changed'
+          rows=list(db.execute('SELECT supplierId,warehouseId,itemId,lotNo,expiryDate,originalQuantityBase,unitCostBase,attributionStatus,sourceType FROM supplier_stock_sources ORDER BY itemId'))
+          assert len(rows)==1, rows
+          r=rows[0]
+          assert r[0] is None and r[2]==100 and abs(r[5]-6.0)<1e-9 and r[7]=='UNATTRIBUTED' and r[8]=='LEGACY_OPENING', r
+          assert db.execute('SELECT COUNT(*) FROM supplier_stock_allocations').fetchone()[0]==0
+          try:
+            db.execute("UPDATE supplier_stock_sources SET sourceType='X' WHERE id=1")
+            raise AssertionError('immutability trigger failed')
+          except sqlite3.IntegrityError: pass
+          print('MIGRATION_52_53_LEDGER_PRESERVED=PASS')
+          print('LEGACY_UNATTRIBUTED_BACKFILL=PASS')
+          print('PROVENANCE_IMMUTABILITY=PASS')
+          PY
+
+      - name: Run Gate1A and Gate1B unit tests
+        shell: bash
+        working-directory: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' --tests 'com.fush.erp.domain.SupplierStockProvenancePlannerTest' | tee "$GITHUB_WORKSPACE/gate1b-tests.log"
+          echo 'GATE1B_GREEN=PASS'
+
+      - name: Compile full app and generate Room schema 53
+        shell: bash
+        working-directory: ${{ steps.src.outputs.root }}
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify Room53 and provenance integration contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -Rqs 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java"
+          ! grep -RIn --include='*.kt' --include='*.kts' 'fallbackToDestructiveMigration' "$ROOT/app/src" "$ROOT/app/build.gradle.kts"
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -print -quit); test -n "$SCHEMA"
+          python - "$SCHEMA" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1])); v=d.get('database',{}).get('version',d.get('version'))
+          assert v==53, v
+          txt=open(sys.argv[1]).read()
+          assert 'supplier_stock_sources' in txt and 'supplier_stock_allocations' in txt
+          print('ROOM_SCHEMA_53=PASS')
+          PY
+          grep -q 'supplierStockProvenance.recordPurchaseSource' "$ROOT/app/src/main/java/com/fush/erp/domain/PurchaseService.kt"
+          grep -q 'supplierStockProvenance.consumePurchaseReturn' "$ROOT/app/src/main/java/com/fush/erp/domain/PurchaseService.kt"
+          grep -q 'supplierStockProvenance.allocateSale' "$ROOT/app/src/main/java/com/fush/erp/domain/SalesService.kt"
+          grep -q 'supplierStockProvenance.restoreSalesReturn' "$ROOT/app/src/main/java/com/fush/erp/domain/SalesService.kt"
+          grep -q 'ProductVariant.id intentionally equals items.id' "$ROOT/app/src/main/java/com/fush/erp/data/entity/ProductMasterEntities.kt"
+          echo 'PROVENANCE_HOOKS=PASS'
+          echo 'LEGACY_VARIANT_IDENTITY=PASS'
+
+      - name: Package Gate1B source and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          mkdir -p gate1b-out/room-schema-53
+          cp red1b.log gate1b-tests.log gate1b-out/
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -print -quit); cp "$SCHEMA" gate1b-out/room-schema-53/53.json
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle" || true
+          (cd "$(dirname "$ROOT")" && zip -qr "$GITHUB_WORKSPACE/gate1b-out/FAZ-Solar-ERP-v1.0.23-Gate1B-SupplierProvenance-Source.zip" "$(basename "$ROOT")")
+          sha256sum gate1b-out/*.zip > gate1b-out/source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1B-SupplierProvenance
+          path: gate1b-out/**
+          retention-days: 2
