@@ -1,0 +1,123 @@
+name: FAZ v1.0.22 Sign Release
+
+on:
+  push:
+    branches: [faz/v1.0.22-productmaster-build]
+    paths:
+      - '.github/workflows/faz-v1022-sign-release.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPECTED_CERT_SHA256: BA4F0F2F356C8A003F488CC1A42FE833AC0488F85533995EF324350C1F8FEAC6
+      KEY_ALIAS: faz_solar
+    steps:
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Require signing secrets
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.FAZ_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.FAZ_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64" || { echo 'Missing secret FAZ_KEYSTORE_B64'; exit 2; }
+          test -n "$KEYSTORE_PASSWORD" || { echo 'Missing secret FAZ_KEYSTORE_PASSWORD'; exit 2; }
+          echo 'Signing secrets are present.'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download verified unsigned release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: unsigned-release
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+
+      - name: Reconstruct keystore and sign
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.FAZ_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.FAZ_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p signed-out
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > faz-signing.p12
+          chmod 600 faz-signing.p12
+
+          UNSIGNED=$(find unsigned-release -type f -name '*UNSIGNED.apk' -print | head -n1)
+          test -n "$UNSIGNED"
+          echo "Unsigned APK: $(basename "$UNSIGNED")"
+
+          BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
+          "$BT/zipalign" -c -v 4 signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk >/dev/null
+
+          "$BT/apksigner" sign \
+            --ks faz-signing.p12 \
+            --ks-type PKCS12 \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEYSTORE_PASSWORD \
+            --v1-signing-enabled false \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk \
+            signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
+
+          rm -f faz-signing.p12 signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
+
+      - name: Verify signature, identity and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk
+          BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
+
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee signed-out/apksigner-verification.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' signed-out/apksigner-verification.txt
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' signed-out/apksigner-verification.txt
+          grep -q 'Number of signers: 1' signed-out/apksigner-verification.txt
+
+          ACTUAL=$(grep 'Signer #1 certificate SHA-256 digest:' signed-out/apksigner-verification.txt | sed 's/.*digest: //' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
+          test "$ACTUAL" = "$EXPECTED_CERT_SHA256"
+          echo "CERTIFICATE_MATCH=PASS" | tee -a signed-out/apksigner-verification.txt
+
+          "$BT/aapt" dump badging "$APK" | head -3 | tee signed-out/apk-badging.txt
+          grep -q "package: name='com.faz.solar'" signed-out/apk-badging.txt
+          grep -q "versionCode='23'" signed-out/apk-badging.txt
+          grep -q "versionName='1.0.22-faz-product-master-variants'" signed-out/apk-badging.txt
+
+          sha256sum "$APK" | tee signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk.sha256
+
+      - name: Upload signed release
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED
+          path: signed-out/**
+          if-no-files-found: error
+          retention-days: 2
