@@ -1,0 +1,35 @@
+name: FAZ v1.0.22 Source Probe
+
+on:
+  push:
+    branches: [faz/v1.0.22-productmaster-build]
+    paths:
+      - '.github/workflows/faz-v1022-source-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch temporary source share
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SHARE='https://firestorage.ai/ja/f/K0rEOsxvE2bR'
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' "$SHARE" -o share.html
+          wc -c share.html
+          python - <<'PY'
+          import re
+          s=open('share.html','r',encoding='utf-8',errors='ignore').read()
+          pats=[]
+          for pat in [r'https?://[^"\'<> ]+', r'href=["\']([^"\']+)', r'url["\']?\s*[:=]\s*["\']([^"\']+)']:
+              for m in re.finditer(pat,s,re.I):
+                  u=m.group(1) if m.lastindex else m.group(0)
+                  if any(k in u.lower() for k in ['download','zip','raw','file','api']):
+                      pats.append(u)
+          print('\n'.join(dict.fromkeys(pats))[:12000])
+          PY
