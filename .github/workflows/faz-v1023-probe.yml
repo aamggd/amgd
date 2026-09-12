@@ -1,0 +1,11 @@
+name: FAZ v1.0.23 Probe
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths: ['.github/workflows/faz-v1023-probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo PROBE_PASS
