@@ -15,39 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect firestorage page bundle
+      - name: Inspect firestorage loader bundle
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://firestorage.ai'
-          SHARE="$BASE/ja/f/K0rEOsxvE2bR"
-          curl -L --fail -A 'Mozilla/5.0' "$SHARE" -o share.html
-          CHUNK=$(python - <<'PY'
-          import re
-          s=open('share.html',encoding='utf-8',errors='ignore').read()
-          xs=re.findall(r'<script[^>]+src=["\']([^"\']+)',s,re.I)
-          for x in xs:
-              if 'app/(files)/ja/f/page-' in x:
-                  print(x); break
-          PY
-          )
-          echo "CHUNK=$CHUNK"
-          test -n "$CHUNK"
-          curl -L --fail -A 'Mozilla/5.0' "$BASE$CHUNK" -o page.js
-          echo "JS_BYTES=$(wc -c < page.js)"
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          s=Path('page.js').read_text(encoding='utf-8',errors='ignore')
-          for needle in ['download','fetch(','/api/','share','public','file','presign','signed','token']:
-              print('\n###',needle)
-              low=s.lower(); n=needle.lower(); start=0; c=0
-              while c<30:
-                  i=low.find(n,start)
-                  if i<0: break
-                  print(s[max(0,i-450):min(len(s),i+900)].replace('\n',' ')[:1400])
-                  start=i+len(n); c+=1
-          print('\n### STRING_URLS')
-          for u in sorted(set(re.findall(r'["\']([^"\']*(?:api|download|share|file)[^"\']*)["\']',s,re.I))):
-              if len(u)<400: print(u)
-          PY
+          U='https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js'
+          curl -L --fail -A 'Mozilla/5.0' -D headers.txt "$U" -o page.js
+          echo '--- HEADERS ---'; cat headers.txt
+          echo '--- BODY ---'; cat page.js; echo
