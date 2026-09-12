@@ -7,6 +7,7 @@ on:
       - '.github/workflows/faz-v1023-gate2b-report-ui.yml'
       - 'ci/SupplierItemMovementReportExportTest.kt'
       - 'ci/faz_v1023_gate2b_apply.py'
+      - 'ci/faz_v1023_gate2b_fix_weight_import.py'
   workflow_dispatch:
 
 permissions:
@@ -54,9 +55,13 @@ jobs:
           set -euo pipefail
           ROOT='${{ steps.src.outputs.root }}'
           python3 ci/faz_v1023_gate2b_apply.py "$ROOT"
+          python3 ci/faz_v1023_gate2b_fix_weight_import.py "$ROOT"
           TEST="$ROOT/app/src/test/java/com/fush/erp/ui/screens/SupplierItemMovementReportExportTest.kt"
           mkdir -p "$(dirname "$TEST")"
           cp ci/SupplierItemMovementReportExportTest.kt "$TEST"
+          U="$ROOT/app/src/main/java/com/fush/erp/ui/screens/SupplierItemMovementReportUi.kt"
+          grep -q 'import androidx.compose.foundation.layout.\*' "$U"
+          ! grep -q '^import androidx.compose.foundation.layout.weight$' "$U"
       - name: GREEN - supplier movement export contract
         shell: bash
         run: |
@@ -110,6 +115,8 @@ jobs:
           grep -q 'غير منسوب' "$U"
           grep -q 'لا يتم تخمين' "$U"
           grep -q 'PDF وExcel' "$U"
+          grep -q 'import androidx.compose.foundation.layout.\*' "$U"
+          ! grep -q '^import androidx.compose.foundation.layout.weight$' "$U"
           ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
           echo 'GATE2B_SOURCE_CONTRACTS=PASS'
       - name: Package Gate2B source APK and evidence
