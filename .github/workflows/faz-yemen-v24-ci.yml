@@ -1,0 +1,31 @@
+name: FAZ Yemen v24 Catalog CI
+
+on:
+  push:
+    branches: [faz-yemen-v24-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Inspect temporary source share
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python - <<'PY'
+          import urllib.request
+          url='https://firestorage.ai/ja/f/sdWWNq-YZGoq'
+          with urllib.request.urlopen(url, timeout=30) as r:
+              data=r.read()
+              print('status', r.status, 'url', r.geturl(), 'content_type', r.headers.get('content-type'), 'bytes', len(data))
+              open('share.bin','wb').write(data)
+          PY
+          file share.bin || true
+          head -c 5000 share.bin | strings | head -100 || true
+          grep -aoE 'https?://[^"<> ]+' share.bin | head -100 || true
