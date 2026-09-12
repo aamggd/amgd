@@ -1,0 +1,43 @@
+name: FAZ v1.0.22 Import Diagnostic
+
+on:
+  push:
+    branches: [faz/v1.0.22-productmaster-build]
+    paths:
+      - '.github/workflows/faz-v1022-import-diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download source and print exact declarations/imports
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://api.firestorage.ai/dev/file'; SHARE='K0rEOsxvE2bR'
+          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          FILE_ID=$(python - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          x=next(v for v in d['files'] if v['fileName']=='FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-Source.zip')
+          print(x['fileId'])
+          PY
+          )
+          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o dl.json
+          URL=$(python - <<'PY'
+          import json
+          print(json.load(open('dl.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$URL" -o src.zip
+          unzip -q src.zip -d work
+          ROOT=$(dirname "$(find work -name settings.gradle.kts -print -quit)")
+          echo '===== MasterDataService.kt 1..95 ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt" | sed -n '1,95p'
+          echo '===== ProductMasterEntities.kt 1..190 ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/data/entity/ProductMasterEntities.kt" | sed -n '1,190p'
