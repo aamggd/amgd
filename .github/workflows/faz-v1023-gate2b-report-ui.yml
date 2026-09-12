@@ -8,6 +8,7 @@ on:
       - 'ci/SupplierItemMovementReportExportTest.kt'
       - 'ci/faz_v1023_gate2b_apply.py'
       - 'ci/faz_v1023_gate2b_fix_weight_import.py'
+      - 'ci/faz_v1023_fix_legacy_schema_contracts.py'
   workflow_dispatch:
 
 permissions:
@@ -49,19 +50,25 @@ jobs:
           grep -q 'class SupplierItemMovementReportService' "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementReport.kt"
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
           ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
-      - name: Apply Gate2B UI and export implementation
+      - name: Apply Gate2B UI and test-contract maintenance
         shell: bash
         run: |
           set -euo pipefail
           ROOT='${{ steps.src.outputs.root }}'
           python3 ci/faz_v1023_gate2b_apply.py "$ROOT"
           python3 ci/faz_v1023_gate2b_fix_weight_import.py "$ROOT"
+          python3 ci/faz_v1023_fix_legacy_schema_contracts.py "$ROOT"
           TEST="$ROOT/app/src/test/java/com/fush/erp/ui/screens/SupplierItemMovementReportExportTest.kt"
           mkdir -p "$(dirname "$TEST")"
           cp ci/SupplierItemMovementReportExportTest.kt "$TEST"
           U="$ROOT/app/src/main/java/com/fush/erp/ui/screens/SupplierItemMovementReportUi.kt"
           grep -q 'import androidx.compose.foundation.layout.\*' "$U"
           ! grep -q '^import androidx.compose.foundation.layout.weight$' "$U"
+          for F in EmployeeCompensationContractTest.kt EmployeeCustodyAndPayrollHotfixContractTest.kt EmployeeTerminationRetroactiveContractTest.kt ProductMasterVariantsContractTest.kt; do
+            T="$ROOT/app/src/test/java/com/fush/erp/domain/$F"
+            grep -q 'currentSchemaVersion(db)' "$T"
+            ! grep -q 'FUSH_DB_SCHEMA_VERSION = 52' "$T"
+          done
       - name: GREEN - supplier movement export contract
         shell: bash
         run: |
@@ -117,6 +124,11 @@ jobs:
           grep -q 'PDF وExcel' "$U"
           grep -q 'import androidx.compose.foundation.layout.\*' "$U"
           ! grep -q '^import androidx.compose.foundation.layout.weight$' "$U"
+          grep -q 'MIGRATION_46_47_EMPLOYEE_COMPENSATION' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_49_50_EMPLOYEE_TERMINATION' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_50_51_EMPLOYEE_CUSTODY' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_51_52_PRODUCT_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
           ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
           echo 'GATE2B_SOURCE_CONTRACTS=PASS'
       - name: Package Gate2B source APK and evidence
@@ -145,6 +157,7 @@ jobs:
           Export RED observed before implementation = PASS
           Export GREEN unit test = PASS
           Complete unit test suite = PASS
+          Legacy schema contracts verified forward-compatible = PASS
           Release build = PASS
           Room schema = 53
           Supplier / Item / Warehouse filters = WIRED
