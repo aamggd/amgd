@@ -27,7 +27,7 @@ jobs:
           import { chromium } from 'playwright';
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage({acceptDownloads:true});
-          await page.goto('https://firestorage.ai/ja/f/gQXcJClbqj95', {waitUntil:'domcontentloaded', timeout:60000});
+          await page.goto('https://firestorage.ai/ja/f/N7rbGyWtqjkY', {waitUntil:'domcontentloaded', timeout:60000});
           await page.waitForTimeout(8000);
           const candidates = [
             page.getByRole('button', {name:/ダウンロード|download/i}),
@@ -54,15 +54,18 @@ jobs:
           JS
           node download.mjs
           cd ..
-          echo 'c3bc6ec8e9620065967d924379345eef0808fca17e5b42fc05381615805bd17e  source.zip' | sha256sum -c -
+          echo '6725ea2f19e7fd7bc4514d98e8ee43c45468dd5ab22fe4ddf5303b5acbfc199b  source.zip' | sha256sum -c -
           mkdir source
           unzip -q source.zip -d source
           test -f source/settings.gradle.kts
+          test ! -e source/keystore.properties
           test -f source/app/src/main/assets/catalog/index.json
           test -f source/app/src/test/java/com/fush/erp/domain/YemenCatalogContractTest.kt
           test -f source/app/src/test/java/com/fush/erp/domain/YemenCatalogNavigationContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/domain/ReleaseSigningSafetyContractTest.kt
           grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
           grep -q 'versionCode = 24' source/app/build.gradle.kts
+          grep -Fq 'fazReleaseStoreFile?.exists() == true' source/app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
           grep -q '"استيراد أصناف جاهزة" -> YemenCatalogPanel' source/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
 
@@ -103,12 +106,12 @@ jobs:
           mkdir -p out
           cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v24-Catalog-UNSIGNED.apk
           cp source/app/schemas/com.fush.erp.data.FushDatabase/53.json out/FushDatabase-53.json
-          (cd source && zip -qr ../out/FAZ-Yemen-v24-Catalog-BUILT-Source.zip . -x '.gradle/*' 'app/build/*' '**/build/*')
+          (cd source && zip -qr ../out/FAZ-Yemen-v24-Catalog-BUILT-Source.zip . -x 'keystore.properties' '*.p12' '*.pfx' '*Signing-Credentials*' '.gradle/*' 'app/build/*' '**/build/*')
           sha256sum out/* > out/SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FAZ-Yemen-v24-Catalog-R3
+          name: FAZ-Yemen-v24-Catalog-R4
           path: out/*
           if-no-files-found: error
