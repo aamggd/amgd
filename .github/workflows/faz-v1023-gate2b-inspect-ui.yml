@@ -23,7 +23,7 @@ jobs:
           github-token: ${{ github.token }}
           repository: aamggd/amgd
           run-id: 34673789195
-      - name: Print exact ReportsScreen anchors
+      - name: Print exact ReportsScreen and export contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -31,10 +31,13 @@ jobs:
           mkdir -p work; unzip -q "$Z" -d work
           S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
           F="$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt"
-          echo '=== TOP / STATE / LOAD ==='; sed -n '1,330p' "$F"
-          echo '=== NAVIGATION / CONTENT DISPATCH ==='; sed -n '330,470p' "$F"
-          echo '=== PURCHASE AND INVENTORY TABS ==='; sed -n '560,720p' "$F"
-          echo '=== EXPORT DISPATCH ==='; sed -n '824,1070p' "$F"
-          echo '=== TITLES / FILENAMES ==='; sed -n '1380,1435p' "$F"
-          echo '=== SUPPLIER / ITEM / WAREHOUSE DAO SELECTORS ==='
-          grep -RInE 'allActive\(\)|observeAll\(\)|allSuppliers|allItems|allWarehouses|supplierDao\(\)|itemDao\(\)|warehouseDao\(\)' "$ROOT/app/src/main/java/com/fush/erp/ui/screens" | head -240 || true
+          echo '=== SEARCHABLE SELECTION DEFINITION ==='
+          grep -RIl 'fun FushSearchableSelectionField' "$ROOT/app/src/main/java" | while read -r x; do grep -n -A95 -B8 'fun FushSearchableSelectionField' "$x"; done
+          echo '=== SEARCHABLE SELECTION CALLS ==='
+          grep -RIn -A16 -B3 'FushSearchableSelectionField(' "$ROOT/app/src/main/java/com/fush/erp/ui/screens" | head -520 || true
+          echo '=== REPORT EXPORT MODEL ==='
+          grep -RIl 'data class ReportExportDocument' "$ROOT/app/src/main/java" | while read -r x; do sed -n '1,260p' "$x"; done
+          echo '=== REPORTSCREEN SELECTION / CARD HELPERS ==='
+          grep -n -A110 -B12 -E 'FushSearchableSelectionField\(|private fun ReportCard|private fun MetricGrid|private fun SectionTitle' "$F" | head -900 || true
+          echo '=== SUPPLIER / ITEM / WAREHOUSE DAO DEFINITIONS ==='
+          grep -RIn -A90 -B5 -E 'interface SupplierDao|interface ItemDao|interface WarehouseDao' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -900 || true
