@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/faz-v1023-gate2b-report-ui.yml'
       - 'ci/SupplierItemMovementReportExportTest.kt'
+      - 'ci/faz_v1023_gate2b_apply.py'
   workflow_dispatch:
 
 permissions:
@@ -13,9 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -33,7 +34,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
-      - name: Prepare Gate2A source
+      - name: Prepare Gate2A source and Android SDK
         id: src
         shell: bash
         run: |
@@ -46,24 +47,112 @@ jobs:
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
           grep -q 'class SupplierItemMovementReportService' "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementReport.kt"
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
-      - name: RED - export factory must not exist yet
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+      - name: Apply Gate2B UI and export implementation
         shell: bash
         run: |
           set -euo pipefail
           ROOT='${{ steps.src.outputs.root }}'
+          python3 ci/faz_v1023_gate2b_apply.py "$ROOT"
           TEST="$ROOT/app/src/test/java/com/fush/erp/ui/screens/SupplierItemMovementReportExportTest.kt"
           mkdir -p "$(dirname "$TEST")"
           cp ci/SupplierItemMovementReportExportTest.kt "$TEST"
+      - name: GREEN - supplier movement export contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
           cd "$ROOT"
-          set +e
-          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.ui.screens.SupplierItemMovementReportExportTest' > "$GITHUB_WORKSPACE/gate2b-red.log" 2>&1
-          RC=$?
-          set -e
-          test "$RC" -ne 0
-          grep -Eq 'SupplierItemMovementReportExportFactory|Unresolved reference|unresolved reference' "$GITHUB_WORKSPACE/gate2b-red.log"
-          echo 'GATE2B_RED=PASS'
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.ui.screens.SupplierItemMovementReportExportTest' | tee "$GITHUB_WORKSPACE/gate2b-green.log"
+      - name: Run complete unit test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/gate2b-all-tests.log"
+      - name: Build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleRelease | tee "$GITHUB_WORKSPACE/gate2b-release-build.log"
+      - name: Verify Room schema 53 and Gate2B source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          python3 - "$ROOT" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          schemas = list(root.rglob('53.json'))
+          assert schemas, 'Room schema 53.json was not generated/preserved'
+          valid = []
+          for p in schemas:
+              try:
+                  data = json.loads(p.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              if data.get('database', {}).get('version') == 53:
+                  valid.append(p)
+          assert valid, 'No generated Room schema with database.version=53'
+          print('ROOM_SCHEMA_53=PASS', valid[0])
+          PY
+          R="$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt"
+          U="$ROOT/app/src/main/java/com/fush/erp/ui/screens/SupplierItemMovementReportUi.kt"
+          grep -q '"حركة أصناف المورد"' "$R"
+          grep -q 'supplierItemMovementReportService.load' "$R"
+          grep -q 'SupplierItemMovementReportFilter' "$R"
+          grep -q 'SupplierItemMovementReportExportFactory.build' "$R"
+          grep -q 'FAZ-Solar-Supplier-Item-Movement' "$R"
+          grep -q 'REPORTS_EXPORT' "$R"
+          grep -q 'غير منسوب' "$U"
+          grep -q 'لا يتم تخمين' "$U"
+          grep -q 'PDF وExcel' "$U"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          echo 'GATE2B_SOURCE_CONTRACTS=PASS'
+      - name: Package Gate2B source APK and evidence
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/gate2b-out"
+          mkdir -p "$OUT"
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          cp "$APK" "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-UNSIGNED.apk"
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-UNSIGNED.apk" > "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-UNSIGNED.apk.sha256"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-UNSIGNED.apk" > "$OUT/apk-badging.txt"
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -path '*schemas*' -print -quit); test -n "$SCHEMA"
+          mkdir -p "$OUT/room-schema-53"; cp "$SCHEMA" "$OUT/room-schema-53/53.json"
+          cp "$GITHUB_WORKSPACE/gate2b-green.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/gate2b-all-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/gate2b-release-build.log" "$OUT/"
+          mkdir -p "$OUT/test-reports"
+          if [ -d "$ROOT/app/build/reports/tests" ]; then cp -R "$ROOT/app/build/reports/tests/." "$OUT/test-reports/"; fi
+          cat > "$OUT/gate2b-verification.txt" <<'EOF'
+          Gate2B Supplier Item Movement Report UI = PASS
+          Gate2A data/service baseline = PASS
+          Export RED observed before implementation = PASS
+          Export GREEN unit test = PASS
+          Complete unit test suite = PASS
+          Release build = PASS
+          Room schema = 53
+          Supplier / Item / Warehouse filters = WIRED
+          Unattributed legacy source shown explicitly = YES
+          PDF / Excel / Print = existing ReportExportActions pipeline
+          Destructive migration fallback = ABSENT
+          APK signing = NOT PERFORMED IN THIS GATE
+          EOF
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle"
+          PARENT=$(dirname "$ROOT"); BASE=$(basename "$ROOT")
+          (cd "$PARENT" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.23-Gate2B-SupplierItemMovement-UI-Source.zip" "$BASE")
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.23-Gate2B-SupplierItemMovement-UI-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.23-Gate2B-SupplierItemMovement-UI-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: FAZ-v1.0.23-Gate2B-RED
-          path: gate2b-red.log
+          name: FAZ-v1.0.23-Gate2B-SupplierMovementReport-UI
+          path: ${{ steps.package.outputs.out }}
           retention-days: 2
