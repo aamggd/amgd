@@ -13,7 +13,5 @@ jobs:
       - name: Parse target workflow with Ruby Psych
         run: |
           ruby -e "require 'yaml'; YAML.load_file('.github/workflows/faz-v1023-gate1b-provenance.yml', aliases: true); puts 'YAML_PARSE_OK'"
-      - name: Show size and expression locations
-        run: |
-          wc -lc .github/workflows/faz-v1023-gate1b-provenance.yml
-          grep -n '\${{' .github/workflows/faz-v1023-gate1b-provenance.yml || true
+      - name: Show target workflow size
+        run: wc -lc .github/workflows/faz-v1023-gate1b-provenance.yml
