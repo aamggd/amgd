@@ -1,0 +1,51 @@
+name: FAZ v1.0.23 Supplier Report Inspect 2
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-report-inspect2.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+      - name: Inspect exact supplier movement contracts
+        shell: bash
+        run: |
+          set -eu
+          SRCZIP=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit)
+          mkdir -p work && unzip -q "$SRCZIP" -d work
+          SETTINGS=$(find work -type f -name settings.gradle.kts -print -quit); ROOT=$(dirname "$SETTINGS")
+          show() { f="$1"; a="$2"; b="$3"; echo "===== $f:$a-$b ====="; sed -n "${a},${b}p" "$ROOT/$f" || true; }
+          show app/src/main/java/com/fush/erp/data/entity/PurchaseEntities.kt 1 340
+          show app/src/main/java/com/fush/erp/data/entity/InventoryCostLayerEntity.kt 1 220
+          show app/src/main/java/com/fush/erp/domain/SupplierMovementIdentity.kt 1 260
+          show app/src/main/java/com/fush/erp/data/InventoryCostLayerSupport.kt 1 320
+          show app/src/main/java/com/fush/erp/data/entity/ReportEntities.kt 1 260
+          show app/src/main/java/com/fush/erp/data/dao/ReportDao.kt 340 720
+          show app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt 1 420
+          show app/src/main/java/com/fush/erp/data/FushDatabase.kt 1 260
+          show app/src/main/java/com/fush/erp/data/AppContainer.kt 1 300
+          echo '===== SALES ALLOCATION LOCATIONS ====='
+          grep -RInE 'data class SalesAllocation|data class SalesReturnAllocation|costLayer|inventoryCostLayer|sourceLayer' "$ROOT/app/src/main/java/com/fush/erp" | head -160 || true
+          echo '===== PURCHASE COST LAYER WRITES ====='
+          grep -RInE 'InventoryCostLayerEntity|inventoryCostLayer|costLayer|StockMovementEntity' "$ROOT/app/src/main/java/com/fush/erp/domain/PurchaseService.kt" | head -180 || true
+          echo '===== SALES COST LAYER CONSUMPTION ====='
+          grep -RInE 'InventoryCostLayer|costLayer|SalesAllocation|StockMovementEntity' "$ROOT/app/src/main/java/com/fush/erp/domain/SalesService.kt" | head -220 || true
+          echo '===== UNIT TESTS ====='
+          find "$ROOT/app/src/test" -type f -print 2>/dev/null | grep -Ei 'inventory|supplier|report|sales|purchase|cost' | sed "s#^$ROOT/##" | head -120 || true
