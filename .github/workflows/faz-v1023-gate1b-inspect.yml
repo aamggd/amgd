@@ -1,0 +1,46 @@
+name: FAZ v1.0.23 Gate1B Inspect
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate1b-inspect.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1A-SupplierMovementMath
+          path: gate1a
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34672892427
+      - name: Unpack source and print exact patch anchors
+        shell: bash
+        run: |
+          set -eu
+          Z=$(find gate1a -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); R=$(dirname "$S")
+          show(){ echo "===== $1:$2-$3 ====="; sed -n "$2,$3 p" "$R/$1"; }
+          show app/src/main/java/com/fush/erp/data/FushDatabase.kt 1 260
+          show app/src/main/java/com/fush/erp/data/AppContainer.kt 1 240
+          echo '===== MIGRATION TAIL ====='
+          tail -260 "$R/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          show app/src/main/java/com/fush/erp/domain/PurchaseService.kt 1 190
+          show app/src/main/java/com/fush/erp/domain/PurchaseService.kt 240 325
+          show app/src/main/java/com/fush/erp/domain/SalesService.kt 1 120
+          show app/src/main/java/com/fush/erp/domain/SalesService.kt 810 970
+          show app/src/main/java/com/fush/erp/domain/SalesService.kt 1020 1145
+          show app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt 1 150
+          show app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt 400 570
+          echo '===== ROOM TEST DEPS / MIGRATION TESTS ====='
+          grep -RInE 'MigrationTestHelper|room-testing|androidx.room:room-testing|Schema|MIGRATION_51_52' "$R/app/src/test" "$R/app/build.gradle.kts" 2>/dev/null | head -180 || true
