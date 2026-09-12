@@ -32,10 +32,11 @@ for name, (old, new) in patches.items():
     if text.count(old) != 1:
         raise SystemExit(f'{name}: expected one stale schema-52 assertion, found {text.count(old)}')
     text = text.replace(old, new, 1)
-    anchor = '\n    @Test\n'
-    if text.count(anchor) < 1:
-        raise SystemExit(f'{name}: no @Test anchor for helper insertion')
-    text = text.replace(anchor, helper + anchor, 1)
+    class_name = path.stem
+    anchor = f'class {class_name} {{\n'
+    if text.count(anchor) != 1:
+        raise SystemExit(f'{name}: expected exactly one class anchor, found {text.count(anchor)}')
+    text = text.replace(anchor, anchor + helper, 1)
     path.write_text(text, encoding='utf-8')
     print(f'{name}=PATCHED')
 
