@@ -1,0 +1,41 @@
+name: FAZ v1.0.23 Gate2B Inspect Legacy Contract Failures
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate2b-inspect-legacy-test-failures.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate2A-SupplierMovementReport-Data
+          path: gate2a
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34674487668
+      - name: Inspect four failing legacy contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          Z=$(find gate2a -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          for n in EmployeeCompensationContractTest EmployeeCustodyAndPayrollHotfixContractTest EmployeeTerminationRetroactiveContractTest ProductMasterVariantsContractTest; do
+            F=$(find "$ROOT/app/src/test" -type f -name "$n.kt" -print -quit)
+            echo "===== $n :: $F ====="
+            nl -ba "$F" | sed -n '1,130p'
+          done
+          echo '===== FushDatabase version and migrations ====='
+          grep -nE 'FUSH_DB_SCHEMA_VERSION|version =|MIGRATION_4[56789]|MIGRATION_50|MIGRATION_51|MIGRATION_52|MIGRATION_53|addMigrations' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt" "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt" | head -260 || true
+          echo '===== Schema files ====='
+          find "$ROOT" -path '*schemas*' -type f -name '*.json' | sort | tail -30
