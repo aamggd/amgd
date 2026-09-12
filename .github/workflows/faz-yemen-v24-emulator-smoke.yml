@@ -45,7 +45,6 @@ jobs:
                 loc.first().click({timeout:10000})
               ]);
               await download.saveAs(out);
-              console.log('saved', download.suggestedFilename(), 'to', out);
               done=true;
               break;
             } catch (e) { console.log('candidate failed', String(e)); }
@@ -59,66 +58,47 @@ jobs:
           echo '7bb45738598cd5086a00bfd0b67a6e56c4bfbade733011fa546f5b7d6bf26a5d  v23.apk' | sha256sum -c -
           echo '4cec674639ac3458bd5f2a27f7ee9a8fe833f5d2ad95bedef5cd0d7ffa20910d  v24.apk' | sha256sum -c -
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install emulator image
-        shell: bash
-        run: |
-          set -euxo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
-          echo no | avdmanager create avd -n faz_test -k 'system-images;android-35;google_apis;x86_64' --force
-
-      - name: Boot Android emulator
-        shell: bash
-        run: |
-          set -euxo pipefail
-          sudo chmod 666 /dev/kvm || true
-          nohup "$ANDROID_HOME/emulator/emulator" -avd faz_test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
-          adb wait-for-device
-          timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 5; done'
-          adb shell settings put global window_animation_scale 0
-          adb shell settings put global transition_animation_scale 0
-          adb shell settings put global animator_duration_scale 0
-          adb devices -l
-
-      - name: Install and launch v23 baseline
-        shell: bash
-        run: |
-          set -euxo pipefail
-          adb install v23.apk
-          BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
-          test -n "$BEFORE_UID"
-          echo "$BEFORE_UID" > before_uid.txt
-          adb logcat -c
-          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v23-start.txt
-          sleep 15
-          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
-          test -n "$PID"
-          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v23-androidruntime.log || true
-          if grep -q 'Process: com.faz.yemen' v23-androidruntime.log; then cat v23-androidruntime.log; exit 1; fi
-          adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=23|versionName=1.0.22-faz-yemen-independent-fork1'
-
-      - name: Upgrade in place to v24 and launch
-        shell: bash
-        run: |
-          set -euxo pipefail
-          adb install -r v24.apk | tee upgrade-install.txt
-          AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
-          BEFORE_UID="$(cat before_uid.txt)"
-          test "$BEFORE_UID" = "$AFTER_UID"
-          adb shell dumpsys package com.faz.yemen | tee v24-package.txt | grep -E 'versionCode=24|versionName=1.0.23-faz-yemen-catalog'
-          adb shell am force-stop com.faz.yemen
-          adb logcat -c
-          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v24-start.txt
-          sleep 20
-          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
-          test -n "$PID"
-          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v24-androidruntime.log || true
-          if grep -q 'Process: com.faz.yemen' v24-androidruntime.log; then cat v24-androidruntime.log; exit 1; fi
-          echo "UPGRADE_SMOKE=PASS"
-          echo "UID_PRESERVED=$AFTER_UID"
+      - name: Run v23 to v24 upgrade smoke on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          script: |
+            set -euxo pipefail
+            adb devices -l
+            adb install v23.apk | tee v23-install.txt
+            BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+            test -n "$BEFORE_UID"
+            echo "$BEFORE_UID" > before_uid.txt
+            adb logcat -c
+            adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v23-start.txt
+            sleep 15
+            PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+            test -n "$PID"
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v23-androidruntime.log || true
+            if grep -q 'Process: com.faz.yemen' v23-androidruntime.log; then cat v23-androidruntime.log; exit 1; fi
+            adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=23|versionName=1.0.22-faz-yemen-independent-fork1'
+            adb install -r v24.apk | tee upgrade-install.txt
+            AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+            test "$BEFORE_UID" = "$AFTER_UID"
+            adb shell dumpsys package com.faz.yemen | tee v24-package.txt | grep -E 'versionCode=24|versionName=1.0.23-faz-yemen-catalog'
+            adb shell am force-stop com.faz.yemen
+            adb logcat -c
+            adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v24-start.txt
+            sleep 20
+            PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+            test -n "$PID"
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v24-androidruntime.log || true
+            if grep -q 'Process: com.faz.yemen' v24-androidruntime.log; then cat v24-androidruntime.log; exit 1; fi
+            echo "UPGRADE_SMOKE=PASS" | tee smoke-result.txt
+            echo "UID_PRESERVED=$AFTER_UID" | tee -a smoke-result.txt
 
       - name: Upload emulator evidence
         if: always()
@@ -126,7 +106,7 @@ jobs:
         with:
           name: FAZ-Yemen-v24-Emulator-Smoke-Evidence
           path: |
-            emulator.log
+            v23-install.txt
             v23-start.txt
             v23-androidruntime.log
             upgrade-install.txt
@@ -134,4 +114,5 @@ jobs:
             v24-start.txt
             v24-androidruntime.log
             before_uid.txt
+            smoke-result.txt
           if-no-files-found: warn
