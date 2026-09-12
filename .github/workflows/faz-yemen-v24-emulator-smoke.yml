@@ -1,4 +1,4 @@
-name: FAZ Yemen v24 Emulator Upgrade Smoke
+name: FAZ Yemen v25 Emulator Upgrade Smoke
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download signed v23 and v24 APKs
+      - name: Download signed v24 and v25 APKs
         shell: bash
         run: |
           set -euxo pipefail
@@ -52,13 +52,13 @@ jobs:
           if (!done) throw new Error('No downloadable file control found for '+url);
           await browser.close();
           JS
-          node download.mjs 'https://firestorage.ai/ja/f/TYgOMkRMyyX1' '../v23.apk'
           node download.mjs 'https://firestorage.ai/ja/f/V6FaXXCk1wff' '../v24.apk'
+          node download.mjs 'https://firestorage.ai/ja/f/XHoetf5fE_Wk' '../v25.apk'
           cd ..
-          echo '7bb45738598cd5086a00bfd0b67a6e56c4bfbade733011fa546f5b7d6bf26a5d  v23.apk' | sha256sum -c -
           echo '4cec674639ac3458bd5f2a27f7ee9a8fe833f5d2ad95bedef5cd0d7ffa20910d  v24.apk' | sha256sum -c -
+          echo 'bcda51847058a420c499bd616b6aa5d4f28d4c6c34ce7cc01d03a5c36f929bcc  v25.apk' | sha256sum -c -
 
-      - name: Run v23 to v24 upgrade smoke on Android emulator
+      - name: Run v24 to v25 upgrade smoke on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -73,30 +73,30 @@ jobs:
           script: |
             bash -euxo pipefail <<'BASH'
             adb devices -l
-            adb install v23.apk | tee v23-install.txt
+            adb install v24.apk | tee v24-install.txt
             BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
             test -n "$BEFORE_UID"
             echo "$BEFORE_UID" > before_uid.txt
             adb logcat -c
-            adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v23-start.txt
-            sleep 15
-            PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
-            test -n "$PID"
-            adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v23-androidruntime.log || true
-            if grep -q 'Process: com.faz.yemen' v23-androidruntime.log; then cat v23-androidruntime.log; exit 1; fi
-            adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=23|versionName=1.0.22-faz-yemen-independent-fork1'
-            adb install -r v24.apk | tee upgrade-install.txt
-            AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
-            test "$BEFORE_UID" = "$AFTER_UID"
-            adb shell dumpsys package com.faz.yemen | tee v24-package.txt | grep -E 'versionCode=24|versionName=1.0.23-faz-yemen-catalog'
-            adb shell am force-stop com.faz.yemen
-            adb logcat -c
             adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v24-start.txt
-            sleep 20
+            sleep 15
             PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
             test -n "$PID"
             adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v24-androidruntime.log || true
             if grep -q 'Process: com.faz.yemen' v24-androidruntime.log; then cat v24-androidruntime.log; exit 1; fi
+            adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=24|versionName=1.0.23-faz-yemen-catalog'
+            adb install -r v25.apk | tee upgrade-install.txt
+            AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+            test "$BEFORE_UID" = "$AFTER_UID"
+            adb shell dumpsys package com.faz.yemen | tee v25-package.txt | grep -E 'versionCode=25|versionName=1.0.24-faz-yemen-modal-scroll-hotfix'
+            adb shell am force-stop com.faz.yemen
+            adb logcat -c
+            adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v25-start.txt
+            sleep 20
+            PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+            test -n "$PID"
+            adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v25-androidruntime.log || true
+            if grep -q 'Process: com.faz.yemen' v25-androidruntime.log; then cat v25-androidruntime.log; exit 1; fi
             echo "UPGRADE_SMOKE=PASS" | tee smoke-result.txt
             echo "UID_PRESERVED=$AFTER_UID" | tee -a smoke-result.txt
             BASH
@@ -105,15 +105,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FAZ-Yemen-v24-Emulator-Smoke-Evidence
+          name: FAZ-Yemen-v25-Emulator-Smoke-Evidence
           path: |
-            v23-install.txt
-            v23-start.txt
-            v23-androidruntime.log
-            upgrade-install.txt
-            v24-package.txt
+            v24-install.txt
             v24-start.txt
             v24-androidruntime.log
+            upgrade-install.txt
+            v25-package.txt
+            v25-start.txt
+            v25-androidruntime.log
             before_uid.txt
             smoke-result.txt
           if-no-files-found: warn
