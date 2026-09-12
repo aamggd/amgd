@@ -1,0 +1,44 @@
+name: FAZ v1.0.23 Provenance Inspect
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-provenance-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+      - name: Print exact allocation and movement code
+        shell: bash
+        run: |
+          set -eu
+          SRCZIP=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit)
+          mkdir -p work && unzip -q "$SRCZIP" -d work
+          SETTINGS=$(find work -type f -name settings.gradle.kts -print -quit); ROOT=$(dirname "$SETTINGS")
+          show() { echo "===== $1:$2-$3 ====="; sed -n "$2,$3 p" "$ROOT/$1"; }
+          show app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt 130 210
+          show app/src/main/java/com/fush/erp/data/entity/SalesEntities.kt 285 350
+          show app/src/main/java/com/fush/erp/domain/PurchaseService.kt 110 180
+          show app/src/main/java/com/fush/erp/domain/PurchaseService.kt 255 315
+          show app/src/main/java/com/fush/erp/domain/SalesService.kt 830 955
+          show app/src/main/java/com/fush/erp/domain/SalesService.kt 1040 1130
+          echo '===== TRANSFER MOVEMENTS ====='
+          grep -RInE "TRANSFER_OUT|TRANSFER_IN|movementType[[:space:]]*=[[:space:]]*\"TRANSFER|StockMovementEntity\(" "$ROOT/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt" | head -120 || true
+          echo '===== STOCK DAO ====='
+          grep -RInE 'interface StockDao|inventory_cost_layers|stock_movements|insertMovement|insertAll|movements' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -220 || true
