@@ -1,0 +1,40 @@
+name: FAZ v1.0.23 Gate2B Inspect UI
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate2b-inspect-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1B-SupplierProvenance
+          path: gate1b
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34673789195
+      - name: Print exact ReportsScreen anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          Z=$(find gate1b -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          F="$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt"
+          echo '=== TOP / STATE / LOAD ==='; sed -n '1,330p' "$F"
+          echo '=== NAVIGATION / CONTENT DISPATCH ==='; sed -n '330,470p' "$F"
+          echo '=== PURCHASE AND INVENTORY TABS ==='; sed -n '560,720p' "$F"
+          echo '=== EXPORT DISPATCH ==='; sed -n '824,1070p' "$F"
+          echo '=== TITLES / FILENAMES ==='; sed -n '1380,1435p' "$F"
+          echo '=== SUPPLIER / ITEM / WAREHOUSE DAO SELECTORS ==='
+          grep -RInE 'allActive\(\)|observeAll\(\)|allSuppliers|allItems|allWarehouses|supplierDao\(\)|itemDao\(\)|warehouseDao\(\)' "$ROOT/app/src/main/java/com/fush/erp/ui/screens" | head -240 || true
