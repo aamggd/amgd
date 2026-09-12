@@ -1,0 +1,137 @@
+name: FAZ Yemen v24 Emulator Upgrade Smoke
+
+on:
+  push:
+    branches: [faz-yemen-v24-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download signed v23 and v24 APKs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir browser && cd browser
+          npm init -y >/dev/null
+          npm install playwright@latest >/dev/null
+          npx playwright install chromium >/dev/null
+          cat > download.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const [url, out] = process.argv.slice(2);
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage({acceptDownloads:true});
+          await page.goto(url, {waitUntil:'domcontentloaded', timeout:60000});
+          await page.waitForTimeout(8000);
+          const candidates = [
+            page.getByRole('button', {name:/ダウンロード|download/i}),
+            page.getByRole('link', {name:/ダウンロード|download/i}),
+            page.locator('a[download]'),
+            page.locator('a[href*="download"]')
+          ];
+          let done=false;
+          for (const loc of candidates) {
+            if (!(await loc.count())) continue;
+            try {
+              const [download] = await Promise.all([
+                page.waitForEvent('download', {timeout:30000}),
+                loc.first().click({timeout:10000})
+              ]);
+              await download.saveAs(out);
+              console.log('saved', download.suggestedFilename(), 'to', out);
+              done=true;
+              break;
+            } catch (e) { console.log('candidate failed', String(e)); }
+          }
+          if (!done) throw new Error('No downloadable file control found for '+url);
+          await browser.close();
+          JS
+          node download.mjs 'https://firestorage.ai/ja/f/TYgOMkRMyyX1' '../v23.apk'
+          node download.mjs 'https://firestorage.ai/ja/f/V6FaXXCk1wff' '../v24.apk'
+          cd ..
+          echo '7bb45738598cd5086a00bfd0b67a6e56c4bfbade733011fa546f5b7d6bf26a5d  v23.apk' | sha256sum -c -
+          echo '4cec674639ac3458bd5f2a27f7ee9a8fe833f5d2ad95bedef5cd0d7ffa20910d  v24.apk' | sha256sum -c -
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install emulator image
+        shell: bash
+        run: |
+          set -euxo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd -n faz_test -k 'system-images;android-35;google_apis;x86_64' --force
+
+      - name: Boot Android emulator
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo chmod 666 /dev/kvm || true
+          nohup "$ANDROID_HOME/emulator/emulator" -avd faz_test -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > emulator.log 2>&1 &
+          adb wait-for-device
+          timeout 300 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 5; done'
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb devices -l
+
+      - name: Install and launch v23 baseline
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb install v23.apk
+          BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+          test -n "$BEFORE_UID"
+          echo "$BEFORE_UID" > before_uid.txt
+          adb logcat -c
+          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v23-start.txt
+          sleep 15
+          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+          test -n "$PID"
+          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v23-androidruntime.log || true
+          if grep -q 'Process: com.faz.yemen' v23-androidruntime.log; then cat v23-androidruntime.log; exit 1; fi
+          adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=23|versionName=1.0.22-faz-yemen-independent-fork1'
+
+      - name: Upgrade in place to v24 and launch
+        shell: bash
+        run: |
+          set -euxo pipefail
+          adb install -r v24.apk | tee upgrade-install.txt
+          AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+          BEFORE_UID="$(cat before_uid.txt)"
+          test "$BEFORE_UID" = "$AFTER_UID"
+          adb shell dumpsys package com.faz.yemen | tee v24-package.txt | grep -E 'versionCode=24|versionName=1.0.23-faz-yemen-catalog'
+          adb shell am force-stop com.faz.yemen
+          adb logcat -c
+          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v24-start.txt
+          sleep 20
+          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+          test -n "$PID"
+          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v24-androidruntime.log || true
+          if grep -q 'Process: com.faz.yemen' v24-androidruntime.log; then cat v24-androidruntime.log; exit 1; fi
+          echo "UPGRADE_SMOKE=PASS"
+          echo "UID_PRESERVED=$AFTER_UID"
+
+      - name: Upload emulator evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-Yemen-v24-Emulator-Smoke-Evidence
+          path: |
+            emulator.log
+            v23-start.txt
+            v23-androidruntime.log
+            upgrade-install.txt
+            v24-package.txt
+            v24-start.txt
+            v24-androidruntime.log
+            before_uid.txt
+          if-no-files-found: warn
