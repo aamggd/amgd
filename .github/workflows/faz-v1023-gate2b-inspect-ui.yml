@@ -18,26 +18,29 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: FAZ-v1.0.23-Gate1B-SupplierProvenance
-          path: gate1b
+          name: FAZ-v1.0.23-Gate2A-SupplierMovementReport-Data
+          path: gate2a
           github-token: ${{ github.token }}
           repository: aamggd/amgd
-          run-id: 34673789195
+          run-id: 34674487668
       - name: Print exact ReportsScreen and export contracts
         shell: bash
         run: |
           set -euo pipefail
-          Z=$(find gate1b -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          Z=$(find gate2a -type f -name '*Source.zip' -print -quit); test -n "$Z"
           mkdir -p work; unzip -q "$Z" -d work
           S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
           F="$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt"
-          echo '=== SEARCHABLE SELECTION DEFINITION ==='
-          grep -RIl 'fun FushSearchableSelectionField' "$ROOT/app/src/main/java" | while read -r x; do grep -n -A95 -B8 'fun FushSearchableSelectionField' "$x"; done
-          echo '=== SEARCHABLE SELECTION CALLS ==='
-          grep -RIn -A16 -B3 'FushSearchableSelectionField(' "$ROOT/app/src/main/java/com/fush/erp/ui/screens" | head -520 || true
+          echo '=== SEARCHABLE SELECTION REFERENCES ==='
+          grep -RIn -A24 -B5 'FushSearchableSelectionField' "$ROOT/app/src/main/java" | head -700 || true
           echo '=== REPORT EXPORT MODEL ==='
-          grep -RIl 'data class ReportExportDocument' "$ROOT/app/src/main/java" | while read -r x; do sed -n '1,260p' "$x"; done
-          echo '=== REPORTSCREEN SELECTION / CARD HELPERS ==='
-          grep -n -A110 -B12 -E 'FushSearchableSelectionField\(|private fun ReportCard|private fun MetricGrid|private fun SectionTitle' "$F" | head -900 || true
-          echo '=== SUPPLIER / ITEM / WAREHOUSE DAO DEFINITIONS ==='
-          grep -RIn -A90 -B5 -E 'interface SupplierDao|interface ItemDao|interface WarehouseDao' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -900 || true
+          X=$(grep -RIl 'data class ReportExportDocument' "$ROOT/app/src/main/java" | head -1 || true)
+          if [ -n "$X" ]; then sed -n '1,150p' "$X"; fi
+          echo '=== REPORT SELECTION MENU ==='
+          grep -n -A120 -B12 'private fun ReportSelectionMenu' "$F" || true
+          echo '=== REPORT HELPERS ==='
+          grep -n -A100 -B8 -E 'private fun ReportCard|private fun MetricGrid|private fun SectionTitle' "$F" | head -600 || true
+          echo '=== SUPPLIER ITEM WAREHOUSE DAO METHODS ==='
+          grep -RIn -A150 -B5 -E 'interface SupplierDao|interface ItemDao|interface WarehouseDao' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -1200 || true
+          echo '=== GATE2A SERVICE CONTRACT ==='
+          sed -n '1,280p' "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementReport.kt"
