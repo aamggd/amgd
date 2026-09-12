@@ -1,0 +1,46 @@
+name: FAZ v1.0.23 Gate2A Inspect Reports
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate2a-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1B-SupplierProvenance
+          path: gate1b
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34673789195
+      - name: Inspect report architecture and export patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          Z=$(find gate1b -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo '=== REPORT FILES ==='
+          find "$ROOT/app/src/main/java/com/fush/erp" -type f \( -iname '*report*' -o -iname '*print*' -o -iname '*export*' \) | sort | head -200
+          echo '=== REPORT DAO/SERVICE SYMBOLS ==='
+          grep -RInE 'interface ReportDao|class .*Report|data class .*Report|fun .*Report|suspend fun .*report|reportDao\(' "$ROOT/app/src/main/java/com/fush/erp/data" "$ROOT/app/src/main/java/com/fush/erp/domain" | head -260 || true
+          echo '=== REPORTS SCREEN SECTION NAMES ==='
+          grep -nE 'Report|تقرير|تقارير|PDF|Excel|CSV|print|Print|export|Export' "$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt" | head -320 || true
+          echo '=== EXPORT/PRINT IMPLEMENTATIONS ==='
+          grep -RInE 'PdfDocument|createDocument|PrintManager|ACTION_CREATE_DOCUMENT|csv|CSV|xlsx|Excel|export|Export|share|Share' "$ROOT/app/src/main/java/com/fush/erp" | head -320 || true
+          echo '=== PROVENANCE DAO ==='
+          sed -n '1,280p' "$ROOT/app/src/main/java/com/fush/erp/data/dao/SupplierStockProvenanceDao.kt"
+          echo '=== REPORT DAO FILE CANDIDATES ==='
+          for f in $(grep -Rl 'interface ReportDao' "$ROOT/app/src/main/java/com/fush/erp" || true); do echo "--- $f"; sed -n '1,420p' "$f"; done
+          echo '=== APPCONTAINER REPORT WIRING ==='
+          grep -nE 'report|Report|supplierStockProvenance' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt" | head -160 || true
