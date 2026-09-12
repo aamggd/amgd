@@ -5,8 +5,15 @@ import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
+# Parse multiline Kotlin triple-quoted SQL first. Single-line parsing explicitly
+# excludes triple quotes so it cannot overwrite those constants with an empty value.
 sqls = dict(re.findall(r'internal const val (SQL_[A-Z0-9_]+)\s*=\s*"""(.*?)"""', text, re.S))
-sqls.update(dict(re.findall(r'internal const val (SQL_[A-Z0-9_]+)\s*=\s*"([^"]*)"', text)))
+single_line_sqls = dict(re.findall(r'internal const val (SQL_[A-Z0-9_]+)\s*=\s*"(?!"")([^"]*)"', text))
+for name, sql in single_line_sqls.items():
+    if name in sqls:
+        raise AssertionError(f"Verifier parsed SQL constant twice: {name}")
+    sqls[name] = sql
+
 expected = [
     "SQL_CREATE_SUPPLIER_STOCK_SOURCES", "SQL_CREATE_SUPPLIER_STOCK_ALLOCATIONS",
     "SQL_INDEX_SOURCES_SUPPLIER", "SQL_INDEX_SOURCES_WAREHOUSE", "SQL_INDEX_SOURCES_ITEM",
@@ -17,9 +24,12 @@ expected = [
 ]
 missing = [name for name in expected if name not in sqls]
 assert not missing, f"Missing migration SQL constants: {missing}"
+for name in expected:
+    assert sqls[name].strip(), f"Migration SQL constant unexpectedly empty: {name}"
 
 db = sqlite3.connect(":memory:")
 db.executescript("""
+PRAGMA foreign_keys=ON;
 CREATE TABLE suppliers(id INTEGER PRIMARY KEY);
 CREATE TABLE warehouses(id INTEGER PRIMARY KEY);
 CREATE TABLE items(id INTEGER PRIMARY KEY);
@@ -39,7 +49,10 @@ VALUES (1,1,100,'PURCHASE',10,5,'X',1,'L1',1000),
 """)
 before = list(db.execute("SELECT id,movementDate,warehouseId,itemId,movementType,quantityBase,unitCostBase,lotNo,expiryDate FROM stock_movements ORDER BY id"))
 for name in expected:
-    db.execute(sqls[name])
+    try:
+        db.execute(sqls[name])
+    except Exception as exc:
+        raise AssertionError(f"Migration SQL failed at {name}: {exc}") from exc
 after = list(db.execute("SELECT id,movementDate,warehouseId,itemId,movementType,quantityBase,unitCostBase,lotNo,expiryDate FROM stock_movements ORDER BY id"))
 assert before == after, "Legacy stock movements changed during 52->53 migration"
 rows = list(db.execute("SELECT supplierId,warehouseId,itemId,lotNo,expiryDate,originalQuantityBase,unitCostBase,attributionStatus,sourceType FROM supplier_stock_sources ORDER BY itemId"))
@@ -58,6 +71,7 @@ try:
     raise AssertionError("Source immutability trigger did not block delete")
 except sqlite3.IntegrityError:
     pass
+print("MIGRATION_SQL_PARSE_NONEMPTY=PASS")
 print("MIGRATION_52_53_LEDGER_PRESERVED=PASS")
 print("LEGACY_UNATTRIBUTED_BACKFILL=PASS")
 print("PROVENANCE_IMMUTABILITY=PASS")
