@@ -15,29 +15,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Inspect temporary source share
+      - name: Inspect firestorage page bundle
         shell: bash
         run: |
           set -euo pipefail
-          SHARE='https://firestorage.ai/ja/f/K0rEOsxvE2bR'
-          curl -L --fail --retry 3 -A 'Mozilla/5.0' "$SHARE" -o share.html
-          echo "HTML_BYTES=$(wc -c < share.html)"
+          BASE='https://firestorage.ai'
+          SHARE="$BASE/ja/f/K0rEOsxvE2bR"
+          curl -L --fail -A 'Mozilla/5.0' "$SHARE" -o share.html
+          CHUNK=$(python - <<'PY'
+          import re
+          s=open('share.html',encoding='utf-8',errors='ignore').read()
+          xs=re.findall(r'<script[^>]+src=["\']([^"\']+)',s,re.I)
+          for x in xs:
+              if 'app/(files)/ja/f/page-' in x:
+                  print(x); break
+          PY
+          )
+          echo "CHUNK=$CHUNK"
+          test -n "$CHUNK"
+          curl -L --fail -A 'Mozilla/5.0' "$BASE$CHUNK" -o page.js
+          echo "JS_BYTES=$(wc -c < page.js)"
           python - <<'PY'
           from pathlib import Path
-          import re, html
-          s=Path('share.html').read_text(encoding='utf-8',errors='ignore')
-          print('HAS_FILENAME=', 'FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-Source.zip' in s)
-          for needle in ['FAZ-Solar','gpYbtwqbwBQud0og','01a093866c3773debb1e6ea902563632','download','api/','__NEXT_DATA__','_next/data']:
-              print('\n###', needle)
-              low=s.lower(); n=needle.lower(); start=0; count=0
-              while count<8:
+          import re
+          s=Path('page.js').read_text(encoding='utf-8',errors='ignore')
+          for needle in ['download','fetch(','/api/','share','public','file','presign','signed','token']:
+              print('\n###',needle)
+              low=s.lower(); n=needle.lower(); start=0; c=0
+              while c<30:
                   i=low.find(n,start)
                   if i<0: break
-                  print(html.unescape(s[max(0,i-350):min(len(s),i+700)]).replace('\n',' ')[:1200])
-                  start=i+len(n); count+=1
-          print('\n### SCRIPT_SRCS')
-          for u in re.findall(r'<script[^>]+src=["\']([^"\']+)',s,re.I): print(u)
-          print('\n### HREFS')
-          for u in re.findall(r'href=["\']([^"\']+)',s,re.I):
-              if any(k in u.lower() for k in ['api','download','file','zip','share']): print(u)
+                  print(s[max(0,i-450):min(len(s),i+900)].replace('\n',' ')[:1400])
+                  start=i+len(n); c+=1
+          print('\n### STRING_URLS')
+          for u in sorted(set(re.findall(r'["\']([^"\']*(?:api|download|share|file)[^"\']*)["\']',s,re.I))):
+              if len(u)<400: print(u)
           PY
