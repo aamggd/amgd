@@ -27,7 +27,7 @@ jobs:
           import { chromium } from 'playwright';
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage({acceptDownloads:true});
-          await page.goto('https://firestorage.ai/ja/f/sdWWNq-YZGoq', {waitUntil:'domcontentloaded', timeout:60000});
+          await page.goto('https://firestorage.ai/ja/f/erbVyRaOzIFq', {waitUntil:'domcontentloaded', timeout:60000});
           await page.waitForTimeout(8000);
           console.log('page', await page.title(), page.url());
           const candidates = [
@@ -39,7 +39,6 @@ jobs:
           let done=false;
           for (const loc of candidates) {
             const n = await loc.count();
-            console.log('candidate count', n);
             if (!n) continue;
             try {
               const [download] = await Promise.all([
@@ -52,20 +51,17 @@ jobs:
               break;
             } catch (e) { console.log('candidate failed', String(e)); }
           }
-          if (!done) {
-            console.log((await page.locator('body').innerText()).slice(0,8000));
-            throw new Error('No downloadable file control found');
-          }
+          if (!done) throw new Error('No downloadable file control found');
           await browser.close();
           JS
           node download.mjs
           cd ..
-          test $(stat -c%s source.zip) -gt 4000000
-          sha256sum source.zip
+          echo '08dd6e9b10c815b5838ab5a06d2d961967544f9d8f20f18de879d6db33bbc0af  source.zip' | sha256sum -c -
           mkdir source
           unzip -q source.zip -d source
           test -f source/settings.gradle.kts
           test -f source/app/src/main/assets/catalog/index.json
+          test -f source/app/src/test/java/com/fush/erp/domain/YemenCatalogContractTest.kt
           grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
           grep -q 'versionCode = 24' source/app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
