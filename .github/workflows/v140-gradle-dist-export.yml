@@ -1,0 +1,37 @@
+name: V140 Gradle Dist Export
+
+on:
+  push:
+    branches:
+      - agent/v123-toolchain-bootstrap-20260822
+  workflow_dispatch:
+
+jobs:
+  export-gradle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Package Gradle distribution
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          echo "GRADLE_HOME=$GRADLE_HOME"
+          tar -czf /tmp/gradle-9.4.1-home.tgz -C "$(dirname "$GRADLE_HOME")" "$(basename "$GRADLE_HOME")"
+          sha256sum /tmp/gradle-9.4.1-home.tgz > /tmp/gradle-9.4.1-home.tgz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v140-Gradle-9.4.1-Home
+          path: |
+            /tmp/gradle-9.4.1-home.tgz
+            /tmp/gradle-9.4.1-home.tgz.sha256
+          compression-level: 0
+          retention-days: 1

@@ -1,0 +1,53 @@
+name: V123 Fetch Missing Lint Dependency
+
+on:
+  push:
+    branches:
+      - agent/v123-toolchain-bootstrap-20260822
+    paths:
+      - '.github/workflows/v123-fetch-lint-dependency.yml'
+  pull_request:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/v123-fetch-lint-dependency.yml'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch dependency from Google Maven
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://dl.google.com/dl/android/maven2/androidx/compose/material/material-icons-core-desktop/1.7.8'
+          OUT='m2/androidx/compose/material/material-icons-core-desktop/1.7.8'
+          mkdir -p "$OUT"
+          found_binary=0
+          for ext in pom module jar aar; do
+            url="$BASE/material-icons-core-desktop-1.7.8.$ext"
+            if curl -fL --retry 3 "$url" -o "$OUT/material-icons-core-desktop-1.7.8.$ext"; then
+              echo "fetched $ext"
+              case "$ext" in jar|aar) found_binary=1 ;; esac
+            else
+              rm -f "$OUT/material-icons-core-desktop-1.7.8.$ext"
+            fi
+          done
+          test -f "$OUT/material-icons-core-desktop-1.7.8.pom"
+          test "$found_binary" -eq 1
+          find m2 -type f -printf '%p %s bytes\n'
+          sha256sum "$OUT"/* > dependency.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v123-Missing-Lint-Dependency
+          path: |
+            m2/
+            dependency.sha256
+          if-no-files-found: error
+          retention-days: 1

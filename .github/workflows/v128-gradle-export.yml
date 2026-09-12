@@ -1,0 +1,36 @@
+name: V128 Gradle Export
+
+on:
+  push:
+    branches:
+      - agent/v123-toolchain-bootstrap-20260822
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  export-gradle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Package Gradle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_BIN="$(command -v gradle)"
+          GRADLE_REAL="$(readlink -f "$GRADLE_BIN")"
+          GRADLE_HOME="$(cd "$(dirname "$GRADLE_REAL")/.." && pwd)"
+          echo "GRADLE_HOME=$GRADLE_HOME"
+          gradle --version
+          tar -czf /tmp/gradle-9.4.1-home.tgz -C "$(dirname "$GRADLE_HOME")" "$(basename "$GRADLE_HOME")"
+          sha256sum /tmp/gradle-9.4.1-home.tgz > /tmp/gradle-9.4.1-home.tgz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-v128-Gradle-9.4.1
+          path: |
+            /tmp/gradle-9.4.1-home.tgz
+            /tmp/gradle-9.4.1-home.tgz.sha256
+          compression-level: 0
+          retention-days: 1
