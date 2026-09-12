@@ -1,0 +1,89 @@
+--- a/app/src/test/java/com/fush/erp/domain/CashRefundCoveragePolicyTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/CashRefundCoveragePolicyTest.kt
+@@ -0,0 +1,27 @@
++package com.fush.erp.domain
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++class CashRefundCoveragePolicyTest {
++    @Test fun allowsRefundOnlyWithinNetActualCash() {
++        CashRefundCoveragePolicy.requireCovered(20_000.0, 0.0, 20_000.0, "sales")
++        assertThrows(IllegalArgumentException::class.java) {
++            CashRefundCoveragePolicy.requireCovered(20_000.0, 0.0, 50_000.0, "sales")
++        }
++    }
++
++    @Test fun priorRefundsReduceRemainingCashCeiling() {
++        assertEquals(5_000.0, CashRefundCoveragePolicy.availableBase(20_000.0, 15_000.0), 0.0001)
++        assertThrows(IllegalArgumentException::class.java) {
++            CashRefundCoveragePolicy.requireCovered(20_000.0, 15_000.0, 6_000.0, "sales")
++        }
++    }
++
++    @Test fun reversalCannotLeaveRefundsUnsupported() {
++        assertThrows(IllegalArgumentException::class.java) {
++            CashRefundCoveragePolicy.requireCovered(0.0, 20_000.0, 0.0, "reversal")
++        }
++    }
++}
+--- a/app/src/test/java/com/fush/erp/domain/CashRefundActualCashGuardContractTest.kt
++++ b/app/src/test/java/com/fush/erp/domain/CashRefundActualCashGuardContractTest.kt
+@@ -0,0 +1,30 @@
++package com.fush.erp.domain
++
++import java.io.File
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class CashRefundActualCashGuardContractTest {
++    private fun source(path: String): String {
++        val f = listOf(File("src/main/java/$path"), File("app/src/main/java/$path")).firstOrNull { it.isFile }
++            ?: error("Missing source: $path")
++        return f.readText()
++    }
++
++    @Test fun salesReturnAndReceiptReversalUseActualCashTimelineGuard() {
++        val s = source("com/fush/erp/domain/SalesService.kt")
++        assertTrue(s.contains("requireSalesCashRefundTimelineCovered("))
++        assertTrue(s.contains("receivedBaseForInvoiceAsOf"))
++        assertTrue(s.contains("cashRefundedBaseForInvoiceAsOf"))
++        assertTrue(s.contains("proposedCashDeltaBase = -allocation.amountBase"))
++    }
++
++    @Test fun purchaseReturnAndPaymentReversalUseActualCashTimelineGuard() {
++        val s = source("com/fush/erp/domain/PurchaseService.kt")
++        assertTrue(s.contains("requirePurchaseCashRefundTimelineCovered("))
++        assertTrue(s.contains("paidBaseForInvoiceAsOf"))
++        assertTrue(s.contains("cashRefundedBaseForInvoiceAsOf"))
++        assertTrue(s.contains("proposedCashDeltaBase = -allocation.allocatedBase"))
++        assertTrue(s.contains("invoice.paymentType == \"CASH\""))
++    }
++}
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -13,8 +13,8 @@
+         applicationId = "com.fush.erp.recovery"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 128
+-        versionName = "0.15.4.79-release-hardening1"
++        versionCode = 129
++        versionName = "0.15.4.80-cash-refund-actual-cash-guard1"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+--- a/V129_CASH_REFUND_ACTUAL_CASH_GUARD.md
++++ b/V129_CASH_REFUND_ACTUAL_CASH_GUARD.md
+@@ -0,0 +1,10 @@
++# v129 Cash Refund Actual-Cash Guard
++
++- Sales CASH_REFUND is capped by net actual cash collected for the invoice.
++- Purchase CASH_REFUND is capped by net actual cash paid for the invoice.
++- Prior cash refunds reduce the remaining ceiling.
++- Receipt reversal is blocked if it would leave an existing sales cash refund unsupported at any affected timeline point.
++- Supplier-payment reversal is blocked by the symmetric rule.
++- Cash invoices treat the original cash invoice amount as actual cash paid/collected.
++- Settlement discounts never count as cash.
++- Room schema remains 39; no migration.

@@ -1,0 +1,88 @@
+--- a/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
++++ b/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt
+@@ -145,6 +145,14 @@
+         WHERE spa.invoiceId = :invoiceId AND sp.paymentDate <= :asOf
+     """)
+     suspend fun paidBaseForInvoiceAsOf(invoiceId: Long, asOf: Long): Double
++
++    @Query("""
++        SELECT COALESCE(SUM(totalBase), 0)
++        FROM purchase_returns
++        WHERE purchaseInvoiceId = :invoiceId AND status = 'POSTED'
++          AND settlementType = 'CASH_REFUND' AND returnDate <= :asOf
++    """)
++    suspend fun cashRefundedBaseForInvoiceAsOf(invoiceId: Long, asOf: Long): Double
+ 
+     @Query("""
+         SELECT COALESCE(SUM(totalBase), 0)
+--- a/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
++++ b/app/src/main/java/com/fush/erp/domain/PurchaseService.kt
+@@ -214,6 +214,13 @@
+ 
+         val totalOriginal = prepared.sumOf { it.totalOriginal }
+         val totalBase = totalOriginal * invoice.exchangeRate
++        if (request.settlementType == "CASH_REFUND") {
++            requirePurchaseCashRefundTimelineCovered(
++                invoice = invoice,
++                proposedRefundBase = totalBase,
++                eventDate = request.returnDate
++            )
++        }
+         val returnNo = numbering.nextDocumentNo("PRET", request.returnDate)
+         val returnId = db.purchaseDao().insertReturn(
+             PurchaseReturnEntity(
+@@ -520,6 +527,15 @@
+         }
+         require(db.journalDao().reversalCount(originalJournal.id) == 0) { "تم عكس قيد هذه الدفعة مسبقاً" }
+ 
++        allocations.forEach { allocation ->
++            val invoice = requireNotNull(db.purchaseDao().invoiceById(allocation.invoiceId)) { "فاتورة الشراء غير موجودة" }
++            requirePurchaseCashRefundTimelineCovered(
++                invoice = invoice,
++                proposedCashDeltaBase = -allocation.allocatedBase,
++                eventDate = reversalDate
++            )
++        }
++
+         val reversalNo = numbering.nextDocumentNo("SPRV", reversalDate)
+         val reversalId = db.purchaseDao().insertSupplierPayment(
+             SupplierPaymentEntity(
+@@ -694,6 +710,38 @@
+         return reversalId
+     }
+ 
++    private suspend fun requirePurchaseCashRefundTimelineCovered(
++        invoice: PurchaseInvoiceEntity,
++        proposedRefundBase: Double = 0.0,
++        proposedCashDeltaBase: Double = 0.0,
++        eventDate: Long
++    ) {
++        val relevantDates = buildSet {
++            add(eventDate)
++            db.purchaseDao().supplierPaymentsForInvoice(invoice.id)
++                .filter { it.paymentDate >= eventDate }
++                .forEach { add(it.paymentDate) }
++            db.purchaseDao().returnsForInvoice(invoice.id)
++                .filter { it.status == "POSTED" && it.settlementType == "CASH_REFUND" && it.returnDate >= eventDate }
++                .forEach { add(it.returnDate) }
++        }.sorted()
++
++        for (date in relevantDates) {
++            val actualPaidBase = if (invoice.paymentType == "CASH") {
++                invoice.totalBase
++            } else {
++                db.purchaseDao().paidBaseForInvoiceAsOf(invoice.id, date)
++            } + proposedCashDeltaBase
++            val refundedBase = db.purchaseDao().cashRefundedBaseForInvoiceAsOf(invoice.id, date)
++            CashRefundCoveragePolicy.requireCovered(
++                actualCashBase = actualPaidBase,
++                alreadyRefundedBase = refundedBase,
++                requestedRefundBase = proposedRefundBase,
++                context = "فاتورة الشراء ${invoice.invoiceNo}: استرداد المورد النقدي يجب أن يكون مغطى بالنقد المدفوع فعلياً"
++            )
++        }
++    }
++
+     private suspend fun resolveTreasury(treasuryAccountId: Long?, currencyCode: String): TreasuryAccountEntity {
+         val treasury = if (treasuryAccountId != null) {
+             requireNotNull(db.accountingDao().treasuryById(treasuryAccountId)) { "الخزينة/البنك غير موجود" }
