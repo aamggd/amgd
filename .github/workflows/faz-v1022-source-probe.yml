@@ -1,4 +1,4 @@
-name: FAZ v1.0.22 Import Diagnostic
+name: FAZ v1.0.22 Release Build
 
 on:
   push:
@@ -11,44 +11,148 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
-      - name: Fetch source and inspect imports
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
         shell: bash
         run: |
           set -euo pipefail
-          API='https://api.firestorage.ai/dev/file'
-          SHARE='K0rEOsxvE2bR'
-          EXPECTED='FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-Source.zip'
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Fetch exact FAZ v1.0.22 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://api.firestorage.ai/dev/file'; SHARE='K0rEOsxvE2bR'
           curl -fsSL --retry 3 "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python - <<'PY'
           import json
           d=json.load(open('files.json'))
           target=next((x for x in (d.get('files') or []) if x.get('fileName')=='FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-Source.zip'), None)
-          if not target: raise SystemExit('source not found')
+          if not target: raise SystemExit('Expected source ZIP not found')
           open('file-id.txt','w').write(str(target['fileId']))
+          print('SOURCE_FILE=',target.get('fileName')); print('SOURCE_SIZE=',target.get('sizeBytes'))
           PY
           FILE_ID=$(cat file-id.txt)
           curl -fsSL --retry 3 -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
           python - <<'PY'
           import json
-          d=json.load(open('download.json'))
-          open('download-url.txt','w').write(d['downloadUrl'])
+          d=json.load(open('download.json')); u=d.get('downloadUrl')
+          if not u: raise SystemExit('downloadUrl missing')
+          open('download-url.txt','w').write(u)
           PY
-          curl -fsSL --retry 3 "$(cat download-url.txt)" -o faz-source.zip
-          mkdir -p work
-          unzip -q faz-source.zip -d work
-          ROOT=$(dirname "$(find work -type f -name settings.gradle.kts -print -quit)")
-          M="$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt"
-          P="$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt"
-          E="$ROOT/app/src/main/java/com/fush/erp/data/entity/ProductMasterEntities.kt"
-          echo '=== MasterDataService 1..95 ==='
-          nl -ba "$M" | sed -n '1,95p'
-          echo '=== ProductMasterService imports ==='
-          nl -ba "$P" | sed -n '1,80p'
-          echo '=== ProductMasterEntities package/classes ==='
-          grep -nE '^package |^data class (BrandEntity|ProductFamilyEntity|ProductTemplateEntity|ProductVariantEntity)' "$E"
-          echo '=== Existing imports mentioning entity package ==='
-          grep -n '^import com.fush.erp.data.entity' "$M" || true
+          curl -fL --retry 3 "$(cat download-url.txt)" -o faz-source.zip
+          test "$(stat -c%s faz-source.zip)" -gt 1000000
+          unzip -tq faz-source.zip
+          mkdir -p work && unzip -q faz-source.zip -d work
+          SETTINGS=$(find work -type f -name settings.gradle.kts -print -quit); test -n "$SETTINGS"
+          ROOT=$(dirname "$SETTINGS")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_ROOT=$ROOT"
+
+      - name: Apply minimal missing-import compile fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.source.outputs.root }}'
+          FILE="$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt"
+          python - "$FILE" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1]); s=p.read_text(encoding='utf-8')
+          imports=[
+              'import com.fush.erp.data.entity.BrandEntity',
+              'import com.fush.erp.data.entity.ProductFamilyEntity',
+              'import com.fush.erp.data.entity.ProductTemplateEntity',
+              'import com.fush.erp.data.entity.ProductVariantEntity',
+          ]
+          missing=[x for x in imports if x not in s]
+          if missing:
+              anchor='import com.fush.erp.data.entity.AuditEventEntity\n'
+              if anchor not in s: raise SystemExit('Import anchor missing')
+              s=s.replace(anchor, anchor+'\n'.join(missing)+'\n', 1)
+              p.write_text(s, encoding='utf-8')
+          print('ADDED_IMPORTS=',len(missing))
+          out=p.read_text(encoding='utf-8')
+          for x in imports:
+              assert x in out
+              print(x)
+          PY
+
+      - name: Verify source identity and migration contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.source.outputs.root }}'
+          grep -nE 'applicationId|versionCode|versionName|compileSdk|targetSdk|buildToolsVersion' "$ROOT/app/build.gradle.kts" || true
+          grep -qE 'versionCode[[:space:]]*=[[:space:]]*23' "$ROOT/app/build.gradle.kts"
+          grep -q '1.0.22' "$ROOT/app/build.gradle.kts"
+          grep -q 'MIGRATION_51_52_PRODUCT_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'ProductVariant.id intentionally equals items.id' "$ROOT/app/src/main/java/com/fush/erp/data/entity/ProductMasterEntities.kt"
+          ! grep -RIn --include='*.kt' --include='*.kts' 'fallbackToDestructiveMigration' "$ROOT/app/src" "$ROOT/app/build.gradle.kts"
+
+      - name: Run unit tests
+        shell: bash
+        working-directory: ${{ steps.source.outputs.root }}
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
+
+      - name: Build release APK and generate Room schema
+        shell: bash
+        working-directory: ${{ steps.source.outputs.root }}
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
+
+      - name: Verify and package release outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.source.outputs.root }}'
+          mkdir -p release-out/room-schema-52 release-out/test-reports
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -maxdepth 1 -type f -name '*.apk' -print | head -1); test -n "$APK"
+          cp "$APK" release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UNSIGNED.apk
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | head -3 | tee release-out/apk-badging.txt
+          grep -q "versionCode='23'" release-out/apk-badging.txt
+          grep -q "versionName='1.0.22" release-out/apk-badging.txt
+          SCHEMA=$(find "$ROOT" -type f -name '52.json' -print | head -1); test -n "$SCHEMA"
+          cp "$SCHEMA" release-out/room-schema-52/52.json
+          python - <<'PY'
+          import json
+          d=json.load(open('release-out/room-schema-52/52.json'))
+          v=d.get('database',{}).get('version',d.get('version'))
+          print('ROOM_SCHEMA_VERSION=',v)
+          if v != 52: raise SystemExit(f'Expected Room schema 52, got {v!r}')
+          PY
+          if [ -d "$ROOT/app/build/reports/tests" ]; then cp -R "$ROOT/app/build/reports/tests/." release-out/test-reports/; fi
+          sha256sum release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UNSIGNED.apk | tee release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UNSIGNED.apk.sha256
+          printf 'versionCode=23\nversionName=1.0.22-faz-product-master-variants\nroomSchema=52\nlegacyItemIdPreserved=true\n' > release-out/release-verification.txt
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle" || true
+          (cd work && zip -qr ../release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-Source.zip "$(basename "$ROOT")")
+          sha256sum release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-Source.zip > release-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-Source.zip.sha256
+
+      - name: Upload verified unsigned release
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: release-out/**
+          if-no-files-found: error
+          retention-days: 2
