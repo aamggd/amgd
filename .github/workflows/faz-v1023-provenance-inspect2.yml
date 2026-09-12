@@ -1,0 +1,34 @@
+name: FAZ v1.0.23 Provenance Inspect 2
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-provenance-inspect2.yml'
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+      - shell: bash
+        run: |
+          set -eu
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); mkdir work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); R=$(dirname "$S")
+          echo '===== StockDao ====='; sed -n '420,565p' "$R/app/src/main/java/com/fush/erp/data/dao/PurchaseDaos.kt"
+          echo '===== SalesDao allocations ====='; sed -n '80,135p' "$R/app/src/main/java/com/fush/erp/data/dao/SalesDaos.kt"
+          echo '===== Transfer post ====='; sed -n '420,505p' "$R/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt"
+          echo '===== Transfer reversal ====='; sed -n '525,590p' "$R/app/src/main/java/com/fush/erp/domain/AdvancedInventoryService.kt"
