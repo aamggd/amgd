@@ -15,21 +15,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Fetch temporary source share
+      - name: Inspect temporary source share
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           SHARE='https://firestorage.ai/ja/f/K0rEOsxvE2bR'
           curl -L --fail --retry 3 -A 'Mozilla/5.0' "$SHARE" -o share.html
-          wc -c share.html
+          echo "HTML_BYTES=$(wc -c < share.html)"
           python - <<'PY'
-          import re
-          s=open('share.html','r',encoding='utf-8',errors='ignore').read()
-          pats=[]
-          for pat in [r'https?://[^"\'<> ]+', r'href=["\']([^"\']+)', r'url["\']?\s*[:=]\s*["\']([^"\']+)']:
-              for m in re.finditer(pat,s,re.I):
-                  u=m.group(1) if m.lastindex else m.group(0)
-                  if any(k in u.lower() for k in ['download','zip','raw','file','api']):
-                      pats.append(u)
-          print('\n'.join(dict.fromkeys(pats))[:12000])
+          from pathlib import Path
+          import re, html
+          s=Path('share.html').read_text(encoding='utf-8',errors='ignore')
+          print('HAS_FILENAME=', 'FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-Source.zip' in s)
+          for needle in ['FAZ-Solar','gpYbtwqbwBQud0og','01a093866c3773debb1e6ea902563632','download','api/','__NEXT_DATA__','_next/data']:
+              print('\n###', needle)
+              low=s.lower(); n=needle.lower(); start=0; count=0
+              while count<8:
+                  i=low.find(n,start)
+                  if i<0: break
+                  print(html.unescape(s[max(0,i-350):min(len(s),i+700)]).replace('\n',' ')[:1200])
+                  start=i+len(n); count+=1
+          print('\n### SCRIPT_SRCS')
+          for u in re.findall(r'<script[^>]+src=["\']([^"\']+)',s,re.I): print(u)
+          print('\n### HREFS')
+          for u in re.findall(r'href=["\']([^"\']+)',s,re.I):
+              if any(k in u.lower() for k in ['api','download','file','zip','share']): print(u)
           PY
