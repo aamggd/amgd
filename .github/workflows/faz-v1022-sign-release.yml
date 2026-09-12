@@ -22,17 +22,6 @@ jobs:
       - name: Checkout CI branch
         uses: actions/checkout@v4
 
-      - name: Require signing secrets
-        shell: bash
-        env:
-          KEYSTORE_B64: ${{ secrets.FAZ_KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.FAZ_KEYSTORE_PASSWORD }}
-        run: |
-          set -euo pipefail
-          test -n "$KEYSTORE_B64" || { echo 'Missing secret FAZ_KEYSTORE_B64'; exit 2; }
-          test -n "$KEYSTORE_PASSWORD" || { echo 'Missing secret FAZ_KEYSTORE_PASSWORD'; exit 2; }
-          echo 'Signing secrets are present.'
-
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
@@ -58,25 +47,60 @@ jobs:
           repository: aamggd/amgd
           run-id: 34669441374
 
-      - name: Reconstruct keystore and sign
+      - name: Fetch authorized temporary key and sign
         shell: bash
-        env:
-          KEYSTORE_B64: ${{ secrets.FAZ_KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.FAZ_KEYSTORE_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p signed-out
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > faz-signing.p12
-          chmod 600 faz-signing.p12
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='JCpbii5_jUvM'
+          curl -fsSL --retry 3 "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          python - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          files=d.get('files') or []
+          wanted={
+            'FAZ-Solar-Permanent-Signing.p12':'key-id.txt',
+            'FAZ-Solar-Signing-Credentials (1).txt':'cred-id.txt',
+          }
+          for name,out in wanted.items():
+              x=next((f for f in files if f.get('fileName')==name),None)
+              if not x: raise SystemExit(f'Missing temporary signing input: {name}')
+              open(out,'w').write(str(x['fileId']))
+          PY
+          for kind in key cred; do
+            FILE_ID=$(cat "$kind-id.txt")
+            curl -fsSL --retry 3 -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o "$kind-download.json"
+            python - "$kind-download.json" "$kind-url.txt" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1])); u=d.get('downloadUrl')
+          if not u: raise SystemExit('downloadUrl missing')
+          open(sys.argv[2],'w').write(u)
+          PY
+            curl -fL --retry 3 "$(cat "$kind-url.txt")" -o "$kind.bin"
+          done
+          mv key.bin faz-signing.p12
+          mv cred.bin faz-credentials.txt
+          chmod 600 faz-signing.p12 faz-credentials.txt
+          KEYSTORE_PASSWORD=$(python - <<'PY'
+          from pathlib import Path
+          for line in Path('faz-credentials.txt').read_text(encoding='utf-8').splitlines():
+              if line.startswith('Password: '):
+                  print(line.split(': ',1)[1], end='')
+                  break
+          else:
+              raise SystemExit('Password line missing')
+          PY
+          )
+          test -n "$KEYSTORE_PASSWORD"
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          export KEYSTORE_PASSWORD
 
+          mkdir -p signed-out
           UNSIGNED=$(find unsigned-release -type f -name '*UNSIGNED.apk' -print | head -n1)
           test -n "$UNSIGNED"
-          echo "Unsigned APK: $(basename "$UNSIGNED")"
-
           BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
           "$BT/zipalign" -p -f 4 "$UNSIGNED" signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
           "$BT/zipalign" -c -v 4 signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk >/dev/null
-
           "$BT/apksigner" sign \
             --ks faz-signing.p12 \
             --ks-type PKCS12 \
@@ -88,8 +112,8 @@ jobs:
             --v3-signing-enabled true \
             --out signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk \
             signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
-
-          rm -f faz-signing.p12 signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
+          rm -f faz-signing.p12 faz-credentials.txt files.json *-id.txt *-url.txt *-download.json signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-ALIGNED.apk
+          unset KEYSTORE_PASSWORD
 
       - name: Verify signature, identity and version
         shell: bash
@@ -97,21 +121,17 @@ jobs:
           set -euo pipefail
           APK=signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk
           BT="$ANDROID_SDK_ROOT/build-tools/36.0.0"
-
           "$BT/apksigner" verify --verbose --print-certs "$APK" | tee signed-out/apksigner-verification.txt
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' signed-out/apksigner-verification.txt
           grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' signed-out/apksigner-verification.txt
           grep -q 'Number of signers: 1' signed-out/apksigner-verification.txt
-
           ACTUAL=$(grep 'Signer #1 certificate SHA-256 digest:' signed-out/apksigner-verification.txt | sed 's/.*digest: //' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')
           test "$ACTUAL" = "$EXPECTED_CERT_SHA256"
-          echo "CERTIFICATE_MATCH=PASS" | tee -a signed-out/apksigner-verification.txt
-
+          echo 'CERTIFICATE_MATCH=PASS' | tee -a signed-out/apksigner-verification.txt
           "$BT/aapt" dump badging "$APK" | head -3 | tee signed-out/apk-badging.txt
           grep -q "package: name='com.faz.solar'" signed-out/apk-badging.txt
           grep -q "versionCode='23'" signed-out/apk-badging.txt
           grep -q "versionName='1.0.22-faz-product-master-variants'" signed-out/apk-badging.txt
-
           sha256sum "$APK" | tee signed-out/FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-FINAL-SIGNED.apk.sha256
 
       - name: Upload signed release
