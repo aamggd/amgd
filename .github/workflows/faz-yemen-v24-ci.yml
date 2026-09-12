@@ -18,14 +18,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          python - <<'PY'
-          import urllib.request
-          url='https://firestorage.ai/ja/f/sdWWNq-YZGoq'
-          with urllib.request.urlopen(url, timeout=30) as r:
-              data=r.read()
-              print('status', r.status, 'url', r.geturl(), 'content_type', r.headers.get('content-type'), 'bytes', len(data))
-              open('share.bin','wb').write(data)
-          PY
-          file share.bin || true
-          head -c 5000 share.bin | strings | head -100 || true
-          grep -aoE 'https?://[^"<> ]+' share.bin | head -100 || true
+          curl -fsSL 'https://firestorage.ai/ja/f/sdWWNq-YZGoq' -o share.html
+          grep -aoE '/_next/static/chunks/app/[^" ]+\.js' share.html | sort -u > js_paths.txt || true
+          cat js_paths.txt || true
+          while IFS= read -r p; do
+            curl -fsSL "https://firestorage.ai${p}" >> page.js || true
+            printf '\n' >> page.js
+          done < js_paths.txt
+          echo '--- API-like strings from page JS ---'
+          grep -aoE '/api/[A-Za-z0-9_./?=&${}-]+' page.js | sort -u | head -200 || true
+          echo '--- download/share keywords ---'
+          strings page.js | grep -Eio '.{0,120}(download|public_id|publicId|share|file_id|fileId|presign|signed).{0,180}' | head -200 || true
+          echo '--- identifiers in HTML ---'
+          grep -aoE 'sdWWNq-YZGoq|onbkHihDz68Hlzcp|01a09437d1957712b25a6d63ccd487c4|FAZ-Yemen[^"<]+' share.html | head -100 || true
