@@ -1,0 +1,55 @@
+name: FAZ v1.0.23 Supplier Report Inspect
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-report-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download v1.0.22 verified source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+
+      - name: Inspect source structure and relevant contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRCZIP=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit)
+          test -n "$SRCZIP"
+          mkdir -p work
+          unzip -q "$SRCZIP" -d work
+          SETTINGS=$(find work -type f -name settings.gradle.kts -print -quit)
+          ROOT=$(dirname "$SETTINGS")
+          echo "=== ROOT ==="
+          echo "$ROOT"
+          echo "=== APP VERSION ==="
+          grep -nE 'versionCode|versionName' "$ROOT/app/build.gradle.kts"
+          echo "=== RELEVANT FILES ==="
+          grep -RIlE 'InventoryMovement|StockMovement|PurchaseInvoice|SupplierEntity|supplierId|Reports|تقارير|InventoryTransaction|StockLedger|CostLayer' "$ROOT/app/src/main/java" | sed "s#^$ROOT/##" | head -120
+          echo "=== ENTITY DECLARATIONS ==="
+          grep -RInE 'data class (Inventory|Stock|Purchase|Supplier)|@Entity\(.*(inventory|stock|purchase|supplier)|supplierId' "$ROOT/app/src/main/java/com/fush/erp/data" | head -220
+          echo "=== DAO REPORT QUERIES ==="
+          grep -RInE '@Query|supplierId|itemId|warehouseId|purchase.*return|sales.*return' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -260
+          echo "=== REPORT/NAV FILES ==="
+          find "$ROOT/app/src/main/java/com/fush/erp/ui" -type f \( -iname '*report*' -o -iname '*inventory*' -o -iname '*home*' \) -print | sed "s#^$ROOT/##" | head -120
+          echo "=== TEST FILES ==="
+          find "$ROOT/app/src/test" -type f -print 2>/dev/null | sed "s#^$ROOT/##" | head -160
+          echo "=== DATABASE ==="
+          grep -RInE 'version[[:space:]]*=[[:space:]]*52|FUSH_DB_SCHEMA_VERSION|MIGRATION_51_52' "$ROOT/app/src/main/java/com/fush/erp/data" | head -100
