@@ -1,4 +1,4 @@
-name: FAZ Yemen v27 Sales Structure Gate2 CI
+name: FAZ Yemen v27 Sales + Unknown Barcode Combined CI
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           import { chromium } from 'playwright';
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage({acceptDownloads:true});
-          await page.goto('https://firestorage.ai/ja/f/hTOjAhEccRgW', {waitUntil:'domcontentloaded', timeout:60000});
+          await page.goto('https://firestorage.ai/ja/f/nxM8zxybhEOS', {waitUntil:'domcontentloaded', timeout:60000});
           await page.waitForTimeout(8000);
           const candidates = [
             page.getByRole('button', {name:/ダウンロード|download/i}),
@@ -53,25 +53,26 @@ jobs:
           JS
           node download.mjs
           cd ..
-          echo 'd24560ef5dc93073a6af2ff5bc97b9611a4eb802a8e769fa13e08777451836bc  source.zip' | sha256sum -c -
+          echo 'a10b23b612718475da8abad982ab90492a233d1c70c9bc3436c1bf7895e7067f  source.zip' | sha256sum -c -
           mkdir source
           unzip -q source.zip -d source
           test -f source/settings.gradle.kts
           test ! -e source/keystore.properties
           test -f source/app/src/main/java/com/fush/erp/domain/SalesCustomerSelectionPolicy.kt
-          test -f source/app/src/test/java/com/fush/erp/domain/SalesCustomerSelectionPolicyTest.kt
-          test -f source/app/src/test/java/com/fush/erp/ui/SalesCashCreditStructureContractTest.kt
           test -f source/app/src/test/java/com/fush/erp/ui/SalesBarcodeGate1ContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/ui/SalesCashCreditStructureContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/ui/SalesUnknownBarcodeWorkflowContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/domain/ProductMasterBarcodeWorkflowContractTest.kt
           grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
           grep -q 'versionCode = 27' source/app/build.gradle.kts
           grep -q 'versionName = "1.0.26-faz-yemen-sales-structure-gate2"' source/app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'CUSTOMER_ENTRY_GENERAL_CASH = "GENERAL_CASH"' source/app/src/main/java/com/fush/erp/domain/SalesService.kt
           grep -q 'SalesCustomerSelectionPolicy.resolve' source/app/src/main/java/com/fush/erp/domain/SalesService.kt
-          grep -q 'عميل نقدي عام' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'ربط بعميل مسجل' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'customerOutstandingBaseAsOf' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'variantByBarcode' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'suspend fun assignVariantBarcode' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'suspend fun createQuickSalesVariant' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'ربط بصنف موجود' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'إنشاء صنف جديد' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'SecurityPermissions.MASTER_DATA_MANAGE' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
           grep -q 'existing.copy(quantity = existing.quantity + 1.0)' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
 
       - name: Set up JDK 17
@@ -109,14 +110,14 @@ jobs:
           test -f source/app/build/outputs/apk/release/app-release-unsigned.apk
           test -f source/app/schemas/com.fush.erp.data.FushDatabase/53.json
           mkdir -p out
-          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v27-Sales-Structure-Gate2-UNSIGNED.apk
+          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v27-Sales-UnknownBarcode-UNSIGNED.apk
           cp source/app/schemas/com.fush.erp.data.FushDatabase/53.json out/FushDatabase-53.json
-          (cd source && zip -qr ../out/FAZ-Yemen-v27-Sales-Structure-Gate2-BUILT-Source.zip . -x 'keystore.properties' '*.p12' '*.pfx' '*Signing-Credentials*' '.gradle/*' '.kotlin/*' 'app/build/*' '**/build/*')
+          (cd source && zip -qr ../out/FAZ-Yemen-v27-Sales-UnknownBarcode-BUILT-Source.zip . -x 'keystore.properties' '*.p12' '*.pfx' '*Signing-Credentials*' '.gradle/*' '.kotlin/*' 'app/build/*' '**/build/*')
           sha256sum out/* > out/SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FAZ-Yemen-v27-Sales-Structure-Gate2
+          name: FAZ-Yemen-v27-Sales-UnknownBarcode
           path: out/*
           if-no-files-found: error
