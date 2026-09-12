@@ -5,6 +5,9 @@ on:
     branches: [faz/v1.0.23-supplier-item-movement-report]
     paths:
       - '.github/workflows/faz-v1023-gate1b-provenance.yml'
+      - 'ci/faz_v1023_gate1b_apply.py'
+      - 'ci/SupplierStockProvenancePlannerTest.kt'
+      - 'ci/verify_supplier_provenance_migration.py'
   workflow_dispatch:
 
 permissions:
