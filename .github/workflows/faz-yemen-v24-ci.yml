@@ -8,26 +8,111 @@ permissions:
   contents: read
 
 jobs:
-  inspect-download:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Inspect temporary source share
+
+      - name: Download temporary source archive
         shell: bash
         run: |
           set -euxo pipefail
-          curl -fsSL 'https://firestorage.ai/ja/f/sdWWNq-YZGoq' -o share.html
-          grep -aoE '/_next/static/chunks/app/[^" ]+\.js' share.html | sort -u > js_paths.txt || true
-          cat js_paths.txt || true
-          while IFS= read -r p; do
-            curl -fsSL "https://firestorage.ai${p}" >> page.js || true
-            printf '\n' >> page.js
-          done < js_paths.txt
-          echo '--- API-like strings from page JS ---'
-          grep -aoE '/api/[A-Za-z0-9_./?=&${}-]+' page.js | sort -u | head -200 || true
-          echo '--- download/share keywords ---'
-          strings page.js | grep -Eio '.{0,120}(download|public_id|publicId|share|file_id|fileId|presign|signed).{0,180}' | head -200 || true
-          echo '--- identifiers in HTML ---'
-          grep -aoE 'sdWWNq-YZGoq|onbkHihDz68Hlzcp|01a09437d1957712b25a6d63ccd487c4|FAZ-Yemen[^"<]+' share.html | head -100 || true
+          mkdir browser && cd browser
+          npm init -y >/dev/null
+          npm install playwright@latest >/dev/null
+          npx playwright install chromium >/dev/null
+          cat > download.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage({acceptDownloads:true});
+          await page.goto('https://firestorage.ai/ja/f/sdWWNq-YZGoq', {waitUntil:'domcontentloaded', timeout:60000});
+          await page.waitForTimeout(8000);
+          console.log('page', await page.title(), page.url());
+          const candidates = [
+            page.getByRole('button', {name:/ダウンロード|download/i}),
+            page.getByRole('link', {name:/ダウンロード|download/i}),
+            page.locator('a[download]'),
+            page.locator('a[href*="download"]')
+          ];
+          let done=false;
+          for (const loc of candidates) {
+            const n = await loc.count();
+            console.log('candidate count', n);
+            if (!n) continue;
+            try {
+              const [download] = await Promise.all([
+                page.waitForEvent('download', {timeout:30000}),
+                loc.first().click({timeout:10000})
+              ]);
+              await download.saveAs('../source.zip');
+              console.log('saved', download.suggestedFilename());
+              done=true;
+              break;
+            } catch (e) { console.log('candidate failed', String(e)); }
+          }
+          if (!done) {
+            console.log((await page.locator('body').innerText()).slice(0,8000));
+            throw new Error('No downloadable file control found');
+          }
+          await browser.close();
+          JS
+          node download.mjs
+          cd ..
+          test $(stat -c%s source.zip) -gt 4000000
+          sha256sum source.zip
+          mkdir source
+          unzip -q source.zip -d source
+          test -f source/settings.gradle.kts
+          test -f source/app/src/main/assets/catalog/index.json
+          grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
+          grep -q 'versionCode = 24' source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Run unit tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build release APK from source
+        working-directory: source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Validate and package outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f source/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -f source/app/schemas/com.fush.erp.data.FushDatabase/53.json
+          mkdir -p out
+          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v24-Catalog-UNSIGNED.apk
+          cp source/app/schemas/com.fush.erp.data.FushDatabase/53.json out/FushDatabase-53.json
+          (cd source && zip -qr ../out/FAZ-Yemen-v24-Catalog-BUILT-Source.zip . -x '.gradle/*' 'app/build/*' '**/build/*')
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-Yemen-v24-Catalog
+          path: out/*
+          if-no-files-found: error
