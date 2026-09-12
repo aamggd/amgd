@@ -71,7 +71,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           script: |
-            set -euxo pipefail
+            bash -euxo pipefail <<'BASH'
             adb devices -l
             adb install v23.apk | tee v23-install.txt
             BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
@@ -99,6 +99,7 @@ jobs:
             if grep -q 'Process: com.faz.yemen' v24-androidruntime.log; then cat v24-androidruntime.log; exit 1; fi
             echo "UPGRADE_SMOKE=PASS" | tee smoke-result.txt
             echo "UID_PRESERVED=$AFTER_UID" | tee -a smoke-result.txt
+            BASH
 
       - name: Upload emulator evidence
         if: always()
