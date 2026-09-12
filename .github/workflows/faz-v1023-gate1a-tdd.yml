@@ -1,0 +1,258 @@
+name: FAZ v1.0.23 Gate1A Supplier Movement TDD
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate1a-tdd.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  tdd:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-Solar-ERP-v1.0.22-ProductMaster-Variants-UnsignedRelease
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34669441374
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Prepare exact v1.0.22 source
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          SRCZIP=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit)
+          mkdir -p work && unzip -q "$SRCZIP" -d work
+          SETTINGS=$(find work -type f -name settings.gradle.kts -print -quit)
+          ROOT=$(dirname "$SETTINGS")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: RED - add test before production implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          TEST="$ROOT/app/src/test/java/com/fush/erp/domain/SupplierItemMovementMathTest.kt"
+          mkdir -p "$(dirname "$TEST")"
+          cat > "$TEST" <<'KOTLIN'
+          package com.fush.erp.domain
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertNull
+          import org.junit.Test
+
+          class SupplierItemMovementMathTest {
+              private val day = 86_400_000L
+              private val from = 10L * day
+              private val to = 20L * day
+
+              @Test
+              fun `same sku from two suppliers never mixes sold quantity`() {
+                  val rows = SupplierItemMovementMath.build(
+                      events = listOf(
+                          SupplierItemMovementEvent(1L, 100L, 11L * day, "PURCHASE", 10.0, 100.0),
+                          SupplierItemMovementEvent(2L, 100L, 11L * day, "PURCHASE", 20.0, 240.0),
+                          SupplierItemMovementEvent(1L, 100L, 12L * day, "SALE", -6.0, -60.0, salesRevenueDeltaBase = 90.0)
+                      ),
+                      from = from,
+                      to = to
+                  )
+                  val a = rows.single { it.supplierId == 1L && it.itemId == 100L }
+                  val b = rows.single { it.supplierId == 2L && it.itemId == 100L }
+                  assertEquals(6.0, a.soldQtyBase, 1e-9)
+                  assertEquals(0.0, b.soldQtyBase, 1e-9)
+                  assertEquals(4.0, a.closingQtyBase, 1e-9)
+                  assertEquals(20.0, b.closingQtyBase, 1e-9)
+              }
+
+              @Test
+              fun `purchase return reduces only original supplier net received`() {
+                  val rows = SupplierItemMovementMath.build(
+                      listOf(
+                          SupplierItemMovementEvent(1L, 100L, 11L * day, "PURCHASE", 10.0, 100.0),
+                          SupplierItemMovementEvent(1L, 100L, 12L * day, "PURCHASE_RETURN", -2.0, -20.0),
+                          SupplierItemMovementEvent(2L, 100L, 11L * day, "PURCHASE", 7.0, 84.0)
+                      ), from, to
+                  )
+                  val a = rows.single { it.supplierId == 1L }
+                  val b = rows.single { it.supplierId == 2L }
+                  assertEquals(8.0, a.netReceivedQtyBase, 1e-9)
+                  assertEquals(7.0, b.netReceivedQtyBase, 1e-9)
+              }
+
+              @Test
+              fun `sales return restores same supplier and sell through uses opening plus net received`() {
+                  val rows = SupplierItemMovementMath.build(
+                      listOf(
+                          SupplierItemMovementEvent(1L, 100L, 5L * day, "LEGACY_OPENING", 5.0, 50.0),
+                          SupplierItemMovementEvent(1L, 100L, 11L * day, "PURCHASE", 15.0, 150.0),
+                          SupplierItemMovementEvent(1L, 100L, 12L * day, "SALE", -10.0, -100.0, salesRevenueDeltaBase = 160.0),
+                          SupplierItemMovementEvent(1L, 100L, 13L * day, "SALES_RETURN", 2.0, 20.0, salesRevenueDeltaBase = -32.0)
+                      ), from, to
+                  )
+                  val row = rows.single()
+                  assertEquals(5.0, row.openingQtyBase, 1e-9)
+                  assertEquals(8.0, row.netSoldQtyBase, 1e-9)
+                  assertEquals(12.0, row.closingQtyBase, 1e-9)
+                  assertEquals(40.0, row.sellThroughPct, 1e-9)
+                  assertEquals(80.0, row.cogsBase, 1e-9)
+                  assertEquals(128.0, row.salesRevenueBase, 1e-9)
+                  assertEquals(48.0, row.grossProfitBase, 1e-9)
+              }
+
+              @Test
+              fun `unattributed stock remains separate and is never assigned to supplier`() {
+                  val rows = SupplierItemMovementMath.build(
+                      listOf(SupplierItemMovementEvent(null, 100L, 5L * day, "LEGACY_OPENING", 9.0, 90.0)),
+                      from, to
+                  )
+                  val row = rows.single()
+                  assertNull(row.supplierId)
+                  assertEquals(9.0, row.closingQtyBase, 1e-9)
+              }
+          }
+          KOTLIN
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' > "$GITHUB_WORKSPACE/red.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -Eq 'SupplierItemMovementMath|SupplierItemMovementEvent|Unresolved reference|unresolved reference' "$GITHUB_WORKSPACE/red.log"
+          echo "RED_GATE=PASS (test failed for missing implementation as expected)"
+
+      - name: GREEN - add minimal supplier item movement math
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          FILE="$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementMath.kt"
+          cat > "$FILE" <<'KOTLIN'
+          package com.fush.erp.domain
+
+          data class SupplierItemMovementEvent(
+              val supplierId: Long?,
+              val itemId: Long,
+              val eventDate: Long,
+              val eventType: String,
+              val quantityDeltaBase: Double,
+              val inventoryValueDeltaBase: Double,
+              val salesRevenueDeltaBase: Double = 0.0
+          )
+
+          data class SupplierItemMovementSummary(
+              val supplierId: Long?,
+              val itemId: Long,
+              val openingQtyBase: Double,
+              val receivedQtyBase: Double,
+              val purchaseReturnQtyBase: Double,
+              val netReceivedQtyBase: Double,
+              val soldQtyBase: Double,
+              val salesReturnQtyBase: Double,
+              val netSoldQtyBase: Double,
+              val transferInQtyBase: Double,
+              val transferOutQtyBase: Double,
+              val otherIssueQtyBase: Double,
+              val adjustmentQtyBase: Double,
+              val closingQtyBase: Double,
+              val closingInventoryValueBase: Double,
+              val cogsBase: Double,
+              val salesRevenueBase: Double,
+              val grossProfitBase: Double,
+              val sellThroughPct: Double,
+              val lastSaleDate: Long?
+          )
+
+          object SupplierItemMovementMath {
+              private const val EPS = 1e-9
+
+              fun build(events: List<SupplierItemMovementEvent>, from: Long, to: Long): List<SupplierItemMovementSummary> {
+                  require(from <= to) { "الفترة غير صالحة" }
+                  return events
+                      .filter { it.eventDate <= to }
+                      .groupBy { it.supplierId to it.itemId }
+                      .map { (key, all) -> summarize(key.first, key.second, all, from, to) }
+                      .sortedWith(compareBy<SupplierItemMovementSummary>({ it.supplierId == null }, { it.supplierId ?: Long.MAX_VALUE }, { it.itemId }))
+              }
+
+              private fun summarize(
+                  supplierId: Long?,
+                  itemId: Long,
+                  all: List<SupplierItemMovementEvent>,
+                  from: Long,
+                  to: Long
+              ): SupplierItemMovementSummary {
+                  val opening = all.filter { it.eventDate < from }.sumOf { it.quantityDeltaBase }
+                  val period = all.filter { it.eventDate in from..to }
+                  fun qty(type: String) = period.filter { it.eventType == type }.sumOf { it.quantityDeltaBase }
+
+                  val received = qty("PURCHASE").coerceAtLeast(0.0)
+                  val purchaseReturns = (-qty("PURCHASE_RETURN")).coerceAtLeast(0.0)
+                  val sold = (-qty("SALE")).coerceAtLeast(0.0)
+                  val salesReturns = qty("SALES_RETURN").coerceAtLeast(0.0)
+                  val transferIn = qty("TRANSFER_IN").coerceAtLeast(0.0)
+                  val transferOut = (-qty("TRANSFER_OUT")).coerceAtLeast(0.0)
+                  val otherIssue = period.filter { it.eventType in setOf("DAMAGE", "ISSUE", "SCRAP") }
+                      .sumOf { (-it.quantityDeltaBase).coerceAtLeast(0.0) }
+                  val adjustment = qty("ADJUSTMENT")
+                  val netReceived = received - purchaseReturns
+                  val netSold = sold - salesReturns
+                  val closing = all.sumOf { it.quantityDeltaBase }
+                  val closingValue = all.sumOf { it.inventoryValueDeltaBase }
+                  val saleCogs = -period.filter { it.eventType == "SALE" }.sumOf { it.inventoryValueDeltaBase }
+                  val returnCost = period.filter { it.eventType == "SALES_RETURN" }.sumOf { it.inventoryValueDeltaBase }
+                  val cogs = (saleCogs - returnCost).coerceAtLeast(0.0)
+                  val revenue = period.filter { it.eventType == "SALE" || it.eventType == "SALES_RETURN" }
+                      .sumOf { it.salesRevenueDeltaBase }
+                  val grossProfit = revenue - cogs
+                  val denominator = opening + netReceived
+                  val sellThrough = if (denominator > EPS) (netSold / denominator * 100.0).coerceAtLeast(0.0) else 0.0
+                  val lastSale = all.filter { it.eventType == "SALE" && it.quantityDeltaBase < -EPS }
+                      .maxOfOrNull { it.eventDate }
+
+                  return SupplierItemMovementSummary(
+                      supplierId, itemId, opening, received, purchaseReturns, netReceived,
+                      sold, salesReturns, netSold, transferIn, transferOut, otherIssue, adjustment,
+                      closing, closingValue, cogs, revenue, grossProfit, sellThrough, lastSale
+                  )
+              }
+          }
+          KOTLIN
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' | tee "$GITHUB_WORKSPACE/green.log"
+          echo "GREEN_GATE=PASS"
+
+      - name: Package Gate1A source and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          mkdir -p gate1a-out
+          cp red.log green.log gate1a-out/
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle" || true
+          (cd "$(dirname "$ROOT")" && zip -qr "$GITHUB_WORKSPACE/gate1a-out/FAZ-Solar-ERP-v1.0.23-Gate1A-SupplierMovementMath-Source.zip" "$(basename "$ROOT")")
+          sha256sum gate1a-out/*.zip > gate1a-out/source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1A-SupplierMovementMath
+          path: gate1a-out/**
+          retention-days: 2
