@@ -1,0 +1,137 @@
+name: FAZ v1.0.23 Gate2A Supplier Movement Report Data
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-gate2a-report-data.yml'
+      - 'ci/faz_v1023_gate2a_apply.py'
+      - 'ci/SupplierItemMovementReportMathTest.kt'
+      - 'ci/verify_supplier_item_movement_report_sql.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate1B-SupplierProvenance
+          path: gate1b
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34673789195
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Prepare Gate1B source and Android SDK
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find gate1b -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'supplier_stock_sources' "$ROOT/app/src/main/java/com/fush/erp/data/SupplierStockProvenanceMigration.kt"
+
+      - name: RED - supplier report contract fails before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          TEST="$ROOT/app/src/test/java/com/fush/erp/domain/SupplierItemMovementReportMathTest.kt"
+          mkdir -p "$(dirname "$TEST")"
+          cp ci/SupplierItemMovementReportMathTest.kt "$TEST"
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.SupplierItemMovementReportMathTest' > "$GITHUB_WORKSPACE/gate2a-red.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -Eq 'SupplierItemMovementReportMath|SupplierItemMovementSummaryReportRow|Unresolved reference|unresolved reference' "$GITHUB_WORKSPACE/gate2a-red.log"
+          echo 'GATE2A_RED=PASS'
+
+      - name: GREEN - apply supplier report data layer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ci/faz_v1023_gate2a_apply.py '${{ steps.src.outputs.root }}'
+
+      - name: Verify supplier movement SQL with two suppliers sharing one SKU
+        shell: bash
+        run: |
+          set -euo pipefail
+          python ci/verify_supplier_item_movement_report_sql.py '${{ steps.src.outputs.root }}/app/src/main/java/com/fush/erp/data/dao/SupplierItemMovementReportSql.kt' | tee "$GITHUB_WORKSPACE/gate2a-sql.log"
+
+      - name: Run Gate1A Gate1B and Gate2A unit tests
+        shell: bash
+        working-directory: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' \
+            --tests 'com.fush.erp.domain.SupplierStockProvenancePlannerTest' \
+            --tests 'com.fush.erp.domain.SupplierItemMovementReportMathTest' | tee "$GITHUB_WORKSPACE/gate2a-tests.log"
+          echo 'GATE2A_GREEN=PASS'
+
+      - name: Compile release and validate Room schema remains 53
+        shell: bash
+        working-directory: ${{ steps.src.outputs.root }}
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -RIn --include='*.kt' --include='*.kts' 'fallbackToDestructiveMigration' app/src app/build.gradle.kts
+          SCHEMA=$(find . -type f -name '53.json' -print -quit); test -n "$SCHEMA"
+          python - "$SCHEMA" <<'PY'
+          import json,sys
+          d=json.load(open(sys.argv[1])); v=d.get('database',{}).get('version',d.get('version'))
+          assert v==53, v
+          print('ROOM_SCHEMA_53_UNCHANGED=PASS')
+          PY
+
+      - name: Verify Gate2A source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          grep -q 'supplierItemMovements' "$ROOT/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt"
+          grep -q 'supplierItemMovementSummaries' "$ROOT/app/src/main/java/com/fush/erp/data/dao/ReportDao.kt"
+          grep -q 'class SupplierItemMovementReportService' "$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementReport.kt"
+          grep -q 'val supplierItemMovementReportService' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q "COALESCE(sp.nameAr, 'غير منسوب')" "$ROOT/app/src/main/java/com/fush/erp/data/dao/SupplierItemMovementReportSql.kt"
+          echo 'REPORT_QUERY_SERVICE_WIRING=PASS'
+
+      - name: Package Gate2A source and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          mkdir -p gate2a-out/room-schema-53
+          cp gate2a-red.log gate2a-sql.log gate2a-tests.log gate2a-out/
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -print -quit)
+          cp "$SCHEMA" gate2a-out/room-schema-53/53.json
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle" || true
+          (cd "$(dirname "$ROOT")" && zip -qr "$GITHUB_WORKSPACE/gate2a-out/FAZ-Solar-ERP-v1.0.23-Gate2A-SupplierMovementReport-Data-Source.zip" "$(basename "$ROOT")")
+          sha256sum gate2a-out/*.zip > gate2a-out/source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate2A-SupplierMovementReport-Data
+          path: gate2a-out/**
+          retention-days: 2
