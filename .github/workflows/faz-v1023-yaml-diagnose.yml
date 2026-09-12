@@ -1,0 +1,19 @@
+name: FAZ v1.0.23 YAML Diagnose
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths: ['.github/workflows/faz-v1023-yaml-diagnose.yml']
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse target workflow with Ruby Psych
+        run: |
+          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/faz-v1023-gate1b-provenance.yml', aliases: true); puts 'YAML_PARSE_OK'"
+      - name: Show size and expression locations
+        run: |
+          wc -lc .github/workflows/faz-v1023-gate1b-provenance.yml
+          grep -n '\${{' .github/workflows/faz-v1023-gate1b-provenance.yml || true
