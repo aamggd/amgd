@@ -1,0 +1,103 @@
+name: SHIBANI v1.0.10 Natural Gradle Build
+
+on:
+  push:
+    branches: [shibani-v110-public-build-temp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Download exact R4 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request, json, pathlib, hashlib
+          sid='yMJjQ45tO0xU'
+          fid='01a098a7afd37093a5e3c34a1763a603'
+          expected='8d5e64fd3361602a57ab82505a2495caeeb78ea4804a1c378b98f8f1625ceca3'
+          api=f'https://api.firestorage.ai/dev/file/shares/{sid}/files/{fid}/download'
+          req=urllib.request.Request(api, data=b'', method='POST')
+          with urllib.request.urlopen(req, timeout=60) as r:
+              meta=json.load(r)
+          with urllib.request.urlopen(meta['downloadUrl'], timeout=240) as r:
+              b=r.read()
+          got=hashlib.sha256(b).hexdigest()
+          print('R4 sha256:', got)
+          if got != expected:
+              raise SystemExit(f'R4 SHA mismatch: {got}')
+          pathlib.Path('r4.tar.gz').write_bytes(b)
+          PY
+          rm -rf src && mkdir src
+          tar -xzf r4.tar.gz -C src
+          test -s src/gradlew
+          grep -q 'versionCode = 11' src/app/build.gradle.kts
+          grep -q 'versionName = "1.0.10"' src/app/build.gradle.kts
+
+      - name: Static P0 verification
+        working-directory: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/verify_shibani_v110_trusted_time_p0.py | tee ../p0-static-verifier.txt
+          grep -q 'RESULT 27/27 PASS' ../p0-static-verifier.txt
+
+      - name: Unit tests
+        working-directory: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest
+
+      - name: Build natural release APK and AAB
+        working-directory: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease :app:bundleRelease
+
+      - name: Package outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK=$(find src/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -type f -name '*.aab' | head -1)
+          test -s "$APK"
+          test -s "$AAB"
+          cp "$APK" out/SHIBANI-SOFT-ERP-v1.0.10-NATURAL-UNSIGNED.apk
+          cp "$AAB" out/SHIBANI-SOFT-ERP-v1.0.10-NATURAL-UNSIGNED.aab
+          cp p0-static-verifier.txt out/
+          sha256sum out/* > out/SHA256SUMS-CI.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHIBANI-v1.0.10-NATURAL-GRADLE-UNSIGNED
+          path: out/**
+          if-no-files-found: error
+          retention-days: 1
