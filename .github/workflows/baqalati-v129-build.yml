@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified R4 source
+      - name: Download verified R5 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/Hz1WXaItix2i'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/_wLpARRiQoC-'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,7 +36,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo 'df402fed791601a7ca8479af3f72b4a2857f470a5710b706fdea48d7f2b2f30d  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo '4ace6730c565f7b151ad7a2e2237e99bf02a1c375172cdca0cb1001bafe96b8d  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v129-source
