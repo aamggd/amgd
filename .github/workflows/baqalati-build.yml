@@ -1,4 +1,4 @@
-name: Baqalati Android Signing Tools
+name: Baqalati Android Aligned Release
 
 on:
   push:
@@ -6,32 +6,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  tools:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Package Android signing tools
+      - name: Download verified source
         shell: bash
         run: |
-          set -euxo pipefail
-          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          echo "Using build tools: $BT"
-          mkdir -p out
-          test -f "$BT/lib/apksigner.jar"
-          test -x "$BT/zipalign"
-          cp "$BT/lib/apksigner.jar" out/apksigner.jar
-          cp "$BT/zipalign" out/zipalign
-          LIBCPP=$(find "$BT" -type f -name 'libc++.so*' | head -n1)
-          test -n "$LIBCPP"
-          cp "$LIBCPP" out/libc++.so
-          chmod +x out/zipalign
-          printf '%s\n' "$BT" > out/android-build-tools.txt
-          sha256sum out/apksigner.jar out/zipalign out/libc++.so > out/SHA256SUMS.txt
-          ldd out/zipalign || true
-          ls -lh out
+          set -euo pipefail
+          curl -fL 'https://api.firestorage.ai/dev/file/shares/sEJLGarUoaUj/files/01a0987284bb774fb57756dcb511806c/download' -o /tmp/baqalati-source.zip
+          echo 'ad811148c7e1250a42d872d630601e24485a1f3fe09677164a221f66e18a5509  /tmp/baqalati-source.zip' | sha256sum -c -
+          unzip -q /tmp/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
 
-      - name: Upload signing tools
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build and zipalign release
+        working-directory: baqalati/source
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleRelease
+          APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
+          test -n "$APK"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          "$BT/zipalign" -f -p 4 "$APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.28-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.28-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.28-ALIGNED-UNSIGNED.apk"
+
+      - name: Upload aligned APK
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-android-signing-tools-with-libcxx
-          path: out/*
+          name: Baqalati-v1.0.28-aligned-unsigned
+          path: out/Baqalati-v1.0.28-ALIGNED-UNSIGNED.apk
           retention-days: 1
