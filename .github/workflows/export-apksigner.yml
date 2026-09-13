@@ -1,0 +1,29 @@
+name: Export Android apksigner tool
+
+on:
+  push:
+    branches: [ "baqalati-apksigner-tool-export" ]
+  workflow_dispatch:
+
+jobs:
+  export-apksigner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Package official apksigner
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          echo "Using build tools: $BT"
+          test -x "$BT/apksigner"
+          test -f "$BT/lib/apksigner.jar"
+          mkdir -p /tmp/apksigner-tool/lib
+          cp "$BT/apksigner" /tmp/apksigner-tool/
+          cp "$BT/lib/apksigner.jar" /tmp/apksigner-tool/lib/
+          sha256sum /tmp/apksigner-tool/apksigner /tmp/apksigner-tool/lib/apksigner.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-android-apksigner-tool
+          path: /tmp/apksigner-tool/**
+          retention-days: 1
+          if-no-files-found: error
