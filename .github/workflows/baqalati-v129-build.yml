@@ -117,6 +117,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Isolate Note10 licensing instrumentation test
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST='app/src/androidTest/java/com/fush/erp/licensing/Note10LicenseCompatibilityInstrumentedTest.kt'
+          test -f "$TEST"
+          cp "$TEST" /tmp/Note10LicenseCompatibilityInstrumentedTest.kt
+          rm -rf app/src/androidTest/java
+          mkdir -p app/src/androidTest/java/com/fush/erp/licensing
+          cp /tmp/Note10LicenseCompatibilityInstrumentedTest.kt "$TEST"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
