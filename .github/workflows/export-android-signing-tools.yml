@@ -25,10 +25,11 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p out/lib
+          mkdir -p out/lib out/lib64
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/
           cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" out/
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/lib/
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib64/libc++.so" out/lib64/
           chmod +x out/zipalign out/apksigner
           tar -czf android-build-tools-signing.tar.gz -C out .
 
