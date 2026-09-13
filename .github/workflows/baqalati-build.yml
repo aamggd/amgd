@@ -9,31 +9,51 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect temporary source share
+      - name: Resolve temporary source download with browser
         shell: bash
         run: |
           set -euxo pipefail
+          python3 -m pip install --quiet selenium
           python3 - <<'PY'
-          import re, requests
-          from urllib.parse import urljoin
-          base='https://firestorage.ai/ja/f/sEJLGarUoaUj'
-          s=requests.Session()
-          r=s.get(base, timeout=30)
-          print('page', r.status_code, len(r.content), r.url)
-          scripts=[urljoin(r.url,x) for x in re.findall(r'<script[^>]+src=["\']([^"\']+)',r.text)]
-          for u in scripts:
-              if '/_next/static/' not in u: continue
-              j=s.get(u,timeout=30)
-              text=j.text
-              if any(k in text.lower() for k in ['download','share','public_id','file_id']):
-                  print('\n=== SCRIPT',u,'bytes',len(text),'===')
-                  for key in ['download','public_id','file_id','share_url','/api/']:
-                      pos=0
-                      shown=0
-                      while shown<12:
-                          i=text.lower().find(key.lower(),pos)
-                          if i<0: break
-                          print(text[max(0,i-350):min(len(text),i+550)])
-                          print('\n---')
-                          pos=i+len(key); shown+=1
+          import json,time,os
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options()
+          opts.add_argument('--headless=new')
+          opts.add_argument('--no-sandbox')
+          opts.add_argument('--disable-dev-shm-usage')
+          opts.set_capability('goog:loggingPrefs', {'performance':'ALL','browser':'ALL'})
+          driver=webdriver.Chrome(options=opts)
+          driver.get('https://firestorage.ai/ja/f/sEJLGarUoaUj')
+          time.sleep(8)
+          print('TITLE',driver.title)
+          print('URL',driver.current_url)
+          print('BODY',driver.find_element(By.TAG_NAME,'body').text[:10000])
+          print('LINKS')
+          for a in driver.find_elements(By.TAG_NAME,'a'):
+              print('A',a.text, a.get_attribute('href'))
+          print('BUTTONS')
+          buttons=driver.find_elements(By.TAG_NAME,'button')
+          for b in buttons:
+              print('B',b.text, b.get_attribute('disabled'))
+          # print network requests likely related to API/download/storage
+          for rec in driver.get_log('performance'):
+              msg=json.loads(rec['message'])['message']
+              if msg['method']=='Network.requestWillBeSent':
+                  u=msg['params']['request']['url']
+                  if any(k in u.lower() for k in ['api','download','storage','share','file']): print('REQ',u)
+          # attempt click likely download button and record resulting URL/network
+          for b in buttons:
+              txt=(b.text or '').lower()
+              if any(k in txt for k in ['download','ダウンロード']):
+                  print('CLICK',b.text)
+                  b.click(); time.sleep(5); break
+          print('AFTER_URL',driver.current_url)
+          for rec in driver.get_log('performance'):
+              msg=json.loads(rec['message'])['message']
+              if msg['method']=='Network.requestWillBeSent':
+                  u=msg['params']['request']['url']
+                  if any(k in u.lower() for k in ['api','download','storage','share','file']): print('AFTER_REQ',u)
+          driver.quit()
           PY
