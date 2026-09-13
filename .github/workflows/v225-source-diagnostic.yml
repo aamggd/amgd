@@ -19,13 +19,13 @@ jobs:
         shell: bash
         run: |
           curl -fL --retry 3 'https://firestorage.ai/ja/f/r8NPLN6yqwM0' -o firestorage-page.html
-          curl -fL --retry 3 'https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js' -o firestorage-page.js
-          wc -c firestorage-page.html firestorage-page.js
+          curl -fL --retry 3 'https://firestorage.ai/_next/static/chunks/4899-d89df949f2dbd5af.js' -o firestorage-client.js
+          wc -c firestorage-page.html firestorage-client.js
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-ERP-v225-source-delivery-diagnostics
+          name: FUSH-ERP-v225-source-client-diagnostics
           path: |
             firestorage-page.html
-            firestorage-page.js
+            firestorage-client.js
           if-no-files-found: error
