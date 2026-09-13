@@ -3,20 +3,19 @@ name: Baqalati Android Build
 on:
   push:
     branches: [ "baqalati-build-v1.0.28" ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Download source archive
+      - name: Download verified source archive
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           mkdir -p /tmp/downloads
           python3 -m pip install --quiet selenium
           python3 - <<'PY'
-          import json,time,os,glob
+          import time,glob,os
           from selenium import webdriver
           from selenium.webdriver.chrome.options import Options
           from selenium.webdriver.common.by import By
@@ -24,38 +23,44 @@ jobs:
           opts.add_argument('--headless=new')
           opts.add_argument('--no-sandbox')
           opts.add_argument('--disable-dev-shm-usage')
-          opts.add_experimental_option('prefs', {
-              'download.default_directory':'/tmp/downloads',
-              'download.prompt_for_download':False,
-              'download.directory_upgrade':True,
-              'safebrowsing.enabled':True,
-          })
-          opts.set_capability('goog:loggingPrefs', {'performance':'ALL'})
+          opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
           d.get('https://firestorage.ai/ja/f/sEJLGarUoaUj')
           time.sleep(8)
-          buttons=d.find_elements(By.TAG_NAME,'button')
-          target=None
-          for b in buttons:
-              print('BUTTON',repr(b.text))
-              if (b.text or '').strip()=='ダウンロード': target=b
-          if target is None: raise RuntimeError('download button not found')
+          target=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード'][0]
           d.execute_script('arguments[0].click()',target)
           for _ in range(60):
               time.sleep(1)
-              files=glob.glob('/tmp/downloads/*')
-              print('files',[(os.path.basename(x),os.path.getsize(x)) for x in files])
-              if files and not any(x.endswith('.crdownload') for x in files): break
-          for rec in d.get_log('performance'):
-              msg=json.loads(rec['message'])['message']
-              if msg['method']=='Network.requestWillBeSent':
-                  u=msg['params']['request']['url']
-                  if any(k in u.lower() for k in ['api.firestorage.ai','download','shares/']): print('REQ',u)
+              f=glob.glob('/tmp/downloads/*.zip')
+              if f: break
           d.quit()
-          files=glob.glob('/tmp/downloads/*')
-          if not files: raise RuntimeError('no downloaded file')
-          print('DOWNLOADED',[(x,os.path.getsize(x)) for x in files])
+          if not f: raise RuntimeError('source archive was not downloaded')
+          os.rename(f[0],'/tmp/baqalati-source.zip')
           PY
-          file /tmp/downloads/*
-          ls -lh /tmp/downloads
+          echo 'ad811148c7e1250a42d872d630601e24485a1f3fe09677164a221f66e18a5509  /tmp/baqalati-source.zip' | sha256sum -c -
+          unzip -q /tmp/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build release
+        working-directory: baqalati/source
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleRelease
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp "$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.28-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.28-UNSIGNED.apk"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.28-unsigned
+          path: out/Baqalati-v1.0.28-UNSIGNED.apk
+          retention-days: 1
