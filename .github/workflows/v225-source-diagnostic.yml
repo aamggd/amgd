@@ -1,0 +1,31 @@
+name: V225 Source Delivery Diagnostic
+
+on:
+  push:
+    branches: [ci-v225-p0-20260913]
+    paths:
+      - '.github/workflows/v225-source-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch firestorage frontend assets
+        shell: bash
+        run: |
+          curl -fL --retry 3 'https://firestorage.ai/ja/f/r8NPLN6yqwM0' -o firestorage-page.html
+          curl -fL --retry 3 'https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js' -o firestorage-page.js
+          wc -c firestorage-page.html firestorage-page.js
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v225-source-delivery-diagnostics
+          path: |
+            firestorage-page.html
+            firestorage-page.js
+          if-no-files-found: error
