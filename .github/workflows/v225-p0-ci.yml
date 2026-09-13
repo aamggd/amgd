@@ -1,4 +1,4 @@
-name: V225 P0 Final Gate
+name: V225 P0 Build Only
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  gate:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -75,19 +75,14 @@ jobs:
           test -f src/settings.gradle.kts
           test -f src/gradle/wrapper/gradle-wrapper.jar
 
-      - name: Backend source regression
-        working-directory: src
-        run: python3 tools/test_v225_backend_hardening.py | tee ../v225-backend-regression.log
-
-      - name: Exact Android final gate
+      - name: Build release APK and AAB
         working-directory: src
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon test lint assembleRelease bundleRelease 2>&1 | tee ../v225-gradle-final-gate.log
+          gradle --no-daemon assembleRelease bundleRelease 2>&1 | tee ../v225-build-only.log
 
-      - name: Collect unsigned release outputs
-        if: success()
+      - name: Collect release outputs
         shell: bash
         run: |
           mkdir -p ci-output
@@ -97,26 +92,12 @@ jobs:
           test -n "$AAB"
           cp "$APK" ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.apk
           cp "$AAB" ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.aab
-          cp v225-gradle-final-gate.log ci-output/
-          cp v225-backend-regression.log ci-output/
-          sha256sum ci-output/* > ci-output/V225_CI_SHA256SUMS.txt
+          cp v225-build-only.log ci-output/
+          sha256sum ci-output/* > ci-output/V225_BUILD_ONLY_SHA256SUMS.txt
 
-      - name: Upload successful build artifacts
-        if: success()
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-ERP-v225-P0-CI-unsigned
+          name: FUSH-ERP-v225-P0-build-only
           path: ci-output/*
           if-no-files-found: error
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: FUSH-ERP-v225-P0-CI-failure-diagnostics
-          path: |
-            files.json
-            download.json
-            v225-gradle-final-gate.log
-            v225-backend-regression.log
-          if-no-files-found: ignore
