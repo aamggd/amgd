@@ -1,0 +1,93 @@
+name: V226 Package Only
+
+on:
+  push:
+    branches: [ci-v226-commercial-final-gate-20260913]
+    paths:
+      - '.github/workflows/v226-package-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download v226 R3 source
+        shell: bash
+        env:
+          SHARE_ID: 0Z1zz7g22KfH
+          EXPECTED_SHA256: 947e7b407728b8943606a8568d962d5e465bce8a9a8e3b7031f9a39f9b78a3a6
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          print(d['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source.zip -d src
+
+      - name: Build release APK and AAB
+        working-directory: src
+        shell: bash
+        run: gradle --no-daemon assembleRelease bundleRelease
+
+      - name: Collect package outputs
+        shell: bash
+        run: |
+          mkdir -p package-output
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" package-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.apk
+          cp "$AAB" package-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.aab
+          sha256sum package-output/* > package-output/SHA256SUMS-UNSIGNED.txt
+
+      - name: Upload package outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v226-Commercial-Final-Package-unsigned
+          path: package-output
+          if-no-files-found: error
