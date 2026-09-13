@@ -9,58 +9,89 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Download source archive
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
         shell: bash
         run: |
-          python3 - <<'PY'
-          import re, sys, urllib.parse, urllib.request
-          share = 'https://firestorage.ai/ja/f/lozF22vJEyVI'
-          headers = {'User-Agent': 'Mozilla/5.0'}
-          def get(url):
-              req = urllib.request.Request(url, headers=headers)
-              with urllib.request.urlopen(req, timeout=60) as r:
-                  return r.geturl(), r.headers, r.read()
-          final, hdr, body = get(share)
-          if body[:2] == b'PK':
-              open('source.zip','wb').write(body)
-              sys.exit(0)
-          html = body.decode('utf-8','replace')
-          candidates = []
-          patterns = [
-              r'''(?:href|src)=["']([^"']+)["']''',
-              r'''https?://[^"'<>\\s]+''',
-          ]
-          for pat in patterns:
-              for m in re.finditer(pat, html, re.I):
-                  raw = m.group(1) if m.lastindex else m.group(0)
-                  raw = raw.replace('&amp;','&').replace('\\u0026','&').replace('\\/','/')
-                  url = urllib.parse.urljoin(final, raw)
-                  low = url.lower()
-                  if 'download' in low or '.zip' in low or 'file' in low:
-                      candidates.append(url)
-          for url in dict.fromkeys(candidates):
-              try:
-                  _, _, data = get(url)
-                  if data[:2] == b'PK':
-                      open('source.zip','wb').write(data)
-                      print('Downloaded ZIP from', url)
-                      sys.exit(0)
-              except Exception as e:
-                  print('candidate failed:', url, e)
-          print(html[:20000])
-          raise SystemExit('Could not locate downloadable ZIP from temporary share page')
-          PY
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Download source archive through browser
+        shell: bash
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium --with-deps >/dev/null 2>&1
+          cat > download-source.js <<'JS'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          (async () => {
+            const share = 'https://firestorage.ai/ja/f/lozF22vJEyVI';
+            const browser = await chromium.launch({headless:true});
+            const page = await browser.newPage({acceptDownloads:true});
+            let saved = false;
+            page.on('response', async (resp) => {
+              if (saved) return;
+              try {
+                const h = await resp.allHeaders();
+                const ct = (h['content-type'] || '').toLowerCase();
+                const cd = (h['content-disposition'] || '').toLowerCase();
+                if (ct.includes('zip') || cd.includes('.zip')) {
+                  const b = await resp.body();
+                  if (b.length > 1000 && b[0] === 0x50 && b[1] === 0x4b) {
+                    fs.writeFileSync('source.zip', b);
+                    saved = true;
+                    console.log('Captured ZIP response:', resp.url());
+                  }
+                }
+              } catch (_) {}
+            });
+            await page.goto(share, {waitUntil:'domcontentloaded', timeout:120000});
+            for (let i=0; i<30 && !saved; i++) {
+              await page.waitForTimeout(1000);
+              const buttons = page.locator('a,button');
+              const count = await buttons.count();
+              for (let j=0; j<count && !saved; j++) {
+                const el = buttons.nth(j);
+                const txt = ((await el.innerText().catch(()=>'')) || '').trim();
+                const href = (await el.getAttribute('href').catch(()=>null)) || '';
+                if (/download|ダウンロード|保存/i.test(txt + ' ' + href)) {
+                  try {
+                    const dlPromise = page.waitForEvent('download', {timeout:5000});
+                    await el.click({timeout:3000});
+                    const dl = await dlPromise;
+                    await dl.saveAs('source.zip');
+                    saved = true;
+                    console.log('Downloaded via UI:', txt || href);
+                  } catch (_) {}
+                }
+              }
+            }
+            if (!saved) {
+              const html = await page.content();
+              fs.writeFileSync('firestorage-page.html', html);
+              throw new Error('Could not retrieve source ZIP from share page');
+            }
+            await browser.close();
+            const b = fs.readFileSync('source.zip');
+            if (!(b[0] === 0x50 && b[1] === 0x4b)) throw new Error('Downloaded file is not ZIP');
+            console.log('source.zip bytes:', b.length);
+          })().catch(e => { console.error(e); process.exit(1); });
+          JS
+          node download-source.js
 
       - name: Unpack source
         shell: bash
@@ -74,13 +105,17 @@ jobs:
         working-directory: buildsrc/source
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleRelease
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
 
-      - name: Collect APK
+      - name: Collect APK and signing tools
         shell: bash
         run: |
-          mkdir artifact
+          mkdir -p artifact/signing-tools/lib
           cp buildsrc/source/app/build/outputs/apk/release/*.apk artifact/Baqalati-v1.0.28-UNSIGNED.apk
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" artifact/signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" artifact/signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" artifact/signing-tools/lib/
+          chmod +x artifact/signing-tools/apksigner artifact/signing-tools/zipalign
           sha256sum artifact/Baqalati-v1.0.28-UNSIGNED.apk | tee artifact/SHA256SUMS.txt
 
       - name: Upload APK artifact
