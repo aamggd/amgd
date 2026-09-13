@@ -9,25 +9,53 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect firestorage page bundle
+      - name: Download source archive
         shell: bash
         run: |
           set -euxo pipefail
-          curl -fsSL 'https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js' -o /tmp/page.js
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
           python3 - <<'PY'
-          import re
-          t=open('/tmp/page.js',encoding='utf-8').read()
-          print('bytes',len(t))
-          for pat in ['api.firestorage.ai','download','shares/','fileId','requiresCushion','cushion']:
-              print('\n###',pat)
-              pos=0; n=0
-              while n<40:
-                  i=t.lower().find(pat.lower(),pos)
-                  if i<0: break
-                  print(t[max(0,i-500):min(len(t),i+1000)])
-                  print('\n---')
-                  pos=i+len(pat); n+=1
-          urls=sorted(set(re.findall(r'https?[^"\'` ]+',t)))
-          print('\nURL-LIKE')
-          for u in urls: print(u[:1000])
+          import json,time,os,glob
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options()
+          opts.add_argument('--headless=new')
+          opts.add_argument('--no-sandbox')
+          opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {
+              'download.default_directory':'/tmp/downloads',
+              'download.prompt_for_download':False,
+              'download.directory_upgrade':True,
+              'safebrowsing.enabled':True,
+          })
+          opts.set_capability('goog:loggingPrefs', {'performance':'ALL'})
+          d=webdriver.Chrome(options=opts)
+          d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
+          d.get('https://firestorage.ai/ja/f/sEJLGarUoaUj')
+          time.sleep(8)
+          buttons=d.find_elements(By.TAG_NAME,'button')
+          target=None
+          for b in buttons:
+              print('BUTTON',repr(b.text))
+              if (b.text or '').strip()=='ダウンロード': target=b
+          if target is None: raise RuntimeError('download button not found')
+          d.execute_script('arguments[0].click()',target)
+          for _ in range(60):
+              time.sleep(1)
+              files=glob.glob('/tmp/downloads/*')
+              print('files',[(os.path.basename(x),os.path.getsize(x)) for x in files])
+              if files and not any(x.endswith('.crdownload') for x in files): break
+          for rec in d.get_log('performance'):
+              msg=json.loads(rec['message'])['message']
+              if msg['method']=='Network.requestWillBeSent':
+                  u=msg['params']['request']['url']
+                  if any(k in u.lower() for k in ['api.firestorage.ai','download','shares/']): print('REQ',u)
+          d.quit()
+          files=glob.glob('/tmp/downloads/*')
+          if not files: raise RuntimeError('no downloaded file')
+          print('DOWNLOADED',[(x,os.path.getsize(x)) for x in files])
           PY
+          file /tmp/downloads/*
+          ls -lh /tmp/downloads
