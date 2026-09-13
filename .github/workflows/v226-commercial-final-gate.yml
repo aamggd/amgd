@@ -41,7 +41,7 @@ jobs:
       - name: Download v226 source input
         shell: bash
         env:
-          SHARE_ID: lLv0tYMoyrplVtKP
+          SHARE_ID: 1_U6b4T6vI_J
           EXPECTED_SHA256: ee8f51689a43f4444d2b1f73f232f352fbfb5f033a0139829988a2dcc008da5d
         run: |
           set -euxo pipefail
@@ -117,7 +117,7 @@ jobs:
           cp v226-static-commercial-gate.log ci-output/
           cp v225-backend-regression.log ci-output/
           if [ -d src/app/build/reports/tests ]; then cp -R src/app/build/reports/tests ci-output/reports/unit-tests; fi
-          if [ -d src/app/build/reports/lint-results-release.html ]; then cp src/app/build/reports/lint-results-release.html ci-output/reports/; fi
+          if [ -f src/app/build/reports/lint-results-release.html ]; then cp src/app/build/reports/lint-results-release.html ci-output/reports/; fi
           if [ -d src/app/build/reports/androidTests ]; then cp -R src/app/build/reports/androidTests ci-output/reports/androidTests; fi
           if [ -d src/app/build/outputs/androidTest-results ]; then cp -R src/app/build/outputs/androidTest-results ci-output/reports/androidTest-results; fi
           sha256sum ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.apk ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.aab > ci-output/V226_CI_SHA256SUMS.txt
