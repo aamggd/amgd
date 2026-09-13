@@ -9,16 +9,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve source archive metadata
+      - name: Inspect firestorage page bundle
         shell: bash
         run: |
           set -euxo pipefail
+          curl -fsSL 'https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js' -o /tmp/page.js
           python3 - <<'PY'
-          import json,requests
-          u='https://api.firestorage.ai/dev/file/shares/sEJLGarUoaUj/files?maxResults=1000'
-          r=requests.get(u,timeout=30)
-          print('STATUS',r.status_code,r.headers.get('content-type'))
-          print(r.text)
-          r.raise_for_status()
-          open('/tmp/firestorage.json','w').write(r.text)
+          import re
+          t=open('/tmp/page.js',encoding='utf-8').read()
+          print('bytes',len(t))
+          for pat in ['api.firestorage.ai','download','shares/','fileId','requiresCushion','cushion']:
+              print('\n###',pat)
+              pos=0; n=0
+              while n<40:
+                  i=t.lower().find(pat.lower(),pos)
+                  if i<0: break
+                  print(t[max(0,i-500):min(len(t),i+1000)])
+                  print('\n---')
+                  pos=i+len(pat); n+=1
+          urls=sorted(set(re.findall(r'https?[^"\'` ]+',t)))
+          print('\nURL-LIKE')
+          for u in urls: print(u[:1000])
           PY
