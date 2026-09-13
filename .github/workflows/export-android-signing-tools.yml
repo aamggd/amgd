@@ -1,0 +1,40 @@
+name: Export Android Signing Tools
+
+on:
+  push:
+    branches: [faz-yemen-v24-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  export-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install build tools 36.0.0
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;36.0.0"
+
+      - name: Package signing tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/lib
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" out/
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/lib/
+          chmod +x out/zipalign out/apksigner
+          tar -czf android-build-tools-signing.tar.gz -C out .
+
+      - name: Upload signing tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-signing-36.0.0
+          path: android-build-tools-signing.tar.gz
+          if-no-files-found: error
