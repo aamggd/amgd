@@ -1,0 +1,131 @@
+name: Baqalati v1.0.29 Offline Licensing Build
+
+on:
+  push:
+    branches: [ "baqalati-build-v1.0.29" ]
+  workflow_dispatch:
+
+jobs:
+  prepare-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified R2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
+          python3 - <<'PY'
+          import time,glob,os
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options()
+          opts.add_argument('--headless=new')
+          opts.add_argument('--no-sandbox')
+          opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
+          d=webdriver.Chrome(options=opts)
+          d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
+          d.get('https://firestorage.ai/ja/f/e--XYS1ODje7')
+          time.sleep(8)
+          buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
+          if not buttons:
+              raise RuntimeError('Firestorage download button not found')
+          d.execute_script('arguments[0].click()',buttons[0])
+          files=[]
+          for _ in range(90):
+              time.sleep(1)
+              files=glob.glob('/tmp/downloads/*.zip')
+              if files and not glob.glob('/tmp/downloads/*.crdownload'): break
+          d.quit()
+          if not files: raise RuntimeError('source archive was not downloaded')
+          os.rename(files[0],'/tmp/baqalati-source.zip')
+          PY
+          echo '1a4be4d6eca6a712f90bdb3b47fad619934bf5f47fe95be3833e60a258aba731  /tmp/baqalati-source.zip' | sha256sum -c -
+      - name: Upload verified source for build jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-v129-source
+          path: /tmp/baqalati-source.zip
+          retention-days: 1
+
+  android-build:
+    needs: prepare-source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baqalati-v129-source
+          path: /tmp/source
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/baqalati"
+          unzip -q /tmp/source/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Core and Android unit tests
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :licensing-core:test :license-generator-windows:test :license-generator-android:testDebugUnitTest :app:testDebugUnitTest
+      - name: Build customer and Android generator releases
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:assembleRelease :license-generator-android:assembleRelease
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
+          GEN_APK=$(find license-generator-android/build/outputs/apk/release -name '*.apk' -type f | head -n1)
+          test -n "$APP_APK" && test -n "$GEN_APK"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.29-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.29-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$GEN_APK" "$GITHUB_WORKSPACE/out/Baqalati-License-Generator-Android-v1.0.0-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-License-Generator-Android-v1.0.0-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/"*.apk
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-v129-android-artifacts
+          path: out/*.apk
+          retention-days: 1
+
+  windows-generator:
+    needs: prepare-source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baqalati-v129-source
+          path: ${{ runner.temp }}\source
+      - name: Extract source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\baqalati" | Out-Null
+          Expand-Archive -Path "${{ runner.temp }}\source\baqalati-source.zip" -DestinationPath "$env:GITHUB_WORKSPACE\baqalati" -Force
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test and package Windows generator
+        working-directory: baqalati
+        shell: cmd
+        run: |
+          gradlew.bat --no-daemon :licensing-core:test :license-generator-windows:test :license-generator-windows:installDist
+          cd license-generator-windows
+          call package-windows.bat
+      - name: Upload Windows generator
+        uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-license-generator-windows-v1.0.0
+          path: baqalati/license-generator-windows/build/jpackage/Baqalati License Generator/**
+          retention-days: 1
