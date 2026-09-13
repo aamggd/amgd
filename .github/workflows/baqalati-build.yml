@@ -9,26 +9,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Baqalati source archive
+      - name: Inspect temporary source share
         shell: bash
         run: |
           set -euxo pipefail
           python3 - <<'PY'
           import re, requests
           from urllib.parse import urljoin
-          u='https://firestorage.ai/ja/f/sEJLGarUoaUj'
-          r=requests.get(u, timeout=30, allow_redirects=True)
-          print('status', r.status_code, 'url', r.url, 'ctype', r.headers.get('content-type'), 'bytes', len(r.content))
-          open('/tmp/share.bin','wb').write(r.content)
-          text=r.text if 'text' in (r.headers.get('content-type') or '') else ''
-          print(text[:5000])
-          urls=[]
-          for m in re.finditer(r'''(?:href|src)=["']([^"']+)["']''', text):
-              x=urljoin(r.url,m.group(1))
-              if any(k in x.lower() for k in ['download','file','api','s3','storage']): urls.append(x)
-          print('candidate urls:')
-          for x in urls: print(x)
+          base='https://firestorage.ai/ja/f/sEJLGarUoaUj'
+          s=requests.Session()
+          r=s.get(base, timeout=30)
+          print('page', r.status_code, len(r.content), r.url)
+          scripts=[urljoin(r.url,x) for x in re.findall(r'<script[^>]+src=["\']([^"\']+)',r.text)]
+          for u in scripts:
+              if '/_next/static/' not in u: continue
+              j=s.get(u,timeout=30)
+              text=j.text
+              if any(k in text.lower() for k in ['download','share','public_id','file_id']):
+                  print('\n=== SCRIPT',u,'bytes',len(text),'===')
+                  for key in ['download','public_id','file_id','share_url','/api/']:
+                      pos=0
+                      shown=0
+                      while shown<12:
+                          i=text.lower().find(key.lower(),pos)
+                          if i<0: break
+                          print(text[max(0,i-350):min(len(text),i+550)])
+                          print('\n---')
+                          pos=i+len(key); shown+=1
           PY
-
-      - name: Show downloaded object type
-        run: file /tmp/share.bin && ls -lh /tmp/share.bin
