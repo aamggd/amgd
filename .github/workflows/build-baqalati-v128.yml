@@ -39,7 +39,7 @@ jobs:
           const { chromium } = require('playwright');
           const fs = require('fs');
           (async () => {
-            const share = 'https://firestorage.ai/ja/f/lozF22vJEyVI';
+            const share = 'https://firestorage.ai/ja/f/5cfdKbxMCZYP';
             const browser = await chromium.launch({headless:true});
             const page = await browser.newPage({acceptDownloads:true});
             let saved = false;
@@ -80,11 +80,7 @@ jobs:
                 }
               }
             }
-            if (!saved) {
-              const html = await page.content();
-              fs.writeFileSync('firestorage-page.html', html);
-              throw new Error('Could not retrieve source ZIP from share page');
-            }
+            if (!saved) throw new Error('Could not retrieve source ZIP from share page');
             await browser.close();
             const b = fs.readFileSync('source.zip');
             if (!(b[0] === 0x50 && b[1] === 0x4b)) throw new Error('Downloaded file is not ZIP');
