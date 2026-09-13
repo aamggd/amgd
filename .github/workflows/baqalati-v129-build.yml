@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified R2 source
+      - name: Download verified R3 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/e--XYS1ODje7'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/N3s58_dSQ-R6'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,12 +36,13 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '1a4be4d6eca6a712f90bdb3b47fad619934bf5f47fe95be3833e60a258aba731  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'a1ab04f65acd5a736d4aa95178e2a6524f2895085e2bbc7d9a45777a8bd1889f  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v129-source
           path: /tmp/baqalati-source.zip
           retention-days: 1
+          if-no-files-found: error
 
   android-build:
     needs: prepare-source
@@ -76,6 +77,7 @@ jobs:
           name: baqalati-v129-android-diagnostics
           path: android-tests.log
           retention-days: 1
+          if-no-files-found: error
       - name: Fail if tests failed
         if: steps.android_tests.outcome == 'failure'
         shell: bash
@@ -101,6 +103,7 @@ jobs:
           name: baqalati-v129-android-artifacts
           path: out/*.apk
           retention-days: 1
+          if-no-files-found: error
 
   windows-generator:
     needs: prepare-source
@@ -119,15 +122,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Test and package Windows generator
+      - name: Test Windows generator
         working-directory: baqalati
         shell: cmd
+        run: call gradlew.bat --no-daemon :licensing-core:test :license-generator-windows:test :license-generator-windows:installDist
+      - name: Package Windows generator with jpackage
+        working-directory: baqalati/license-generator-windows
+        shell: cmd
+        run: call package-windows.bat
+      - name: Verify Windows package exists
+        shell: pwsh
         run: |
-          gradlew.bat --no-daemon :licensing-core:test :license-generator-windows:test :license-generator-windows:installDist
-          cd license-generator-windows
-          call package-windows.bat
+          $path = "$env:GITHUB_WORKSPACE\baqalati\license-generator-windows\build\jpackage\Baqalati License Generator"
+          if (-not (Test-Path $path)) { throw "Windows jpackage output missing: $path" }
+          Get-ChildItem -Recurse $path | Select-Object FullName,Length
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-license-generator-windows-v1.0.0
-          path: baqalati/license-generator-windows/build/jpackage/Baqalati License Generator/**
+          path: baqalati/license-generator-windows/build/jpackage/**
           retention-days: 1
+          if-no-files-found: error
