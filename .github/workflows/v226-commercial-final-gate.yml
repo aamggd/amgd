@@ -1,0 +1,147 @@
+name: V226 Commercial Final Gate
+
+on:
+  push:
+    branches: [ci-v226-commercial-final-gate-20260913]
+    paths:
+      - '.github/workflows/v226-commercial-final-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download v226 source input
+        shell: bash
+        env:
+          SHARE_ID: lLv0tYMoyrplVtKP
+          EXPECTED_SHA256: ee8f51689a43f4444d2b1f73f232f352fbfb5f033a0139829988a2dcc008da5d
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          print(d['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -t source.zip >/dev/null
+
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir src
+          unzip -q source.zip -d src
+          test -f src/settings.gradle.kts
+          test -f src/gradle/wrapper/gradle-wrapper.jar
+          test -f src/supabase/V226_COMMERCIAL_FINAL_GATE.sql
+
+      - name: Static commercial gate regression
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 tools/test_v226_commercial_gate.py | tee ../v226-static-commercial-gate.log
+          python3 tools/test_v225_backend_hardening.py | tee ../v225-backend-regression.log
+
+      - name: Android JVM lint release and test APK gate
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon test lint assembleRelease bundleRelease assembleDebug assembleDebugAndroidTest 2>&1 | tee ../v226-gradle-final-gate.log
+
+      - name: Run instrumented tests on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: cd src && gradle --no-daemon connectedDebugAndroidTest 2>&1 | tee ../v226-instrumented-tests.log
+
+      - name: Collect release evidence
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p ci-output/reports
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.apk
+          cp "$AAB" ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.aab
+          cp v226-gradle-final-gate.log ci-output/
+          cp v226-instrumented-tests.log ci-output/
+          cp v226-static-commercial-gate.log ci-output/
+          cp v225-backend-regression.log ci-output/
+          if [ -d src/app/build/reports/tests ]; then cp -R src/app/build/reports/tests ci-output/reports/unit-tests; fi
+          if [ -d src/app/build/reports/lint-results-release.html ]; then cp src/app/build/reports/lint-results-release.html ci-output/reports/; fi
+          if [ -d src/app/build/reports/androidTests ]; then cp -R src/app/build/reports/androidTests ci-output/reports/androidTests; fi
+          if [ -d src/app/build/outputs/androidTest-results ]; then cp -R src/app/build/outputs/androidTest-results ci-output/reports/androidTest-results; fi
+          sha256sum ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.apk ci-output/FUSH_ERP_Mobile_v226-CommercialFinalGate-UNSIGNED.aab > ci-output/V226_CI_SHA256SUMS.txt
+
+      - name: Upload successful build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v226-Commercial-Final-Gate-unsigned
+          path: ci-output
+          if-no-files-found: error
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v226-Commercial-Final-Gate-failure-diagnostics
+          path: |
+            files.json
+            download.json
+            v226-gradle-final-gate.log
+            v226-instrumented-tests.log
+            v226-static-commercial-gate.log
+            v225-backend-regression.log
+            src/app/build/reports
+            src/app/build/outputs/androidTest-results
+          if-no-files-found: ignore
