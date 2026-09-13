@@ -1,0 +1,40 @@
+name: SHIBANI Android Build Tools Export
+
+on:
+  push:
+    branches: [shibani-v110-public-build-temp]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;36.0.0"
+      - name: Package signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p out/lib
+          cp "$BT/zipalign" out/
+          cp "$BT/aapt2" out/
+          cp "$BT/apksigner" out/
+          cp "$BT/lib/apksigner.jar" out/lib/
+          sha256sum out/zipalign out/aapt2 out/apksigner out/lib/apksigner.jar > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-36-signing-utils
+          path: out/**
+          if-no-files-found: error
+          retention-days: 1
