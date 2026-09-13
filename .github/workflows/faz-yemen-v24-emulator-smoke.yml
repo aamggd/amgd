@@ -1,4 +1,4 @@
-name: FAZ Yemen v27 Emulator Upgrade Smoke
+name: FAZ Yemen v28 Emulator Upgrade Smoke
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download signed v26 and v27 APKs
+      - name: Download signed v27 and v28 APKs
         shell: bash
         run: |
           set -euxo pipefail
@@ -52,37 +52,23 @@ jobs:
           if (!done) throw new Error('No downloadable file control found for '+url);
           await browser.close();
           JS
-          node download.mjs 'https://firestorage.ai/ja/f/Sz3_7jNFFP81' '../v26.apk'
           node download.mjs 'https://firestorage.ai/ja/f/-EDZXwOaTN2B' '../v27.apk'
+          node download.mjs 'https://firestorage.ai/ja/f/kV7WdwXrt-JI' '../v28.apk'
           cd ..
-          echo 'eb5304158097443b23a24518488e240fd0d2e7e9d310fa6893e49cb6594c5183  v26.apk' | sha256sum -c -
           echo 'cfbcc6b6f8f88ac5d1cbe423c39384e58cbe54caacc01c28704fdd0f065c6b71  v27.apk' | sha256sum -c -
+          echo '20324627fc4c25152f1c893ec6bb8f42cba1ad17be104d0476bdcfed40b28388  v28.apk' | sha256sum -c -
 
       - name: Prepare upgrade smoke script
         shell: bash
         run: |
-          cat > smoke-v27.sh <<'BASH'
+          cat > smoke-v28.sh <<'BASH'
           #!/usr/bin/env bash
           set -euxo pipefail
           adb devices -l
-          adb install v26.apk | tee v26-install.txt
+          adb install v27.apk | tee v27-install.txt
           BEFORE_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
           test -n "$BEFORE_UID"
           echo "$BEFORE_UID" > before_uid.txt
-          adb logcat -c
-          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v26-start.txt
-          sleep 15
-          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
-          test -n "$PID"
-          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v26-androidruntime.log || true
-          if grep -q 'Process: com.faz.yemen' v26-androidruntime.log; then cat v26-androidruntime.log; exit 1; fi
-          adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=26|versionName=1.0.25-faz-yemen-barcode-gate1'
-          adb install -r v27.apk | tee upgrade-install.txt
-          AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
-          test -n "$AFTER_UID"
-          test "$BEFORE_UID" = "$AFTER_UID"
-          adb shell dumpsys package com.faz.yemen | tee v27-package.txt | grep -E 'versionCode=27|versionName=1.0.26-faz-yemen-sales-structure-gate2'
-          adb shell am force-stop com.faz.yemen
           adb logcat -c
           adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v27-start.txt
           sleep 20
@@ -90,13 +76,34 @@ jobs:
           test -n "$PID"
           adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v27-androidruntime.log || true
           if grep -q 'Process: com.faz.yemen' v27-androidruntime.log; then cat v27-androidruntime.log; exit 1; fi
+          adb shell dumpsys package com.faz.yemen | grep -E 'versionCode=27|versionName=1.0.26-faz-yemen-sales-structure-gate2'
+
+          adb install -r v28.apk | tee upgrade-install.txt
+          AFTER_UID="$(adb shell dumpsys package com.faz.yemen | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1 | tr -d '\r')"
+          test -n "$AFTER_UID"
+          test "$BEFORE_UID" = "$AFTER_UID"
+          adb shell dumpsys package com.faz.yemen | tee v28-package.txt | grep -E 'versionCode=28|versionName=1.0.27-faz-yemen-simplified-entry'
+          adb shell am force-stop com.faz.yemen
+          adb logcat -c
+          adb shell am start -W -n com.faz.yemen/com.fush.erp.MainActivity | tee v28-start.txt
+          sleep 25
+          PID="$(adb shell pidof com.faz.yemen | tr -d '\r')"
+          test -n "$PID"
+          adb logcat -d -v threadtime AndroidRuntime:E '*:S' > v28-androidruntime.log || true
+          if grep -q 'Process: com.faz.yemen' v28-androidruntime.log; then cat v28-androidruntime.log; exit 1; fi
+          adb logcat -d -v threadtime > v28-logcat.txt || true
+          if grep -Eqi 'Room cannot verify the data integrity|A migration from 53 to 54 was required but not found|Migration.*failed' v28-logcat.txt; then
+            grep -Ei 'Room cannot verify the data integrity|A migration from 53 to 54 was required but not found|Migration.*failed' v28-logcat.txt
+            exit 1
+          fi
           echo "UPGRADE_SMOKE=PASS" | tee smoke-result.txt
           echo "UID_PRESERVED=$AFTER_UID" | tee -a smoke-result.txt
+          echo "ROOM_53_TO_54_STARTUP=PASS" | tee -a smoke-result.txt
           BASH
-          chmod +x smoke-v27.sh
-          bash -n smoke-v27.sh
+          chmod +x smoke-v28.sh
+          bash -n smoke-v28.sh
 
-      - name: Run v26 to v27 upgrade smoke on Android emulator
+      - name: Run v27 to v28 upgrade smoke on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -108,21 +115,22 @@ jobs:
           heap-size: 512M
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
-          script: ./smoke-v27.sh
+          script: ./smoke-v28.sh
 
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: FAZ-Yemen-v27-Emulator-Smoke-Evidence
+          name: FAZ-Yemen-v28-Emulator-Smoke-Evidence
           path: |
-            v26-install.txt
-            v26-start.txt
-            v26-androidruntime.log
-            upgrade-install.txt
-            v27-package.txt
+            v27-install.txt
             v27-start.txt
             v27-androidruntime.log
+            upgrade-install.txt
+            v28-package.txt
+            v28-start.txt
+            v28-androidruntime.log
+            v28-logcat.txt
             before_uid.txt
             smoke-result.txt
           if-no-files-found: warn
