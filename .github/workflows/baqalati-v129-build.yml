@@ -1,4 +1,4 @@
-name: Baqalati v1.0.30 Grocery Navigation Build
+name: Baqalati v1.0.31 Note10 License Hotfix
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.30 R2 source
+      - name: Download verified v1.0.31 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/j5_eeBfUTeuK'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/nE_bUnkgquTV'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,10 +36,10 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '06c248dbde4517ff0444e3a3b8637bfd92830e8eafcc38b9fd14a739b372a665  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'a3c9bee8eb4f24b56f70cb09d57ec1fd5791b36b5ccd55a2631990a775408e62  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v130-source
+          name: baqalati-v131-source
           path: /tmp/baqalati-source.zip
           retention-days: 1
           if-no-files-found: error
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v130-source
+          name: baqalati-v131-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -62,26 +62,20 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Licensing core and app unit tests
-        id: android_tests
-        continue-on-error: true
         working-directory: baqalati
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :licensing-core:test :app:testDebugUnitTest 2>&1 | tee "$GITHUB_WORKSPACE/android-tests.log"
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v130-diagnostics
+          name: baqalati-v131-diagnostics
           path: android-tests.log
           retention-days: 1
           if-no-files-found: error
-      - name: Fail if tests failed
-        if: steps.android_tests.outcome == 'failure'
-        shell: bash
-        run: exit 1
       - name: Build and align Baqalati release
         working-directory: baqalati
         shell: bash
@@ -92,12 +86,47 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
           test -n "$APP_APK"
-          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.30-Grocery-Navigation-ALIGNED-UNSIGNED.apk"
-          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.30-Grocery-Navigation-ALIGNED-UNSIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.30-Grocery-Navigation-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.31-Note10-License-Hotfix-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.31-Note10-License-Hotfix-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.31-Note10-License-Hotfix-ALIGNED-UNSIGNED.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v130-android-artifact
+          name: baqalati-v131-android-artifact
           path: out/*.apk
           retention-days: 1
           if-no-files-found: error
+
+  note10-keystore-compatibility:
+    needs: prepare-source
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 31]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baqalati-v131-source
+          path: /tmp/source
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/baqalati"
+          unzip -q /tmp/source/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run license Keystore compatibility test on API ${{ matrix.api-level }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          disable-animations: true
+          working-directory: baqalati
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.licensing.Note10LicenseCompatibilityInstrumentedTest
