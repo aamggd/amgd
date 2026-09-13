@@ -1,0 +1,52 @@
+name: Baqalati v1.0.28 Tests
+
+on:
+  push:
+    branches: [ "baqalati-tests-v1-0-28" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
+          python3 - <<'PY'
+          import time,glob,os
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options(); opts.add_argument('--headless=new'); opts.add_argument('--no-sandbox'); opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
+          d=webdriver.Chrome(options=opts)
+          d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
+          d.get('https://firestorage.ai/ja/f/sEJLGarUoaUj'); time.sleep(8)
+          target=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード'][0]
+          d.execute_script('arguments[0].click()',target)
+          files=[]
+          for _ in range(60):
+              time.sleep(1); files=glob.glob('/tmp/downloads/*.zip')
+              if files: break
+          d.quit()
+          if not files: raise RuntimeError('source archive was not downloaded')
+          os.rename(files[0],'/tmp/baqalati-source.zip')
+          PY
+          echo 'ad811148c7e1250a42d872d630601e24485a1f3fe09677164a221f66e18a5509  /tmp/baqalati-source.zip' | sha256sum -c -
+          unzip -q /tmp/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Run release unit tests
+        working-directory: baqalati/source
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testReleaseUnitTest
