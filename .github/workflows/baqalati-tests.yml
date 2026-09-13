@@ -43,10 +43,24 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Run release unit tests
+      - name: Run debug unit tests and report totals
         working-directory: baqalati/source
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testReleaseUnitTest
+          ./gradlew --no-daemon :app:testDebugUnitTest
+          RC=$?
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          files=glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
+          total=failures=errors=skipped=0
+          for f in files:
+              root=ET.parse(f).getroot()
+              total += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+          print(f'TEST_SUMMARY total={total} failures={failures} errors={errors} skipped={skipped} xml_files={len(files)}')
+          PY
+          exit $RC
