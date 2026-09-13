@@ -1,0 +1,31 @@
+name: Baqalati Android Tools
+
+on:
+  push:
+    branches: [ "baqalati-tools" ]
+
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect Android signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          find "$ANDROID_HOME/build-tools" -maxdepth 3 -type f \( -name apksigner -o -name apksigner.jar -o -name zipalign -o -name aapt2 \) -print
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          echo "Using $BT"
+          mkdir -p out/lib
+          cp "$BT/apksigner" out/apksigner
+          cp "$BT/lib/apksigner.jar" out/lib/apksigner.jar
+          cp "$BT/zipalign" out/zipalign
+          cp "$BT/aapt2" out/aapt2
+          chmod +x out/apksigner out/zipalign out/aapt2
+
+      - name: Upload Android tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-tools
+          path: out
+          retention-days: 1
