@@ -41,21 +41,31 @@ jobs:
       - name: Download v225 source input
         shell: bash
         env:
-          SHARE_URL: https://firestorage.ai/ja/f/r8NPLN6yqwM0
+          SHARE_ID: r8NPLN6yqwM0
+          EXPECTED_SHA256: 073e77df6e62b1d2200f17eebf8bccb43d4a766a816ff5802ba2d6e9a3fa3873
         run: |
           set -euxo pipefail
-          curl -fL --retry 3 "$SHARE_URL" -o downloaded.bin
-          file downloaded.bin || true
-          wc -c downloaded.bin
-          if unzip -t downloaded.bin >/dev/null 2>&1; then
-            mv downloaded.bin source.zip
-          else
-            cp downloaded.bin firestorage-page.html
-            grep -Eo 'https?://[^" ]+' firestorage-page.html | head -50 || true
-            grep -Eo 'href="[^"]+"' firestorage-page.html | head -80 || true
-            echo "FIRESTORAGE_SHARE_PAGE_NOT_DIRECT_ZIP" >&2
-            exit 86
-          fi
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          print(d['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -t source.zip >/dev/null
 
       - name: Extract source
         shell: bash
@@ -81,8 +91,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p ci-output
-          cp src/app/build/outputs/apk/release/app-release-unsigned.apk ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.apk
-          cp src/app/build/outputs/bundle/release/app-release.aab ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.aab
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.apk
+          cp "$AAB" ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.aab
           cp v225-gradle-final-gate.log ci-output/
           cp v225-backend-regression.log ci-output/
           sha256sum ci-output/* > ci-output/V225_CI_SHA256SUMS.txt
@@ -95,14 +109,14 @@ jobs:
           path: ci-output/*
           if-no-files-found: error
 
-      - name: Upload download diagnostics
+      - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: FUSH-ERP-v225-P0-CI-diagnostics
+          name: FUSH-ERP-v225-P0-CI-failure-diagnostics
           path: |
-            firestorage-page.html
-            downloaded.bin
+            files.json
+            download.json
             v225-gradle-final-gate.log
             v225-backend-regression.log
           if-no-files-found: ignore
