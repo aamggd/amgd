@@ -1,0 +1,108 @@
+name: V225 P0 Final Gate
+
+on:
+  push:
+    branches: [ci-v225-p0-20260913]
+    paths:
+      - '.github/workflows/v225-p0-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout CI branch
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download v225 source input
+        shell: bash
+        env:
+          SHARE_URL: https://firestorage.ai/ja/f/r8NPLN6yqwM0
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 "$SHARE_URL" -o downloaded.bin
+          file downloaded.bin || true
+          wc -c downloaded.bin
+          if unzip -t downloaded.bin >/dev/null 2>&1; then
+            mv downloaded.bin source.zip
+          else
+            cp downloaded.bin firestorage-page.html
+            grep -Eo 'https?://[^" ]+' firestorage-page.html | head -50 || true
+            grep -Eo 'href="[^"]+"' firestorage-page.html | head -80 || true
+            echo "FIRESTORAGE_SHARE_PAGE_NOT_DIRECT_ZIP" >&2
+            exit 86
+          fi
+
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir src
+          unzip -q source.zip -d src
+          test -f src/settings.gradle.kts
+          test -f src/gradle/wrapper/gradle-wrapper.jar
+
+      - name: Backend source regression
+        working-directory: src
+        run: python3 tools/test_v225_backend_hardening.py | tee ../v225-backend-regression.log
+
+      - name: Exact Android final gate
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon test lint assembleRelease bundleRelease 2>&1 | tee ../v225-gradle-final-gate.log
+
+      - name: Collect unsigned release outputs
+        if: success()
+        shell: bash
+        run: |
+          mkdir -p ci-output
+          cp src/app/build/outputs/apk/release/app-release-unsigned.apk ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.apk
+          cp src/app/build/outputs/bundle/release/app-release.aab ci-output/FUSH_ERP_Mobile_v225-P0-UNSIGNED.aab
+          cp v225-gradle-final-gate.log ci-output/
+          cp v225-backend-regression.log ci-output/
+          sha256sum ci-output/* > ci-output/V225_CI_SHA256SUMS.txt
+
+      - name: Upload successful build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v225-P0-CI-unsigned
+          path: ci-output/*
+          if-no-files-found: error
+
+      - name: Upload download diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v225-P0-CI-diagnostics
+          path: |
+            firestorage-page.html
+            downloaded.bin
+            v225-gradle-final-gate.log
+            v225-backend-regression.log
+          if-no-files-found: ignore
