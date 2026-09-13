@@ -1,4 +1,4 @@
-name: FAZ Yemen v27 Sales + Unknown Barcode Combined CI
+name: FAZ Yemen v28 Simplified Entry + YER Main Cash CI
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
           import { chromium } from 'playwright';
           const browser = await chromium.launch({headless:true});
           const page = await browser.newPage({acceptDownloads:true});
-          await page.goto('https://firestorage.ai/ja/f/nxM8zxybhEOS', {waitUntil:'domcontentloaded', timeout:60000});
+          await page.goto('https://firestorage.ai/ja/f/yBA2zlGPOdbT', {waitUntil:'domcontentloaded', timeout:60000});
           await page.waitForTimeout(8000);
           const candidates = [
             page.getByRole('button', {name:/ダウンロード|download/i}),
@@ -53,27 +53,28 @@ jobs:
           JS
           node download.mjs
           cd ..
-          echo 'a10b23b612718475da8abad982ab90492a233d1c70c9bc3436c1bf7895e7067f  source.zip' | sha256sum -c -
+          echo 'dcd3c20987f3ae418d16a3bd3cc9f49993f21f8e5fdb61907ffb6373d28847fa  source.zip' | sha256sum -c -
           mkdir source
           unzip -q source.zip -d source
           test -f source/settings.gradle.kts
           test ! -e source/keystore.properties
-          test -f source/app/src/main/java/com/fush/erp/domain/SalesCustomerSelectionPolicy.kt
-          test -f source/app/src/test/java/com/fush/erp/ui/SalesBarcodeGate1ContractTest.kt
-          test -f source/app/src/test/java/com/fush/erp/ui/SalesCashCreditStructureContractTest.kt
-          test -f source/app/src/test/java/com/fush/erp/ui/SalesUnknownBarcodeWorkflowContractTest.kt
-          test -f source/app/src/test/java/com/fush/erp/domain/ProductMasterBarcodeWorkflowContractTest.kt
+          test -f source/app/src/main/java/com/fush/erp/data/MainCashboxYerMigration.kt
+          test -f source/app/src/test/java/com/fush/erp/domain/SalesSimplifiedEntryContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/domain/ProductMasterAutomaticCodesContractTest.kt
+          test -f source/app/src/test/java/com/fush/erp/domain/MainCashboxYerContractTest.kt
           grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
-          grep -q 'versionCode = 27' source/app/build.gradle.kts
-          grep -q 'versionName = "1.0.26-faz-yemen-sales-structure-gate2"' source/app/build.gradle.kts
-          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'SalesCustomerSelectionPolicy.resolve' source/app/src/main/java/com/fush/erp/domain/SalesService.kt
-          grep -q 'suspend fun assignVariantBarcode' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
-          grep -q 'suspend fun createQuickSalesVariant' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
-          grep -q 'ربط بصنف موجود' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'إنشاء صنف جديد' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'SecurityPermissions.MASTER_DATA_MANAGE' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
-          grep -q 'existing.copy(quantity = existing.quantity + 1.0)' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'versionCode = 28' source/app/build.gradle.kts
+          grep -q 'versionName = "1.0.27-faz-yemen-simplified-entry"' source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'MIGRATION_53_54_MAIN_CASHBOX_YER' source/app/src/main/java/com/fush/erp/data/AppContainer.kt
+          grep -q 'nextDocumentNo("SINV", request.invoiceDate)' source/app/src/main/java/com/fush/erp/domain/SalesService.kt
+          grep -q 'nextProductFamilyCode()' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'nextBrandCode()' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'nextVariantSku()' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'nextAttributeValueCode()' source/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt
+          grep -q 'رقم الفاتورة يُنشأ تلقائياً' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'الفئة: منتج نهائي' source/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'currencyCode = "YER_NEW"' source/app/src/main/java/com/fush/erp/data/AppContainer.kt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -108,16 +109,16 @@ jobs:
         run: |
           set -euxo pipefail
           test -f source/app/build/outputs/apk/release/app-release-unsigned.apk
-          test -f source/app/schemas/com.fush.erp.data.FushDatabase/53.json
+          test -f source/app/schemas/com.fush.erp.data.FushDatabase/54.json
           mkdir -p out
-          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v27-Sales-UnknownBarcode-UNSIGNED.apk
-          cp source/app/schemas/com.fush.erp.data.FushDatabase/53.json out/FushDatabase-53.json
-          (cd source && zip -qr ../out/FAZ-Yemen-v27-Sales-UnknownBarcode-BUILT-Source.zip . -x 'keystore.properties' '*.p12' '*.pfx' '*Signing-Credentials*' '.gradle/*' '.kotlin/*' 'app/build/*' '**/build/*')
+          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/FAZ-Yemen-v28-SimplifiedEntry-MainCashYer-UNSIGNED.apk
+          cp source/app/schemas/com.fush.erp.data.FushDatabase/54.json out/FushDatabase-54.json
+          (cd source && zip -qr ../out/FAZ-Yemen-v28-SimplifiedEntry-MainCashYer-BUILT-Source.zip . -x 'keystore.properties' '*.p12' '*.pfx' '*Signing-Credentials*' '.gradle/*' '.kotlin/*' 'app/build/*' '**/build/*')
           sha256sum out/* > out/SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: FAZ-Yemen-v27-Sales-UnknownBarcode
+          name: FAZ-Yemen-v28-SimplifiedEntry-MainCashYer
           path: out/*
           if-no-files-found: error
