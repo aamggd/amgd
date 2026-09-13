@@ -20,14 +20,18 @@ jobs:
           test -x "$BT/zipalign"
           cp "$BT/lib/apksigner.jar" out/apksigner.jar
           cp "$BT/zipalign" out/zipalign
+          LIBCPP=$(find "$BT" -type f -name 'libc++.so*' | head -n1)
+          test -n "$LIBCPP"
+          cp "$LIBCPP" out/libc++.so
           chmod +x out/zipalign
           printf '%s\n' "$BT" > out/android-build-tools.txt
-          sha256sum out/apksigner.jar out/zipalign > out/SHA256SUMS.txt
+          sha256sum out/apksigner.jar out/zipalign out/libc++.so > out/SHA256SUMS.txt
+          ldd out/zipalign || true
           ls -lh out
 
       - name: Upload signing tools
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-android-signing-tools
+          name: Baqalati-android-signing-tools-with-libcxx
           path: out/*
           retention-days: 1
