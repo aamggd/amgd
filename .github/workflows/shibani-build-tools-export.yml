@@ -26,15 +26,17 @@ jobs:
         run: |
           set -euo pipefail
           BT="$ANDROID_HOME/build-tools/36.0.0"
-          mkdir -p out/lib
+          mkdir -p out/lib out/lib64
           cp "$BT/zipalign" out/
           cp "$BT/aapt2" out/
           cp "$BT/apksigner" out/
           cp "$BT/lib/apksigner.jar" out/lib/
-          sha256sum out/zipalign out/aapt2 out/apksigner out/lib/apksigner.jar > out/SHA256SUMS.txt
+          find "$BT" -name 'libc++.so' -print -exec cp {} out/lib64/libc++.so \;
+          test -s out/lib64/libc++.so
+          sha256sum out/zipalign out/aapt2 out/apksigner out/lib/apksigner.jar out/lib64/libc++.so > out/SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: android-build-tools-36-signing-utils
+          name: android-build-tools-36-signing-utils-r2
           path: out/**
           if-no-files-found: error
           retention-days: 1
