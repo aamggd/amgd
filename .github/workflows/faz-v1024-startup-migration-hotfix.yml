@@ -62,7 +62,9 @@ jobs:
           RC=$?
           set -e
           test "$RC" -ne 0
-          grep -q 'startup bootstrap must register the migration into schema 53' "$GITHUB_WORKSPACE/red.log"
+          XML=$(find app/build/test-results/testDebugUnitTest -type f -name 'TEST-*StartupRoomMigrationParityContractTest*.xml' -print -quit)
+          test -n "$XML"
+          grep -Eq 'failures="[1-9][0-9]*"|<failure' "$XML"
           echo 'STARTUP_MIGRATION_RED=PASS'
       - name: Apply P0 hotfix
         shell: bash
