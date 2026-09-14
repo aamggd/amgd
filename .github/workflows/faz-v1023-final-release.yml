@@ -1,0 +1,169 @@
+name: FAZ v1.0.23 Final Release
+
+on:
+  push:
+    branches: [faz/v1.0.23-supplier-item-movement-report]
+    paths:
+      - '.github/workflows/faz-v1023-final-release.yml'
+      - 'ci/faz_v1023_final_release_identity.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  final-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-Gate2B-SupplierMovementReport-UI
+          path: gate2b
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34675832470
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Prepare Gate2B source and Android SDK
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find gate2b -type f -name '*Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'SupplierItemMovementReportTab' "$ROOT/app/src/main/java/com/fush/erp/ui/screens/SupplierItemMovementReportUi.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+      - name: Apply final v1.0.23 release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          python3 ci/faz_v1023_final_release_identity.py "$ROOT"
+          grep -q 'versionCode = 24' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "1.0.23-faz-supplier-item-movement-report"' "$ROOT/app/build.gradle.kts"
+      - name: Run supplier movement acceptance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' \
+            --tests 'com.fush.erp.domain.SupplierItemMovementReportMathTest' \
+            --tests 'com.fush.erp.domain.SupplierMovementIdentityTest' \
+            --tests 'com.fush.erp.domain.SupplierStockProvenancePlannerTest' \
+            --tests 'com.fush.erp.ui.screens.SupplierItemMovementReportExportTest' \
+            | tee "$GITHUB_WORKSPACE/final-acceptance-tests.log"
+      - name: Run complete unit test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/final-all-tests.log"
+      - name: Build final unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleRelease | tee "$GITHUB_WORKSPACE/final-release-build.log"
+      - name: Verify APK identity schema and release contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/final-apk-badging.txt"
+          grep -q "package: name='com.faz.solar' versionCode='24' versionName='1.0.23-faz-supplier-item-movement-report'" "$GITHUB_WORKSPACE/final-apk-badging.txt"
+          grep -q "targetSdkVersion:'36'" "$GITHUB_WORKSPACE/final-apk-badging.txt"
+          python3 - "$ROOT" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          candidates = []
+          for p in root.rglob('53.json'):
+              try:
+                  data = json.loads(p.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              if data.get('database', {}).get('version') == 53:
+                  candidates.append(p)
+          assert candidates, 'Room schema 53 not found'
+          print('ROOM_SCHEMA_53=PASS', candidates[0])
+          PY
+          R="$ROOT/app/src/main/java/com/fush/erp/ui/screens/ReportsScreen.kt"
+          U="$ROOT/app/src/main/java/com/fush/erp/ui/screens/SupplierItemMovementReportUi.kt"
+          D="$ROOT/app/src/main/java/com/fush/erp/domain/SupplierItemMovementReport.kt"
+          grep -q '"حركة أصناف المورد"' "$R"
+          grep -q 'supplierItemMovementReportService.load' "$R"
+          grep -q 'SupplierItemMovementReportExportFactory.build' "$R"
+          grep -q 'FAZ-Solar-Supplier-Item-Movement' "$R"
+          grep -q 'غير منسوب' "$U"
+          grep -q 'لا يتم تخمين' "$U"
+          grep -q 'class SupplierItemMovementReportService' "$D"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          echo 'FINAL_RELEASE_CONTRACTS=PASS'
+      - name: Package final unsigned release source and evidence
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/final-out"
+          mkdir -p "$OUT"
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          FINALAPK="$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-FINAL-UNSIGNED.apk"
+          cp "$APK" "$FINALAPK"
+          sha256sum "$FINALAPK" > "$FINALAPK.sha256"
+          cp "$GITHUB_WORKSPACE/final-apk-badging.txt" "$OUT/apk-badging.txt"
+          cp "$GITHUB_WORKSPACE/final-acceptance-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/final-all-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/final-release-build.log" "$OUT/"
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -path '*schemas*' -print -quit); test -n "$SCHEMA"
+          mkdir -p "$OUT/room-schema-53"; cp "$SCHEMA" "$OUT/room-schema-53/53.json"
+          mkdir -p "$OUT/test-reports"
+          if [ -d "$ROOT/app/build/reports/tests" ]; then cp -R "$ROOT/app/build/reports/tests/." "$OUT/test-reports/"; fi
+          cat > "$OUT/final-release-verification.txt" <<'EOF'
+          FAZ Solar ERP v1.0.23 Final Unsigned Release Gate = PASS
+          applicationId = com.faz.solar
+          versionCode = 24
+          versionName = 1.0.23-faz-supplier-item-movement-report
+          Room schema = 53
+          Supplier movement acceptance tests = PASS
+          Complete unit test suite = PASS
+          Release build = PASS
+          Supplier / Item / Warehouse filters = WIRED
+          Exact supplier provenance = PRESERVED
+          Unattributed legacy source = EXPLICITLY SHOWN
+          PDF / Excel / Print = WIRED THROUGH EXISTING EXPORT PIPELINE
+          Destructive migration fallback = ABSENT
+          Signing = NOT PERFORMED IN THIS WORKFLOW
+          EOF
+          TMP="$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-Source"
+          rm -rf "$TMP"; mkdir -p "$TMP"
+          cp -R "$ROOT/." "$TMP/"
+          rm -rf "$TMP/app/build" "$TMP/.gradle"
+          (cd "$GITHUB_WORKSPACE" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-FINAL-Source.zip" "$(basename "$TMP")")
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-FINAL-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.23-SupplierItemMovement-FINAL-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.23-SupplierItemMovement-FINAL-UNSIGNED
+          path: ${{ steps.package.outputs.out }}
+          retention-days: 3
