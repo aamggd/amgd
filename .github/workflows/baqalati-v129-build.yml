@@ -1,4 +1,4 @@
-name: Baqalati v1.0.32 Android License Compatibility
+name: Baqalati v1.0.33 Barcode Audio Feedback
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.32 R4 source
+      - name: Download verified v1.0.33 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/EX6g4moHUU7B'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/hPQBN7CcuLNY'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,10 +36,10 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '283a71c3c62fbe099e3ea9d2ae8c772c9332d4621bff891337067827fa5370d8  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'b7e9d0f56e48ea5dfdc983909255cfd3d63f305da369e7f4a02e754014321292  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v132-source
+          name: baqalati-v133-source
           path: /tmp/baqalati-source.zip
           retention-days: 1
           if-no-files-found: error
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v132-source
+          name: baqalati-v133-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -72,7 +72,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v132-diagnostics
+          name: baqalati-v133-diagnostics
           path: android-tests.log
           retention-days: 1
           if-no-files-found: error
@@ -86,17 +86,17 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
           test -n "$APP_APK"
-          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.32-Android12-License-Compat-ALIGNED-UNSIGNED.apk"
-          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.32-Android12-License-Compat-ALIGNED-UNSIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.32-Android12-License-Compat-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.33-Barcode-Audio-Feedback-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.33-Barcode-Audio-Feedback-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.33-Barcode-Audio-Feedback-ALIGNED-UNSIGNED.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v132-android-artifact
+          name: baqalati-v133-android-artifact
           path: out/*.apk
           retention-days: 1
           if-no-files-found: error
 
-  legacy-android-license-compatibility:
+  barcode-audio-compatibility:
     needs: prepare-source
     strategy:
       fail-fast: false
@@ -106,7 +106,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v132-source
+          name: baqalati-v133-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -117,27 +117,27 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Isolate licensing instrumentation test
+      - name: Isolate barcode audio instrumentation test
         working-directory: baqalati
         shell: bash
         run: |
           set -euo pipefail
-          TEST='app/src/androidTest/java/com/fush/erp/licensing/Note10LicenseCompatibilityInstrumentedTest.kt'
+          TEST='app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt'
           test -f "$TEST"
-          cp "$TEST" /tmp/Note10LicenseCompatibilityInstrumentedTest.kt
+          cp "$TEST" /tmp/BarcodeScanSoundPlayerInstrumentedTest.kt
           rm -rf app/src/androidTest/java
-          mkdir -p app/src/androidTest/java/com/fush/erp/licensing
-          cp /tmp/Note10LicenseCompatibilityInstrumentedTest.kt "$TEST"
+          mkdir -p app/src/androidTest/java/com/fush/erp/ui
+          cp /tmp/BarcodeScanSoundPlayerInstrumentedTest.kt "$TEST"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run full license codec + signature + Keystore compatibility test on API ${{ matrix.api-level }}
+      - name: Run barcode audio compatibility test on API ${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
           arch: x86_64
           disable-animations: true
           working-directory: baqalati
-          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.licensing.Note10LicenseCompatibilityInstrumentedTest
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.ui.BarcodeScanSoundPlayerInstrumentedTest
