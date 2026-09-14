@@ -1,0 +1,171 @@
+name: FAZ v1.0.24 Startup Migration Hotfix
+
+on:
+  push:
+    branches: [faz/v1.0.24-startup-migration-hotfix]
+    paths:
+      - '.github/workflows/faz-v1024-startup-migration-hotfix.yml'
+      - 'ci/StartupRoomMigrationParityContractTest.kt'
+      - 'ci/faz_v1024_startup_migration_hotfix.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.23-SupplierItemMovement-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34793626180
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Prepare v1.0.23 final source
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          ! grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          echo 'BASELINE_STARTUP_DEFECT_REPRODUCED=PASS'
+      - name: RED - startup migration parity test must fail on v1.0.23
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          TEST="$ROOT/app/src/test/java/com/fush/erp/domain/StartupRoomMigrationParityContractTest.kt"
+          cp ci/StartupRoomMigrationParityContractTest.kt "$TEST"
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.StartupRoomMigrationParityContractTest' > "$GITHUB_WORKSPACE/red.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -q 'startup bootstrap must register the migration into schema 53' "$GITHUB_WORKSPACE/red.log"
+          echo 'STARTUP_MIGRATION_RED=PASS'
+      - name: Apply P0 hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          python3 ci/faz_v1024_startup_migration_hotfix.py "$ROOT"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          grep -q 'versionCode = 25' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "1.0.24-faz-startup-migration-hotfix"' "$ROOT/app/build.gradle.kts"
+      - name: GREEN - startup migration parity and bootstrap contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.StartupRoomMigrationParityContractTest' \
+            --tests 'com.fush.erp.domain.AccountingWaveBRoomBootstrapContractTest' \
+            | tee "$GITHUB_WORKSPACE/green.log"
+      - name: Re-run supplier provenance and report acceptance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.SupplierStockProvenancePlannerTest' \
+            --tests 'com.fush.erp.domain.SupplierItemMovementMathTest' \
+            --tests 'com.fush.erp.domain.SupplierItemMovementReportMathTest' \
+            --tests 'com.fush.erp.ui.screens.SupplierItemMovementReportExportTest' \
+            | tee "$GITHUB_WORKSPACE/supplier-tests.log"
+      - name: Run complete unit test suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/all-tests.log"
+      - name: Build hotfix release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleRelease | tee "$GITHUB_WORKSPACE/release-build.log"
+      - name: Verify APK identity startup fix and Room schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -q "package: name='com.faz.solar' versionCode='25' versionName='1.0.24-faz-startup-migration-hotfix'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          echo 'HOTFIX_RELEASE_CONTRACTS=PASS'
+      - name: Package hotfix source APK and evidence
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/out"
+          mkdir -p "$OUT"
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          cp "$APK" "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-UNSIGNED.apk"
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-UNSIGNED.apk" > "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-UNSIGNED.apk.sha256"
+          cp "$GITHUB_WORKSPACE/red.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/green.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/supplier-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/all-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/release-build.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/apk-badging.txt" "$OUT/"
+          SCHEMA=$(find "$ROOT" -type f -name '53.json' -path '*schemas*' -print -quit); test -n "$SCHEMA"
+          mkdir -p "$OUT/room-schema-53"; cp "$SCHEMA" "$OUT/room-schema-53/53.json"
+          cat > "$OUT/hotfix-verification.txt" <<'EOF'
+          P0 Startup Crash Hotfix = PASS
+          Root cause = AccountingWaveBRoomBootstrap missing MIGRATION_52_53_SUPPLIER_PROVENANCE
+          RED regression reproduction = PASS
+          GREEN migration parity test = PASS
+          Supplier provenance/report acceptance tests = PASS
+          Complete unit test suite = PASS
+          Release build = PASS
+          applicationId = com.faz.solar
+          versionCode = 25
+          versionName = 1.0.24-faz-startup-migration-hotfix
+          Room schema = 53
+          AppContainer migration 52->53 = REGISTERED
+          Startup bootstrap migration 52->53 = REGISTERED
+          Destructive migration fallback = ABSENT
+          APK signing = NOT PERFORMED IN THIS WORKFLOW
+          EOF
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle"
+          PARENT=$(dirname "$ROOT"); BASE=$(basename "$ROOT")
+          (cd "$PARENT" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-FINAL-Source.zip" "$BASE")
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-FINAL-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.24-StartupMigrationHotfix-FINAL-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: ${{ steps.package.outputs.out }}
+          retention-days: 3
