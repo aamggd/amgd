@@ -9,7 +9,7 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Download v1.0.40 source R3
+      - name: Download v1.0.40 source R4
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/hRaGIrk5fz1c'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/fUC-GIVzoqAy'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,7 +36,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo 'b863e97b5e05d9b106a40a66456cf28bac6e3a63702ccf07422cd93bb9125522  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'a10eb368edf3f97b5679c3de804f348d13cf6e686e118d3ad8f42ebb8a5b7f85  /tmp/baqalati-source.zip' | sha256sum -c -
           mkdir -p "$GITHUB_WORKSPACE/baqalati"
           unzip -q /tmp/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
       - uses: actions/setup-java@v5
