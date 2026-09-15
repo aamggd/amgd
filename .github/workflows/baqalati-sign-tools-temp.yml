@@ -1,0 +1,49 @@
+name: Baqalati Android Signing Tools
+
+on:
+  push:
+    branches:
+      - baqalati-sign-tools-temp
+
+permissions:
+  contents: read
+
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Android Build Tools 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKM"
+          "$SDKM" "build-tools;36.0.0"
+
+      - name: Collect signing and inspection tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p out/lib
+          cp "$BT/apksigner" out/apksigner
+          cp "$BT/lib/apksigner.jar" out/lib/apksigner.jar
+          cp "$BT/zipalign" out/zipalign
+          cp "$BT/aapt" out/aapt
+          cp "$BT/aapt2" out/aapt2
+          chmod +x out/apksigner out/zipalign out/aapt out/aapt2
+          sha256sum out/apksigner out/lib/apksigner.jar out/zipalign out/aapt out/aapt2 > out/TOOLS_SHA256.txt
+
+      - name: Upload Android signing tools
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-36-signing
+          path: out/**
+          if-no-files-found: error
+          retention-days: 1
