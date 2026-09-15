@@ -56,3 +56,23 @@ jobs:
             --tests 'com.fush.erp.ui.SalesBarcodeGate1ContractTest' \
             --tests 'com.fush.erp.ui.SalesUnknownBarcodeWorkflowContractTest' \
             --tests 'com.fush.erp.domain.BarcodeScanGroupMathTest'
+
+  export-signing-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect Android signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          mkdir -p "$GITHUB_WORKSPACE/tools/lib"
+          cp "$BT/apksigner" "$BT/zipalign" "$BT/aapt2" "$GITHUB_WORKSPACE/tools/"
+          cp "$BT/lib/apksigner.jar" "$GITHUB_WORKSPACE/tools/lib/"
+          chmod +x "$GITHUB_WORKSPACE/tools/apksigner" "$GITHUB_WORKSPACE/tools/zipalign" "$GITHUB_WORKSPACE/tools/aapt2"
+          "$GITHUB_WORKSPACE/tools/apksigner" --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-signing
+          path: tools/**
+          retention-days: 1
+          if-no-files-found: error
