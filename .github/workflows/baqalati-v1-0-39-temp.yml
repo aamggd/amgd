@@ -24,14 +24,14 @@ jobs:
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='R6q0ElSZJMTj'
-          SOURCE='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip'
+          SHARE='LCKRnatSNMiQ'
+          SOURCE='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
           fs=d.get('files') or []
-          preferred=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip']
+          preferred=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip']
           if not preferred:
               raise SystemExit('Corrected source not found')
           f=preferred[0]
@@ -50,13 +50,13 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo '979ec8d795115b079cfb1f6997808ead91867caa353e309f93488aa2ff0a6738  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip' | sha256sum -c -
+          echo '0202a87afd5cf6587968f7ca5ea08a52181834af260a885145d45748c7849fae  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip' | sha256sum -c -
 
       - name: Extract and validate source identity
         shell: bash
         run: |
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
