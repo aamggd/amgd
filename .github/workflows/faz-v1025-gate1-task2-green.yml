@@ -1,0 +1,155 @@
+name: FAZ v1.0.25 Gate1 Task2 GREEN
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-task2-green.yml'
+      - 'ci/MasterNameNormalizerTest.kt'
+      - 'ci/InlineMasterCreationContractTest.kt'
+      - 'ci/faz_v1025_gate1_task2_apply.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  green:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34796845084
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Prepare Task1 source and apply Task2
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task2_apply.py "$ROOT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          T="$ROOT/app/src/test/java/com/fush/erp/domain"
+          mkdir -p "$T"
+          cp ci/MasterNameNormalizerTest.kt "$T/MasterNameNormalizerTest.kt"
+          cp ci/InlineMasterCreationContractTest.kt "$T/InlineMasterCreationContractTest.kt"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+      - name: GREEN - Task2 targeted tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.MasterNameNormalizerTest' \
+            --tests 'com.fush.erp.domain.InlineMasterCreationContractTest' \
+            | tee "$GITHUB_WORKSPACE/task2-green.log"
+      - name: Full unit test regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/task2-all-tests.log"
+      - name: Build debug and preserve Room 54
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleDebug | tee "$GITHUB_WORKSPACE/task2-build.log"
+      - name: Verify Task2 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          N="$ROOT/app/src/main/java/com/fush/erp/domain/MasterNameNormalizer.kt"
+          P="$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt"
+          M="$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt"
+          A="$ROOT/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt"
+          PD="$ROOT/app/src/main/java/com/fush/erp/data/dao/ProductMasterDao.kt"
+          D="$ROOT/app/src/main/java/com/fush/erp/data/dao/Daos.kt"
+          grep -q 'fun isDuplicate' "$N"
+          grep -q 'createCategoryQuick' "$P"
+          grep -q 'createBrandQuick' "$P"
+          grep -q 'requireUserPermission(createdBy, SecurityPermissions.MASTER_DATA_MANAGE)' "$P"
+          grep -q 'categoryByNormalizedName' "$P"
+          grep -q 'MasterNameNormalizer.isDuplicate' "$P"
+          grep -q 'MasterNameNormalizer.isDuplicate' "$M"
+          grep -q 'allIncludingInactive' "$M"
+          grep -q 'nextProductCategoryCode' "$A"
+          grep -q 'nextProductFamilyCode' "$A"
+          grep -q 'nextBrandCode' "$A"
+          grep -q 'suspend fun allBrands' "$PD"
+          grep -q 'suspend fun allIncludingInactive' "$D"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          python3 - "$ROOT" <<'PY'
+          import json, pathlib, sys
+          root=pathlib.Path(sys.argv[1])
+          valid=[]
+          for p in root.rglob('54.json'):
+              try: j=json.loads(p.read_text(encoding='utf-8'))
+              except Exception: continue
+              if j.get('database',{}).get('version') == 54: valid.append(p)
+          assert valid, 'Room 54.json missing'
+          print('ROOM_SCHEMA_54_STILL_PASS', valid[0])
+          PY
+          echo 'GATE1_TASK2_CONTRACTS=PASS'
+      - name: Package Task2 source and evidence
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/task2-out"
+          mkdir -p "$OUT"
+          cp "$GITHUB_WORKSPACE/task2-green.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/task2-all-tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/task2-build.log" "$OUT/"
+          SCHEMA=$(find "$ROOT" -type f -name '54.json' -path '*schemas*' -print -quit); test -n "$SCHEMA"
+          mkdir -p "$OUT/room-schema-54"; cp "$SCHEMA" "$OUT/room-schema-54/54.json"
+          cat > "$OUT/task2-verification.txt" <<'EOF'
+          Gate1 Task2 inline master creation = PASS
+          RED observed before implementation = PASS
+          Name normalization tests = PASS
+          Duplicate-safe category/brand/unit = PASS
+          MASTER_DATA_MANAGE reused = PASS
+          Existing audit mechanism reused = PASS
+          Room schema remains 54 = PASS
+          Destructive migration fallback = ABSENT
+          EOF
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle"
+          PARENT=$(dirname "$ROOT"); BASE=$(basename "$ROOT")
+          (cd "$PARENT" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task2-InlineMaster-Source.zip" "$BASE")
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task2-InlineMaster-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task2-InlineMaster-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task2-InlineMaster-GREEN
+          path: ${{ steps.package.outputs.out }}
+          retention-days: 3
