@@ -1,0 +1,55 @@
+name: Export Tested Baqalati v1.0.39 Source
+
+on:
+  push:
+    branches:
+      - baqalati-sign-tools-temp
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact CI-tested source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='SkU4-7p1G_7h'
+          SOURCE='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip'
+          EXPECTED='45d32b9bd8697c081663000e7892300778cd9441250b0f2952e7409553c885a3'
+          curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          fs=d.get('files') or []
+          preferred=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip']
+          if not preferred:
+              raise SystemExit('tested source not found')
+          f=preferred[0]
+          open('file_id.txt','w').write(f['fileId'])
+          print('Selected:',f.get('fileName'),f.get('sizeBytes'))
+          PY
+          FILE_ID=$(cat file_id.txt)
+          curl -fsSL -A 'Mozilla/5.0' -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          u=d.get('downloadUrl')
+          if not u:
+              raise SystemExit('downloadUrl missing')
+          open('download_url.txt','w').write(u)
+          PY
+          curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
+          echo "$EXPECTED  $SOURCE" | sha256sum -c -
+          unzip -t "$SOURCE" >/dev/null
+
+      - name: Upload exact tested source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.39-tested-source
+          path: Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip
+          if-no-files-found: error
+          retention-days: 1
