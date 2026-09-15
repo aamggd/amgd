@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='ZbcSlD0fZ9tH'
+          SHARE='R6q0ElSZJMTj'
           SOURCE='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
@@ -50,7 +50,7 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo 'ab8b7925761089c8395ed0d00ab5a2bbb366f497a5cd5081a47628043774fc19  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip' | sha256sum -c -
+          echo '979ec8d795115b079cfb1f6997808ead91867caa353e309f93488aa2ff0a6738  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX1.zip' | sha256sum -c -
 
       - name: Extract and validate source identity
         shell: bash
@@ -104,9 +104,10 @@ jobs:
           sha256sum apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk > apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk.sha256
           cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" signing-tools/
+          cp "$ANDROID_HOME/build-tools/36.0.0/aapt" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" signing-tools/lib/
-          chmod +x signing-tools/apksigner signing-tools/zipalign signing-tools/aapt2
+          chmod +x signing-tools/apksigner signing-tools/zipalign signing-tools/aapt signing-tools/aapt2
 
       - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
@@ -114,6 +115,7 @@ jobs:
           name: Baqalati-v1.0.39-unsigned
           path: apk-out/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Upload Android signing utilities
         uses: actions/upload-artifact@v4
@@ -121,3 +123,4 @@ jobs:
           name: Android-Build-Tools-36-Signing
           path: signing-tools/**
           if-no-files-found: error
+          retention-days: 1
