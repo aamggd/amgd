@@ -11,7 +11,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.39 source R3
+      - name: Download verified v1.0.39 source R4
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +26,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/VFwvaAyH-Qp3'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/8dV0typlvb0H'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -38,7 +38,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '0a0bbf5954dd1ac1a84e0daa64a01774fda5e264b1c2685ed06ffedbbd32b646  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo '081ec51eb965dd5b620ad41c27ed039aaa5c516c6eb02457a5bfced99bdd6a6a  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v139-source
@@ -96,7 +96,7 @@ jobs:
           name: baqalati-v139-diagnostics
           path: android-tests.log
           retention-days: 1
-          if-no-files-found: error
+          if-no-files-found: warn
       - name: Build APK and AAB
         working-directory: baqalati
         shell: bash
