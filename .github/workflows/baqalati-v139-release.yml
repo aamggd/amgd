@@ -1,0 +1,170 @@
+name: Baqalati v1.0.39 Final Release Gate
+
+on:
+  push:
+    branches: [ "baqalati-build-v1.0.39" ]
+    paths:
+      - '.github/workflows/baqalati-v139-release.yml'
+  workflow_dispatch:
+
+jobs:
+  prepare-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified v1.0.39 source R3
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
+          python3 - <<'PY'
+          import time,glob,os
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options(); opts.add_argument('--headless=new'); opts.add_argument('--no-sandbox'); opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
+          d=webdriver.Chrome(options=opts)
+          d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
+          d.get('https://firestorage.ai/ja/f/VFwvaAyH-Qp3'); time.sleep(8)
+          buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
+          if not buttons: raise RuntimeError('Firestorage download button not found')
+          d.execute_script('arguments[0].click()',buttons[0])
+          files=[]
+          for _ in range(90):
+              time.sleep(1); files=glob.glob('/tmp/downloads/*.zip')
+              if files and not glob.glob('/tmp/downloads/*.crdownload'): break
+          d.quit()
+          if not files: raise RuntimeError('source archive was not downloaded')
+          os.rename(files[0],'/tmp/baqalati-source.zip')
+          PY
+          echo '0a0bbf5954dd1ac1a84e0daa64a01774fda5e264b1c2685ed06ffedbbd32b646  /tmp/baqalati-source.zip' | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-v139-source
+          path: /tmp/baqalati-source.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  android-build:
+    needs: prepare-source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baqalati-v139-source
+          path: /tmp/source
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/baqalati"
+          unzip -q /tmp/source/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify v1.0.39 release identity and safety contracts
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.faz.yemen"' app/build.gradle.kts
+          grep -q 'versionCode = 40' app/build.gradle.kts
+          grep -q '1.0.39-baqalati-simplified-pos-scanner' app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' app/src/main/java
+          grep -q 'GroceryUiPolicy.dailyTargets' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'BarcodeScannerController' app/src/main/java/com/fush/erp/ui/BarcodeScannerDialog.kt
+          grep -q 'ScannerBasketLineCard' app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'UnknownBarcodeActions' app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'SALES_PRICE_OVERRIDE' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          grep -q 'SALES_DISCOUNT_OVERRIDE' app/src/main/java/com/fush/erp/domain/SecurityPolicy.kt
+          test -f .gitignore
+          grep -q '^keystore.properties$' .gitignore
+          test ! -f keystore.properties
+      - name: Full licensing and app unit tests
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :licensing-core:test :app:testDebugUnitTest 2>&1 | tee "$GITHUB_WORKSPACE/android-tests.log"
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-v139-diagnostics
+          path: android-tests.log
+          retention-days: 1
+          if-no-files-found: error
+      - name: Build APK and AAB
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon :app:assembleRelease :app:bundleRelease
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
+          APP_AAB=$(find app/build/outputs/bundle/release -name '*.aab' -type f | head -n1)
+          test -n "$APP_APK"
+          test -n "$APP_AAB"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.39-Simplified-POS-Scanner-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.39-Simplified-POS-Scanner-ALIGNED-UNSIGNED.apk"
+          cp "$APP_AAB" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.39-Simplified-POS-Scanner-UNSIGNED.aab"
+          sha256sum "$GITHUB_WORKSPACE/out/"*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-v139-release-artifacts
+          path: out/*
+          retention-days: 1
+          if-no-files-found: error
+
+  android-regression:
+    needs: prepare-source
+    strategy:
+      fail-fast: false
+      matrix:
+        api-level: [29, 31]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: baqalati-v139-source
+          path: /tmp/source
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/baqalati"
+          unzip -q /tmp/source/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Isolate migration image and scanner feedback regressions
+        working-directory: baqalati
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v139-tests/data /tmp/v139-tests/attachments /tmp/v139-tests/ui
+          cp app/src/androidTest/java/com/fush/erp/data/RetailProductMigrationTest.kt /tmp/v139-tests/data/
+          cp app/src/androidTest/java/com/fush/erp/attachments/ProductImageStorageAndroidTest.kt /tmp/v139-tests/attachments/
+          cp app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt /tmp/v139-tests/ui/
+          rm -rf app/src/androidTest/java
+          mkdir -p app/src/androidTest/java/com/fush/erp/{data,attachments,ui}
+          cp /tmp/v139-tests/data/RetailProductMigrationTest.kt app/src/androidTest/java/com/fush/erp/data/
+          cp /tmp/v139-tests/attachments/ProductImageStorageAndroidTest.kt app/src/androidTest/java/com/fush/erp/attachments/
+          cp /tmp/v139-tests/ui/BarcodeScanSoundPlayerInstrumentedTest.kt app/src/androidTest/java/com/fush/erp/ui/
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Android regressions on API ${{ matrix.api-level }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          disable-animations: true
+          working-directory: baqalati
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.fush.erp.data.RetailProductMigrationTest,com.fush.erp.attachments.ProductImageStorageAndroidTest,com.fush.erp.ui.BarcodeScanSoundPlayerInstrumentedTest
