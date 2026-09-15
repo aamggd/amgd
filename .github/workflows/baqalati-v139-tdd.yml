@@ -1,0 +1,50 @@
+name: Baqalati v1.0.39 TDD Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "baqalati-build-v1.0.39" ]
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download v1.0.39 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
+          python3 - <<'PY'
+          import time,glob,os
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+          opts=Options(); opts.add_argument('--headless=new'); opts.add_argument('--no-sandbox'); opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
+          d=webdriver.Chrome(options=opts)
+          d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
+          d.get('https://firestorage.ai/ja/f/2gYC78Xc-l7n'); time.sleep(8)
+          buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
+          if not buttons: raise RuntimeError('Firestorage download button not found')
+          d.execute_script('arguments[0].click()',buttons[0])
+          files=[]
+          for _ in range(90):
+              time.sleep(1); files=glob.glob('/tmp/downloads/*.zip')
+              if files and not glob.glob('/tmp/downloads/*.crdownload'): break
+          d.quit()
+          if not files: raise RuntimeError('source archive was not downloaded')
+          os.rename(files[0],'/tmp/baqalati-source.zip')
+          PY
+          echo '9864eae81d443334db4b6e2520c4f9f0e200a327ef2a2f979270c541b48f11fb  /tmp/baqalati-source.zip' | sha256sum -c -
+          mkdir -p "$GITHUB_WORKSPACE/baqalati"
+          unzip -q /tmp/baqalati-source.zip -d "$GITHUB_WORKSPACE/baqalati"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run v1.0.39 RED unit tests
+        working-directory: baqalati
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.GroceryNavigationContractTest' --tests 'com.fush.erp.ui.GroceryFirstRunSetupContractTest' --tests 'com.fush.erp.domain.BarcodeScanGroupMathTest' --tests 'com.fush.erp.ui.BaqalatiV139PosContractTest'
