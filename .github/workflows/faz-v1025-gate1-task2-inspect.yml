@@ -1,0 +1,49 @@
+name: FAZ v1.0.25 Gate1 Task2 Inspect
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-task2-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34796845084
+      - name: Inspect Task2 integration points
+        shell: bash
+        run: |
+          set -euo pipefail
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+          echo '===== AutoNumberService ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt" | sed -n '1,320p'
+          echo '===== ProductMasterService ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt" | sed -n '1,520p'
+          echo '===== MasterDataService ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt" | sed -n '1,520p'
+          echo '===== ProductMasterDao ====='
+          nl -ba "$ROOT/app/src/main/java/com/fush/erp/data/dao/ProductMasterDao.kt" | sed -n '1,520p'
+          echo '===== Unit / Brand DAO references ====='
+          grep -RIn -A80 -B8 -E 'interface UnitDao|interface BrandDao|fun observeUnits|suspend fun.*Unit|insertUnit|updateUnit|allUnits|BrandEntity' "$ROOT/app/src/main/java/com/fush/erp/data/dao" | head -1500 || true
+          echo '===== Unit / Brand entities ====='
+          grep -RIn -A80 -B8 -E 'data class UnitEntity|data class BrandEntity' "$ROOT/app/src/main/java/com/fush/erp/data/entity" | head -500 || true
+          echo '===== MASTER_DATA_MANAGE patterns ====='
+          grep -RIn -A30 -B12 'MASTER_DATA_MANAGE' "$ROOT/app/src/main/java/com/fush/erp/domain" | head -1200 || true
+          echo '===== Audit patterns ====='
+          grep -RIn -A35 -B12 -E 'auditService|auditTrail|AuditAction|recordAudit|logAudit|AuditService' "$ROOT/app/src/main/java/com/fush/erp/domain" | head -1600 || true
