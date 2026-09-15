@@ -1,0 +1,69 @@
+name: FAZ v1.0.25 Gate1 Schema54
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-schema54.yml'
+      - 'ci/UnifiedItemMasterMigrationContractTest.kt'
+      - 'ci/faz_v1025_gate1_schema54_apply.py'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34796845084
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Prepare baseline source
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+      - name: RED - schema54 contract must fail on v1.0.24 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          TEST="$ROOT/app/src/test/java/com/fush/erp/domain/UnifiedItemMasterMigrationContractTest.kt"
+          cp ci/UnifiedItemMasterMigrationContractTest.kt "$TEST"
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.UnifiedItemMasterMigrationContractTest' > "$GITHUB_WORKSPACE/red.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -q 'UnifiedItemMasterMigrationContractTest' "$GITHUB_WORKSPACE/red.log"
+          echo 'GATE1_SCHEMA54_RED=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Schema54-RED
+          path: red.log
+          retention-days: 2
