@@ -1,15 +1,15 @@
-name: Baqalati v1.0.36 POS Scanner Category Hotfix
+name: Baqalati v1.0.37 Parties Returns Purchase Barcode
 
 on:
   push:
-    branches: [ "baqalati-build-v1.0.36" ]
+    branches: [ "baqalati-build-v1.0.37" ]
   workflow_dispatch:
 
 jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.36 R5 source
+      - name: Download verified v1.0.37 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/mk_tFmOjMTIm'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/xIFQdGV7ExVo'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,10 +36,10 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '519cf0bd070a2bbe35ee84b6fb1a82477f5b8dd80a9fba5eaae7735f0de39049  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'ebea4d2b62585f1958e221fdb030d2c39c2ce9799571b7a3f2b9ae56ba99c479  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v136-source
+          name: baqalati-v137-source
           path: /tmp/baqalati-source.zip
           retention-days: 1
           if-no-files-found: error
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v136-source
+          name: baqalati-v137-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -66,8 +66,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 37' app/build.gradle.kts
-          grep -q '1.0.36-baqalati-pos-scanner-category-hotfix' app/build.gradle.kts
+          grep -q 'versionCode = 38' app/build.gradle.kts
+          grep -q '1.0.37-baqalati-parties-returns-purchase-barcode' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
       - name: Licensing core and app unit tests
         working-directory: baqalati
@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v136-diagnostics
+          name: baqalati-v137-diagnostics
           path: android-tests.log
           retention-days: 1
           if-no-files-found: error
@@ -94,12 +94,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
           test -n "$APP_APK"
-          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.36-POS-Scanner-Category-Hotfix-ALIGNED-UNSIGNED.apk"
-          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.36-POS-Scanner-Category-Hotfix-ALIGNED-UNSIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.36-POS-Scanner-Category-Hotfix-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v136-android-artifact
+          name: baqalati-v137-android-artifact
           path: out/*.apk
           retention-days: 1
           if-no-files-found: error
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v136-source
+          name: baqalati-v137-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -130,15 +130,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/v136-tests/data /tmp/v136-tests/attachments /tmp/v136-tests/ui
-          cp app/src/androidTest/java/com/fush/erp/data/RetailProductMigrationTest.kt /tmp/v136-tests/data/
-          cp app/src/androidTest/java/com/fush/erp/attachments/ProductImageStorageAndroidTest.kt /tmp/v136-tests/attachments/
-          cp app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt /tmp/v136-tests/ui/
+          mkdir -p /tmp/v137-tests/data /tmp/v137-tests/attachments /tmp/v137-tests/ui
+          cp app/src/androidTest/java/com/fush/erp/data/RetailProductMigrationTest.kt /tmp/v137-tests/data/
+          cp app/src/androidTest/java/com/fush/erp/attachments/ProductImageStorageAndroidTest.kt /tmp/v137-tests/attachments/
+          cp app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt /tmp/v137-tests/ui/
           rm -rf app/src/androidTest/java
           mkdir -p app/src/androidTest/java/com/fush/erp/{data,attachments,ui}
-          cp /tmp/v136-tests/data/RetailProductMigrationTest.kt app/src/androidTest/java/com/fush/erp/data/
-          cp /tmp/v136-tests/attachments/ProductImageStorageAndroidTest.kt app/src/androidTest/java/com/fush/erp/attachments/
-          cp /tmp/v136-tests/ui/BarcodeScanSoundPlayerInstrumentedTest.kt app/src/androidTest/java/com/fush/erp/ui/
+          cp /tmp/v137-tests/data/RetailProductMigrationTest.kt app/src/androidTest/java/com/fush/erp/data/
+          cp /tmp/v137-tests/attachments/ProductImageStorageAndroidTest.kt app/src/androidTest/java/com/fush/erp/attachments/
+          cp /tmp/v137-tests/ui/BarcodeScanSoundPlayerInstrumentedTest.kt app/src/androidTest/java/com/fush/erp/ui/
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
