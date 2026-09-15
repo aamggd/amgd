@@ -1,4 +1,4 @@
-name: Baqalati v1.0.37 Parties Returns Purchase Barcode
+name: Baqalati v1.0.37 Parties Returns Purchase MultiUnit
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.37 source
+      - name: Download verified v1.0.37 multi-unit source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/xIFQdGV7ExVo'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/7_c2b--oebeI'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,7 +36,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo 'ebea4d2b62585f1958e221fdb030d2c39c2ce9799571b7a3f2b9ae56ba99c479  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'f1479673f9331cc6441d665cb69b6f7d83df760e449aa87e05b13a246d4d7ffd  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v137-source
@@ -69,6 +69,8 @@ jobs:
           grep -q 'versionCode = 38' app/build.gradle.kts
           grep -q '1.0.37-baqalati-parties-returns-purchase-barcode' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'RetailUnitConversionDraft' app/src/main/java/com/fush/erp/ui/screens/RetailProductScreens.kt
+          grep -q 'saveUnitConversions' app/src/main/java/com/fush/erp/domain/RetailProductService.kt
       - name: Licensing core and app unit tests
         working-directory: baqalati
         shell: bash
@@ -94,9 +96,9 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
           test -n "$APP_APK"
-          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
-          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-Barcode-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v137-android-artifact
