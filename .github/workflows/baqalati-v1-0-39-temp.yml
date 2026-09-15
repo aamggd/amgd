@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='LCKRnatSNMiQ'
+          SHARE='SkU4-7p1G_7h'
           SOURCE='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
@@ -50,7 +50,7 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo '0202a87afd5cf6587968f7ca5ea08a52181834af260a885145d45748c7849fae  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip' | sha256sum -c -
+          echo '45d32b9bd8697c081663000e7892300778cd9441250b0f2952e7409553c885a3  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE-FIX2.zip' | sha256sum -c -
 
       - name: Extract and validate source identity
         shell: bash
@@ -70,6 +70,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Install Android SDK packages
         shell: bash
@@ -104,10 +107,9 @@ jobs:
           sha256sum apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk > apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk.sha256
           cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" signing-tools/
-          cp "$ANDROID_HOME/build-tools/36.0.0/aapt" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" signing-tools/
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" signing-tools/lib/
-          chmod +x signing-tools/apksigner signing-tools/zipalign signing-tools/aapt signing-tools/aapt2
+          chmod +x signing-tools/apksigner signing-tools/zipalign signing-tools/aapt2
 
       - name: Upload unsigned APK
         uses: actions/upload-artifact@v4
@@ -115,7 +117,6 @@ jobs:
           name: Baqalati-v1.0.39-unsigned
           path: apk-out/*
           if-no-files-found: error
-          retention-days: 1
 
       - name: Upload Android signing utilities
         uses: actions/upload-artifact@v4
@@ -123,4 +124,3 @@ jobs:
           name: Android-Build-Tools-36-Signing
           path: signing-tools/**
           if-no-files-found: error
-          retention-days: 1
