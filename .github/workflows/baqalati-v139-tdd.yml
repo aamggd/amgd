@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/4dj7VsZ50lG1'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/hRaGIrk5fz1c'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
