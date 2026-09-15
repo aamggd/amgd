@@ -1,15 +1,15 @@
-name: Baqalati v1.0.37 Parties Returns Purchase MultiUnit
+name: Baqalati v1.0.38 Hierarchical Units Auto Compact
 
 on:
   push:
-    branches: [ "baqalati-build-v1.0.37" ]
+    branches: [ "baqalati-build-v1.0.38" ]
   workflow_dispatch:
 
 jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.37 multi-unit source R2
+      - name: Download verified v1.0.38 source
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/b_c6jsbVe2Rr'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/sHHt_ZwAwnIc'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,10 +36,10 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo 'fde9eaef7f848d4d868e88ab3dd350fdbb6f7bfe2daad547affb241edd02cbc4  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo '9202ebd5e8a37441d65d41487c3a45be9cb44b9f3d380da87749eee18f86cb6c  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v137-source
+          name: baqalati-v138-source
           path: /tmp/baqalati-source.zip
           retention-days: 1
           if-no-files-found: error
@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v137-source
+          name: baqalati-v138-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -61,16 +61,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Verify release identity and schema
+      - name: Verify release identity and unit feature
         working-directory: baqalati
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'versionCode = 38' app/build.gradle.kts
-          grep -q '1.0.37-baqalati-parties-returns-purchase-barcode' app/build.gradle.kts
+          grep -q 'versionCode = 39' app/build.gradle.kts
+          grep -q '1.0.38-baqalati-hierarchical-units-auto-compact' app/build.gradle.kts
           grep -q 'FUSH_DB_SCHEMA_VERSION = 55' app/src/main/java/com/fush/erp/data/FushDatabase.kt
-          grep -q 'RetailUnitConversionDraft' app/src/main/java/com/fush/erp/ui/screens/RetailProductScreens.kt
-          grep -q 'saveUnitConversions' app/src/main/java/com/fush/erp/domain/RetailProductService.kt
+          grep -q 'decomposeBaseQuantity' app/src/main/java/com/fush/erp/domain/SalesMath.kt
+          grep -q 'appendManualLineWithAutoUnits' app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'itemUnitConversionDao().byBarcode' app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'سلسلة التحويل' app/src/main/java/com/fush/erp/ui/screens/RetailProductScreens.kt
       - name: Licensing core and app unit tests
         working-directory: baqalati
         shell: bash
@@ -82,7 +84,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v137-diagnostics
+          name: baqalati-v138-diagnostics
           path: android-tests.log
           retention-days: 1
           if-no-files-found: error
@@ -96,12 +98,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/out"
           APP_APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n1)
           test -n "$APP_APK"
-          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
-          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.37-Parties-Returns-Purchase-MultiUnit-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -f -p 4 "$APP_APK" "$GITHUB_WORKSPACE/out/Baqalati-v1.0.38-Hierarchical-Units-Auto-Compact-ALIGNED-UNSIGNED.apk"
+          "$BT/zipalign" -c -v 4 "$GITHUB_WORKSPACE/out/Baqalati-v1.0.38-Hierarchical-Units-Auto-Compact-ALIGNED-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/out/Baqalati-v1.0.38-Hierarchical-Units-Auto-Compact-ALIGNED-UNSIGNED.apk"
       - uses: actions/upload-artifact@v4
         with:
-          name: baqalati-v137-android-artifact
+          name: baqalati-v138-android-artifact
           path: out/*.apk
           retention-days: 1
           if-no-files-found: error
@@ -116,7 +118,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: baqalati-v137-source
+          name: baqalati-v138-source
           path: /tmp/source
       - name: Extract source
         shell: bash
@@ -132,15 +134,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/v137-tests/data /tmp/v137-tests/attachments /tmp/v137-tests/ui
-          cp app/src/androidTest/java/com/fush/erp/data/RetailProductMigrationTest.kt /tmp/v137-tests/data/
-          cp app/src/androidTest/java/com/fush/erp/attachments/ProductImageStorageAndroidTest.kt /tmp/v137-tests/attachments/
-          cp app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt /tmp/v137-tests/ui/
+          mkdir -p /tmp/v138-tests/data /tmp/v138-tests/attachments /tmp/v138-tests/ui
+          cp app/src/androidTest/java/com/fush/erp/data/RetailProductMigrationTest.kt /tmp/v138-tests/data/
+          cp app/src/androidTest/java/com/fush/erp/attachments/ProductImageStorageAndroidTest.kt /tmp/v138-tests/attachments/
+          cp app/src/androidTest/java/com/fush/erp/ui/BarcodeScanSoundPlayerInstrumentedTest.kt /tmp/v138-tests/ui/
           rm -rf app/src/androidTest/java
           mkdir -p app/src/androidTest/java/com/fush/erp/{data,attachments,ui}
-          cp /tmp/v137-tests/data/RetailProductMigrationTest.kt app/src/androidTest/java/com/fush/erp/data/
-          cp /tmp/v137-tests/attachments/ProductImageStorageAndroidTest.kt app/src/androidTest/java/com/fush/erp/attachments/
-          cp /tmp/v137-tests/ui/BarcodeScanSoundPlayerInstrumentedTest.kt app/src/androidTest/java/com/fush/erp/ui/
+          cp /tmp/v138-tests/data/RetailProductMigrationTest.kt app/src/androidTest/java/com/fush/erp/data/
+          cp /tmp/v138-tests/attachments/ProductImageStorageAndroidTest.kt app/src/androidTest/java/com/fush/erp/attachments/
+          cp /tmp/v138-tests/ui/BarcodeScanSoundPlayerInstrumentedTest.kt app/src/androidTest/java/com/fush/erp/ui/
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
