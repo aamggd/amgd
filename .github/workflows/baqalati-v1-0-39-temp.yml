@@ -12,35 +12,46 @@ jobs:
   inspect-download:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect firestorage download client
+      - name: Inspect all firestorage JS chunks
         shell: bash
         run: |
           set -euxo pipefail
-          BASE='https://firestorage.ai'
           PAGE='https://firestorage.ai/ja/f/JlIVt8RWKfKp'
           curl -L -A 'Mozilla/5.0' -o page.html "$PAGE"
-          JS=$(grep -Eo '/_next/static/chunks/app/\(files\)/ja/f/page-[A-Za-z0-9]+\.js' page.html | head -1)
-          echo "JS=$JS"
-          test -n "$JS"
-          curl -L -A 'Mozilla/5.0' -o page.js "$BASE$JS"
-          echo '=== JS SIZE ==='
-          wc -c page.js
-          echo '=== API/DOWNLOAD STRINGS ==='
           python3 - <<'PY'
-          import re
-          s=open('page.js','r',encoding='utf-8',errors='ignore').read()
-          vals=[]
-          for m in re.finditer(r'["\'`]([^"\'`]{1,300})["\'`]', s):
-              v=m.group(1)
-              if any(k in v.lower() for k in ('api','download','share','file','public','token','signed','url')):
-                  vals.append(v)
-          seen=set()
-          for v in vals:
-              if v not in seen:
-                  print(v)
-                  seen.add(v)
+          import html, pathlib, re, subprocess, urllib.parse
+          text=pathlib.Path('page.html').read_text('utf-8',errors='ignore')
+          srcs=[]
+          for s in re.findall(r'<script[^>]+src="([^"]+)"', text):
+              s=html.unescape(s)
+              if s.startswith('/'):
+                  srcs.append(s)
+          print('SCRIPTS', len(srcs))
+          for i,s in enumerate(dict.fromkeys(srcs)):
+              enc=urllib.parse.quote(s, safe='/._-')
+              url='https://firestorage.ai'+enc
+              out=f'chunk-{i}.js'
+              print('FETCH', url)
+              subprocess.run(['curl','-fsSL','-A','Mozilla/5.0','-o',out,url], check=False)
+              p=pathlib.Path(out)
+              if not p.exists():
+                  continue
+              data=p.read_text('utf-8',errors='ignore')
+              print('SIZE', out, len(data))
+              if len(data)<500:
+                  print('SMALL', repr(data[:300]))
+              hits=[]
+              for m in re.finditer(r'["\'`]([^"\'`]{1,400})["\'`]', data):
+                  v=m.group(1)
+                  if any(k in v.lower() for k in ('api','download','share','file','public','token','signed','presign','url')):
+                      hits.append(v)
+              seen=set()
+              for v in hits:
+                  if v not in seen:
+                      print('HIT', v)
+                      seen.add(v)
+              for pat in (r'.{0,160}fetch\(.{0,400}', r'.{0,160}(?:download|share|public_id|file_id|signed|presign|token).{0,400}'):
+                  for m in re.finditer(pat,data,re.I|re.S):
+                      c=' '.join(m.group(0).split())
+                      print('CTX',c[:700])
           PY
-          echo '=== FETCH CONTEXT ==='
-          grep -Eo '.{0,180}fetch\(.{0,300}' page.js | head -80 || true
-          echo '=== AXIOS/ENDPOINT CONTEXT ==='
-          grep -Eo '.{0,180}(download|share|public_id|file_id|signed|presign|token).{0,300}' page.js | head -120 || true
