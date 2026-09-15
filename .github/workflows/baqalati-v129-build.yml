@@ -9,7 +9,7 @@ jobs:
   prepare-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Download verified v1.0.38 source R5
+      - name: Download verified v1.0.38 source R6
         shell: bash
         run: |
           set -euo pipefail
@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/zAD0XEb8rxrq'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/n_n072Tvlduq'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,7 +36,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '7ff91f394cac352031994413d663fb5cf06e11a45f68e7f53c6fdb9b74957822  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo 'd24edf4fd2c66f23457bff6df10b68e0cd3aa7251996e1ba0164e7174a4112af  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v138-source
@@ -76,6 +76,8 @@ jobs:
           grep -q 'openingQuantityBase' app/src/main/java/com/fush/erp/domain/InventoryMath.kt
           grep -q 'تكلفة الوحدة المختارة' app/src/main/java/com/fush/erp/ui/screens/AdvancedInventoryScreens.kt
           grep -q 'تكلفة الوحدة المختارة' app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt
+          grep -q 'validateReturnComponent' app/src/main/java/com/fush/erp/domain/SalesMath.kt
+          grep -q 'SalesMath.validateReturnComponent(paidQuantity' app/src/main/java/com/fush/erp/domain/SalesService.kt
       - name: Licensing core and app unit tests
         working-directory: baqalati
         shell: bash
