@@ -24,7 +24,7 @@ jobs:
           opts.add_experimental_option('prefs', {'download.default_directory':'/tmp/downloads','download.prompt_for_download':False})
           d=webdriver.Chrome(options=opts)
           d.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':'/tmp/downloads'})
-          d.get('https://firestorage.ai/ja/f/oU8hTEsnBdme'); time.sleep(8)
+          d.get('https://firestorage.ai/ja/f/vjB1zet8oUhT'); time.sleep(8)
           buttons=[b for b in d.find_elements(By.TAG_NAME,'button') if (b.text or '').strip()=='ダウンロード']
           if not buttons: raise RuntimeError('Firestorage download button not found')
           d.execute_script('arguments[0].click()',buttons[0])
@@ -36,7 +36,7 @@ jobs:
           if not files: raise RuntimeError('source archive was not downloaded')
           os.rename(files[0],'/tmp/baqalati-source.zip')
           PY
-          echo '96fd2aed0e283c7109b2b05c90d2e1adec172ba702e91b2144366bc33cc0c99b  /tmp/baqalati-source.zip' | sha256sum -c -
+          echo '7b95db01a8c8faa3112e91b802783ce43128851820dac7300622ae28a89f5e28  /tmp/baqalati-source.zip' | sha256sum -c -
       - uses: actions/upload-artifact@v4
         with:
           name: baqalati-v138-source
