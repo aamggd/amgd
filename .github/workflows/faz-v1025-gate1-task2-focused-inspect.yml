@@ -1,0 +1,60 @@
+name: FAZ v1.0.25 Gate1 Task2 Focused Inspect
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-task2-focused-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34796845084
+      - name: Focus exact Task2 contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+
+          echo '===== AUTONUMBER COMPLETE ====='
+          cat "$ROOT/app/src/main/java/com/fush/erp/domain/AutoNumberService.kt"
+
+          echo '===== PRODUCT MASTER CREATE/AUDIT METHODS ====='
+          F="$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt"
+          grep -nE 'suspend fun|BrandEntity|ProductFamilyEntity|auditService|MASTER_DATA_MANAGE|requirePermission|AutoNumber' "$F" | head -260
+          echo '--- context around createBrand/createFamily ---'
+          grep -n -A90 -B25 -E 'createBrand|createFamily|addBrand|addFamily' "$F" || true
+
+          echo '===== MASTER DATA UNIT/BRAND CREATE ====='
+          M="$ROOT/app/src/main/java/com/fush/erp/domain/MasterDataService.kt"
+          grep -n -A100 -B30 -E 'createUnit|createBrand|UnitEntity|BrandEntity|auditService|MASTER_DATA_MANAGE|requirePermission' "$M" | head -1200 || true
+
+          echo '===== DAO EXACT UNIT/BRAND ====='
+          D="$ROOT/app/src/main/java/com/fush/erp/data/dao/Daos.kt"
+          grep -n -A120 -B20 -E 'interface UnitDao|interface BrandDao' "$D" || true
+          P="$ROOT/app/src/main/java/com/fush/erp/data/dao/ProductMasterDao.kt"
+          grep -n -A180 -B15 -E 'interface ProductMasterDao|Category|Brand|Family' "$P" | head -1200 || true
+
+          echo '===== AUDIT SERVICE SIGNATURE ====='
+          A=$(grep -RIl 'class AuditService' "$ROOT/app/src/main/java/com/fush/erp" | head -1 || true)
+          echo "AUDIT_FILE=$A"
+          test -n "$A" && sed -n '1,320p' "$A"
+
+          echo '===== PERMISSION ENFORCEMENT EXAMPLES ====='
+          grep -RIn -A45 -B20 -E 'MASTER_DATA_MANAGE|requirePermission\(' "$ROOT/app/src/main/java/com/fush/erp/domain" | head -1400 || true
