@@ -12,6 +12,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,7 +34,6 @@ jobs:
               raise SystemExit('No files in share')
           preferred=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip']
           f=(preferred or fs)[0]
-          print(f['fileId'])
           open('file_id.txt','w').write(f['fileId'])
           print('Selected:',f.get('fileName'),f.get('sizeBytes'))
           PY
@@ -68,14 +70,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          set -euxo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKM"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" version
 
       - name: Make Gradle wrapper executable
         run: chmod +x baqalati/gradlew
