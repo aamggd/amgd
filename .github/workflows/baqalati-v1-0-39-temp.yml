@@ -9,49 +9,99 @@ permissions:
   contents: read
 
 jobs:
-  inspect-download:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - name: Inspect all firestorage JS chunks
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Baqalati source via firestorage API
         shell: bash
         run: |
           set -euxo pipefail
-          PAGE='https://firestorage.ai/ja/f/JlIVt8RWKfKp'
-          curl -L -A 'Mozilla/5.0' -o page.html "$PAGE"
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='JlIVt8RWKfKp'
+          curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
-          import html, pathlib, re, subprocess, urllib.parse
-          text=pathlib.Path('page.html').read_text('utf-8',errors='ignore')
-          srcs=[]
-          for s in re.findall(r'<script[^>]+src="([^"]+)"', text):
-              s=html.unescape(s)
-              if s.startswith('/'):
-                  srcs.append(s)
-          print('SCRIPTS', len(srcs))
-          for i,s in enumerate(dict.fromkeys(srcs)):
-              enc=urllib.parse.quote(s, safe='/._-')
-              url='https://firestorage.ai'+enc
-              out=f'chunk-{i}.js'
-              print('FETCH', url)
-              subprocess.run(['curl','-fsSL','-A','Mozilla/5.0','-o',out,url], check=False)
-              p=pathlib.Path(out)
-              if not p.exists():
-                  continue
-              data=p.read_text('utf-8',errors='ignore')
-              print('SIZE', out, len(data))
-              if len(data)<500:
-                  print('SMALL', repr(data[:300]))
-              hits=[]
-              for m in re.finditer(r'["\'`]([^"\'`]{1,400})["\'`]', data):
-                  v=m.group(1)
-                  if any(k in v.lower() for k in ('api','download','share','file','public','token','signed','presign','url')):
-                      hits.append(v)
-              seen=set()
-              for v in hits:
-                  if v not in seen:
-                      print('HIT', v)
-                      seen.add(v)
-              for pat in (r'.{0,160}fetch\(.{0,400}', r'.{0,160}(?:download|share|public_id|file_id|signed|presign|token).{0,400}'):
-                  for m in re.finditer(pat,data,re.I|re.S):
-                      c=' '.join(m.group(0).split())
-                      print('CTX',c[:700])
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          fs=d.get('files') or []
+          if not fs:
+              raise SystemExit('No files in share')
+          preferred=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip']
+          f=(preferred or fs)[0]
+          print(f['fileId'])
+          open('file_id.txt','w').write(f['fileId'])
+          print('Selected:',f.get('fileName'),f.get('sizeBytes'))
           PY
+          FILE_ID=$(cat file_id.txt)
+          curl -fsSL -A 'Mozilla/5.0' -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          u=d.get('downloadUrl')
+          if not u:
+              raise SystemExit('downloadUrl missing')
+          open('download_url.txt','w').write(u)
+          print('Direct download URL obtained')
+          PY
+          curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip
+          unzip -t Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip >/dev/null
+          sha256sum Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip
+
+      - name: Extract source
+        shell: bash
+        run: |
+          mkdir -p baqalati
+          unzip -q Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip -d baqalati
+          test -f baqalati/settings.gradle.kts
+          test -f baqalati/app/build.gradle.kts
+          test -f baqalati/gradlew
+          grep -q 'applicationId = "com.faz.yemen"' baqalati/app/build.gradle.kts
+          grep -q 'versionCode = 40' baqalati/app/build.gradle.kts
+          grep -q '1.0.39-baqalati-uiux-phase1-pos' baqalati/app/build.gradle.kts
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x baqalati/gradlew
+
+      - name: Run unit tests
+        working-directory: baqalati
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Build unsigned release APK
+        working-directory: baqalati
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Collect build outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p apk-out
+          find baqalati/app/build/outputs/apk -type f -name '*.apk' -print
+          APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk
+          sha256sum apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk > apk-out/Baqalati-v1.0.39-UIUX-Phase1-UNSIGNED.apk.sha256
+
+      - name: Upload unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.39-unsigned
+          path: apk-out/*
+          if-no-files-found: error
