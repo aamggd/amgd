@@ -14,9 +14,9 @@ permissions:
   contents: read
 
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -49,23 +49,80 @@ jobs:
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
           grep -q 'FUSH_DB_SCHEMA_VERSION = 53' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
           grep -q 'MIGRATION_52_53_SUPPLIER_PROVENANCE' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
-      - name: RED - schema54 contract must fail on v1.0.24 baseline
+      - name: Apply schema54 implementation
         shell: bash
         run: |
           set -euo pipefail
           ROOT='${{ steps.src.outputs.root }}'
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
           TEST="$ROOT/app/src/test/java/com/fush/erp/domain/UnifiedItemMasterMigrationContractTest.kt"
           cp ci/UnifiedItemMasterMigrationContractTest.kt "$TEST"
+      - name: GREEN - migration contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
           cd "$ROOT"
-          set +e
-          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.UnifiedItemMasterMigrationContractTest' > "$GITHUB_WORKSPACE/red.log" 2>&1
-          RC=$?
-          set -e
-          test "$RC" -ne 0
-          grep -q 'UnifiedItemMasterMigrationContractTest' "$GITHUB_WORKSPACE/red.log"
-          echo 'GATE1_SCHEMA54_RED=PASS'
+          gradle --no-daemon :app:testDebugUnitTest --tests 'com.fush.erp.domain.UnifiedItemMasterMigrationContractTest' | tee "$GITHUB_WORKSPACE/schema54-green.log"
+      - name: Build debug and generate Room schema 54
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleDebug | tee "$GITHUB_WORKSPACE/schema54-build.log"
+      - name: Verify generated schema and migration parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          python3 - "$ROOT" <<'PY'
+          import json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          candidates = list(root.rglob('54.json'))
+          assert candidates, 'Room schema 54.json not found'
+          good=[]
+          for p in candidates:
+              try:
+                  d=json.loads(p.read_text(encoding='utf-8'))
+              except Exception:
+                  continue
+              if d.get('database',{}).get('version') != 54:
+                  continue
+              js=p.read_text(encoding='utf-8')
+              assert 'product_categories' in js
+              assert 'categoryId' in js
+              assert 'referencePurchasePrice' in js
+              assert 'imageUri' in js
+              good.append(p)
+          assert good, 'No valid Room schema 54 with unified item master fields'
+          print('ROOM_SCHEMA_54=PASS', good[0])
+          PY
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          echo 'STARTUP_MIGRATION_PARITY=PASS'
+      - name: Package Task1 evidence
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/out"
+          mkdir -p "$OUT"
+          cp "$GITHUB_WORKSPACE/schema54-green.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/schema54-build.log" "$OUT/"
+          SCHEMA=$(find "$ROOT" -type f -name '54.json' -path '*schemas*' -print -quit); test -n "$SCHEMA"
+          cp "$SCHEMA" "$OUT/54.json"
+          echo 'Gate1 Task1 Schema54 = PASS' > "$OUT/task1-verification.txt"
+          echo 'Product Category master = PRESENT' >> "$OUT/task1-verification.txt"
+          echo 'Family categoryId = PRESENT' >> "$OUT/task1-verification.txt"
+          echo 'Variant referencePurchasePrice/imageUri = PRESENT' >> "$OUT/task1-verification.txt"
+          echo 'Migration 53->54 registered in AppContainer + Startup Bootstrap = YES' >> "$OUT/task1-verification.txt"
+          echo 'Destructive migration fallback = ABSENT' >> "$OUT/task1-verification.txt"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
-          name: FAZ-v1.0.25-Gate1-Schema54-RED
-          path: red.log
+          name: FAZ-v1.0.25-Gate1-Task1-Schema54-GREEN
+          path: ${{ steps.package.outputs.out }}
           retention-days: 2
