@@ -1,0 +1,112 @@
+name: Baqalati v1.0.39 Build
+
+on:
+  push:
+    branches: [ci-baqalati-v139-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download source package
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL='https://firestorage.ai/ja/f/JlIVt8RWKfKp'
+          curl -fL --retry 3 --retry-delay 2 -o share-response "$URL"
+          TYPE=$(file -b --mime-type share-response)
+          echo "Initial response type: $TYPE"
+          if [ "$TYPE" = "application/zip" ]; then
+            mv share-response Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip
+          else
+            python3 - <<'PY'
+import re, html, pathlib, sys
+p=pathlib.Path('share-response')
+s=p.read_text(errors='ignore')
+print('HTML bytes', len(s))
+for pat in [r'https?://[^"\'<> ]+', r'href=["\']([^"\']+)', r'url["\']?\s*[:=]\s*["\']([^"\']+)']:
+    vals=re.findall(pat,s)
+    for v in vals[:200]:
+        if isinstance(v,tuple): v=''.join(v)
+        v=html.unescape(v)
+        if any(k in v.lower() for k in ['download','storage','file','01a0a745498c7783ab1450b1c5a99e88','tiid2tpzi8dx62h5','jlivt8rwkfkp']):
+            print('CANDIDATE',v)
+PY
+            echo 'Source share did not return ZIP directly.' >&2
+            exit 41
+          fi
+          echo 'e8310efc15a6af7de06b14de5f663c2acd7e8b3801c152397905f22ef5741295  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip' | sha256sum -c -
+          mkdir source
+          unzip -q Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip -d source
+          test -f source/settings.gradle.kts
+          test -f source/app/build.gradle.kts
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Verify release identity before build
+        shell: bash
+        run: |
+          grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
+          grep -q 'versionCode = 40' source/app/build.gradle.kts
+          grep -q 'versionName = "1.0.39-baqalati-uiux-phase1-pos"' source/app/build.gradle.kts
+          test ! -f source/keystore.properties
+
+      - name: Run unit tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest
+
+      - name: Build unsigned release APK
+        working-directory: source
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Align and inspect APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          UNSIGNED=$(find source/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          test -n "$UNSIGNED"
+          mkdir -p apk-out/tools/build-tools-36.0.0
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -p -f 4 "$UNSIGNED" apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/zipalign-verification.txt
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/aapt2-badging.txt
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" apk-out/tools/build-tools-36.0.0/
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" apk-out/tools/build-tools-36.0.0/
+          cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" apk-out/tools/build-tools-36.0.0/
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" apk-out/tools/build-tools-36.0.0/
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib64" apk-out/tools/build-tools-36.0.0/ 2>/dev/null || true
+          sha256sum apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/unsigned-apk.sha256
+          grep -q "package: name='com.faz.yemen' versionCode='40' versionName='1.0.39-baqalati-uiux-phase1-pos'" apk-out/aapt2-badging.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.39-unsigned-build
+          path: apk-out/**
+          if-no-files-found: error
+          retention-days: 1
