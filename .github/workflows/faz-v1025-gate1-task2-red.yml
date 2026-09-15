@@ -1,0 +1,77 @@
+name: FAZ v1.0.25 Gate1 Task2 RED
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-task2-red.yml'
+      - 'ci/MasterNameNormalizerTest.kt'
+      - 'ci/InlineMasterCreationContractTest.kt'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 34796845084
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Prepare Task1 source
+        id: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          test ! -f "$ROOT/app/src/main/java/com/fush/erp/domain/MasterNameNormalizer.kt"
+      - name: RED - normalizer and quick-create APIs must be absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.src.outputs.root }}'
+          T="$ROOT/app/src/test/java/com/fush/erp/domain"
+          mkdir -p "$T"
+          cp ci/MasterNameNormalizerTest.kt "$T/MasterNameNormalizerTest.kt"
+          cp ci/InlineMasterCreationContractTest.kt "$T/InlineMasterCreationContractTest.kt"
+          cd "$ROOT"
+          set +e
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.MasterNameNormalizerTest' \
+            --tests 'com.fush.erp.domain.InlineMasterCreationContractTest' \
+            > "$GITHUB_WORKSPACE/task2-red.log" 2>&1
+          RC=$?
+          set -e
+          test "$RC" -ne 0
+          grep -Eq 'MasterNameNormalizer|createCategoryQuick|createBrandQuick|Unresolved reference|unresolved reference' "$GITHUB_WORKSPACE/task2-red.log"
+          echo 'GATE1_TASK2_RED=PASS'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task2-RED
+          path: task2-red.log
+          retention-days: 2
