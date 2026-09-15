@@ -2,7 +2,9 @@ name: Baqalati v1.0.39 Build
 
 on:
   push:
-    branches: [ci-baqalati-v139-build]
+    branches: [ "ci-baqalati-v139-build" ]
+    paths:
+      - '.github/workflows/baqalati-v139-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -11,49 +13,66 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download source package
+      - name: Download verified source from temporary share
         shell: bash
         run: |
-          set -euxo pipefail
-          URL='https://firestorage.ai/ja/f/JlIVt8RWKfKp'
-          curl -fL --retry 3 --retry-delay 2 -o share-response "$URL"
-          TYPE=$(file -b --mime-type share-response)
-          echo "Initial response type: $TYPE"
-          if [ "$TYPE" = "application/zip" ]; then
-            mv share-response Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip
-          else
-            python3 - <<'PY'
-import re, html, pathlib, sys
-p=pathlib.Path('share-response')
-s=p.read_text(errors='ignore')
-print('HTML bytes', len(s))
-for pat in [r'https?://[^"\'<> ]+', r'href=["\']([^"\']+)', r'url["\']?\s*[:=]\s*["\']([^"\']+)']:
-    vals=re.findall(pat,s)
-    for v in vals[:200]:
-        if isinstance(v,tuple): v=''.join(v)
-        v=html.unescape(v)
-        if any(k in v.lower() for k in ['download','storage','file','01a0a745498c7783ab1450b1c5a99e88','tiid2tpzi8dx62h5','jlivt8rwkfkp']):
-            print('CANDIDATE',v)
-PY
-            echo 'Source share did not return ZIP directly.' >&2
-            exit 41
-          fi
-          echo 'e8310efc15a6af7de06b14de5f663c2acd7e8b3801c152397905f22ef5741295  Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip' | sha256sum -c -
-          mkdir source
-          unzip -q Baqalati-v1.0.39-UIUX-Phase1-POS-SOURCE.zip -d source
+          set -euo pipefail
+          mkdir -p /tmp/downloads
+          python3 -m pip install --quiet selenium
+          python3 - <<'PY'
+          import glob
+          import os
+          import time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.common.by import By
+
+          opts = Options()
+          opts.add_argument('--headless=new')
+          opts.add_argument('--no-sandbox')
+          opts.add_argument('--disable-dev-shm-usage')
+          opts.add_experimental_option('prefs', {
+              'download.default_directory': '/tmp/downloads',
+              'download.prompt_for_download': False,
+          })
+          driver = webdriver.Chrome(options=opts)
+          driver.execute_cdp_cmd('Page.setDownloadBehavior', {
+              'behavior': 'allow',
+              'downloadPath': '/tmp/downloads',
+          })
+          driver.get('https://firestorage.ai/ja/f/JlIVt8RWKfKp')
+          time.sleep(8)
+          buttons = [b for b in driver.find_elements(By.TAG_NAME, 'button') if (b.text or '').strip() == 'ダウンロード']
+          if not buttons:
+              raise RuntimeError('Firestorage download button not found')
+          driver.execute_script('arguments[0].click()', buttons[0])
+          files = []
+          for _ in range(90):
+              time.sleep(1)
+              files = glob.glob('/tmp/downloads/*.zip')
+              if files and not glob.glob('/tmp/downloads/*.crdownload'):
+                  break
+          driver.quit()
+          if not files:
+              raise RuntimeError('source archive was not downloaded')
+          os.rename(files[0], '/tmp/baqalati-v139-source.zip')
+          PY
+          echo 'e8310efc15a6af7de06b14de5f663c2acd7e8b3801c152397905f22ef5741295  /tmp/baqalati-v139-source.zip' | sha256sum -c -
+          mkdir -p source
+          unzip -q /tmp/baqalati-v139-source.zip -d source
           test -f source/settings.gradle.kts
           test -f source/app/build.gradle.kts
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -69,41 +88,46 @@ PY
         with:
           gradle-version: '9.4.1'
 
-      - name: Verify release identity before build
+      - name: Verify release identity and DB safety
         shell: bash
         run: |
+          set -euo pipefail
           grep -q 'applicationId = "com.faz.yemen"' source/app/build.gradle.kts
           grep -q 'versionCode = 40' source/app/build.gradle.kts
           grep -q 'versionName = "1.0.39-baqalati-uiux-phase1-pos"' source/app/build.gradle.kts
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 55' source/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          ! grep -R -q 'fallbackToDestructiveMigration' source/app/src/main/java
           test ! -f source/keystore.properties
 
-      - name: Run unit tests
+      - name: Run app unit tests
         working-directory: source
-        run: gradle --no-daemon :app:testDebugUnitTest
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest
 
       - name: Build unsigned release APK
         working-directory: source
-        run: gradle --no-daemon :app:assembleRelease
+        shell: bash
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
 
-      - name: Align and inspect APK
+      - name: Align inspect and package signing tools
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           UNSIGNED=$(find source/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$UNSIGNED"
           mkdir -p apk-out/tools/build-tools-36.0.0
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -p -f 4 "$UNSIGNED" apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -v 4 apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/zipalign-verification.txt
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/aapt2-badging.txt
+          grep -q "package: name='com.faz.yemen' versionCode='40' versionName='1.0.39-baqalati-uiux-phase1-pos'" apk-out/aapt2-badging.txt
           cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" apk-out/tools/build-tools-36.0.0/
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" apk-out/tools/build-tools-36.0.0/
           cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" apk-out/tools/build-tools-36.0.0/
           cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" apk-out/tools/build-tools-36.0.0/
           cp -R "$ANDROID_HOME/build-tools/36.0.0/lib64" apk-out/tools/build-tools-36.0.0/ 2>/dev/null || true
           sha256sum apk-out/Baqalati-v1.0.39-UIUX-Phase1-ALIGNED-UNSIGNED.apk > apk-out/unsigned-apk.sha256
-          grep -q "package: name='com.faz.yemen' versionCode='40' versionName='1.0.39-baqalati-uiux-phase1-pos'" apk-out/aapt2-badging.txt
 
-      - name: Upload build artifacts
+      - name: Upload unsigned release artifact
         uses: actions/upload-artifact@v4
         with:
           name: Baqalati-v1.0.39-unsigned-build
