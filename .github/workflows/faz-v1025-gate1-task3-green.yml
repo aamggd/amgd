@@ -1,5 +1,6 @@
 name: FAZ v1.0.25 Gate1 Task3 GREEN
 
+# Task3 GREEN execution checkpoint after verified RED.
 on:
   push:
     branches: [faz/v1.0.25-ops-itemmaster]
