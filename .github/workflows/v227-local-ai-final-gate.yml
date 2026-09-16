@@ -46,8 +46,8 @@ jobs:
       - name: Download v227 source input
         shell: bash
         env:
-          SHARE_ID: TVvRJbPk4NHi
-          EXPECTED_SHA256: bcca15dc96ff212da43efed50256f28c87f7dfb7b9e08139dc8f78a8de388646
+          SHARE_ID: IxWfht7rHX4S
+          EXPECTED_SHA256: 00670bb501b09123c7ebe99a395d8d1d38858831cc52bec45f5d210993d1a0de
         run: |
           set -euxo pipefail
           API_BASE='https://api.firestorage.ai/dev/file'
