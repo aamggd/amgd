@@ -24,14 +24,14 @@ jobs:
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='Fdd0JjTV7RMQ'
-          SOURCE='Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX1.zip'
+          SHARE='xBShqNuCeBvQ'
+          SOURCE='Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX2.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
           fs=d.get('files') or []
-          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX1.zip']
+          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX2.zip']
           if not matches:
               raise SystemExit('source candidate not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
@@ -47,14 +47,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo '7a9090a67bb1b41df72a8a2ceff6d35355776eddf9c5a1b62860410db98ccfde  Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX1.zip' | sha256sum -c -
+          echo 'e41e7e1895cf5dcb0e3aa6c317bb269380afa4fe84fbe16dde05becaef05bacc  Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX2.zip' | sha256sum -c -
 
       - name: Extract and validate release identity
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX2.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
@@ -98,7 +98,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX1.zip out/Baqalati-v1.0.40-UIUX-Phase1-FINAL-SOURCE.zip
+          cp Baqalati-v1.0.40-UIUX-Phase1-Barcode-Complete-SOURCE-FIX2.zip out/Baqalati-v1.0.40-UIUX-Phase1-FINAL-SOURCE.zip
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
           cp "$APK" out/Baqalati-v1.0.40-UIUX-Phase1-UNSIGNED.apk
