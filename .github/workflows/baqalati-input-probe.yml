@@ -1,0 +1,28 @@
+name: Baqalati Input Probe
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths: ['.github/workflows/baqalati-input-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe raw and API input
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSIL "https://raw.githubusercontent.com/aamggd/amgd/baqalati-secure-build-r3/secure-build-input.txt?ts=$(date +%s)" > raw-headers.txt || true
+          curl -fsSL "https://raw.githubusercontent.com/aamggd/amgd/baqalati-secure-build-r3/secure-build-input.txt?ts=$(date +%s)" > raw-body.txt || true
+          curl -fsSL -H 'Accept: application/vnd.github.raw+json' 'https://api.github.com/repos/aamggd/amgd/contents/secure-build-input.txt?ref=baqalati-secure-build-r3' > api-body.txt || true
+          wc -c raw-body.txt api-body.txt > sizes.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: input-probe
+          path: |
+            raw-headers.txt
+            raw-body.txt
+            api-body.txt
+            sizes.txt
+          retention-days: 1
