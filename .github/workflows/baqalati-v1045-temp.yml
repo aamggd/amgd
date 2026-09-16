@@ -41,11 +41,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
       - name: Install Android SDK packages
         shell: bash
         run: |
+          set -euo pipefail
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
       - name: Set up Gradle 9.4.1
@@ -65,11 +67,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export ANDROID_HOME=/usr/local/lib/android/sdk
           mkdir -p out/build-tools/lib
           cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/Baqalati-v1.0.45-UNSIGNED.apk
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/build-tools/lib/apksigner.jar
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/build-tools/zipalign
-          chmod +x out/build-tools/zipalign
+          cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" out/build-tools/aapt2
+          chmod +x out/build-tools/zipalign out/build-tools/aapt2
           sha256sum out/Baqalati-v1.0.45-UNSIGNED.apk > out/Baqalati-v1.0.45-UNSIGNED.apk.sha256
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
