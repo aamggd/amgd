@@ -1,4 +1,4 @@
-name: Baqalati v1.0.45 Temp Build
+name: Baqalati v1.0.46 Temp Build
 
 on:
   push:
@@ -18,13 +18,13 @@ jobs:
         run: |
           set -euo pipefail
           base='https://api.firestorage.ai/prod/file'
-          share='XZ2wcQbOpZmo'
-          file_id='01a0aadb08b77500a4eb70131ff75bee'
+          share='5rVHrPbZvl-g'
+          file_id='01a0aaf78f0675feaed8593acbd8bad4'
           python3 - <<'PY'
           import json, urllib.request
           base='https://api.firestorage.ai/prod/file'
-          share='XZ2wcQbOpZmo'
-          file_id='01a0aadb08b77500a4eb70131ff75bee'
+          share='5rVHrPbZvl-g'
+          file_id='01a0aaf78f0675feaed8593acbd8bad4'
           req=urllib.request.Request(f'{base}/shares/{share}/files/{file_id}/download',method='POST')
           with urllib.request.urlopen(req, timeout=30) as r:
               meta=json.load(r)
@@ -70,15 +70,15 @@ jobs:
           set -euo pipefail
           export ANDROID_HOME=/usr/local/lib/android/sdk
           mkdir -p out/build-tools/lib
-          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/Baqalati-v1.0.45-UNSIGNED.apk
+          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/Baqalati-v1.0.46-UNSIGNED.apk
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/build-tools/lib/apksigner.jar
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/build-tools/zipalign
           cp "$ANDROID_HOME/build-tools/36.0.0/aapt2" out/build-tools/aapt2
           chmod +x out/build-tools/zipalign out/build-tools/aapt2
-          sha256sum out/Baqalati-v1.0.45-UNSIGNED.apk > out/Baqalati-v1.0.45-UNSIGNED.apk.sha256
+          sha256sum out/Baqalati-v1.0.46-UNSIGNED.apk > out/Baqalati-v1.0.46-UNSIGNED.apk.sha256
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-v1.0.45-build
+          name: Baqalati-v1.0.46-build
           path: out
           if-no-files-found: error
