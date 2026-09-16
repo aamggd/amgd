@@ -1,0 +1,26 @@
+name: Baqalati Firestorage Resolve V14
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths: ['.github/workflows/baqalati-firestorage-resolve-v14.yml']
+permissions:
+  contents: read
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve signed download URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='kesfRywXCZi-'
+          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 -c 'import json; d=json.load(open("files.json")); print(d["files"][0]["fileId"])')
+          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
+          python3 -c 'import json; print(json.load(open("download.json"))["downloadUrl"])' > download-url-v14.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-payload-download-url-v14
+          path: download-url-v14.txt
+          retention-days: 1
