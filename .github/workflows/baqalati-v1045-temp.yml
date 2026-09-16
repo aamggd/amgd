@@ -13,27 +13,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - name: Probe temporary source share
+      - name: Inspect share client API
         shell: bash
         run: |
           set -euo pipefail
-          url='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
-          curl -fL -A 'Mozilla/5.0' "$url" -o /tmp/share.html
-          echo "bytes=$(stat -c%s /tmp/share.html)"
-          file /tmp/share.html
-          echo '--- href/src candidates ---'
+          base='https://firestorage.ai'
+          js="$base/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js"
+          curl -fL -A 'Mozilla/5.0' "$js" -o /tmp/page.js
+          echo "js_bytes=$(stat -c%s /tmp/page.js)"
           python3 - <<'PY'
-          import re, urllib.parse
-          text=open('/tmp/share.html','rb').read().decode('utf-8','ignore')
-          base='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
-          seen=set()
-          for raw in re.findall(r'(?:href|src)=["\']([^"\']+)["\']', text):
-              u=urllib.parse.urljoin(base, raw)
-              if u not in seen:
-                  seen.add(u)
-                  print(u)
-          print('--- strings with download/file/api ---')
-          for m in re.findall(r'.{0,120}(?:download|file|api).{0,180}', text, re.I):
-              print(m[:300])
+          import re
+          text=open('/tmp/page.js','rb').read().decode('utf-8','ignore')
+          for pat in ['download','shareId','publicId','file_id','api/','/api','presign','signed','objects','files']:
+              print('\n###',pat)
+              seen=set()
+              for m in re.finditer(pat, text, re.I):
+                  a=max(0,m.start()-240); b=min(len(text),m.end()+420)
+                  chunk=text[a:b]
+                  if chunk not in seen:
+                      seen.add(chunk)
+                      print(chunk[:700])
+                  if len(seen)>=8: break
           PY
