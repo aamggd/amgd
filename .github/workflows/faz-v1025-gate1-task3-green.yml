@@ -1,0 +1,188 @@
+name: FAZ v1.0.25 Gate1 Task3 GREEN
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-gate1-task3-green.yml'
+      - 'ci/faz_v1025_gate1_task3_apply.py'
+      - 'ci/UnifiedItemCreationContractTest.kt'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  BASELINE_RUN_ID: '34796845084'
+  BASELINE_ARTIFACT: 'FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED'
+
+jobs:
+  green:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASELINE_ARTIFACT }}
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: ${{ env.BASELINE_RUN_ID }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Prepare Task3 source
+        id: prep
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); test -n "$S"
+          ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task2_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task3_apply.py "$ROOT"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'suspend fun createUnifiedItem' "$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt"
+
+      - name: Install Task3 contract test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          T="$ROOT/app/src/test/java/com/fush/erp/domain"
+          mkdir -p "$T"
+          cp ci/UnifiedItemCreationContractTest.kt "$T/UnifiedItemCreationContractTest.kt"
+
+      - name: GREEN - Task3 targeted contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest \
+            --tests 'com.fush.erp.domain.UnifiedItemCreationContractTest' \
+            | tee "$GITHUB_WORKSPACE/task3-green.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/task3-green.log"
+          echo 'GATE1_TASK3_TARGETED_GREEN=PASS'
+
+      - name: Full unit test regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/task3-all-tests.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/task3-all-tests.log"
+          echo 'GATE1_TASK3_ALL_TESTS=PASS'
+
+      - name: Build debug and preserve Room 54
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleDebug | tee "$GITHUB_WORKSPACE/task3-build.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/task3-build.log"
+          SCHEMA=$(find . -type f -path '*/schemas/*/54.json' -print -quit)
+          test -n "$SCHEMA"
+          cp "$SCHEMA" "$GITHUB_WORKSPACE/54.json"
+          python3 - "$SCHEMA" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1], encoding='utf-8'))
+          raw = json.dumps(data, ensure_ascii=False)
+          assert 'product_categories' in raw
+          assert 'categoryId' in raw
+          assert 'referencePurchasePrice' in raw
+          assert 'imageUri' in raw
+          print('ROOM_SCHEMA_54_PRESERVED=PASS')
+          PY
+
+      - name: Verify atomic unified item safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          PMS="$ROOT/app/src/main/java/com/fush/erp/domain/ProductMasterService.kt"
+          PMDAO="$ROOT/app/src/main/java/com/fush/erp/data/dao/ProductMasterDao.kt"
+          grep -q 'data class UnifiedItemCreateRequest' "$PMS"
+          grep -q 'suspend fun createUnifiedItem' "$PMS"
+          grep -q 'categoryById(request.categoryId)' "$PMS"
+          grep -q 'brandById(request.brandId)' "$PMS"
+          grep -q 'unitDao().byId(request.baseUnitId)' "$PMS"
+          grep -q 'referencePurchasePrice = request.referencePurchasePrice' "$PMS"
+          grep -q 'firstActiveRetailPriceList' "$PMDAO"
+          grep -q "priceType = 'RETAIL'" "$PMDAO"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          if grep -R -n 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"; then
+            echo 'DESTRUCTIVE_MIGRATION_FOUND'
+            exit 1
+          fi
+          python3 - "$PMS" <<'PY'
+          from pathlib import Path
+          import sys
+          s = Path(sys.argv[1]).read_text(encoding='utf-8')
+          body = s.split('suspend fun createUnifiedItem', 1)[1].split('suspend fun setVariantActive', 1)[0]
+          for forbidden in ('inventory_cost_layers', 'insertCostLayer', 'journal', 'postGl'):
+              assert forbidden not in body, forbidden
+          assert 'db.withTransaction' in s
+          assert 'id = itemId' in body
+          assert 'factorToBase = 1.0' in body
+          assert 'PRODUCT_VARIANT_PRICE' in body
+          print('UNIFIED_ITEM_ACCOUNTING_ISOLATION=PASS')
+          PY
+          cat > "$GITHUB_WORKSPACE/task3-verification.txt" <<EOF
+          GATE1_TASK3=PASS
+          TASK=Atomic unified operational item creation
+          ITEM_VARIANT_IDENTITY=PASS
+          CATEGORY_BRAND_UOM_VALIDATION=PASS
+          BARCODE_CONFLICT_GUARD=PASS
+          REFERENCE_PURCHASE_PRICE_INFORMATIONAL_ONLY=PASS
+          RETAIL_SALE_PRICE_CREATION=PASS
+          TRANSACTION_ATOMICITY=PASS
+          ROOM_SCHEMA=54
+          SCHEMA_BUMP_FOR_TASK3=NO
+          DESTRUCTIVE_MIGRATION=ABSENT
+          EOF
+
+      - name: Package Task3 source and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-UnifiedItem-Source.zip"
+          (cd "$ROOT" && zip -qr "$OUT" . -x '.gradle/*' 'app/build/*' 'build/*')
+          sha256sum "$OUT" > "$OUT.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task3-UnifiedItem-GREEN
+          path: |
+            task3-green.log
+            task3-all-tests.log
+            task3-build.log
+            task3-verification.txt
+            54.json
+            FAZ-Solar-ERP-v1.0.25-Gate1-Task3-UnifiedItem-Source.zip
+            FAZ-Solar-ERP-v1.0.25-Gate1-Task3-UnifiedItem-Source.zip.sha256
+          retention-days: 5
