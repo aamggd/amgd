@@ -9,29 +9,71 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 40
     steps:
-      - name: Inspect download request implementation
+      - name: Retrieve temporary build input
         shell: bash
         run: |
           set -euo pipefail
-          share='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
-          curl -fsSL -A 'Mozilla/5.0' "$share" -o /tmp/share.html
+          base='https://api.firestorage.ai/prod/file'
+          share='XZ2wcQbOpZmo'
+          file_id='01a0aac3a108705481158f9c83108dcb'
           python3 - <<'PY'
-          import re, urllib.parse, subprocess
-          html=open('/tmp/share.html','rb').read().decode('utf-8','ignore')
-          text=''
-          for raw in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
-              u=urllib.parse.urljoin('https://firestorage.ai', raw)
-              p=subprocess.run(['curl','-fsSL','-A','Mozilla/5.0',u],capture_output=True)
-              if p.returncode==0:
-                  text += p.stdout.decode('utf-8','ignore')+'\n'
-          for pat in ['downloadUrl','cushionId','/download','download-url','download-url','downloads']:
-              print('\n###',pat)
-              for j,m in enumerate(re.finditer(re.escape(pat), text, re.I)):
-                  a=max(0,m.start()-700); b=min(len(text),m.end()+1000)
-                  print(text[a:b].replace('\n',' ')[:1700])
-                  if j>=8: break
+          import json, urllib.request
+          base='https://api.firestorage.ai/prod/file'
+          share='XZ2wcQbOpZmo'
+          file_id='01a0aac3a108705481158f9c83108dcb'
+          req=urllib.request.Request(f'{base}/shares/{share}/files/{file_id}/download',method='POST')
+          with urllib.request.urlopen(req, timeout=30) as r:
+              meta=json.load(r)
+          url=meta['downloadUrl']
+          with urllib.request.urlopen(url, timeout=60) as r, open('/tmp/source.zip','wb') as out:
+              out.write(r.read())
           PY
+          unzip -t /tmp/source.zip
+          mkdir source
+          unzip -q /tmp/source.zip -d source
+          test -f source/settings.gradle.kts
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Set up Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Verify source contracts
+        working-directory: source
+        run: python3 scripts/verify_full_ui_source_gate.py
+      - name: Run unit tests
+        working-directory: source
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Build unsigned release APK
+        working-directory: source
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Stage APK and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out/build-tools/lib
+          cp source/app/build/outputs/apk/release/app-release-unsigned.apk out/Baqalati-v1.0.45-UNSIGNED.apk
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" out/build-tools/lib/apksigner.jar
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/build-tools/zipalign
+          chmod +x out/build-tools/zipalign
+          sha256sum out/Baqalati-v1.0.45-UNSIGNED.apk > out/Baqalati-v1.0.45-UNSIGNED.apk.sha256
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.45-build
+          path: out
+          if-no-files-found: error
