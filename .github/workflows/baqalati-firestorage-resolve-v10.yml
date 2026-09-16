@@ -14,7 +14,7 @@ jobs:
         run: |
           set -euo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='Ad9ymP9rpkjH2Swi'
+          SHARE='pagMEzplKsX4'
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           FILE_ID=$(python3 -c 'import json; d=json.load(open("files.json")); print(d["files"][0]["fileId"])')
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
