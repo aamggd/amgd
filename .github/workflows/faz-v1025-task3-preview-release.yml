@@ -1,0 +1,139 @@
+name: FAZ v1.0.25 Task3 Preview Release
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-task3-preview-release.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task3-UnifiedItem-GREEN
+          path: task3
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 35038399548
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+      - name: Prepare Task3 source and release identity
+        id: prep
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find task3 -type f -name '*Task3-UnifiedItem-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); test -n "$S"
+          ROOT=$(dirname "$S")
+          B="$ROOT/app/build.gradle.kts"
+          python3 - "$B" <<'PY'
+          from pathlib import Path
+          import re, sys
+          p=Path(sys.argv[1])
+          s=p.read_text(encoding='utf-8')
+          s,n1=re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 26', s, count=1)
+          s,n2=re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.0.25-faz-gate1-unified-item-preview"', s, count=1)
+          assert n1==1 and n2==1
+          p.write_text(s, encoding='utf-8')
+          PY
+          grep -q 'applicationId = "com.faz.solar"' "$B"
+          grep -q 'versionCode = 26' "$B"
+          grep -q 'versionName = "1.0.25-faz-gate1-unified-item-preview"' "$B"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+      - name: Fresh full unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/tests.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/tests.log"
+      - name: Build unsigned release
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleRelease | tee "$GITHUB_WORKSPACE/release-build.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/release-build.log"
+      - name: Verify package version schema and migration safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" > "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -q "package: name='com.faz.solar' versionCode='26' versionName='1.0.25-faz-gate1-unified-item-preview'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          python3 - "$ROOT" <<'PY'
+          import json, pathlib, sys
+          root=pathlib.Path(sys.argv[1]); valid=[]
+          for p in root.rglob('54.json'):
+              try: d=json.loads(p.read_text(encoding='utf-8'))
+              except Exception: continue
+              if d.get('database',{}).get('version')==54: valid.append(p)
+          assert valid, 'Room schema 54 missing'
+          print(valid[0])
+          PY
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+      - name: Package unsigned preview
+        id: pkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/out"; mkdir -p "$OUT"
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit)
+          cp "$APK" "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-UNSIGNED.apk"
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-UNSIGNED.apk" > "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-UNSIGNED.apk.sha256"
+          cp "$GITHUB_WORKSPACE/apk-badging.txt" "$OUT/"
+          cp "$GITHUB_WORKSPACE/tests.log" "$OUT/"
+          cp "$GITHUB_WORKSPACE/release-build.log" "$OUT/"
+          SCHEMA=$(find "$ROOT" -type f -name '54.json' -path '*schemas*' -print -quit); mkdir -p "$OUT/room-schema-54"; cp "$SCHEMA" "$OUT/room-schema-54/54.json"
+          cat > "$OUT/preview-verification.txt" <<'EOF'
+          BUILD_KIND=DEVELOPMENT_PREVIEW
+          GATE1_TASK3=PASS
+          APPLICATION_ID=com.faz.solar
+          VERSION_CODE=26
+          VERSION_NAME=1.0.25-faz-gate1-unified-item-preview
+          ROOM_SCHEMA=54
+          FULL_UNIT_TESTS=PASS
+          RELEASE_BUILD=PASS
+          MIGRATION_53_54_BOTH_STARTUP_PATHS=PASS
+          DESTRUCTIVE_MIGRATION=ABSENT
+          SIGNING=NOT_PERFORMED_IN_GITHUB
+          NOTE=Unified item service exists; unified item UI is not yet wired in this preview.
+          EOF
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle"
+          (cd "$ROOT" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-Source.zip" . -x '.gradle/*' 'app/build/*' 'build/*')
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.25-Gate1-Task3-PREVIEW-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task3-PREVIEW-UNSIGNED
+          path: ${{ steps.pkg.outputs.out }}
+          retention-days: 5
