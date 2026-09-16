@@ -1,0 +1,89 @@
+name: Baqalati Full UIUX Gate1 FIX4 CI
+
+on:
+  push:
+    branches: [baqalati-full-uiux-gate1-ci]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact FIX4 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='QUJBiCiQCsIz'
+          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX4.zip'
+          curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          name='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX4.zip'
+          m=[x for x in (d.get('files') or []) if x.get('fileName')==name]
+          if not m: raise SystemExit('FIX4 source not found')
+          open('file_id.txt','w').write(m[0]['fileId'])
+          PY
+          ID=$(cat file_id.txt)
+          curl -fsSL -A 'Mozilla/5.0' -X POST "$API/shares/$SHARE/files/$ID/download" -o download.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          u=d.get('downloadUrl')
+          if not u: raise SystemExit('downloadUrl missing')
+          open('download_url.txt','w').write(u)
+          PY
+          curl -fL -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
+          echo '1ae2d6d61413d0e36b698f44ad6778b1b107e071550d02c3d6994d699bdb2bf7  Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX4.zip' | sha256sum -c -
+          unzip -q "$SOURCE" -d baqalati
+      - name: Validate source identity and UI contracts
+        shell: bash
+        run: |
+          set -euxo pipefail
+          grep -q 'applicationId = "com.faz.yemen"' baqalati/app/build.gradle.kts
+          grep -q 'versionCode = 43' baqalati/app/build.gradle.kts
+          grep -q 'const val FUSH_DB_SCHEMA_VERSION = 55' baqalati/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          python3 baqalati/scripts/generate_full_ui_screen_inventory.py
+          python3 baqalati/scripts/test_phase1_ui_redesign.py
+          python3 baqalati/scripts/test_v1042_ui_biometric_contract.py
+          python3 baqalati/scripts/test_full_uiux_gate1_compile_contract.py
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Test
+        working-directory: baqalati
+        run: chmod +x gradlew && ./gradlew --no-daemon :app:testDebugUnitTest
+      - name: Release build
+        working-directory: baqalati
+        run: ./gradlew --no-daemon :app:assembleRelease
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir -p out
+          cp Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX4.zip out/Baqalati-v1.0.42-Full-UIUX-Gate1-TESTED-SOURCE.zip
+          cp baqalati/docs/ui/FULL_UI_SCREEN_INVENTORY.md out/FULL_UI_SCREEN_INVENTORY.md
+          APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          cp "$APK" out/Baqalati-v1.0.42-Full-UIUX-Gate1-UNSIGNED.apk
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-full-uiux-gate1-fix4-build
+          path: out/*
+          if-no-files-found: error
+          retention-days: 1
