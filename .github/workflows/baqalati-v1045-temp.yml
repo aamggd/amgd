@@ -19,12 +19,12 @@ jobs:
           set -euo pipefail
           base='https://api.firestorage.ai/prod/file'
           share='XZ2wcQbOpZmo'
-          file_id='01a0aac3a108705481158f9c83108dcb'
+          file_id='01a0aadb08b77500a4eb70131ff75bee'
           python3 - <<'PY'
           import json, urllib.request
           base='https://api.firestorage.ai/prod/file'
           share='XZ2wcQbOpZmo'
-          file_id='01a0aac3a108705481158f9c83108dcb'
+          file_id='01a0aadb08b77500a4eb70131ff75bee'
           req=urllib.request.Request(f'{base}/shares/{share}/files/{file_id}/download',method='POST')
           with urllib.request.urlopen(req, timeout=30) as r:
               meta=json.load(r)
