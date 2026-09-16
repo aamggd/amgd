@@ -19,19 +19,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download exact FIX1 source
+      - name: Download exact FIX2 source
         shell: bash
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='ccdIWZ1FdIh3'
-          SOURCE='Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX1.zip'
+          SHARE='upGua8xpIgwF'
+          SOURCE='Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX2.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
-          matches=[x for x in (d.get('files') or []) if x.get('fileName')=='Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX1.zip']
-          if not matches: raise SystemExit('FIX1 source not found')
+          matches=[x for x in (d.get('files') or []) if x.get('fileName')=='Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX2.zip']
+          if not matches: raise SystemExit('FIX2 source not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
           PY
           FILE_ID=$(cat file_id.txt)
@@ -45,14 +45,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo '19e13bdab56151bfe91fe02667fc4c2071bb0ceb4a91ea330a411cc9fd8a7b46  Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX1.zip' | sha256sum -c -
+          echo '4a2a7dd14e41c980274cd61bdc8876f489364dd54b6cafaefc7aa69db75b8ceb  Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX2.zip' | sha256sum -c -
 
       - name: Extract and validate release identity
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX2.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX1.zip out/Baqalati-v1.0.42-Unified-UI-Biometric-FINAL-SOURCE.zip
+          cp Baqalati-v1.0.42-Unified-UI-Biometric-SOURCE-FIX2.zip out/Baqalati-v1.0.42-Unified-UI-Biometric-FINAL-SOURCE.zip
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
           cp "$APK" out/Baqalati-v1.0.42-Unified-UI-Biometric-UNSIGNED.apk
