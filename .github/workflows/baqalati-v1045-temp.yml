@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Resolve temporary source metadata
+      - name: Resolve temporary source cushion session
         shell: bash
         run: |
           set -euo pipefail
-          api='https://api.firestorage.ai/prod/file/shares/XZ2wcQbOpZmo/files?maxResults=1000'
-          curl -fsSL -H 'Accept: application/json' "$api" -o /tmp/files.json
-          python3 -m json.tool /tmp/files.json
+          api='https://api.firestorage.ai/prod/file/shares/XZ2wcQbOpZmo/cushion-sessions'
+          curl -fsSL -X POST -H 'Content-Type: application/json' -d '{"password":null}' "$api" -o /tmp/session.json
+          python3 -m json.tool /tmp/session.json
