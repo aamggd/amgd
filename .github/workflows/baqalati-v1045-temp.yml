@@ -11,12 +11,27 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Resolve temporary source cushion session
+      - name: Inspect download request implementation
         shell: bash
         run: |
           set -euo pipefail
-          api='https://api.firestorage.ai/prod/file/shares/XZ2wcQbOpZmo/cushion-sessions'
-          curl -fsSL -X POST -H 'Content-Type: application/json' -d '{"password":null}' "$api" -o /tmp/session.json
-          python3 -m json.tool /tmp/session.json
+          share='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
+          curl -fsSL -A 'Mozilla/5.0' "$share" -o /tmp/share.html
+          python3 - <<'PY'
+          import re, urllib.parse, subprocess
+          html=open('/tmp/share.html','rb').read().decode('utf-8','ignore')
+          text=''
+          for raw in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
+              u=urllib.parse.urljoin('https://firestorage.ai', raw)
+              p=subprocess.run(['curl','-fsSL','-A','Mozilla/5.0',u],capture_output=True)
+              if p.returncode==0:
+                  text += p.stdout.decode('utf-8','ignore')+'\n'
+          for pat in ['downloadUrl','cushionId','/download','download-url','download-url','downloads']:
+              print('\n###',pat)
+              for j,m in enumerate(re.finditer(re.escape(pat), text, re.I)):
+                  a=max(0,m.start()-700); b=min(len(text),m.end()+1000)
+                  print(text[a:b].replace('\n',' ')[:1700])
+                  if j>=8: break
+          PY
