@@ -11,27 +11,37 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Inspect share client API
+      - name: Locate temporary source download endpoint
         shell: bash
         run: |
           set -euo pipefail
-          base='https://firestorage.ai'
-          js="$base/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js"
-          curl -fL -A 'Mozilla/5.0' "$js" -o /tmp/page.js
-          echo "js_bytes=$(stat -c%s /tmp/page.js)"
+          share='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
+          curl -fL -A 'Mozilla/5.0' "$share" -o /tmp/share.html
           python3 - <<'PY'
-          import re
-          text=open('/tmp/page.js','rb').read().decode('utf-8','ignore')
-          for pat in ['download','shareId','publicId','file_id','api/','/api','presign','signed','objects','files']:
+          import re, urllib.parse, subprocess, os
+          html=open('/tmp/share.html','rb').read().decode('utf-8','ignore')
+          base='https://firestorage.ai'
+          srcs=[]
+          for raw in re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', html):
+              u=urllib.parse.urljoin(base, raw)
+              if u not in srcs: srcs.append(u)
+          print('scripts',len(srcs))
+          alltext=''
+          for i,u in enumerate(srcs):
+              out=f'/tmp/js{i}.txt'
+              p=subprocess.run(['curl','-fsSL','-A','Mozilla/5.0',u,'-o',out])
+              if p.returncode==0:
+                  data=open(out,'rb').read().decode('utf-8','ignore')
+                  print(i,len(data),u)
+                  alltext += '\n'+data
+          for pat in ['download','shareId','publicId','presign','signedUrl','/api/','api/','objects','storage']:
               print('\n###',pat)
-              seen=set()
-              for m in re.finditer(pat, text, re.I):
-                  a=max(0,m.start()-240); b=min(len(text),m.end()+420)
-                  chunk=text[a:b]
-                  if chunk not in seen:
-                      seen.add(chunk)
-                      print(chunk[:700])
-                  if len(seen)>=8: break
+              n=0
+              for m in re.finditer(pat, alltext, re.I):
+                  a=max(0,m.start()-260); b=min(len(alltext),m.end()+500)
+                  print(alltext[a:b].replace('\n',' ')[:800])
+                  n+=1
+                  if n>=12: break
           PY
