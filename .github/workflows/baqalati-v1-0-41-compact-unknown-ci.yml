@@ -24,14 +24,14 @@ jobs:
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='3eMrw6d4cEYc'
-          SOURCE='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip'
+          SHARE='64g8TLdwmJC3'
+          SOURCE='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX1.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
           fs=d.get('files') or []
-          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip']
+          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX1.zip']
           if not matches:
               raise SystemExit('source candidate not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
@@ -47,14 +47,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo 'd75a6a2957eda8618fe517e1dbe52d67f2d551824f6568d571bdbbc79b0ba3a2  Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip' | sha256sum -c -
+          echo 'a72a168b6fbc6d9b28d5d5e9d20df165673aae311502e98692d2a83b067450e2  Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX1.zip' | sha256sum -c -
 
       - name: Extract and validate release identity
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip -d baqalati
+          unzip -q Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX1.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
@@ -98,7 +98,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip out/Baqalati-v1.0.41-Compact-Unknown-Barcode-FINAL-SOURCE.zip
+          cp Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX1.zip out/Baqalati-v1.0.41-Compact-Unknown-Barcode-FINAL-SOURCE.zip
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
           cp "$APK" out/Baqalati-v1.0.41-Compact-Unknown-Barcode-UNSIGNED.apk
