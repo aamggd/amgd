@@ -13,8 +13,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Runner probe
+      - uses: actions/checkout@v4
+      - name: Probe temporary source share
+        shell: bash
         run: |
-          echo BAQALATI_RUNNER_OK
-          java -version
-          python3 --version
+          set -euo pipefail
+          url='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
+          curl -fL -A 'Mozilla/5.0' "$url" -o /tmp/share.html
+          echo "bytes=$(stat -c%s /tmp/share.html)"
+          file /tmp/share.html
+          echo '--- href/src candidates ---'
+          python3 - <<'PY'
+          import re, urllib.parse
+          text=open('/tmp/share.html','rb').read().decode('utf-8','ignore')
+          base='https://firestorage.ai/ja/f/XZ2wcQbOpZmo'
+          seen=set()
+          for raw in re.findall(r'(?:href|src)=["\']([^"\']+)["\']', text):
+              u=urllib.parse.urljoin(base, raw)
+              if u not in seen:
+                  seen.add(u)
+                  print(u)
+          print('--- strings with download/file/api ---')
+          for m in re.findall(r'.{0,120}(?:download|file|api).{0,180}', text, re.I):
+              print(m[:300])
+          PY
