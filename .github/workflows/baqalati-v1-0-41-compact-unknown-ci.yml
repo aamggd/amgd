@@ -1,4 +1,4 @@
-name: Baqalati v1.0.41 Compact Unknown Barcode CI
+name: Baqalati v1.0.41 Continuous Unknown Scan CI
 
 on:
   push:
@@ -19,21 +19,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download exact source candidate
+      - name: Download exact FIX3 source
         shell: bash
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='SCGONK-W3NP2'
-          SOURCE='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX2.zip'
+          SHARE='Su0C0qElmQB9'
+          SOURCE='Baqalati-v1.0.41-Compact-Unknown-Barcode-CONTINUOUS-SCAN-FIX3.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
-          fs=d.get('files') or []
-          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX2.zip']
-          if not matches:
-              raise SystemExit('source candidate not found')
+          matches=[x for x in (d.get('files') or []) if x.get('fileName')=='Baqalati-v1.0.41-Compact-Unknown-Barcode-CONTINUOUS-SCAN-FIX3.zip']
+          if not matches: raise SystemExit('FIX3 source not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
           PY
           FILE_ID=$(cat file_id.txt)
@@ -47,14 +45,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo 'db7e3a6a2083b7c1d79dec252ada9aba497d3c33f367e124f728aa1460462a74  Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX2.zip' | sha256sum -c -
+          echo '4b0946779bf694f89d23db716a4e0d32adb8d6bdff9dae17930c9b46d80b7d79  Baqalati-v1.0.41-Compact-Unknown-Barcode-CONTINUOUS-SCAN-FIX3.zip' | sha256sum -c -
 
-      - name: Extract and validate release identity
+      - name: Extract and validate identity
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX2.zip -d baqalati
+          unzip -q Baqalati-v1.0.41-Compact-Unknown-Barcode-CONTINUOUS-SCAN-FIX3.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
@@ -62,6 +60,7 @@ jobs:
           grep -q 'versionCode = 42' baqalati/app/build.gradle.kts
           grep -q '1.0.41-baqalati-compact-unknown-barcode' baqalati/app/build.gradle.kts
           grep -q 'const val FUSH_DB_SCHEMA_VERSION = 55' baqalati/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          grep -q 'barcodeFlowStage == SalesBarcodeFlowStage.UNKNOWN_ACTIONS' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
           python3 baqalati/scripts/test_phase1_ui_redesign.py
 
       - name: Set up JDK 17
@@ -85,7 +84,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x baqalati/gradlew
 
-      - name: Run unit tests
+      - name: Run all unit tests
         working-directory: baqalati
         run: ./gradlew --no-daemon :app:testDebugUnitTest
 
@@ -93,21 +92,21 @@ jobs:
         working-directory: baqalati
         run: ./gradlew --no-daemon :app:assembleRelease
 
-      - name: Collect exact tested source and unsigned APK
+      - name: Collect exact tested source and APK
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-FIX2.zip out/Baqalati-v1.0.41-Compact-Unknown-Barcode-FINAL-SOURCE.zip
+          cp Baqalati-v1.0.41-Compact-Unknown-Barcode-CONTINUOUS-SCAN-FIX3.zip out/Baqalati-v1.0.41-CONTINUOUS-SCAN-FINAL-SOURCE.zip
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
-          cp "$APK" out/Baqalati-v1.0.41-Compact-Unknown-Barcode-UNSIGNED.apk
+          cp "$APK" out/Baqalati-v1.0.41-CONTINUOUS-SCAN-UNSIGNED.apk
           sha256sum out/* > out/SHA256SUMS.txt
 
       - name: Upload build outputs
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-v1.0.41-compact-unknown-build
+          name: Baqalati-v1.0.41-continuous-scan-build
           path: out/*
           if-no-files-found: error
           retention-days: 1
