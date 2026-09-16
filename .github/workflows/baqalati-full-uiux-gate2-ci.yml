@@ -19,20 +19,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download exact Gate2 FIX1 source
+      - name: Download exact Gate2 candidate source
         shell: bash
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='ugMvzFXy_nN1'
-          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate2-Sales-SOURCE-FIX1.zip'
+          SHARE='gKmKOeqbMoyW'
+          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-CANDIDATE.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
-          name='Baqalati-v1.0.42-Full-UIUX-Gate2-Sales-SOURCE-FIX1.zip'
+          name='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-CANDIDATE.zip'
           matches=[x for x in (d.get('files') or []) if x.get('fileName')==name]
-          if not matches: raise SystemExit('Gate2 FIX1 source not found')
+          if not matches: raise SystemExit('Gate2 candidate source not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
           PY
           FILE_ID=$(cat file_id.txt)
@@ -46,14 +46,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo 'c5ab82bf0069ac6f1ec993cea9b4e1def3ebe5f87be937e79453c4ab72b0cd58  Baqalati-v1.0.42-Full-UIUX-Gate2-Sales-SOURCE-FIX1.zip' | sha256sum -c -
+          echo 'fdc270f020723a9daff1bd22d422ba338dab2cc5c7661912a43833743a65b4e3  Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-CANDIDATE.zip' | sha256sum -c -
 
       - name: Extract and validate source
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate2-Sales-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-CANDIDATE.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           grep -q 'applicationId = "com.faz.yemen"' baqalati/app/build.gradle.kts
           grep -q 'versionCode = 43' baqalati/app/build.gradle.kts
@@ -62,6 +62,7 @@ jobs:
           python3 baqalati/scripts/test_v1042_ui_biometric_contract.py
           python3 baqalati/scripts/test_full_uiux_gate1_compile_contract.py
           python3 baqalati/scripts/test_full_uiux_gate2_sales_contract.py
+          python3 baqalati/scripts/test_full_uiux_gate2_customers_contract.py
           python3 baqalati/scripts/generate_full_ui_screen_inventory.py
           ! grep -q 'fun SalesInvoiceDetailDialog(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
           ! grep -q 'fun CustomerCollectionDialog(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
@@ -101,8 +102,9 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.42-Full-UIUX-Gate2-Sales-SOURCE-FIX1.zip out/Baqalati-v1.0.42-Full-UIUX-Gate2-TESTED-SOURCE.zip
+          cp Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-CANDIDATE.zip out/Baqalati-v1.0.42-Full-UIUX-Gate2-TESTED-SOURCE.zip
           cp baqalati/docs/ui/FULL_UI_SCREEN_INVENTORY.md out/FULL_UI_SCREEN_INVENTORY.md
+          cp baqalati/docs/ui/FULL_UIUX_GATE2_STATUS.md out/FULL_UIUX_GATE2_STATUS.md
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
           cp "$APK" out/Baqalati-v1.0.42-Full-UIUX-Gate2-UNSIGNED.apk
@@ -111,7 +113,7 @@ jobs:
       - name: Upload outputs
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-full-uiux-gate2-fix1-build
+          name: Baqalati-full-uiux-gate2-candidate-build
           path: out/*
           if-no-files-found: error
           retention-days: 1
