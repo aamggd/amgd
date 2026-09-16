@@ -19,20 +19,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download exact Gate1 FIX1 source
+      - name: Download exact Gate1 FIX2 source
         shell: bash
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='tgK2EiPHRPZb'
-          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX1.zip'
+          SHARE='IHDajG6jAbmc'
+          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX2.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
-          name='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX1.zip'
+          name='Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX2.zip'
           matches=[x for x in (d.get('files') or []) if x.get('fileName')==name]
-          if not matches: raise SystemExit('Gate1 FIX1 source not found')
+          if not matches: raise SystemExit('Gate1 FIX2 source not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
           PY
           FILE_ID=$(cat file_id.txt)
@@ -46,14 +46,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo 'c5ca63abd6e474cdf99021b8c6b0dbd577883e5cae67133427d807de5c09e234  Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX1.zip' | sha256sum -c -
+          echo 'b017290fd1cf0f16c1d9c36b0fd484b01f6d1d75dd484fd3392454e76b992912  Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX2.zip' | sha256sum -c -
 
-      - name: Extract and validate Gate1 FIX1 source
+      - name: Extract and validate Gate1 FIX2 source
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX2.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           test -f baqalati/app/build.gradle.kts
           test -f baqalati/gradlew
@@ -108,7 +108,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX1.zip out/Baqalati-v1.0.42-Full-UIUX-Gate1-TESTED-SOURCE.zip
+          cp Baqalati-v1.0.42-Full-UIUX-Gate1-SOURCE-FIX2.zip out/Baqalati-v1.0.42-Full-UIUX-Gate1-TESTED-SOURCE.zip
           cp baqalati/docs/ui/FULL_UI_SCREEN_INVENTORY.md out/FULL_UI_SCREEN_INVENTORY.md
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
           test -n "$APK"
@@ -118,7 +118,7 @@ jobs:
       - name: Upload Gate1 outputs
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-full-uiux-gate1-fix1-build
+          name: Baqalati-full-uiux-gate1-fix2-build
           path: out/*
           if-no-files-found: error
           retention-days: 1
