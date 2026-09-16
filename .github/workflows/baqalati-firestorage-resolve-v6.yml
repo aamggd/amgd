@@ -24,3 +24,4 @@ jobs:
           name: encrypted-payload-download-url-v6
           path: download-url-v6.txt
           retention-days: 1
+# trigger: resolve current V6 payload
