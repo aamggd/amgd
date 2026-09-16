@@ -19,20 +19,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download exact Gate2 FIX1 source
+      - name: Download exact Gate2 FIX3 source
         shell: bash
         run: |
           set -euxo pipefail
           API='https://api.firestorage.ai/dev/file'
-          SHARE='lhGRDWv1Cnfa'
-          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX1.zip'
+          SHARE='n1QUcaK6o32Q'
+          SOURCE='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX3.zip'
           curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
           python3 - <<'PY'
           import json
           d=json.load(open('files.json',encoding='utf-8'))
-          name='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX1.zip'
+          name='Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX3.zip'
           matches=[x for x in (d.get('files') or []) if x.get('fileName')==name]
-          if not matches: raise SystemExit('Gate2 FIX1 source not found')
+          if not matches: raise SystemExit('Gate2 FIX3 source not found')
           open('file_id.txt','w').write(matches[0]['fileId'])
           PY
           FILE_ID=$(cat file_id.txt)
@@ -46,14 +46,14 @@ jobs:
           PY
           curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
           unzip -t "$SOURCE" >/dev/null
-          echo '88a259a50bdcdc2fe2bd4de93997e91ca72e63d87728259ec3f3c6cf0bb9411e  Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX1.zip' | sha256sum -c -
+          echo '93539178218d6fd4f67a8311420c02e7a68d4dd55c39406a83b63122bafefccf  Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX3.zip' | sha256sum -c -
 
       - name: Extract and validate source
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p baqalati
-          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX1.zip -d baqalati
+          unzip -q Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX3.zip -d baqalati
           test -f baqalati/settings.gradle.kts
           grep -q 'applicationId = "com.faz.yemen"' baqalati/app/build.gradle.kts
           grep -q 'versionCode = 43' baqalati/app/build.gradle.kts
@@ -68,6 +68,7 @@ jobs:
           ! grep -q 'fun CustomerCollectionDialog(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
           ! grep -q 'fun ReceiptDialog(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
           ! grep -q 'fun SalesReturnDialog(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
+          grep -q 'BaqalatiEmptyState(' baqalati/app/src/main/java/com/fush/erp/ui/screens/SalesScreens.kt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -102,7 +103,7 @@ jobs:
         run: |
           set -euxo pipefail
           mkdir -p out
-          cp Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX1.zip out/Baqalati-v1.0.42-Full-UIUX-Gate2-TESTED-SOURCE.zip
+          cp Baqalati-v1.0.42-Full-UIUX-Gate2-SOURCE-FIX3.zip out/Baqalati-v1.0.42-Full-UIUX-Gate2-TESTED-SOURCE.zip
           cp baqalati/docs/ui/FULL_UI_SCREEN_INVENTORY.md out/FULL_UI_SCREEN_INVENTORY.md
           cp baqalati/docs/ui/FULL_UIUX_GATE2_STATUS.md out/FULL_UIUX_GATE2_STATUS.md
           APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
@@ -113,7 +114,7 @@ jobs:
       - name: Upload outputs
         uses: actions/upload-artifact@v4
         with:
-          name: Baqalati-full-uiux-gate2-fix1-build
+          name: Baqalati-full-uiux-gate2-fix3-build
           path: out/*
           if-no-files-found: error
           retention-days: 1
