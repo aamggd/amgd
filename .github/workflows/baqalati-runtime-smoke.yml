@@ -1,0 +1,104 @@
+name: Baqalati Final APK Runtime Smoke
+
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths:
+      - '.github/workflows/baqalati-runtime-smoke.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Download exact final APK artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -L --fail \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/aamggd/amgd/actions/artifacts/10437651570/zip" \
+            -o /tmp/baqalati-final-artifact.zip
+          mkdir -p /tmp/baqalati-final
+          unzip -q /tmp/baqalati-final-artifact.zip -d /tmp/baqalati-final
+          APK=/tmp/baqalati-final/Baqalati-v1.0.42-Full-UIUX-SIGNED.apk
+          test -f "$APK"
+          echo 'd4f67a8df1174bde95ca3d57c7ac36b91edbaeba7c16b49a521d4be2ea9a698a  /tmp/baqalati-final/Baqalati-v1.0.42-Full-UIUX-SIGNED.apk' | sha256sum -c -
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Emulator install and cold launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK=/tmp/baqalati-final/Baqalati-v1.0.42-Full-UIUX-SIGNED.apk
+            OUT=/tmp/baqalati-runtime
+            mkdir -p "$OUT"
+            adb wait-for-device
+            adb shell getprop ro.build.version.release | tr -d '\r' > "$OUT/android-version.txt"
+            adb shell getprop ro.build.version.sdk | tr -d '\r' > "$OUT/android-sdk.txt"
+            adb install -r "$APK" | tee "$OUT/install.txt"
+            adb shell pm path com.faz.yemen | tee "$OUT/package-path.txt"
+            adb shell dumpsys package com.faz.yemen > "$OUT/package-info.txt"
+            grep -q 'versionCode=43' "$OUT/package-info.txt"
+            grep -q 'versionName=1.0.42-baqalati-unified-ui-biometric' "$OUT/package-info.txt"
+
+            adb logcat -c
+            adb shell am force-stop com.faz.yemen
+            adb shell monkey -p com.faz.yemen -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch-1.txt"
+            sleep 12
+            PID1=$(adb shell pidof com.faz.yemen | tr -d '\r' || true)
+            test -n "$PID1"
+            echo "$PID1" > "$OUT/pid-first-launch.txt"
+            adb shell dumpsys activity activities > "$OUT/activity-after-first-launch.txt"
+            adb exec-out screencap -p > "$OUT/first-launch.png" || true
+            adb logcat -d -v threadtime > "$OUT/logcat-first-launch.txt"
+            if grep -E 'FATAL EXCEPTION|ANR in com\.faz\.yemen|Process: com\.faz\.yemen' "$OUT/logcat-first-launch.txt"; then
+              echo 'Runtime crash/ANR detected on first launch' >&2
+              exit 20
+            fi
+
+            adb shell am force-stop com.faz.yemen
+            sleep 2
+            adb logcat -c
+            adb shell monkey -p com.faz.yemen -c android.intent.category.LAUNCHER 1 | tee "$OUT/launch-2.txt"
+            sleep 8
+            PID2=$(adb shell pidof com.faz.yemen | tr -d '\r' || true)
+            test -n "$PID2"
+            echo "$PID2" > "$OUT/pid-second-launch.txt"
+            adb exec-out screencap -p > "$OUT/second-launch.png" || true
+            adb logcat -d -v threadtime > "$OUT/logcat-second-launch.txt"
+            if grep -E 'FATAL EXCEPTION|ANR in com\.faz\.yemen|Process: com\.faz\.yemen' "$OUT/logcat-second-launch.txt"; then
+              echo 'Runtime crash/ANR detected on second launch' >&2
+              exit 21
+            fi
+
+            echo 'RUNTIME_SMOKE: PASS' | tee "$OUT/RESULT.txt"
+
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.42-Runtime-Smoke-Evidence
+          path: /tmp/baqalati-runtime/*
+          retention-days: 1
+          if-no-files-found: warn
