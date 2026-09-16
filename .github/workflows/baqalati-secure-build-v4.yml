@@ -1,0 +1,146 @@
+name: Baqalati Secure Ephemeral Build V4
+
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths:
+      - '.github/workflows/baqalati-secure-build-v4.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  secure-build-v4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Generate ephemeral RSA key
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:4096 -out /tmp/baqalati-private.pem >/dev/null 2>&1
+          openssl pkey -in /tmp/baqalati-private.pem -pubout -out baqalati-build-public-v4.pem
+          chmod 600 /tmp/baqalati-private.pem
+
+      - name: Publish ephemeral public key
+        uses: actions/upload-artifact@v4
+        with:
+          name: baqalati-ephemeral-public-key-v4
+          path: baqalati-build-public-v4.pem
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Wait for encrypted build payload URL
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          API='https://api.github.com/repos/aamggd/amgd/contents/secure-build-input-v4.txt?ref=baqalati-secure-build-r3'
+          for i in $(seq 1 120); do
+            URL=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github.raw+json' -H 'Cache-Control: no-cache' "$API" 2>/dev/null || true)
+            if printf '%s' "$URL" | grep -q '^https://'; then
+              printf '%s' "$URL" > /tmp/payload-url.txt
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Encrypted payload URL was not provided in time.' >&2
+          exit 2
+
+      - name: Download and decrypt payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(cat /tmp/payload-url.txt)
+          curl -L --fail --retry 3 -A 'Mozilla/5.0' "$URL" -o /tmp/secure-bundle.zip
+          unzip -q /tmp/secure-bundle.zip -d /tmp/secure-bundle
+          test -s /tmp/secure-bundle/params.enc
+          test -s /tmp/secure-bundle/payload.enc
+          openssl pkeyutl -decrypt -inkey /tmp/baqalati-private.pem -in /tmp/secure-bundle/params.enc -out /tmp/params.bin -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256
+          KEY=$(od -An -tx1 -N32 /tmp/params.bin | tr -d ' \n')
+          IV=$(tail -c 16 /tmp/params.bin | od -An -tx1 | tr -d ' \n')
+          openssl enc -d -aes-256-cbc -K "$KEY" -iv "$IV" -in /tmp/secure-bundle/payload.enc -out /tmp/baqalati-payload.tar.gz
+          mkdir -p /tmp/baqalati-payload
+          tar -xzf /tmp/baqalati-payload.tar.gz -C /tmp/baqalati-payload
+          test -f /tmp/baqalati-payload/baqalati_build_r1/settings.gradle.kts
+          test -f /tmp/baqalati-payload/signing/FAZ-Yemen-ERP-Permanent-Signing.p12
+          test -f /tmp/baqalati-payload/signing/password.txt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
+
+      - name: Configure release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS=$(cat /tmp/baqalati-payload/signing/password.txt)
+          cat > /tmp/baqalati-payload/baqalati_build_r1/keystore.properties <<EOF
+          storeFile=../signing/FAZ-Yemen-ERP-Permanent-Signing.p12
+          storePassword=$PASS
+          keyAlias=faz_yemen
+          keyPassword=$PASS
+          EOF
+          chmod 600 /tmp/baqalati-payload/baqalati_build_r1/keystore.properties
+
+      - name: Run full UI source gate
+        working-directory: /tmp/baqalati-payload/baqalati_build_r1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/verify_full_ui_source_gate.py | tee /tmp/full-ui-source-gate.log
+
+      - name: Unit tests and signed release build
+        working-directory: /tmp/baqalati-payload/baqalati_build_r1
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Verify signed APK identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find /tmp/baqalati-payload/baqalati_build_r1/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          test -n "$APK"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner-report.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' /tmp/apksigner-report.txt
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' /tmp/apksigner-report.txt
+          tr '[:upper:]' '[:lower:]' < /tmp/apksigner-report.txt | grep -q '1013f8bec5505d656d64e53271b167d88a91230bc3a049ba45d73cac79634bf2'
+          mkdir -p /tmp/baqalati-out
+          cp "$APK" /tmp/baqalati-out/Baqalati-v1.0.42-Full-UIUX-SIGNED.apk
+          sha256sum /tmp/baqalati-out/Baqalati-v1.0.42-Full-UIUX-SIGNED.apk > /tmp/baqalati-out/SHA256SUMS.txt
+          cp /tmp/apksigner-report.txt /tmp/baqalati-out/APKSIGNER-REPORT.txt
+          cp /tmp/full-ui-source-gate.log /tmp/baqalati-out/FULL-UI-SOURCE-GATE.log
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.42-Full-UIUX-SIGNED-V4
+          path: /tmp/baqalati-out/*
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Secure cleanup
+        if: always()
+        shell: bash
+        run: |
+          rm -f /tmp/baqalati-private.pem /tmp/params.bin /tmp/baqalati-payload/signing/password.txt /tmp/baqalati-payload/signing/FAZ-Yemen-ERP-Permanent-Signing.p12 /tmp/baqalati-payload/baqalati_build_r1/keystore.properties || true
