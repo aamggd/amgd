@@ -1,0 +1,40 @@
+name: Baqalati Firestorage Library Probe
+
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths:
+      - '.github/workflows/baqalati-firestorage-lib-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch shared chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://firestorage.ai/_next/static/chunks'
+          curl -L --fail -A 'Mozilla/5.0' "$base/4899-d89df949f2dbd5af.js" -o 4899.js
+          curl -L --fail -A 'Mozilla/5.0' "$base/5841-1160578ba9bb4f3e.js" -o 5841.js
+          curl -L --fail -A 'Mozilla/5.0' "$base/8437-d65cc193dc908afa.js" -o 8437.js
+          curl -L --fail -A 'Mozilla/5.0' "$base/8500-f4d7bfbe7500f274.js" -o 8500.js
+          cat 4899.js 5841.js 8437.js 8500.js > all.js
+          grep -Eo '.{0,220}(fetch\(|/api/|download|presign|signed[_-]?url|public[_-]?id|file[_-]?id|share[_-]?id|token).{0,320}' all.js > clues.txt || true
+          grep -Eo 'https?://[^"'\'' <>]+' all.js | sort -u > urls.txt || true
+          grep -Eo '/api/[A-Za-z0-9_?=&/.$:{}-]+' all.js | sort -u > api-paths.txt || true
+          wc -c 4899.js 5841.js 8437.js 8500.js all.js > sizes.txt
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestorage-lib-probe
+          path: |
+            clues.txt
+            urls.txt
+            api-paths.txt
+            sizes.txt
+            all.js
+          retention-days: 1
