@@ -1,0 +1,158 @@
+name: FAZ v1.0.25 FINAL Release v2
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-final-release-v2.yml'
+      - 'ci/faz_v1025_fix_search_contract.py'
+      - 'ci/faz_v1025_gate1_task4_apply.py'
+      - 'ci/faz_v1025_gate1_task4_compile_fix.py'
+      - 'ci/faz_v1025_release_identity.py'
+      - 'ci/UnifiedItemDialogContractTest.kt'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAZ-v1.0.25-Gate1-Task3-UnifiedItem-GREEN
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: 35038399548
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Prepare final source and maintained contracts
+        id: prep
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*UnifiedItem-Source.zip' -print -quit); test -n "$Z"
+          mkdir -p work; unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit); test -n "$S"
+          ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_task4_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task4_compile_fix.py "$ROOT"
+          python3 ci/faz_v1025_release_identity.py "$ROOT"
+          python3 ci/faz_v1025_fix_search_contract.py "$ROOT"
+          T="$ROOT/app/src/test/java/com/fush/erp/ui/UnifiedItemDialogContractTest.kt"
+          mkdir -p "$(dirname "$T")"
+          cp ci/UnifiedItemDialogContractTest.kt "$T"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+          grep -q 'versionCode = 26' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "1.0.25-faz-unified-item-master"' "$ROOT/app/build.gradle.kts"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+
+      - name: Run all tests and build release in one Gradle invocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleRelease | tee "$GITHUB_WORKSPACE/v1025-final-build.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/v1025-final-build.log"
+          echo 'V1025_ALL_TESTS_AND_RELEASE=PASS'
+
+      - name: Verify identity Room and final feature contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -q "package: name='com.faz.solar' versionCode='26' versionName='1.0.25-faz-unified-item-master'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          SCHEMA=$(find "$ROOT" -type f -path '*/schemas/*/54.json' -print -quit); test -n "$SCHEMA"
+          cp "$SCHEMA" "$GITHUB_WORKSPACE/54.json"
+          python3 - "$SCHEMA" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          assert data.get('database',{}).get('version') == 54
+          raw=json.dumps(data, ensure_ascii=False)
+          for token in ('product_categories','categoryId','referencePurchasePrice','imageUri'):
+              assert token in raw, token
+          print('ROOM_SCHEMA_54=PASS')
+          PY
+          UI="$ROOT/app/src/main/java/com/fush/erp/ui/screens/UnifiedItemDialog.kt"
+          HOME="$ROOT/app/src/main/java/com/fush/erp/ui/screens/HomeShell.kt"
+          SELECTOR="$ROOT/app/src/main/java/com/fush/erp/ui/FushSearchableSelectionField.kt"
+          grep -q 'createCategoryQuick' "$UI"
+          grep -q 'createBrandQuick' "$UI"
+          grep -q 'masterDataService.createUnit' "$UI"
+          grep -q 'productMasterService.createUnifiedItem' "$UI"
+          grep -q 'ActivityResultContracts.OpenDocument' "$UI"
+          grep -q 'takePersistableUriPermission' "$UI"
+          grep -q 'UnifiedItemDialog(' "$HOME"
+          grep -q 'observeCategories()' "$HOME"
+          grep -q 'observeBrands()' "$HOME"
+          grep -q 'onCreateNew' "$SELECTOR"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          ! grep -Rqs 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"
+          echo 'V1025_FINAL_CONTRACTS=PASS'
+
+      - name: Package final unsigned delivery
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/final-out"
+          mkdir -p "$OUT/room-schema-54"
+          APK=$(find "$ROOT/app/build/outputs/apk/release" -type f -name '*.apk' -print -quit); test -n "$APK"
+          cp "$APK" "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk"
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk" > "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk.sha256"
+          cp "$GITHUB_WORKSPACE/54.json" "$OUT/room-schema-54/54.json"
+          cp "$GITHUB_WORKSPACE/apk-badging.txt" "$OUT/"
+          cp "$GITHUB_WORKSPACE/v1025-final-build.log" "$OUT/"
+          cat > "$OUT/final-verification.txt" <<'EOF'
+          FAZ v1.0.25 Unified Item Master = PASS
+          applicationId = com.faz.solar
+          versionCode = 26
+          versionName = 1.0.25-faz-unified-item-master
+          Room Schema = 54
+          Unified same-screen item form = PASS
+          Inline Category creation = PASS
+          Inline Brand creation = PASS
+          Inline Unit creation = PASS
+          Barcode guard = PASS
+          Reference purchase price = informational only
+          Retail sale price = PASS
+          Persistent product image URI = PASS
+          Full unit tests = PASS
+          Release build = PASS
+          Destructive migration = ABSENT
+          Signing = NOT PERFORMED IN THIS WORKFLOW
+          EOF
+          rm -rf "$ROOT/app/build" "$ROOT/.gradle"
+          (cd "$ROOT" && zip -qr "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip" . -x '.gradle/*' 'app/build/*' 'build/*')
+          sha256sum "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip" > "$OUT/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip.sha256"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-UnifiedItemMaster-FINAL-UNSIGNED-v2
+          path: ${{ steps.package.outputs.out }}
+          retention-days: 5
