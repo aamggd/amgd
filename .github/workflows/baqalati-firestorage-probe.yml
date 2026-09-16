@@ -1,0 +1,35 @@
+name: Baqalati Firestorage Probe
+
+on:
+  push:
+    branches: [baqalati-secure-build-r3]
+    paths:
+      - '.github/workflows/baqalati-firestorage-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch share page
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail -A 'Mozilla/5.0' 'https://firestorage.ai/ja/f/oisJ6WPjaY_e' -o page.html
+          file page.html
+          wc -c page.html
+          grep -Eo 'https?://[^"'\'' <>]+' page.html | sort -u > urls.txt || true
+          grep -Eo 'href=["'\''][^"'\'']+' page.html | sort -u > hrefs.txt || true
+          grep -Ein 'download|Baqalati|01a0a91a|VzZz08LwxW3gm6FC|oisJ6WPjaY_e' page.html > matches.txt || true
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestorage-probe
+          path: |
+            page.html
+            urls.txt
+            hrefs.txt
+            matches.txt
+          retention-days: 1
