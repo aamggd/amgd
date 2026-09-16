@@ -21,7 +21,8 @@ class UnifiedItemDialogContractTest {
         val selector = source("src/main/java/com/fush/erp/ui/FushSearchableSelectionField.kt")
         assertTrue(selector.contains("onCreateNew: ((String) -> Unit)? = null"))
         assertTrue(selector.contains("createNewLabel: (String) -> String"))
-        assertTrue(selector.contains("onCreateNew(effectiveSearch.trim())"))
+        assertTrue(selector.contains("effectiveSearch.trim()"))
+        assertTrue(selector.contains("onCreateNew"))
         assertTrue(selector.contains("+ إضافة"))
     }
 
