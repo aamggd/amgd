@@ -1,0 +1,113 @@
+name: Baqalati v1.0.41 Compact Unknown Barcode CI
+
+on:
+  push:
+    branches:
+      - baqalati-v1-0-41-compact-unknown-ci
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download exact source candidate
+        shell: bash
+        run: |
+          set -euxo pipefail
+          API='https://api.firestorage.ai/dev/file'
+          SHARE='3eMrw6d4cEYc'
+          SOURCE='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip'
+          curl -fsSL -A 'Mozilla/5.0' "$API/shares/$SHARE/files?maxResults=1000" -o files.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('files.json',encoding='utf-8'))
+          fs=d.get('files') or []
+          matches=[x for x in fs if x.get('fileName')=='Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip']
+          if not matches:
+              raise SystemExit('source candidate not found')
+          open('file_id.txt','w').write(matches[0]['fileId'])
+          PY
+          FILE_ID=$(cat file_id.txt)
+          curl -fsSL -A 'Mozilla/5.0' -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o download.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('download.json',encoding='utf-8'))
+          u=d.get('downloadUrl')
+          if not u: raise SystemExit('downloadUrl missing')
+          open('download_url.txt','w').write(u)
+          PY
+          curl -fL --retry 3 --retry-delay 2 -A 'Mozilla/5.0' "$(cat download_url.txt)" -o "$SOURCE"
+          unzip -t "$SOURCE" >/dev/null
+          echo 'd75a6a2957eda8618fe517e1dbe52d67f2d551824f6568d571bdbbc79b0ba3a2  Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip' | sha256sum -c -
+
+      - name: Extract and validate release identity
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p baqalati
+          unzip -q Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip -d baqalati
+          test -f baqalati/settings.gradle.kts
+          test -f baqalati/app/build.gradle.kts
+          test -f baqalati/gradlew
+          grep -q 'applicationId = "com.faz.yemen"' baqalati/app/build.gradle.kts
+          grep -q 'versionCode = 42' baqalati/app/build.gradle.kts
+          grep -q '1.0.41-baqalati-compact-unknown-barcode' baqalati/app/build.gradle.kts
+          grep -q 'const val FUSH_DB_SCHEMA_VERSION = 55' baqalati/app/src/main/java/com/fush/erp/data/FushDatabase.kt
+          python3 baqalati/scripts/test_phase1_ui_redesign.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKM"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x baqalati/gradlew
+
+      - name: Run unit tests
+        working-directory: baqalati
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Build unsigned release APK
+        working-directory: baqalati
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Collect exact tested source and unsigned APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          cp Baqalati-v1.0.41-Compact-Unknown-Barcode-SOURCE-CANDIDATE.zip out/Baqalati-v1.0.41-Compact-Unknown-Barcode-FINAL-SOURCE.zip
+          APK=$(find baqalati/app/build/outputs/apk/release -type f -name '*.apk' | head -1)
+          test -n "$APK"
+          cp "$APK" out/Baqalati-v1.0.41-Compact-Unknown-Barcode-UNSIGNED.apk
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - name: Upload build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baqalati-v1.0.41-compact-unknown-build
+          path: out/*
+          if-no-files-found: error
+          retention-days: 1
