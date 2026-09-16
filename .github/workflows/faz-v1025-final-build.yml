@@ -1,0 +1,151 @@
+name: FAZ v1.0.25 FINAL BUILD
+
+on:
+  push:
+    branches: [faz/v1.0.25-ops-itemmaster]
+    paths:
+      - '.github/workflows/faz-v1025-final-build.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  BASELINE_RUN_ID: '34796845084'
+  BASELINE_ARTIFACT: 'FAZ-v1.0.24-StartupMigrationHotfix-FINAL-UNSIGNED'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BASELINE_ARTIFACT }}
+          path: baseline
+          github-token: ${{ github.token }}
+          repository: aamggd/amgd
+          run-id: ${{ env.BASELINE_RUN_ID }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-read-only: true
+
+      - name: Prepare v1.0.25 source
+        id: prep
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          Z=$(find baseline -type f -name '*FINAL-Source.zip' -print -quit)
+          test -n "$Z"
+          mkdir -p work
+          unzip -q "$Z" -d work
+          S=$(find work -name settings.gradle.kts -print -quit)
+          test -n "$S"
+          ROOT=$(dirname "$S")
+          python3 ci/faz_v1025_gate1_schema54_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task2_apply.py "$ROOT"
+          python3 ci/faz_v1025_gate1_task3_apply.py "$ROOT"
+          python3 - "$ROOT/app/build.gradle.kts" <<'PY'
+          from pathlib import Path
+          import re, sys
+          p = Path(sys.argv[1])
+          s = p.read_text(encoding='utf-8')
+          s, n1 = re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 26', s, count=1)
+          s, n2 = re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "1.0.25-faz-unified-item-master"', s, count=1)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit(f'version replacement failed: versionCode={n1}, versionName={n2}')
+          p.write_text(s, encoding='utf-8')
+          PY
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          grep -q 'versionCode = 26' "$ROOT/app/build.gradle.kts"
+          grep -q 'versionName = "1.0.25-faz-unified-item-master"' "$ROOT/app/build.gradle.kts"
+          grep -q 'FUSH_DB_SCHEMA_VERSION = 54' "$ROOT/app/src/main/java/com/fush/erp/data/FushDatabase.kt"
+
+      - name: Run full unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/final-tests.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/final-tests.log"
+
+      - name: Build release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          cd "$ROOT"
+          gradle --no-daemon :app:assembleRelease | tee "$GITHUB_WORKSPACE/final-release-build.log"
+          grep -q 'BUILD SUCCESSFUL' "$GITHUB_WORKSPACE/final-release-build.log"
+          APK=$(find app/build/outputs/apk/release -type f -name '*.apk' -print -quit)
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk" > "$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk.sha256"
+          aapt dump badging "$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk" > "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -q "package: name='com.faz.solar' versionCode='26' versionName='1.0.25-faz-unified-item-master'" "$GITHUB_WORKSPACE/apk-badging.txt"
+
+      - name: Verify Room schema and migration safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          SCHEMA=$(find "$ROOT" -type f -path '*/schemas/*/54.json' -print -quit)
+          test -n "$SCHEMA"
+          cp "$SCHEMA" "$GITHUB_WORKSPACE/54.json"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AppContainer.kt"
+          grep -q 'MIGRATION_53_54_UNIFIED_ITEM_MASTER' "$ROOT/app/src/main/java/com/fush/erp/data/AccountingWaveBRoomBootstrap.kt"
+          if grep -R -n 'fallbackToDestructiveMigration' "$ROOT/app/src/main/java"; then
+            echo 'DESTRUCTIVE_MIGRATION_FOUND'
+            exit 1
+          fi
+          cat > "$GITHUB_WORKSPACE/release-verification.txt" <<EOF
+          RELEASE_BUILD=PASS
+          APPLICATION_ID=com.faz.solar
+          VERSION_CODE=26
+          VERSION_NAME=1.0.25-faz-unified-item-master
+          ROOM_SCHEMA=54
+          MIGRATION_53_54_REGISTERED_BOTH_PATHS=PASS
+          DESTRUCTIVE_MIGRATION=ABSENT
+          SIGNING=UNSIGNED_AT_CI_STAGE
+          EOF
+
+      - name: Package final source
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='${{ steps.prep.outputs.root }}'
+          OUT="$GITHUB_WORKSPACE/FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip"
+          (cd "$ROOT" && zip -qr "$OUT" . -x '.gradle/*' 'app/build/*' 'build/*')
+          sha256sum "$OUT" > "$OUT.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FAZ-v1.0.25-UnifiedItemMaster-FINAL-UNSIGNED
+          path: |
+            FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk
+            FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-UNSIGNED.apk.sha256
+            FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip
+            FAZ-Solar-ERP-v1.0.25-UnifiedItemMaster-FINAL-Source.zip.sha256
+            apk-badging.txt
+            release-verification.txt
+            final-tests.log
+            final-release-build.log
+            54.json
+          retention-days: 7
