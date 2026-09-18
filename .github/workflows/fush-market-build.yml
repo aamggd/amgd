@@ -1,0 +1,93 @@
+name: FUSH Market Android Build
+
+on:
+  pull_request:
+    branches: [ master ]
+    paths:
+      - "ci/fush-market-source.b64"
+      - ".github/workflows/fush-market-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK 37
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-37.0 build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Decode source bundle
+        shell: bash
+        run: |
+          rm -rf _fush
+          mkdir -p _fush
+          base64 -d ci/fush-market-source.b64 > /tmp/fush-market.zip
+          unzip -q /tmp/fush-market.zip -d _fush
+          test -f _fush/FUSH-Market-v0.1.0-Gate0-Branded/settings.gradle.kts
+
+      - name: Gate 0 static check
+        working-directory: _fush/FUSH-Market-v0.1.0-Gate0-Branded
+        run: python3 tools/gate0_check.py
+
+      - name: Build unsigned Release APKs
+        working-directory: _fush/FUSH-Market-v0.1.0-Gate0-Branded
+        shell: bash
+        run: |
+          gradle --version
+          gradle \
+            :apps:customer:assembleRelease \
+            :apps:supplier:assembleRelease \
+            :apps:driver:assembleRelease \
+            :apps:admin:assembleRelease \
+            --stacktrace --no-daemon
+
+      - name: Build unsigned Release AABs
+        working-directory: _fush/FUSH-Market-v0.1.0-Gate0-Branded
+        shell: bash
+        run: |
+          gradle \
+            :apps:customer:bundleRelease \
+            :apps:supplier:bundleRelease \
+            :apps:driver:bundleRelease \
+            :apps:admin:bundleRelease \
+            --stacktrace --no-daemon
+
+      - name: Collect artifacts and signing tools
+        shell: bash
+        run: |
+          set -e
+          mkdir -p artifact/apk artifact/aab artifact/signing-tools
+          find _fush -path "*/build/outputs/apk/release/*.apk" -type f -exec cp {} artifact/apk/ \;
+          find _fush -path "*/build/outputs/bundle/release/*.aab" -type f -exec cp {} artifact/aab/ \;
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/lib/apksigner.jar" artifact/signing-tools/
+          cp "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" artifact/signing-tools/
+          chmod +x artifact/signing-tools/zipalign
+          sha256sum artifact/apk/* artifact/aab/* > artifact/UNSIGNED-SHA256SUMS.txt
+          ls -lahR artifact
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-Market-v0.1.0-Unsigned-Build
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 3
