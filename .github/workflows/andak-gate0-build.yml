@@ -135,36 +135,8 @@ jobs:
           </resources>
           EOF
 
-          python3 - <<'PY'
-          import base64, os, re, html, urllib.request
-          out = "core/ui/src/main/res/drawable/fush_logo.jpg"
-          # Tiny valid JPEG fallback; the branded UI still renders brand colors/text if download is unavailable.
-          fallback = "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9k="
-          data = base64.b64decode(fallback)
-          share = "https://firestorage.ai/ja/f/OF_uWsNizu04"
-          try:
-              req = urllib.request.Request(share, headers={"User-Agent":"Mozilla/5.0"})
-              page = urllib.request.urlopen(req, timeout=20).read().decode("utf-8","ignore")
-              page = html.unescape(page).replace("\\u0026","&").replace("\\/","/")
-              urls = re.findall(r'https?://[^"\'<> ]+', page)
-              for u in urls:
-                  low = u.lower()
-                  if not any(x in low for x in [".jpg",".jpeg",".png","download"]):
-                      continue
-                  try:
-                      req2 = urllib.request.Request(u, headers={"User-Agent":"Mozilla/5.0","Referer":share})
-                      d = urllib.request.urlopen(req2, timeout=20).read()
-                      if d.startswith(b"\xff\xd8\xff") or d.startswith(b"\x89PNG"):
-                          data = d
-                          break
-                  except Exception:
-                      pass
-          except Exception:
-              pass
-          with open(out,"wb") as f:
-              f.write(data)
-          print("logo bytes", len(data))
-          PY
+          cp "$GITHUB_WORKSPACE/assets/andak_logo.jpg" core/ui/src/main/res/drawable/fush_logo.jpg
+
 
           cat > core/ui/src/main/java/com/fush/market/core/ui/AndakApp.kt <<'EOF'
           package com.fush.market.core.ui
