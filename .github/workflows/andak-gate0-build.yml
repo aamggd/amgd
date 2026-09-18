@@ -53,7 +53,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             adb install -r artifact/ANDAK-Customer-v0.1.1-RUNTIME.apk
             adb logcat -c
             adb shell am start -W -n com.fush.market.customer/.MainActivity
