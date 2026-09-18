@@ -25,7 +25,6 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - uses: android-actions/setup-android@v3
 
       - name: Install Android SDK 37
         shell: bash
