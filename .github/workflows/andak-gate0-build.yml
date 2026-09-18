@@ -75,7 +75,7 @@ jobs:
           kotlin.code.style=official
           EOF
 
-          mkdir -p core/ui/src/main/java/com/fush/market/core/ui core/ui/src/main/res/drawable-nodpi core/ui/src/main/res/values
+          mkdir -p core/ui/src/main/java/com/fush/market/core/ui core/ui/src/main/res/raw core/ui/src/main/res/values
 
           cat > core/ui/build.gradle.kts <<'EOF'
           plugins {
@@ -101,7 +101,7 @@ jobs:
           }
           EOF
 
-          cp "$GITHUB_WORKSPACE/assets/andak_logo.png" core/ui/src/main/res/drawable-nodpi/fush_logo.png
+          cp "$GITHUB_WORKSPACE/assets/andak_logo.png" core/ui/src/main/res/raw/fush_logo.png
 
           cat > core/ui/src/main/res/values/styles.xml <<'EOF'
           <resources>
@@ -123,14 +123,17 @@ jobs:
           import androidx.compose.foundation.layout.*
           import androidx.compose.foundation.shape.RoundedCornerShape
           import androidx.compose.material3.*
+          import android.graphics.BitmapFactory
           import androidx.compose.runtime.Composable
           import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.runtime.remember
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
           import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.asImageBitmap
           import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.platform.LocalContext
           import androidx.compose.ui.platform.LocalLayoutDirection
-          import androidx.compose.ui.res.painterResource
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.unit.LayoutDirection
           import androidx.compose.ui.unit.dp
@@ -142,13 +145,35 @@ jobs:
           private val Cream = Color(0xFFF8F7F2)
 
           @Composable
-          fun AndakApp(appTitle:String, roleLabel:String, logoRes:Int=R.drawable.fush_logo, buildLabel:String="Gate 0 • v0.1.1") {
+          fun AndakApp(appTitle:String, roleLabel:String, buildLabel:String="Gate 0 • v0.1.1") {
               MaterialTheme(colorScheme=lightColorScheme(primary=Green,secondary=Gold,background=Cream,surface=Color.White,onPrimary=Color.White,onBackground=DeepGreen)) {
                   CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                       Scaffold(containerColor=Cream) { padding ->
                           Column(modifier=Modifier.fillMaxSize().padding(padding).padding(horizontal=18.dp,vertical=14.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                               Row(modifier=Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                  Image(painter=painterResource(logoRes),contentDescription="شعار عندك",modifier=Modifier.size(74.dp),contentScale=ContentScale.Crop)
+                                  val context = LocalContext.current
+                                  val logoBitmap = remember {
+                                      runCatching {
+                                          context.resources.openRawResource(R.raw.fush_logo).use { input ->
+                                              BitmapFactory.decodeStream(input)?.asImageBitmap()
+                                          }
+                                      }.getOrNull()
+                                  }
+                                  if (logoBitmap != null) {
+                                      Image(
+                                          bitmap=logoBitmap,
+                                          contentDescription="شعار عندك",
+                                          modifier=Modifier.size(74.dp),
+                                          contentScale=ContentScale.Crop
+                                      )
+                                  } else {
+                                      Box(
+                                          modifier=Modifier.size(74.dp).background(Green,RoundedCornerShape(20.dp)),
+                                          contentAlignment=Alignment.Center
+                                      ) {
+                                          Text("عندك",color=Color.White,fontWeight=FontWeight.Bold,fontSize=18.sp)
+                                      }
+                                  }
                                   Spacer(Modifier.width(12.dp))
                                   Column {
                                       Text(appTitle,fontSize=28.sp,fontWeight=FontWeight.Bold,color=DeepGreen)
@@ -195,8 +220,25 @@ jobs:
           }
           EOF
 
-          mkdir -p apps/customer/src/main/java/com/fush/market/customer apps/customer/src/main/res/drawable-nodpi apps/customer/src/main/res/values
-          cp "$GITHUB_WORKSPACE/assets/andak_logo.png" apps/customer/src/main/res/drawable-nodpi/andak_logo.png
+          mkdir -p apps/customer/src/main/java/com/fush/market/customer apps/customer/src/main/res/drawable apps/customer/src/main/res/values
+
+          cat > apps/customer/src/main/res/drawable/ic_launcher.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#006B57"
+                  android:pathData="M54,0A54,54 0,1 0,54 108A54,54 0,1 0,54 0" />
+              <path
+                  android:fillColor="#E6B83F"
+                  android:pathData="M31,34h46l-4,42h-38z" />
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M39,34c0,-9 6,-16 15,-16s15,7 15,16h-7c0,-5 -3,-9 -8,-9s-8,4 -8,9z" />
+          </vector>
+          EOF
 
           cat > apps/customer/build.gradle.kts <<'EOF'
           plugins {
@@ -252,8 +294,8 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application
                   android:allowBackup="false"
-                  android:icon="@drawable/andak_logo"
-                  android:roundIcon="@drawable/andak_logo"
+                  android:icon="@drawable/ic_launcher"
+                  android:roundIcon="@drawable/ic_launcher"
                   android:label="@string/app_name"
                   android:supportsRtl="true"
                   android:theme="@style/Theme.Andak.Customer">
@@ -283,7 +325,6 @@ jobs:
                       AndakApp(
                           appTitle=stringResource(R.string.app_name),
                           roleLabel=stringResource(R.string.customer_role_label),
-                          logoRes=R.drawable.andak_logo,
                           buildLabel=stringResource(R.string.gate0_build_label)
                       )
                   }
