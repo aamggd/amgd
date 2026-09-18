@@ -332,6 +332,31 @@ jobs:
           }
           EOF
 
+      - name: Write runtime test script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/andak-customer/apps/customer/build/outputs/apk/debug/customer-debug.apk"
+          test -f "$APK"
+          adb install -r "$APK"
+          adb logcat -c
+          adb shell am start -W -n com.fush.market.customer/.MainActivity
+          sleep 5
+          PID="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
+          echo "PID=$PID"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/runtime-crash.log" || true
+          cat "$GITHUB_WORKSPACE/runtime-crash.log"
+          test -n "$PID"
+          if grep -q 'com.fush.market.customer' "$GITHUB_WORKSPACE/runtime-crash.log"; then
+            echo "FATAL: customer package found in crash buffer"
+            exit 1
+          fi
+          echo RUNTIME_SMOKE_PASS
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+
       - name: Build Customer debug release and AAB
         shell: bash
         run: |
@@ -346,20 +371,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            set -eu
-            APK="$GITHUB_WORKSPACE/andak-customer/apps/customer/build/outputs/apk/debug/customer-debug.apk"
-            adb install -r "$APK"
-            adb logcat -c
-            adb shell am start -W -n com.fush.market.customer/.MainActivity
-            sleep 5
-            PID="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
-            echo "PID=$PID"
-            adb logcat -d -b crash > "$GITHUB_WORKSPACE/runtime-crash.log" || true
-            cat "$GITHUB_WORKSPACE/runtime-crash.log"
-            test -n "$PID"
-            if grep -q 'com.fush.market.customer' "$GITHUB_WORKSPACE/runtime-crash.log"; then exit 1; fi
-            echo RUNTIME_SMOKE_PASS
+          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
 
       - name: Align and package release
         shell: bash
