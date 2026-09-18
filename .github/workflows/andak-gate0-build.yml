@@ -1,4 +1,4 @@
-name: ANDAK Customer v0.1.1 Build
+name: ANDAK Customer v0.1.1 APK
 
 on:
   push:
@@ -12,20 +12,18 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.6.0'
 
-      - name: Install Android SDK 36
+      - name: Install Android SDK
         shell: bash
         run: |
           set -euo pipefail
@@ -37,72 +35,289 @@ jobs:
           mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Download merged source
+      - name: Generate Customer v0.1.1 project
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import html,re,urllib.request,sys
-          share="https://firestorage.ai/ja/f/U-QKSF7_mnj0"
-          req=urllib.request.Request(share,headers={"User-Agent":"Mozilla/5.0"})
-          page=urllib.request.urlopen(req,timeout=30).read().decode("utf-8","ignore")
-          page=html.unescape(page).replace("\\u0026","&").replace("\\/","/")
-          urls=re.findall(r'https?://[^"\'<> ]+',page)
-          candidates=[]
-          for u in urls:
-              lu=u.lower()
-              if ".zip" in lu or "download" in lu or "storage" in lu:
-                  candidates.append(u)
-          for u in candidates:
-              try:
-                  req2=urllib.request.Request(u,headers={"User-Agent":"Mozilla/5.0","Referer":share})
-                  d=urllib.request.urlopen(req2,timeout=30).read()
-                  if d.startswith(b"PK\x03\x04"):
-                      open("/tmp/source.zip","wb").write(d)
-                      print("downloaded",len(d),"bytes")
-                      sys.exit(0)
-              except Exception:
-                  pass
-          raise SystemExit("Could not resolve ZIP download from share page")
-          PY
-          mkdir -p /tmp/src
-          unzip -q /tmp/source.zip -d /tmp/src
-          SRC="$(find /tmp/src -type d -name fush-market-generated | head -1)"
-          test -n "$SRC"
-          cp -a "$SRC" "$GITHUB_WORKSPACE/andak-src"
+          P="$GITHUB_WORKSPACE/andak-customer"
+          mkdir -p "$P"
+          cd "$P"
 
-      - name: Build customer and other apps
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "AndakCustomer"
+          include(":core:ui", ":apps:customer")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "9.4.0" apply false
+              id("com.android.library") version "9.4.0" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.2.10" apply false
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          EOF
+
+          mkdir -p core/ui/src/main/java/com/fush/market/core/ui core/ui/src/main/res/drawable core/ui/src/main/res/values
+
+          cat > core/ui/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.library")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+          android {
+              namespace = "com.fush.market.core.ui"
+              compileSdk = 36
+              defaultConfig { minSdk = 23 }
+              buildFeatures { compose = true }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation(platform("androidx.compose:compose-bom:2025.08.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.foundation:foundation")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.ui:ui-tooling-preview")
+          }
+          EOF
+
+          cp "$GITHUB_WORKSPACE/assets/andak_logo.jpg" core/ui/src/main/res/drawable/fush_logo.jpg
+
+          cat > core/ui/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="Theme.Andak" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:windowLightStatusBar">true</item>
+                  <item name="android:statusBarColor">#F8F7F2</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > core/ui/src/main/java/com/fush/market/core/ui/AndakApp.kt <<'EOF'
+          package com.fush.market.core.ui
+
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.Composable
+          import androidx.compose.runtime.CompositionLocalProvider
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.layout.ContentScale
+          import androidx.compose.ui.platform.LocalLayoutDirection
+          import androidx.compose.ui.res.painterResource
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.unit.LayoutDirection
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+
+          private val Green = Color(0xFF006B57)
+          private val DeepGreen = Color(0xFF004D40)
+          private val Gold = Color(0xFFE6B83F)
+          private val Cream = Color(0xFFF8F7F2)
+
+          @Composable
+          fun AndakApp(
+              appTitle: String,
+              roleLabel: String,
+              logoRes: Int = R.drawable.fush_logo,
+              buildLabel: String = "Gate 0 • v0.1.1"
+          ) {
+              MaterialTheme(colorScheme = lightColorScheme(primary=Green, secondary=Gold, background=Cream, surface=Color.White)) {
+                  CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                      Scaffold(containerColor = Cream) { padding ->
+                          Column(
+                              modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal=18.dp, vertical=14.dp),
+                              verticalArrangement = Arrangement.spacedBy(16.dp)
+                          ) {
+                              Row(modifier=Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                                  Image(
+                                      painter=painterResource(logoRes),
+                                      contentDescription="شعار عندك",
+                                      modifier=Modifier.size(74.dp),
+                                      contentScale=ContentScale.Crop
+                                  )
+                                  Spacer(Modifier.width(12.dp))
+                                  Column {
+                                      Text(appTitle, fontSize=28.sp, fontWeight=FontWeight.Bold, color=DeepGreen)
+                                      Text("كل السوق عندك", fontSize=14.sp, color=Green)
+                                  }
+                              }
+                              Surface(shape=RoundedCornerShape(18.dp), color=Color.White, tonalElevation=1.dp, modifier=Modifier.fillMaxWidth()) {
+                                  Text("ابحث عن أي منتج، قسم أو علامة تجارية…", modifier=Modifier.padding(18.dp), color=Color(0xFF7A817E), fontSize=15.sp)
+                              }
+                              Text(roleLabel, fontSize=18.sp, fontWeight=FontWeight.SemiBold, color=DeepGreen)
+                              Row(modifier=Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                  QuickCard("الطلبات","0",Modifier.weight(1f))
+                                  QuickCard("العروض","جديد",Modifier.weight(1f))
+                                  QuickCard("الأقسام","تصفح",Modifier.weight(1f))
+                              }
+                              Card(modifier=Modifier.fillMaxWidth(), shape=RoundedCornerShape(22.dp), colors=CardDefaults.cardColors(containerColor=Green)) {
+                                  Column(Modifier.padding(20.dp)) {
+                                      Text("المتجر المركزي متعدد الموردين", color=Color.White, fontSize=20.sp, fontWeight=FontWeight.Bold)
+                                      Spacer(Modifier.height(7.dp))
+                                      Text("تجربة متجر واحدة للعميل، بينما يعمل الموردون خلف الكواليس.", color=Color.White.copy(alpha=.90f), fontSize=14.sp)
+                                      Spacer(Modifier.height(12.dp))
+                                      Box(modifier=Modifier.background(Gold,RoundedCornerShape(12.dp)).padding(horizontal=14.dp,vertical=9.dp)) {
+                                          Text("الدفع عند الاستلام • جاهز للتطوير", color=Color(0xFF3F3100), fontWeight=FontWeight.Bold)
+                                      }
+                                  }
+                              }
+                              Spacer(Modifier.weight(1f))
+                              Text(buildLabel, modifier=Modifier.align(Alignment.CenterHorizontally), color=Color(0xFF8A918E), fontSize=12.sp)
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          private fun QuickCard(title:String,value:String,modifier:Modifier=Modifier) {
+              Card(modifier=modifier,shape=RoundedCornerShape(16.dp),colors=CardDefaults.cardColors(containerColor=Color.White)) {
+                  Column(modifier=Modifier.padding(vertical=16.dp,horizontal=12.dp),horizontalAlignment=Alignment.CenterHorizontally) {
+                      Text(value,fontWeight=FontWeight.Bold,color=Green,fontSize=16.sp)
+                      Spacer(Modifier.height(4.dp))
+                      Text(title,color=Color(0xFF49504D),fontSize=13.sp)
+                  }
+              }
+          }
+          EOF
+
+          mkdir -p apps/customer/src/main/java/com/fush/market/customer apps/customer/src/main/res/drawable-nodpi apps/customer/src/main/res/values
+          cp "$GITHUB_WORKSPACE/assets/andak_logo.jpg" apps/customer/src/main/res/drawable-nodpi/andak_logo.jpg
+
+          cat > apps/customer/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.plugin.compose")
+          }
+          android {
+              namespace = "com.fush.market.customer"
+              compileSdk = 36
+              defaultConfig {
+                  applicationId = "com.fush.market.customer"
+                  minSdk = 23
+                  targetSdk = 36
+                  versionCode = 2
+                  versionName = "0.1.1"
+              }
+              buildFeatures { compose = true }
+              buildTypes { release { isMinifyEnabled = false } }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation(project(":core:ui"))
+              implementation(platform("androidx.compose:compose-bom:2025.08.00"))
+              implementation("androidx.activity:activity-compose:1.11.0")
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.material3:material3")
+          }
+          EOF
+
+          cat > apps/customer/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">عندك</string>
+              <string name="customer_role_label">واجهة العميل</string>
+              <string name="gate0_build_label">Gate 0 • v0.1.1</string>
+          </resources>
+          EOF
+
+          cat > apps/customer/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="Theme.Andak.Customer" parent="@style/Theme.Andak" />
+          </resources>
+          EOF
+
+          cat > apps/customer/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:allowBackup="false"
+                  android:icon="@drawable/andak_logo"
+                  android:roundIcon="@drawable/andak_logo"
+                  android:label="@string/app_name"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.Andak.Customer">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > apps/customer/src/main/java/com/fush/market/customer/MainActivity.kt <<'EOF'
+          package com.fush.market.customer
+
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.compose.ui.res.stringResource
+          import com.fush.market.core.ui.AndakApp
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContent {
+                      AndakApp(
+                          appTitle = stringResource(R.string.app_name),
+                          roleLabel = stringResource(R.string.customer_role_label),
+                          logoRes = R.drawable.andak_logo,
+                          buildLabel = stringResource(R.string.gate0_build_label)
+                      )
+                  }
+              }
+          }
+          EOF
+
+      - name: Build Customer APK and AAB
         shell: bash
         run: |
           set -euo pipefail
-          cd "$GITHUB_WORKSPACE/andak-src"
-          gradle             :apps:customer:assembleRelease :apps:customer:bundleRelease             :apps:supplier:assembleRelease :apps:supplier:bundleRelease             :apps:driver:assembleRelease :apps:driver:bundleRelease             :apps:admin:assembleRelease :apps:admin:bundleRelease             --no-daemon --stacktrace
+          cd "$GITHUB_WORKSPACE/andak-customer"
+          gradle :apps:customer:assembleRelease :apps:customer:bundleRelease --no-daemon --stacktrace
 
       - name: Align and package
         shell: bash
         run: |
           set -euo pipefail
-          P="$GITHUB_WORKSPACE/andak-src"
+          P="$GITHUB_WORKSPACE/andak-customer"
           D="$GITHUB_WORKSPACE/dist"
           mkdir -p "$D"
-          for APP in customer supplier driver admin; do
-            IN="$P/apps/$APP/build/outputs/apk/release/$APP-release-unsigned.apk"
-            OUT="$D/ANDAK-$APP-ALIGNED-UNSIGNED.apk"
-            "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$IN" "$OUT"
-            cp "$P/apps/$APP/build/outputs/bundle/release/$APP-release.aab" "$D/ANDAK-$APP-UNSIGNED.aab"
-          done
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$P/apps/customer/build/outputs/apk/release/customer-release-unsigned.apk"             "$D/ANDAK-customer-v0.1.1-ALIGNED-UNSIGNED.apk"
+          cp "$P/apps/customer/build/outputs/bundle/release/customer-release.aab" "$D/ANDAK-customer-v0.1.1-UNSIGNED.aab"
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
-          cp /tmp/source.zip "$D/ANDAK-Full-Source-Merged-Customer-v0.1.1.zip"
+          cd "$GITHUB_WORKSPACE"
+          zip -qr "$D/ANDAK-Customer-v0.1.1-Generated-Source.zip" andak-customer
           (cd "$D" && sha256sum * > SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Merged-Customer-v0.1.1-Build
+          name: ANDAK-Customer-v0.1.1-Unsigned
           path: dist/
           if-no-files-found: error
           retention-days: 7
