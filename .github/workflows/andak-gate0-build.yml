@@ -393,7 +393,7 @@ jobs:
           </manifest>
           EOF
 
-            cat > "apps/$APP/src/main/java/$NS/MainActivity.kt" <<EOF
+            cat > "apps/$APP/src/main/java/$DIR/MainActivity.kt" <<EOF
           package $NS
 
           import android.os.Bundle
@@ -415,10 +415,10 @@ jobs:
           EOF
           }
 
-          make_app customer com/fush/market/customer "عندك" "واجهة العميل"
-          make_app supplier com/fush/market/supplier "عندك للمورد" "بوابة المورد"
-          make_app driver com/fush/market/driver "عندك للمندوب" "مهام التوصيل والتحصيل"
-          make_app admin com/fush/market/admin "عندك إدارة" "المتابعة الإدارية"
+          make_app customer com.fush.market.customer com/fush/market/customer "عندك" "واجهة العميل"
+          make_app supplier com.fush.market.supplier com/fush/market/supplier "عندك للمورد" "بوابة المورد"
+          make_app driver com.fush.market.driver com/fush/market/driver "عندك للمندوب" "مهام التوصيل والتحصيل"
+          make_app admin com.fush.market.admin com/fush/market/admin "عندك إدارة" "المتابعة الإدارية"
 
           find . -type f -maxdepth 8 | sort
 
