@@ -1,0 +1,78 @@
+name: ANDAK Supplier v0.4.0 Gate3 Package
+
+on:
+  push:
+    branches: ['andak-supplier-gate3-v040']
+    paths: ['.github/workflows/andak-supplier-gate3-v040-package.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o /tmp/cmd.zip
+          rm -rf /tmp/cmd; mkdir -p /tmp/cmd; unzip -q /tmp/cmd.zip -d /tmp/cmd; mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Exact Gate3 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/pkI4YA-0JoJY'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.4.0-Gate3-Source.zip"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/source.zip
+          echo '78f31b3b7c5bc75c13e6147da0045a82d629433cfcba0e40ff608e32dab7cf39  /tmp/source.zip' | sha256sum -c -
+          mkdir source; unzip -q /tmp/source.zip -d source
+          SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1); echo "SRC=$SRC" >> "$GITHUB_ENV"
+      - name: Static gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          B="$SRC/apps/supplier/build.gradle.kts"; A="$SRC/apps/supplier/src/main/java/com/fush/market/supplier/SupplierApp.kt"
+          grep -q 'versionCode = 5' "$B"; grep -q 'versionName = "0.4.0"' "$B"
+          grep -q 'HANDED_OVER' "$A"; grep -q 'OrderDetailScreen' "$A"; grep -q 'pickupCode' "$A"
+      - name: Build release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"; mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$SRC/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk" "$D/ANDAK-Supplier-v0.4.0-GATE3-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.4.0-GATE3-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp /tmp/source.zip "$D/ANDAK-Supplier-v0.4.0-Gate3-Source.zip"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.4.0-GATE3-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          printf '%s\n' 'ANDAK Supplier Gate3 v0.4.0' 'Package build=PASS' 'applicationId=com.fush.market.supplier' 'versionCode=5' 'versionName=0.4.0' 'Signing=pending permanent-key local signing' > "$D/PACKAGE-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.4.0-GATE3-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
