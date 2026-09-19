@@ -2120,7 +2120,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $fn$
 declare
     v_existing public.andak_orders%rowtype;
     v_order_id uuid;
@@ -2312,7 +2312,7 @@ begin
         'request_id', p_request_id
     );
 end;
-$;
+$fn$;
 
 revoke all on function public.andak_create_order_v1(uuid,text,text,text,text,text,text,jsonb) from public;
 grant execute on function public.andak_create_order_v1(uuid,text,text,text,text,text,text,jsonb)
@@ -2343,7 +2343,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $fn$
 declare
     v_result jsonb;
     v_tracking_token uuid;
@@ -2368,7 +2368,7 @@ begin
         'tracking_token', v_tracking_token
     );
 end;
-$;
+$fn$;
 
 revoke all on function public.andak_create_order_v2(uuid,text,text,text,text,text,text,jsonb) from public;
 grant execute on function public.andak_create_order_v2(uuid,text,text,text,text,text,text,jsonb)
@@ -2381,7 +2381,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $fn$
 declare
     v_order public.andak_orders%rowtype;
     v_lines jsonb;
@@ -2432,7 +2432,7 @@ begin
         'lines', v_lines
     );
 end;
-$;
+$fn$;
 
 revoke all on function public.andak_get_order_status_v1(uuid) from public;
 grant execute on function public.andak_get_order_status_v1(uuid)
@@ -2463,10 +2463,10 @@ the app labels the source as local.
 EOF
 
 cat > "$ROOT/README.md" <<'EOF'
-# ANDAK Customer v0.1.6 — Checkout Draft Step
+# ANDAK Customer v0.1.6 — Order Tracking
 
 Application ID: com.fush.market.customer
-Version: 0.1.3 / versionCode 4
+Version: 0.1.6 / versionCode 7
 
 Implemented:
 - Customer home priorities: search, offers, categories, selected products, reorder placeholder.
