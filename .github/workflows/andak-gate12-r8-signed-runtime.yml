@@ -35,7 +35,13 @@ jobs:
           set -euo pipefail
           OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
           test -n "$OIDC" && test "$OIDC" != "null"
-          FIXTURE=$(curl -fsSL -X POST             "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"             -H "Authorization: Bearer $OIDC"             -H "Content-Type: application/json"             --data '{"action":"setup"}')
+          mkdir -p "$GITHUB_WORKSPACE/runtime-evidence"
+          HTTP=$(curl -sS -o /tmp/fixture.json -w "%{http_code}" -X POST             "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"             -H "Authorization: Bearer $OIDC"             -H "Content-Type: application/json"             --data '{"action":"setup"}')
+          if [ "$HTTP" != "200" ]; then
+            jq -c '{error:(.error // "unknown")}' /tmp/fixture.json | tee "$GITHUB_WORKSPACE/runtime-evidence/fixture-error.json"
+            exit 21
+          fi
+          FIXTURE=$(cat /tmp/fixture.json)
           EMAIL=$(jq -r '.email' <<<"$FIXTURE")
           PASS=$(jq -r '.password' <<<"$FIXTURE")
           USER_ID=$(jq -r '.user_id' <<<"$FIXTURE")
