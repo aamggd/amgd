@@ -1743,6 +1743,267 @@ for select to anon, authenticated using (is_active = true);
 -- The public view exposes aggregate availability only and omits supplier IDs/cost.
 EOF
 
+
+cat > "$ROOT/backend/supabase/migrations/002_andak_atomic_order_rpc.sql" <<'EOF'
+create sequence if not exists public.andak_order_number_seq start 1;
+
+create table if not exists public.andak_orders (
+    id uuid primary key default gen_random_uuid(),
+    request_id uuid not null unique,
+    order_number text not null unique,
+    customer_name text not null,
+    phone text not null,
+    city text not null,
+    neighborhood text not null,
+    address_details text not null,
+    note text,
+    payment_method text not null default 'COD' check (payment_method = 'COD'),
+    status text not null default 'PENDING_CONFIRMATION',
+    subtotal_yer bigint not null default 0 check (subtotal_yer >= 0),
+    delivery_fee_yer bigint not null default 0 check (delivery_fee_yer >= 0),
+    total_yer bigint not null default 0 check (total_yer >= 0),
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.andak_order_lines (
+    id uuid primary key default gen_random_uuid(),
+    order_id uuid not null references public.andak_orders(id) on delete cascade,
+    variant_id uuid not null references public.andak_product_variants(id),
+    quantity numeric(18,3) not null check (quantity > 0),
+    unit_price_yer bigint not null check (unit_price_yer >= 0),
+    line_total_yer bigint not null check (line_total_yer >= 0)
+);
+
+create table if not exists public.andak_order_allocations (
+    id uuid primary key default gen_random_uuid(),
+    order_line_id uuid not null references public.andak_order_lines(id) on delete cascade,
+    supplier_inventory_id uuid not null references public.andak_supplier_inventory(id),
+    supplier_id uuid not null,
+    allocated_qty numeric(18,3) not null check (allocated_qty > 0),
+    supplier_cost_yer bigint not null check (supplier_cost_yer >= 0),
+    created_at timestamptz not null default now()
+);
+
+alter table public.andak_orders enable row level security;
+alter table public.andak_order_lines enable row level security;
+alter table public.andak_order_allocations enable row level security;
+
+create or replace function public.andak_create_order_v1(
+    p_request_id uuid,
+    p_customer_name text,
+    p_phone text,
+    p_city text,
+    p_neighborhood text,
+    p_address_details text,
+    p_note text,
+    p_lines jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+    v_existing public.andak_orders%rowtype;
+    v_order_id uuid;
+    v_order_number text;
+    v_subtotal bigint := 0;
+    v_delivery_fee bigint := 1500;
+    v_total bigint := 0;
+    v_line jsonb;
+    v_variant_id uuid;
+    v_qty numeric(18,3);
+    v_price bigint;
+    v_available numeric(18,3);
+    v_line_id uuid;
+    v_remaining numeric(18,3);
+    v_allocate numeric(18,3);
+    v_inv record;
+begin
+    if p_request_id is null then
+        raise exception 'request_id_required';
+    end if;
+
+    if nullif(trim(p_customer_name), '') is null
+       or nullif(trim(p_phone), '') is null
+       or nullif(trim(p_city), '') is null
+       or nullif(trim(p_neighborhood), '') is null
+       or nullif(trim(p_address_details), '') is null then
+        raise exception 'customer_delivery_fields_required';
+    end if;
+
+    if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+        raise exception 'order_lines_required';
+    end if;
+
+    select * into v_existing
+    from public.andak_orders
+    where request_id = p_request_id;
+
+    if found then
+        return jsonb_build_object(
+            'order_id', v_existing.id,
+            'order_number', v_existing.order_number,
+            'status', v_existing.status,
+            'subtotal_yer', v_existing.subtotal_yer,
+            'delivery_fee_yer', v_existing.delivery_fee_yer,
+            'total_yer', v_existing.total_yer,
+            'request_id', v_existing.request_id
+        );
+    end if;
+
+    perform pg_advisory_xact_lock(hashtext(p_request_id::text));
+
+    select * into v_existing
+    from public.andak_orders
+    where request_id = p_request_id;
+
+    if found then
+        return jsonb_build_object(
+            'order_id', v_existing.id,
+            'order_number', v_existing.order_number,
+            'status', v_existing.status,
+            'subtotal_yer', v_existing.subtotal_yer,
+            'delivery_fee_yer', v_existing.delivery_fee_yer,
+            'total_yer', v_existing.total_yer,
+            'request_id', v_existing.request_id
+        );
+    end if;
+
+    v_order_number :=
+        'AND-' || to_char(clock_timestamp(), 'YYMMDD') || '-' ||
+        lpad(nextval('public.andak_order_number_seq')::text, 6, '0');
+
+    insert into public.andak_orders (
+        request_id, order_number, customer_name, phone, city, neighborhood,
+        address_details, note, payment_method, status
+    )
+    values (
+        p_request_id, v_order_number, trim(p_customer_name), trim(p_phone),
+        trim(p_city), trim(p_neighborhood), trim(p_address_details),
+        nullif(trim(coalesce(p_note, '')), ''), 'COD', 'PENDING_CONFIRMATION'
+    )
+    returning id into v_order_id;
+
+    for v_line in select value from jsonb_array_elements(p_lines)
+    loop
+        v_variant_id := (v_line ->> 'variant_id')::uuid;
+        v_qty := (v_line ->> 'quantity')::numeric;
+
+        if v_variant_id is null or v_qty is null or v_qty <= 0 then
+            raise exception 'invalid_order_line';
+        end if;
+
+        select retail_price_yer
+        into v_price
+        from public.andak_product_variants
+        where id = v_variant_id
+          and is_active = true
+        for share;
+
+        if not found then
+            raise exception 'variant_unavailable:%', v_variant_id;
+        end if;
+
+        perform 1
+        from public.andak_supplier_inventory
+        where variant_id = v_variant_id
+          and available_qty > 0
+        order by available_qty desc, id
+        for update;
+
+        select coalesce(sum(available_qty), 0)
+        into v_available
+        from public.andak_supplier_inventory
+        where variant_id = v_variant_id
+          and available_qty > 0;
+
+        if v_available < v_qty then
+            raise exception 'insufficient_stock:%', v_variant_id;
+        end if;
+
+        insert into public.andak_order_lines (
+            order_id, variant_id, quantity, unit_price_yer, line_total_yer
+        )
+        values (
+            v_order_id,
+            v_variant_id,
+            v_qty,
+            v_price,
+            round(v_price * v_qty)::bigint
+        )
+        returning id into v_line_id;
+
+        v_remaining := v_qty;
+
+        for v_inv in
+            select id, supplier_id, available_qty, supplier_cost_yer
+            from public.andak_supplier_inventory
+            where variant_id = v_variant_id
+              and available_qty > 0
+            order by available_qty desc, id
+            for update
+        loop
+            exit when v_remaining <= 0;
+
+            v_allocate := least(v_remaining, v_inv.available_qty);
+
+            update public.andak_supplier_inventory
+            set available_qty = available_qty - v_allocate,
+                updated_at = now()
+            where id = v_inv.id;
+
+            insert into public.andak_order_allocations (
+                order_line_id, supplier_inventory_id, supplier_id,
+                allocated_qty, supplier_cost_yer
+            )
+            values (
+                v_line_id, v_inv.id, v_inv.supplier_id,
+                v_allocate, v_inv.supplier_cost_yer
+            );
+
+            v_remaining := v_remaining - v_allocate;
+        end loop;
+
+        if v_remaining > 0 then
+            raise exception 'allocation_failed:%', v_variant_id;
+        end if;
+
+        v_subtotal := v_subtotal + round(v_price * v_qty)::bigint;
+    end loop;
+
+    if v_subtotal <= 0 then
+        raise exception 'invalid_order_total';
+    end if;
+
+    v_total := v_subtotal + v_delivery_fee;
+
+    update public.andak_orders
+    set subtotal_yer = v_subtotal,
+        delivery_fee_yer = v_delivery_fee,
+        total_yer = v_total
+    where id = v_order_id;
+
+    return jsonb_build_object(
+        'order_id', v_order_id,
+        'order_number', v_order_number,
+        'status', 'PENDING_CONFIRMATION',
+        'subtotal_yer', v_subtotal,
+        'delivery_fee_yer', v_delivery_fee,
+        'total_yer', v_total,
+        'request_id', p_request_id
+    );
+end;
+$;
+
+revoke all on function public.andak_create_order_v1(uuid,text,text,text,text,text,text,jsonb) from public;
+grant execute on function public.andak_create_order_v1(uuid,text,text,text,text,text,text,jsonb)
+to anon, authenticated;
+
+-- Customers do not receive direct SELECT/INSERT/UPDATE grants on order or allocation tables.
+-- The security-definer RPC is the only write path in this phase.
+EOF
+
 cat > "$ROOT/backend/README.md" <<'EOF'
 # ANDAK backend handoff
 
