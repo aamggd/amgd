@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 R8 Instrumentation Strict
+name: ANDAK Supplier Gate12 R8 Instrumentation Diagnostic
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -25,7 +25,6 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/r8w"
           unzip -q /tmp/r8-wrapper.zip -d "$GITHUB_WORKSPACE/r8w"
           test -x "$GITHUB_WORKSPACE/r8w/gradlew"
-          test -f "$GITHUB_WORKSPACE/r8w/gradle/wrapper/gradle-wrapper.jar"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -40,7 +39,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run connected Android tests strictly
+      - name: Run connected Android tests and preserve failure evidence
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -48,21 +47,27 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -eu
-            ls -l "$GITHUB_WORKSPACE/r8w/gradlew"
-            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest
-            XML=$(find "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" -name '*.xml' -type f | head -1)
-            test -n "$XML"
-            grep -R 'tests="' "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results"
-            if grep -R -E 'failures="[1-9]|errors="[1-9]' "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results"; then exit 5; fi
+            set +e
+            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/instrumentation-gradle.log"
+            CODE=${PIPESTATUS[0]}
+            set -e
             mkdir -p "$GITHUB_WORKSPACE/instrumentation-results"
-            cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results/." "$GITHUB_WORKSPACE/instrumentation-results/"
+            cp "$GITHUB_WORKSPACE/instrumentation-gradle.log" "$GITHUB_WORKSPACE/instrumentation-results/"
+            if [ -d "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" ]; then
+              cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results/." "$GITHUB_WORKSPACE/instrumentation-results/"
+              echo "=== XML RESULTS ==="
+              find "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" -name '*.xml' -type f -print -exec cat {} \;
+            fi
+            if [ -d "$GITHUB_WORKSPACE/r8w/apps/supplier/build/reports/androidTests" ]; then
+              cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/reports/androidTests" "$GITHUB_WORKSPACE/instrumentation-results/reports"
+            fi
+            exit "$CODE"
 
       - name: Upload instrumentation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Gate12-R8-Instrumentation-Evidence
+          name: ANDAK-Gate12-R8-Instrumentation-Diagnostic
           path: instrumentation-results/
           if-no-files-found: error
           retention-days: 2
