@@ -1747,6 +1747,16 @@ fun CustomerApp() {
                 }
             }
 
+            LaunchedEffect(screen, authSession?.userId) {
+                if (
+                    authSession != null &&
+                    AccountSyncGateway.isConfigured() &&
+                    screen in listOf(CustomerScreen.ORDERS, CustomerScreen.SUPPORT, CustomerScreen.NOTIFICATIONS)
+                ) {
+                    syncAuthenticatedAccount()
+                }
+            }
+
             val persistCart: () -> Unit = {
                 if (localCommerceLoaded) {
                     val snapshot = cart.toList()
@@ -2002,6 +2012,7 @@ fun CustomerApp() {
                             draft = supportDraft,
                             authSession = authSession,
                             tickets = cloudSupportTickets,
+                            onRefresh = syncAuthenticatedAccount,
                             onDraftChange = { supportDraft = it },
                             onSaveDraft = {
                                 val snapshot = supportDraft
@@ -3569,6 +3580,9 @@ private fun NotificationsScreen(
                     fontWeight = FontWeight.Bold,
                     color = AndakDeepGreen
                 )
+                TextButton(onClick = onRefresh, enabled = !syncBusy) {
+                    Text(if (syncBusy) "..." else "تحديث")
+                }
             }
         }
         item {
@@ -3596,11 +3610,31 @@ private fun NotificationsScreen(
         item {
             Text("آخر التحديثات", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AndakDeepGreen)
         }
-        if (receipts.isEmpty()) {
+        if (cloudNotifications.isNotEmpty()) {
+            items(cloudNotifications.take(20), key = { it.id }) { notification ->
+                Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                when (notification.kind.uppercase()) {
+                                    "ORDER" -> "🧾"
+                                    "SUPPORT" -> "💬"
+                                    else -> "🔔"
+                                },
+                                fontSize = 20.sp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(notification.title, fontWeight = FontWeight.Bold)
+                        }
+                        Text(notification.body, color = AndakMuted, fontSize = 12.sp)
+                    }
+                }
+            }
+        } else if (receipts.isEmpty()) {
             item {
                 Surface(color = Color.White, shape = RoundedCornerShape(18.dp)) {
                     Text(
-                        "لا توجد تحديثات طلبات حتى الآن.",
+                        "لا توجد تحديثات حتى الآن.",
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         color = AndakMuted
                     )
@@ -3631,6 +3665,7 @@ private fun SupportScreen(
     draft: String,
     authSession: AuthSession?,
     tickets: List<SupportTicketSummary>,
+    onRefresh: () -> Unit,
     onDraftChange: (String) -> Unit,
     onSaveDraft: () -> Unit,
     onBack: () -> Unit
@@ -3708,6 +3743,7 @@ private fun SupportScreen(
                                         .onSuccess { ticket ->
                                             ticketNotice = "تم إرسال الطلب للدعم: " + ticket.ticketNumber
                                             savedNotice = false
+                                            onRefresh()
                                         }
                                         .onFailure { error ->
                                             ticketNotice = "تعذر الإرسال: " + (error.message ?: "خطأ")
@@ -3741,6 +3777,32 @@ private fun SupportScreen(
                     )
                 }
             }
+        if (tickets.isNotEmpty()) {
+            item {
+                Text("طلبات الدعم السابقة", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AndakDeepGreen)
+            }
+            items(tickets.take(20), key = { it.ticketNumber }) { ticket ->
+                Surface(color = Color.White, shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(ticket.ticketNumber, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                            Text(
+                                when (ticket.status.uppercase()) {
+                                    "OPEN" -> "مفتوح"
+                                    "IN_PROGRESS" -> "قيد المعالجة"
+                                    "CLOSED" -> "مغلق"
+                                    else -> ticket.status
+                                },
+                                color = AndakGreen,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Text(ticket.category, color = AndakMuted, fontSize = 11.sp)
+                        Text(ticket.message, fontSize = 12.sp, maxLines = 3)
+                    }
+                }
+            }
+        }
         }
     }
 }
