@@ -3,7 +3,7 @@ name: ANDAK Customer v0.1.14 Cloud Orders Support Notifications
 on:
   push:
     branches:
-      - 'fush-market/customer-v0.1.14-cloud-cart-favorites'
+      - 'fush-market/customer-v0.1.14-cloud-orders-support'
   workflow_dispatch:
 
 permissions:
