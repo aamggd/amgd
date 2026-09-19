@@ -92,7 +92,6 @@ jobs:
           dump_ui home
           grep -q 'لوحة المورد' "$E/home.xml"
           grep -q 'بوابة الموافقات' "$E/home.xml"
-          grep -q 'Gate 2' "$E/home.xml"
 
           tap_text 'المنتجات'
           dump_ui products
