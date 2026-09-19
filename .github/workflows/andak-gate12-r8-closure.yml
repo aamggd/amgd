@@ -13,8 +13,8 @@ jobs:
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="__IbfDouxNYq"
-          NAME="andak_supplier_gate12_r8_source_prebuild.zip"
+          SHARE="_xNzo-lmE9I-"
+          NAME="andak_supplier_gate12_r8_source_r2.zip"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
@@ -45,12 +45,11 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Generate mandatory Gradle Wrapper
+      - name: Verify mandatory Gradle Wrapper
         working-directory: r8
         shell: bash
         run: |
           set -euo pipefail
-          gradle wrapper --gradle-version 9.6.0 --distribution-type bin
           chmod +x gradlew
           test -f gradlew
           test -f gradlew.bat
@@ -91,9 +90,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            cd "$GITHUB_WORKSPACE/r8"
-            ./gradlew --no-daemon :apps:supplier:connectedDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/r8-androidtest.log"
+          script: sh "$GITHUB_WORKSPACE/r8/gradlew" -p "$GITHUB_WORKSPACE/r8" --no-daemon :apps:supplier:connectedDebugAndroidTest > "$GITHUB_WORKSPACE/r8-androidtest.log" 2>&1
 
       - name: Collect build and test artifacts
         if: always()
