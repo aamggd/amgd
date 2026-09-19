@@ -74,7 +74,7 @@ jobs:
           grep -q 'andak_customer_account_snapshot_v2' "$SRC/backend/supabase/migrations/006_andak_customer_cloud_cart_favorites.sql"
           grep -q 'andak_customer_cart' "$SRC/backend/supabase/migrations/006_andak_customer_cloud_cart_favorites.sql"
           grep -q 'andak_customer_favorites' "$SRC/backend/supabase/migrations/006_andak_customer_cloud_cart_favorites.sql"
-          grep -q 'تمت مزامنة السلة والمفضلة والحساب بين الأجهزة' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
+          grep -q 'تمت مزامنة الطلبات والسلة والمفضلة والدعم والتنبيهات' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'andak_customer_sync_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
           grep -q 'andak_customer_account_snapshot_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
           grep -q 'andak_customer_support_ticket_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
