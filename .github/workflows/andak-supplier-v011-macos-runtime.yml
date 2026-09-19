@@ -1,0 +1,89 @@
+name: ANDAK Supplier v0.1.1 macOS Runtime
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-supplier-v011-macos-runtime.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  runtime:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download packaged release APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.1.1-PACKAGE-PASS
+          path: dist
+          github-token: ${{ github.token }}
+          run-id: 35419125798
+      - name: Prepare runtime-test signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/dist/ANDAK-Supplier-v0.1.1-ALIGNED-UNSIGNED.apk"
+          test -f "$APK"
+          keytool -genkeypair -noprompt -keystore /tmp/runtime-test.jks -storepass runtime123 -keypass runtime123 -alias runtime -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=ANDAK Runtime Test"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" sign --ks /tmp/runtime-test.jks --ks-key-alias runtime --ks-pass pass:runtime123 --key-pass pass:runtime123 --out /tmp/supplier-runtime.apk "$APK"
+          "$APKSIGNER" verify /tmp/supplier-runtime.apk
+      - name: Write runtime test
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'EOF2'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          P=com.fush.market.supplier
+          adb install -r /tmp/supplier-runtime.apk
+          adb logcat -c
+          adb shell am start -W -n "$P/.MainActivity" | tee "$GITHUB_WORKSPACE/start-result.txt"
+          sleep 8
+          PID="$(adb shell pidof "$P" | tr -d '\r' || true)"
+          echo "$PID" > "$GITHUB_WORKSPACE/pid.txt"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/crash.log" || true
+          adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|Caused by|$P" > "$GITHUB_WORKSPACE/relevant.log" || true
+          test -n "$PID"
+          if grep -q "$P" "$GITHUB_WORKSPACE/crash.log"; then
+            cat "$GITHUB_WORKSPACE/crash.log"
+            exit 1
+          fi
+          adb exec-out screencap -p > "$GITHUB_WORKSPACE/screen.png"
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/window.xml "$GITHUB_WORKSPACE/window.xml" >/dev/null 2>&1 || true
+          echo RUNTIME_SMOKE_PASS
+          EOF2
+          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+      - name: Runtime launch test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
+      - name: Package evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          for f in start-result.txt pid.txt crash.log relevant.log screen.png window.xml; do
+            test -f "$f" && cp "$f" evidence/ || true
+          done
+          printf '%s\n' \
+            'ANDAK Supplier v0.1.1 macOS runtime' \
+            'APK source: package artifact run 35419125798' \
+            'Runtime signature: temporary test-only key (not release identity)' \
+            'Target package: com.fush.market.supplier' \
+            > evidence/RUNTIME-INFO.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v0.1.1-MACOS-RUNTIME-EVIDENCE
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
