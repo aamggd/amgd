@@ -6,41 +6,22 @@ on:
 jobs:
   runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
-      - name: Download exact R6 source
+      - name: Download exact final signed APK
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="THdn4-kcQedc"
-          NAME="ANDAK-Supplier-v1.3.0-GATE12-Source-R6.zip"
+          SHARE="_WnjY8OlknwQ"
+          NAME="ANDAK-Supplier-v1.3.0-GATE12-FINAL-SIGNED.apk"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
           URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          curl -fL --retry 3 "$URL" -o /tmp/source.zip
-          mkdir -p "$GITHUB_WORKSPACE/gate12"
-          unzip -q /tmp/source.zip -d "$GITHUB_WORKSPACE/gate12"
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle 9.6.0
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.6.0'
-
-      - name: Build debug APK
-        working-directory: gate12
-        shell: bash
-        run: |
-          set -euo pipefail
-          gradle --no-daemon :apps:supplier:assembleDebug
+          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-final.apk"
+          sha256sum "$GITHUB_WORKSPACE/andak-final.apk"
 
       - name: Enable KVM
         shell: bash
@@ -49,7 +30,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run app and capture crash
+      - name: Run exact release and capture crash
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -57,24 +38,24 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -e
-            APK=$(find "$GITHUB_WORKSPACE/gate12/apps/supplier/build/outputs/apk/debug" -name '*.apk' | head -1)
-            adb install -r "$APK"
+            adb install -r "$GITHUB_WORKSPACE/andak-final.apk"
             adb logcat -c
             adb shell am force-stop com.fush.market.supplier
             adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
-            sleep 12
-            adb shell pidof com.fush.market.supplier || true
+            sleep 15
+            echo "PID=$(adb shell pidof com.fush.market.supplier || true)"
+            adb shell dumpsys activity activities | grep -A5 -B5 com.fush.market.supplier || true
             adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/runtime-logcat.txt"
-            echo "=== FATAL ==="
-            grep -n -A80 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier" "$GITHUB_WORKSPACE/runtime-logcat.txt" || true
+            echo "=== APP/FATAL EXCERPT ==="
+            grep -n -A120 -B30 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier|com.fush.market.supplier" "$GITHUB_WORKSPACE/runtime-logcat.txt" | tail -400 || true
             if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat.txt"; then exit 2; fi
+            test -n "$(adb shell pidof com.fush.market.supplier || true)"
 
       - name: Upload runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Gate12-R6-Runtime-Log
+          name: ANDAK-Gate12-Final-Runtime-Log
           path: runtime-logcat.txt
           if-no-files-found: warn
           retention-days: 1
