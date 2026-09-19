@@ -48,9 +48,10 @@ jobs:
           disable-animations: true
           script: |
             set +e
-            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/instrumentation-gradle.log"
-            CODE=${PIPESTATUS[0]}
+            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest > "$GITHUB_WORKSPACE/instrumentation-gradle.log" 2>&1
+            CODE=$?
             set -e
+            cat "$GITHUB_WORKSPACE/instrumentation-gradle.log"
             mkdir -p "$GITHUB_WORKSPACE/instrumentation-results"
             cp "$GITHUB_WORKSPACE/instrumentation-gradle.log" "$GITHUB_WORKSPACE/instrumentation-results/"
             if [ -d "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" ]; then
