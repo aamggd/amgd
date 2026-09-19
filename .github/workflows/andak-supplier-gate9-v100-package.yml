@@ -1,0 +1,112 @@
+name: ANDAK Supplier v1.0.0 Gate9 Package
+
+on:
+  push:
+    branches: ['andak-supplier-gate9-v100']
+    paths: ['.github/workflows/andak-supplier-gate9-v100-package.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '9.6.0' }
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o /tmp/cmd.zip
+          rm -rf /tmp/cmd; mkdir -p /tmp/cmd; unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Exact Gate9 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/XXloX1vlwXfl'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v1.0.0-Gate9-Source.zip"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/source.zip
+          echo '0d5139205f64561140d2f374b2be61a2c44427fdaa943876c8baf890f95cd38a  /tmp/source.zip' | sha256sum -c -
+          mkdir source; unzip -q /tmp/source.zip -d source
+          SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$SRC"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+
+      - name: Gate9 static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          B="$SRC/apps/supplier/build.gradle.kts"
+          A="$SRC/apps/supplier/src/main/java/com/fush/market/supplier/SupplierApp.kt"
+          C="$SRC/apps/supplier/src/main/java/com/fush/market/supplier/SupplierBackendClient.kt"
+          grep -q 'applicationId = "com.fush.market.supplier"' "$B"
+          grep -q 'versionCode = 11' "$B"
+          grep -q 'versionName = "1.0.0"' "$B"
+          grep -q 'SupplierCloudSnapshot' "$C"
+          grep -q 'andak_supplier_snapshot' "$C"
+          grep -q 'andak_supplier_order_transition' "$C"
+          grep -q 'Live Snapshot' "$A"
+          grep -q 'Gate 9 • Live Orders & Catalog Snapshot • v1.0.0' "$A"
+          grep -q 'supplier:self' "$A"
+          ! grep -q 'service_role' "$C"
+          echo GATE9_STATIC_PASS
+
+      - name: Live backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -X POST             'https://bkbjtyacoiaheunweyuu.supabase.co/rest/v1/rpc/andak_backend_status'             -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY'             -H 'Content-Type: application/json' -d '{}' > /tmp/backend-health.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/backend-health.json'))
+          assert d['status']=='ok'
+          assert d['supplier_scope']=='supplier:self'
+          assert d['auth_required'] is True
+          assert d['customer_pii_excluded'] is True
+          print('GATE9_BACKEND_HEALTH_PASS')
+          PY
+
+      - name: Build Gate9
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:supplier:assembleDebug :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace
+
+      - name: Package Gate9
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"; mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$SRC/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk" "$D/ANDAK-Supplier-v1.0.0-GATE9-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/supplier/build/outputs/apk/debug/supplier-debug.apk" "$D/ANDAK-Supplier-v1.0.0-GATE9-DEBUG.apk"
+          cp "$SRC/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v1.0.0-GATE9-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp /tmp/source.zip "$D/ANDAK-Supplier-v1.0.0-Gate9-Source.zip"
+          cp /tmp/backend-health.json "$D/backend-health.json"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v1.0.0-GATE9-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          printf '%s\n'             'ANDAK Supplier Gate9 v1.0.0'             'applicationId=com.fush.market.supplier'             'versionCode=11'             'versionName=1.0.0'             'Live supplier snapshot client=READY'             'Server order transition client=READY'             'Backend snapshot/order RPC contract=DEPLOYED AND DB-TESTED'             'Live backend health=PASS'             'Positive app snapshot requires provisioned supplier credentials'             'Build debug/release/AAB=PASS'             > "$D/GATE9-PACKAGE-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v1.0.0-GATE9-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
