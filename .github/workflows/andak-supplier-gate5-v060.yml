@@ -42,13 +42,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://api.firestorage.ai/dev/file/shares/Lq26zBKSfW2P'
+          BASE='https://api.firestorage.ai/dev/file/shares/bRNNm0o63v0D'
           curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
-          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.6.0-Gate5-Source.zip"][0])')
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.6.0-Gate5-Source-R2.zip"][0])')
           curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
           URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
           curl -fL "$URL" -o /tmp/source.zip
-          echo '315ec62a485e4c1f874b0ee6301a9fcc801c21976b4bebfdb399f7a6db8e0dcf  /tmp/source.zip' | sha256sum -c -
+          echo '7931ddb5d128599cb4ed4efafeed9fb6605ee7c1277e5e2d5ca5c6b65ffdcf0d  /tmp/source.zip' | sha256sum -c -
           mkdir source; unzip -q /tmp/source.zip -d source
           SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1)
           test -n "$SRC"
@@ -95,18 +95,28 @@ jobs:
 
           tap_text(){
             local txt="$1"
-            dump_ui tap-source
-            python - "$E/tap-source.xml" "$txt" <<'PY'
+            local i
+            for i in 1 2 3 4 5 6 7; do
+              dump_ui tap-source
+              if python - "$E/tap-source.xml" "$txt" <<'PY'
           import re,sys,subprocess,xml.etree.ElementTree as ET
           root=ET.parse(sys.argv[1]).getroot(); target=sys.argv[2]
           nodes=[n for n in root.iter('node') if n.attrib.get('text')==target or n.attrib.get('content-desc')==target]
-          if not nodes: raise SystemExit("TEXT_NOT_FOUND "+target)
+          if not nodes: raise SystemExit(3)
           m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].attrib.get('bounds',''))
-          if not m: raise SystemExit("BAD_BOUNDS")
+          if not m: raise SystemExit(4)
           x1,y1,x2,y2=map(int,m.groups())
           subprocess.check_call(['adb','shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)])
           PY
-            sleep 2
+              then
+                sleep 2
+                return 0
+              fi
+              adb shell input swipe 540 1500 540 600 350
+              sleep 1
+            done
+            echo "TEXT_NOT_FOUND $txt"
+            return 1
           }
 
           tap_switch(){
@@ -114,9 +124,10 @@ jobs:
             python - "$E/switch-source.xml" <<'PY'
           import re,sys,subprocess,xml.etree.ElementTree as ET
           root=ET.parse(sys.argv[1]).getroot()
-          nodes=[n for n in root.iter('node') if n.attrib.get('checkable')=='true' or n.attrib.get('checked') in ('true','false')]
+          nodes=[n for n in root.iter('node') if n.attrib.get('content-desc')=='حالة المتجر']
           if not nodes: raise SystemExit("SWITCH_NOT_FOUND")
           m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].attrib.get('bounds',''))
+          if not m: raise SystemExit("BAD_SWITCH_BOUNDS")
           x1,y1,x2,y2=map(int,m.groups())
           subprocess.check_call(['adb','shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)])
           PY
