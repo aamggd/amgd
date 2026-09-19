@@ -26,21 +26,29 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Install Android 36 SDK
+      - name: Install Android command-line tools + SDK 36
         run: |
-          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          yes | /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager --licenses >/dev/null || true
-          /usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          set -euxo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip
+          rm -rf /tmp/cmdline-tools
+          mkdir -p /tmp/cmdline-tools
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+          mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+          cp -a /tmp/cmdline-tools/cmdline-tools/. "$SDK_ROOT/cmdline-tools/latest/"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Extract source
         run: unzip -q andak-ci-slim.zip
 
       - name: Build debug APK
         working-directory: andak_ci_slim
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROID_HOME: /usr/local/lib/android/sdk
         run: gradle :apps:customer:assembleDebug --stacktrace --no-daemon
 
       - name: Prepare artifact
