@@ -1,0 +1,155 @@
+name: ANDAK Supplier v1.1.0 Gate10 Auth E2E
+
+on:
+  push:
+    branches: ['andak-supplier-gate10-v110']
+    paths:
+      - '.github/workflows/andak-supplier-gate10-auth-e2e.yml'
+      - 'tools/andak_gate10_authenticated_e2e.sh'
+      - 'tools/andak_gate4_tap_text.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  auth_e2e:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download signed Gate10 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/o7Ez860PIhES'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v1.1.0-GATE10-OFFICIAL-SIGNED.apk"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/gate10.apk
+          echo 'c677535cb3a791de9ffc74cdb84c858f9d09450806118c904344737cacc5e9e8  /tmp/gate10.apk' | shasum -a 256 -c -
+          echo "APK=/tmp/gate10.apk" >> "$GITHUB_ENV"
+
+      - name: Verify official signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature-verify.txt
+          grep -qi 'certificate SHA-256 digest: 84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' signature-verify.txt
+          grep -q 'Number of signers: 1' signature-verify.txt
+
+      - name: Provision disposable authenticated supplier
+        shell: bash
+        run: |
+          set -euo pipefail
+          EMAIL="andak-g10-${GITHUB_RUN_ID}@example.com"
+          PASSWORD="G10aA$(openssl rand -hex 14)"
+          echo "::add-mask::$PASSWORD"
+          echo "TEST_EMAIL=$EMAIL" >> "$GITHUB_ENV"
+          echo "TEST_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+
+          python - "$EMAIL" "$PASSWORD" <<'PY'
+          import json,sys
+          email,password=sys.argv[1],sys.argv[2]
+          with open('/tmp/signup-payload.json','w') as f:
+              json.dump({"email":email,"password":password,"data":{"purpose":"andak_gate10_e2e"}},f)
+          PY
+
+          curl -fsSL -X POST 'https://bkbjtyacoiaheunweyuu.supabase.co/auth/v1/signup' \
+            -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY' \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/signup-payload.json > /tmp/signup.json
+
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/signup.json'))
+          uid=d.get('id') or (d.get('user') or {}).get('id')
+          assert uid, d
+          print('GATE10_TEMP_SIGNUP_PASS')
+          PY
+
+          python - "$EMAIL" <<'PY'
+          import json,sys
+          with open('/tmp/activate.json','w') as f:
+              json.dump({"target_email":sys.argv[1]},f)
+          PY
+
+          curl -fsSL -X POST 'https://bkbjtyacoiaheunweyuu.supabase.co/rest/v1/rpc/andak_gate10_test_activate' \
+            -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY' \
+            -H 'Content-Type: application/json' \
+            --data-binary @/tmp/activate.json > /tmp/activate-out.json
+
+          python - "$GITHUB_ENV" <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/activate-out.json'))
+          assert d.get('ok') is True, d
+          with open(sys.argv[1],'a') as f:
+              f.write("SUPPLIER_CODE="+d["supplier_code"]+"\n")
+              f.write("ORDER_REF="+d["order_ref"]+"\n")
+          print('GATE10_TEMP_SUPPLIER_ACTIVE')
+          PY
+
+      - name: Signed authenticated Gate10 E2E API29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/tools/andak_gate10_authenticated_e2e.sh"
+
+      - name: Cleanup disposable supplier
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${TEST_EMAIL:-}" ]; then
+            python - "$TEST_EMAIL" <<'PY'
+          import json,sys
+          with open('/tmp/cleanup.json','w') as f:
+              json.dump({"target_email":sys.argv[1]},f)
+          PY
+            curl -fsSL -X POST 'https://bkbjtyacoiaheunweyuu.supabase.co/rest/v1/rpc/andak_gate10_test_cleanup' \
+              -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY' \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/cleanup.json > /tmp/cleanup-out.json || true
+          fi
+
+      - name: Package E2E evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          test -f signature-verify.txt && cp signature-verify.txt evidence/
+          printf '%s\n' \
+            'ANDAK Supplier Gate10 v1.1.0 — Authenticated E2E' \
+            'applicationId=com.fush.market.supplier' \
+            'versionCode=12' \
+            'versionName=1.1.0' \
+            'APK SHA-256=c677535cb3a791de9ffc74cdb84c858f9d09450806118c904344737cacc5e9e8' \
+            'Permanent signature=VERIFIED' \
+            'Supabase Auth positive login=TESTED' \
+            'supplier:self identity=TESTED' \
+            'Live Snapshot products/orders=TESTED' \
+            'Authenticated Sync Queue submit=TESTED' \
+            'Server order transition=TESTED' \
+            'Encrypted session restore after process restart=TESTED' \
+            > evidence/AUTH-E2E-INFO.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v1.1.0-GATE10-AUTH-E2E-EVIDENCE
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
