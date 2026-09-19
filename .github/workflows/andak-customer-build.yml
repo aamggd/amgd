@@ -44,17 +44,21 @@ jobs:
           yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
           "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Extract source
-        run: unzip -q andak-ci-slim.zip
+      - name: Prepare source resources
+        run: |
+          mkdir -p andak_ci_src/apps/customer/src/main/res/drawable-nodpi
+          mkdir -p andak_ci_src/core/ui/src/main/res/drawable
+          base64 -d andak_ci_src/logo.b64 > andak_ci_src/apps/customer/src/main/res/drawable-nodpi/andak_logo.jpg
+          cp andak_ci_src/apps/customer/src/main/res/drawable-nodpi/andak_logo.jpg andak_ci_src/core/ui/src/main/res/drawable/fush_logo.jpg
 
       - name: Build debug APK
-        working-directory: andak_ci_slim
+        working-directory: andak_ci_src
         run: gradle :apps:customer:assembleDebug --stacktrace --no-daemon
 
       - name: Prepare artifact
         run: |
           mkdir -p artifact
-          cp andak_ci_slim/apps/customer/build/outputs/apk/debug/customer-debug.apk artifact/ANDAK-customer-v0.1.1-DEBUG.apk
+          cp andak_ci_src/apps/customer/build/outputs/apk/debug/customer-debug.apk artifact/ANDAK-customer-v0.1.1-DEBUG.apk
           sha256sum artifact/ANDAK-customer-v0.1.1-DEBUG.apk | tee artifact/ANDAK-customer-v0.1.1-DEBUG.apk.sha256
 
       - name: Upload APK
