@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="Bq-IMS4cPCwq"
+          SHARE="20ZsoOiKLioR"
           NAME="ANDAK-Supplier-v1.3.2-GATE12-R8-FINAL-SIGNED.apk"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
@@ -27,7 +27,7 @@ jobs:
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
           URL=$(jq -r '.downloadUrl' /tmp/download.json)
           curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/supplier-r8-signed.apk"
-          echo "8fc5880a1c12b74d44f7d9c1efe50b28710dd107205371d0a10b9b741773be0d  $GITHUB_WORKSPACE/supplier-r8-signed.apk" | sha256sum -c -
+          echo "c0f03f2fc37b4b985de80dbe4c1f9f801ea74c7d4fbbe88a81cb8fafd9e20379  $GITHUB_WORKSPACE/supplier-r8-signed.apk" | sha256sum -c -
 
       - name: Create isolated live supplier fixture through GitHub OIDC
         shell: bash
