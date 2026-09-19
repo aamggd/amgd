@@ -64,16 +64,21 @@ jobs:
               json.dump({"email":email,"password":password,"data":{"purpose":"andak_gate10_e2e"}},f)
           PY
 
-          curl -fsSL -X POST 'https://bkbjtyacoiaheunweyuu.supabase.co/auth/v1/signup' \
+          HTTP=$(curl -sS -o /tmp/signup.json -w '%{http_code}' -X POST 'https://bkbjtyacoiaheunweyuu.supabase.co/auth/v1/signup' \
             -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY' \
             -H 'Content-Type: application/json' \
-            --data-binary @/tmp/signup-payload.json > /tmp/signup.json
-
-          python - <<'PY'
-          import json
+            --data-binary @/tmp/signup-payload.json)
+          echo "GATE10_SIGNUP_HTTP=$HTTP"
+          python - "$HTTP" <<'PY'
+          import json,sys
+          http=int(sys.argv[1])
           d=json.load(open('/tmp/signup.json'))
+          if http < 200 or http >= 300:
+              safe={k:d.get(k) for k in ('code','error_code','msg','message','error') if d.get(k) is not None}
+              print('GATE10_SIGNUP_ERROR',safe)
+              raise SystemExit(2)
           uid=d.get('id') or (d.get('user') or {}).get('id')
-          assert uid, d
+          assert uid
           print('GATE10_TEMP_SIGNUP_PASS')
           PY
 
