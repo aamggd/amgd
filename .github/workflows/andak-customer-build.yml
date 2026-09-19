@@ -1,0 +1,55 @@
+name: ANDAK Customer v0.1.1 CI Build
+
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ "ci/andak-customer-v0.1.1-build" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36 SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Extract source
+        run: unzip -q andak-ci-slim.zip
+
+      - name: Build debug APK
+        working-directory: andak_ci_slim
+        run: gradle :apps:customer:assembleDebug --stacktrace --no-daemon
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifact
+          cp andak_ci_slim/apps/customer/build/outputs/apk/debug/customer-debug.apk artifact/ANDAK-customer-v0.1.1-DEBUG.apk
+          sha256sum artifact/ANDAK-customer-v0.1.1-DEBUG.apk | tee artifact/ANDAK-customer-v0.1.1-DEBUG.apk.sha256
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-customer-v0.1.1-DEBUG
+          path: artifact/*
+          if-no-files-found: error
