@@ -1,0 +1,23 @@
+name: ANDAK Firestorage API Probe 7
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-firestorage-api-probe7.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe files endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          for base in             'https://api.firestorage.ai/prod/file'             'https://api.firestorage.ai/prod'             'https://api.firestorage.ai/dev/file'
+          do
+            u="$base/shares/Sjz2YeEiiC8D/files?maxResults=1000"
+            echo "=== $u ==="
+            code=$(curl -sS -D /tmp/h -o /tmp/r -w '%{http_code}' "$u" || true)
+            echo "HTTP=$code"; sed -n '1,20p' /tmp/h; head -c 4000 /tmp/r || true; echo
+          done
