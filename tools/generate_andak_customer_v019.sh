@@ -379,8 +379,15 @@ data class BackendCatalogSnapshot(
 )
 
 object BackendCatalogGateway {
-    fun isConfigured(): Boolean =
-        BuildConfig.ANDAK_SUPABASE_URL.isNotBlank() && BuildConfig.ANDAK_SUPABASE_KEY.isNotBlank()
+    fun isConfigured(): Boolean {
+        val url = BuildConfig.ANDAK_SUPABASE_URL.trim()
+        val key = BuildConfig.ANDAK_SUPABASE_KEY.trim()
+        val validProtocol = url.startsWith("https://") || url.startsWith("http://")
+        return validProtocol &&
+            key.isNotBlank() &&
+            !url.contains("\${") &&
+            !key.contains("\${")
+    }
 
     suspend fun fetchCatalog(): Result<BackendCatalogSnapshot> = withContext(Dispatchers.IO) {
         runCatching {
