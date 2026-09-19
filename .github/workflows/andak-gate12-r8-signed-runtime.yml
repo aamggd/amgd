@@ -69,11 +69,15 @@ jobs:
               return (nums[0]+nums[2])//2,(nums[1]+nums[3])//2
           if mode=="tap":
               target=sys.argv[3]
-              for n in nodes:
-                  vals=(n.attrib.get('text',''),n.attrib.get('content-desc',''))
-                  if any(target==v or target in v for v in vals if v):
-                      print(*center(n.attrib.get('bounds','')))
-                      raise SystemExit(0)
+              # Prefer an exact semantic/text match so a descriptive sentence
+              # containing the button label is never tapped instead of the button.
+              for exact in (True, False):
+                  for n in nodes:
+                      vals=(n.attrib.get('text',''),n.attrib.get('content-desc',''))
+                      matched=any((target==v) if exact else (target in v) for v in vals if v)
+                      if matched:
+                          print(*center(n.attrib.get('bounds','')))
+                          raise SystemExit(0)
               raise SystemExit(2)
           if mode=="assert":
               target=sys.argv[3]
