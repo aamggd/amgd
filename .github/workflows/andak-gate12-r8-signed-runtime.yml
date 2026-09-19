@@ -32,7 +32,7 @@ jobs:
           }
           getf "M9XlIVMEnYs7" "ANDAK-Supplier-v1.3.2-GATE12-R8-FINAL-SIGNED2.apk" "$GITHUB_WORKSPACE/r8.apk"
           getf "A08rHZ8pD47s" "ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk" "$GITHUB_WORKSPACE/r7.apk"
-          getf "qnn2A2Fnt-14" "r8_backend_e2e.py" "$GITHUB_WORKSPACE/backend.py"
+          getf "KJzbRxUlFyjR" "r8_backend_e2e.py" "$GITHUB_WORKSPACE/backend.py"
           getf "VrRwtLr_-JlM" "r8_runtime_final.sh" "$GITHUB_WORKSPACE/runtime.sh"
           getf "NDEVy3AaLK_a" "r8_verify_offline_sync.py" "$GITHUB_WORKSPACE/offline_verify.py"
           chmod +x "$GITHUB_WORKSPACE/runtime.sh"
@@ -40,15 +40,26 @@ jobs:
           echo "42bdd3878a64b65ca40457dd9966ac31ff872ff78f8f59f8a36f2dddec9b58b7  $GITHUB_WORKSPACE/r7.apk" | sha256sum -c -
           mkdir -p "$GITHUB_WORKSPACE/runtime-evidence"
 
-      - name: Create four isolated live supplier fixtures with GitHub OIDC
+      - name: Create isolated Supplier A and B with GitHub OIDC
         shell: bash
         run: |
           set -euo pipefail
           OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
           test -n "$OIDC" && test "$OIDC" != "null"
           echo "::add-mask::$OIDC"
-          for R in A B C D; do
-            curl -fsSL -X POST               "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"               -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json"               --data '{"action":"setup"}' > "/tmp/$R.json"
+          printf '%s' "$OIDC" > /tmp/oidc.jwt
+          setup_role() {
+            local R="$1" HTTP=""
+            for ATTEMPT in 1 2 3 4 5; do
+              HTTP=$(curl -sS -o "/tmp/$R.json" -w "%{http_code}" -X POST \
+                "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture" \
+                -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json" \
+                --data '{"action":"setup"}')
+              if [ "$HTTP" = "200" ] && jq -e '.ok == true' "/tmp/$R.json" >/dev/null 2>&1; then break; fi
+              jq -c '{error:(.error // "fixture_setup_failed")}' "/tmp/$R.json" || true
+              sleep $((ATTEMPT*5))
+            done
+            test "$HTTP" = "200"
             jq -e '.ok == true' "/tmp/$R.json" >/dev/null
             for K in email password user_id supplier_id supplier_code expected_order expected_product expected_store_name; do
               V=$(jq -r ".$K" "/tmp/$R.json")
@@ -62,16 +73,10 @@ jobs:
                 expected_store_name) echo "${R}_STORE=$V" >> "$GITHUB_ENV" ;;
               esac
             done
-          done
-          printf '%s' "$OIDC" > /tmp/oidc.jwt
-
-      - name: Real-auth Backend RLS A/B and full Gate12 E2E
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 "$GITHUB_WORKSPACE/backend.py"
-          test -s "$GITHUB_WORKSPACE/backend-e2e-evidence.json"
-          cp "$GITHUB_WORKSPACE/backend-e2e-evidence.json" "$GITHUB_WORKSPACE/runtime-evidence/"
+          }
+          setup_role A
+          sleep 6
+          setup_role B
 
       - name: Enable KVM
         shell: bash
@@ -96,25 +101,37 @@ jobs:
           python3 "$GITHUB_WORKSPACE/offline_verify.py"
           cp "$GITHUB_WORKSPACE/offline-server-confirmation.json" "$GITHUB_WORKSPACE/runtime-evidence/"
 
-      - name: Cleanup all temporary live supplier fixtures
+      - name: Real-auth Backend RLS A/B and full Gate12 E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/backend.py"
+          test -s "$GITHUB_WORKSPACE/backend-e2e-evidence.json"
+          cp "$GITHUB_WORKSPACE/backend-e2e-evidence.json" "$GITHUB_WORKSPACE/runtime-evidence/"
+
+      - name: Cleanup temporary Supplier A and B
         if: always()
         shell: bash
         run: |
           set +e
-          if [ ! -f /tmp/oidc.jwt ]; then
-            OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
-          else
+          if [ -f /tmp/oidc.jwt ]; then
             OIDC=$(cat /tmp/oidc.jwt)
+          else
+            OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
           fi
-          for R in A B C D; do
+          for R in A B; do
             VARNAME="${R}_USER_ID"
-            UID="${!VARNAME:-}"
-            if [ -n "$UID" ]; then
-              curl -fsSL -X POST                 "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"                 -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json"                 --data "{"action":"cleanup","user_id":"$UID"}" >/dev/null || true
+            ACCOUNT_ID="${!VARNAME:-}"
+            if [ -n "$ACCOUNT_ID" ]; then
+              PAYLOAD=$(jq -nc --arg id "$ACCOUNT_ID" '{action:"cleanup",user_id:$id}')
+              curl -sS -X POST \
+                "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture" \
+                -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json" \
+                --data "$PAYLOAD" >/dev/null || true
             fi
           done
 
-      - name: Upload final Gate12 runtime evidence
+      - name: Upload final Gate12 closure evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
