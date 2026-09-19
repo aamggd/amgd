@@ -3,6 +3,8 @@ name: ANDAK Admin Gate0 Baseline Diagnose
 on:
   push:
     branches: [ "andak-admin-gate0-v011" ]
+  pull_request:
+    branches: [ "master" ]
   workflow_dispatch:
 
 jobs:
