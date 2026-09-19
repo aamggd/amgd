@@ -1,0 +1,22 @@
+name: ANDAK Gate8 Auth Probe
+on:
+  push:
+    branches: ['andak-supplier-gate8-v090']
+    paths: ['.github/workflows/andak-gate8-auth-probe.yml']
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe Supabase Auth settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL 'https://bkbjtyacoiaheunweyuu.supabase.co/auth/v1/settings'             -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY'             | tee /tmp/settings.json
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/settings.json'))
+          print(json.dumps(d,indent=2,ensure_ascii=False))
+          PY
