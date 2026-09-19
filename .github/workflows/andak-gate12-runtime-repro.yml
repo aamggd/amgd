@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 Runtime Repro
+name: ANDAK Supplier Gate12 P0 Hotfix Runtime
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -8,20 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Download exact final signed APK
+      - name: Download exact signed hotfix
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="_WnjY8OlknwQ"
-          NAME="ANDAK-Supplier-v1.3.0-GATE12-FINAL-SIGNED.apk"
+          SHARE="tb39Ac1yh8nS"
+          NAME="ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
           URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-final.apk"
-          sha256sum "$GITHUB_WORKSPACE/andak-final.apk"
+          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-hotfix.apk"
+          sha256sum "$GITHUB_WORKSPACE/andak-hotfix.apk"
 
       - name: Enable KVM
         shell: bash
@@ -30,7 +30,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run exact release and capture crash
+      - name: Cold start, force-stop reopen, repeated launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -38,24 +38,63 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            adb install -r "$GITHUB_WORKSPACE/andak-final.apk"
-            adb logcat -c
-            adb shell am force-stop com.fush.market.supplier
-            adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
-            sleep 15
-            echo "PID=$(adb shell pidof com.fush.market.supplier || true)"
-            adb shell dumpsys activity activities | grep -A5 -B5 com.fush.market.supplier || true
-            adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/runtime-logcat.txt"
-            echo "=== APP/FATAL EXCERPT ==="
-            grep -n -A120 -B30 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier|com.fush.market.supplier" "$GITHUB_WORKSPACE/runtime-logcat.txt" | tail -400 || true
-            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat.txt"; then exit 2; fi
-            test -n "$(adb shell pidof com.fush.market.supplier || true)"
+            set -e
+            PKG=com.fush.market.supplier
+            APK="$GITHUB_WORKSPACE/andak-hotfix.apk"
+            LOG="$GITHUB_WORKSPACE/hotfix-runtime-logcat.txt"
 
-      - name: Upload runtime log
+            adb install "$APK"
+            adb logcat -c
+
+            echo "=== COLD START ==="
+            adb shell am force-stop "$PKG"
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+            sleep 30
+            PID1=$(adb shell pidof "$PKG" || true)
+            echo "cold_start_pid=$PID1"
+            test -n "$PID1"
+
+            echo "=== FORCE STOP + REOPEN ==="
+            adb shell am force-stop "$PKG"
+            sleep 2
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+            sleep 12
+            PID2=$(adb shell pidof "$PKG" || true)
+            echo "reopen_pid=$PID2"
+            test -n "$PID2"
+
+            echo "=== HOME + RESUME ==="
+            adb shell input keyevent KEYCODE_HOME
+            sleep 3
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+            sleep 8
+            PID3=$(adb shell pidof "$PKG" || true)
+            echo "resume_pid=$PID3"
+            test -n "$PID3"
+
+            echo "=== REPEATED LAUNCH x3 ==="
+            for i in 1 2 3; do
+              adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
+              sleep 3
+            done
+            PID4=$(adb shell pidof "$PKG" || true)
+            echo "repeat_pid=$PID4"
+            test -n "$PID4"
+
+            adb logcat -d -v threadtime > "$LOG"
+            echo "=== FATAL CHECK ==="
+            grep -n -A80 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: $PKG" "$LOG" || true
+            if grep -q "FATAL EXCEPTION" "$LOG"; then
+              echo "P0_RUNTIME=FAIL"
+              exit 2
+            fi
+            echo "P0_RUNTIME=PASS"
+
+      - name: Upload hotfix runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Gate12-Final-Runtime-Log
-          path: runtime-logcat.txt
+          name: ANDAK-Supplier-v1.3.1-P0-Hotfix-Runtime-Log
+          path: hotfix-runtime-logcat.txt
           if-no-files-found: warn
           retention-days: 1
