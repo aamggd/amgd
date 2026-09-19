@@ -30,9 +30,10 @@ jobs:
         run: |
           set -euo pipefail
           cd fush-market-generated
-          base64 -d core/ui/src/main/res/drawable/fush_logo.jpg.b64 > core/ui/src/main/res/drawable/fush_logo.jpg
+          cat core/ui/src/main/res/drawable/fush_logo.jpg.hex.* | tr -d '\n' | xxd -r -p > core/ui/src/main/res/drawable/fush_logo.jpg
           file core/ui/src/main/res/drawable/fush_logo.jpg
-          sha256sum core/ui/src/main/res/drawable/fush_logo.jpg
+          test "$(stat -c%s core/ui/src/main/res/drawable/fush_logo.jpg)" = "6654"
+          echo "37da9cd414d87425fecd2664315903e07e24a295871355389d2a2311978298f7  core/ui/src/main/res/drawable/fush_logo.jpg" | sha256sum -c -
 
       - name: Build baseline Admin debug APK
         shell: bash
