@@ -1585,6 +1585,8 @@ fun CustomerApp() {
             var catalogSource by rememberSaveable { mutableStateOf("كتالوج محلي تجريبي") }
             val orderReceipts = remember { mutableStateListOf<OrderReceipt>() }
             val savedAddresses = remember { mutableStateListOf<SavedAddress>() }
+            val cloudSupportTickets = remember { mutableStateListOf<SupportTicketSummary>() }
+            val cloudNotifications = remember { mutableStateListOf<CustomerNotification>() }
             var customerPreferences by remember { mutableStateOf(CustomerPreferences()) }
             var supportDraft by rememberSaveable { mutableStateOf("") }
             var authSession by remember { mutableStateOf<AuthSession?>(null) }
@@ -1723,7 +1725,11 @@ fun CustomerApp() {
                                 favoriteProductIds.clear()
                                 favoriteProductIds.addAll(mergedFavorites)
                                 cloud.orders.forEach { OrderReceiptStore.upsert(context, it) }
-                                accountSyncMessage = "تمت مزامنة السلة والمفضلة والحساب بين الأجهزة"
+                                cloudSupportTickets.clear()
+                                cloudSupportTickets.addAll(cloud.supportTickets)
+                                cloudNotifications.clear()
+                                cloudNotifications.addAll(cloud.notifications)
+                                accountSyncMessage = "تمت مزامنة الطلبات والسلة والمفضلة والدعم والتنبيهات"
                             }.onFailure { error ->
                                 accountSyncMessage = "تعذر رفع البيانات المدمجة: " + (error.message ?: "خطأ")
                             }
@@ -1995,6 +2001,7 @@ fun CustomerApp() {
                         CustomerScreen.SUPPORT -> SupportScreen(
                             draft = supportDraft,
                             authSession = authSession,
+                            tickets = cloudSupportTickets,
                             onDraftChange = { supportDraft = it },
                             onSaveDraft = {
                                 val snapshot = supportDraft
@@ -2004,7 +2011,10 @@ fun CustomerApp() {
                         )
                         CustomerScreen.NOTIFICATIONS -> NotificationsScreen(
                             receipts = orderReceipts,
+                            cloudNotifications = cloudNotifications,
                             preferences = customerPreferences,
+                            syncBusy = accountSyncBusy,
+                            onRefresh = syncAuthenticatedAccount,
                             onOrderUpdatesChange = { enabled ->
                                 appScope.launch { SupportPreferencesStore.setOrderUpdates(context, enabled) }
                             },
@@ -3536,7 +3546,10 @@ private fun AuthScreen(
 @Composable
 private fun NotificationsScreen(
     receipts: List<OrderReceipt>,
+    cloudNotifications: List<CustomerNotification>,
     preferences: CustomerPreferences,
+    syncBusy: Boolean,
+    onRefresh: () -> Unit,
     onOrderUpdatesChange: (Boolean) -> Unit,
     onOffersChange: (Boolean) -> Unit,
     onBack: () -> Unit
@@ -3617,6 +3630,7 @@ private fun NotificationsScreen(
 private fun SupportScreen(
     draft: String,
     authSession: AuthSession?,
+    tickets: List<SupportTicketSummary>,
     onDraftChange: (String) -> Unit,
     onSaveDraft: () -> Unit,
     onBack: () -> Unit
