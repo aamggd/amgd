@@ -1765,6 +1765,111 @@ private fun SmallQtyButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
+private fun OrdersScreen(
+    receipts: List<OrderReceipt>,
+    onRefresh: (OrderReceipt) -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Text(
+            "طلباتي",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            color = AndakDeepGreen
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "تُحفظ مراجع الطلبات على الجهاز، ويمكن تحديث حالة الطلبات المرتبطة بالخادم.",
+            color = AndakMuted,
+            fontSize = 12.sp
+        )
+        Spacer(Modifier.height(14.dp))
+
+        if (receipts.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 70.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("🧾", fontSize = 52.sp)
+                Spacer(Modifier.height(8.dp))
+                Text("لا توجد طلبات بعد", fontWeight = FontWeight.Bold)
+                Text("عند إنشاء أول طلب سيظهر هنا.", color = AndakMuted, fontSize = 13.sp)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                items(receipts, key = { it.reference }) { receipt ->
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        if (receipt.serverCreated) "طلب " + receipt.reference else "مسودة " + receipt.reference,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AndakDeepGreen
+                                    )
+                                    Text(
+                                        orderStatusArabic(receipt.status),
+                                        color = orderStatusColor(receipt.status),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                if (receipt.totalYER > 0) {
+                                    Text(
+                                        formatYer(receipt.totalYER),
+                                        color = AndakGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            if (receipt.serverCreated) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "الدفع عند الاستلام",
+                                        modifier = Modifier.weight(1f),
+                                        color = AndakMuted,
+                                        fontSize = 12.sp
+                                    )
+                                    OutlinedButton(
+                                        onClick = { onRefresh(receipt) },
+                                        enabled = receipt.trackingToken.isNotBlank() && BackendOrderGateway.isConfigured(),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("تحديث الحالة", fontSize = 12.sp)
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    "مسودة محلية لم تُرسل إلى الخادم.",
+                                    color = Color(0xFF7A5200),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PlaceholderScreen(title: String, text: String) {
     Column(
         Modifier.fillMaxSize().padding(20.dp),
@@ -1805,6 +1910,25 @@ private fun RowScope.BottomItem(
 private fun formatYer(value: Long): String {
     val formatted = NumberFormat.getNumberInstance(Locale.US).format(value)
     return formatted + " ر.ي"
+}
+
+private fun orderStatusArabic(status: String): String = when (status.uppercase()) {
+    "DRAFT_LOCAL" -> "مسودة محلية"
+    "PENDING_CONFIRMATION" -> "بانتظار التأكيد"
+    "CONFIRMED" -> "تم التأكيد"
+    "PREPARING" -> "قيد التجهيز"
+    "READY_FOR_PICKUP" -> "جاهز للاستلام"
+    "OUT_FOR_DELIVERY" -> "خرج للتوصيل"
+    "DELIVERED" -> "تم التسليم"
+    "CANCELLED" -> "ملغي"
+    else -> status
+}
+
+private fun orderStatusColor(status: String): Color = when (status.uppercase()) {
+    "DELIVERED" -> AndakGreen
+    "CANCELLED" -> Color(0xFFB3261E)
+    "DRAFT_LOCAL" -> Color(0xFF7A5200)
+    else -> Color(0xFF315D7A)
 }
 
 private fun availabilityText(value: Availability): String = when (value) {
