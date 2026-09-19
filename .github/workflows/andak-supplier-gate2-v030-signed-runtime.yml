@@ -118,9 +118,10 @@ jobs:
           sleep 1
           dump_ui add-product-scroll
           grep -q 'الكمية المخصصة لمنصة عندك' "$E/add-product-scroll.xml"
-          adb shell input keyevent 4
-          sleep 1
-
+          adb shell am force-stop "$P"
+          adb shell am start -n "$P/.MainActivity" >/dev/null 2>&1 || true
+          sleep 6
+          tap_text 'المنتجات'
           tap_text 'معتمد'
           adb shell input swipe 540 1500 540 650 450
           sleep 1
@@ -130,8 +131,6 @@ jobs:
           dump_ui price-update
           grep -q 'سيبقى السعر الحالي ظاهرًا للعملاء حتى اعتماد السعر الجديد من الإدارة' "$E/price-update.xml"
           grep -q 'السعر الجديد ر.ي' "$E/price-update.xml"
-          adb shell input keyevent 4
-          sleep 1
 
           adb logcat -d -b crash > "$E/crash.log" || true
           adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ResourceResolutionException|Caused by|$P" > "$E/relevant.log" || true
