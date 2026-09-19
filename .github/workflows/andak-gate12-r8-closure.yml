@@ -13,8 +13,8 @@ jobs:
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="MlqDF-0wyfqT"
-          NAME="andak_supplier_gate12_r8_source_r3.zip"
+          SHARE="y367o8U_NvUU"
+          NAME="andak_supplier_gate12_r8_source_r4.zip"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
