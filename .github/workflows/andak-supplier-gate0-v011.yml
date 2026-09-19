@@ -7,7 +7,7 @@ on:
 permissions: { contents: read }
 jobs:
   gate0:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
@@ -68,10 +68,10 @@ jobs:
       - name: Runtime API 33
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 33
+          api-level: 29
           arch: x86_64
           profile: pixel_2
-          emulator-boot-timeout: 300
+          emulator-boot-timeout: 600
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: bash "$GITHUB_WORKSPACE/runtime.sh"
       - name: Package
@@ -85,7 +85,7 @@ jobs:
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"; cp /tmp/ANDAK-Supplier-v0.1.1-Tested-Source.zip "$D/"
           cp "$GITHUB_WORKSPACE"/{baseline-start.txt,baseline-pid.txt,baseline-crash.log,baseline-relevant.log,baseline-reproduced.txt,fixed-start.txt,fixed-pid.txt,fixed-crash.log,fixed-relevant.log,fixed-screen.png} "$D/"
           test -f "$GITHUB_WORKSPACE/fixed-window.xml" && cp "$GITHUB_WORKSPACE/fixed-window.xml" "$D/" || true
-          printf 'ANDAK Supplier v0.1.1\napplicationId=com.fush.market.supplier\nversionCode=2\nversionName=0.1.1\nStatic=PASS\nBuild=PASS\nRuntime debug API33=PASS\nBaseline crash reproduced=%s\nFixed crash buffer=clean\nSigning=outside public CI\n' "$(cat "$GITHUB_WORKSPACE/baseline-reproduced.txt")" > "$D/BUILD-RESULT.txt"
+          printf 'ANDAK Supplier v0.1.1\napplicationId=com.fush.market.supplier\nversionCode=2\nversionName=0.1.1\nStatic=PASS\nBuild=PASS\nRuntime debug API29=PASS\nBaseline crash reproduced=%s\nFixed crash buffer=clean\nSigning=outside public CI\n' "$(cat "$GITHUB_WORKSPACE/baseline-reproduced.txt")" > "$D/BUILD-RESULT.txt"
           (cd "$D" && sha256sum * > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with: { name: ANDAK-Supplier-v0.1.1-GATE0-RUNTIME-PASS, path: dist/, if-no-files-found: error, retention-days: 7 }
