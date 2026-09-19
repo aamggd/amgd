@@ -1,0 +1,212 @@
+name: ANDAK Supplier v0.2.0 Gate1
+
+on:
+  push:
+    branches: ['andak-supplier-gate1-v020']
+    paths: ['.github/workflows/andak-supplier-gate1-v020.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate1:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Download exact Gate1 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/A5Wl_ZstsKLg'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.2.0-Gate1-Source.zip"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          DOWNLOAD_URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$DOWNLOAD_URL" -o /tmp/gate1-source.zip
+          echo '669465169a90bf3d4342f9e0ffc716ff44804ff311632f0b1f453049bf6d6d3d  /tmp/gate1-source.zip' | sha256sum -c -
+          mkdir -p "$GITHUB_WORKSPACE/source"
+          unzip -q /tmp/gate1-source.zip -d "$GITHUB_WORKSPACE/source"
+          SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1)
+          test -n "$SRC"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+
+      - name: Gate1 static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.market.supplier"' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'versionCode = 3' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'versionName = "0.2.0"' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'SupplierApp()' "$SRC/apps/supplier/src/main/java/com/fush/market/supplier/MainActivity.kt"
+          APP="$SRC/apps/supplier/src/main/java/com/fush/market/supplier/SupplierApp.kt"
+          grep -q 'DashboardScreen' "$APP"
+          grep -q 'OrdersScreen' "$APP"
+          grep -q 'ProductsScreen' "$APP"
+          grep -q 'InventoryScreen' "$APP"
+          grep -q 'AccountScreen' "$APP"
+          grep -q 'قبول الطلب' "$APP"
+          grep -q 'بدء التجهيز' "$APP"
+          grep -q 'تم التجهيز — جاهز للتسليم' "$APP"
+          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' "$SRC/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q 'android:supportsRtl="true"' "$SRC/apps/supplier/src/main/AndroidManifest.xml"
+          echo GATE1_STATIC_PASS
+
+      - name: Build Gate1 debug release AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:supplier:assembleDebug :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace
+
+      - name: Write Gate1 runtime test
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-gate1.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          P=com.fush.market.supplier
+          APK="$SRC/apps/supplier/build/outputs/apk/debug/supplier-debug.apk"
+          ART="$GITHUB_WORKSPACE/runtime-evidence"
+          mkdir -p "$ART"
+
+          dump_ui() {
+            local name="$1"
+            adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/window.xml "$ART/$name.xml" >/dev/null 2>&1 || true
+          }
+
+          tap_text() {
+            local txt="$1"
+            dump_ui tap-source
+            python - "$ART/tap-source.xml" "$txt" <<'PY'
+          import re, sys, xml.etree.ElementTree as ET, subprocess
+          path, target = sys.argv[1], sys.argv[2]
+          root = ET.parse(path).getroot()
+          nodes = [n for n in root.iter('node') if n.attrib.get('text') == target or n.attrib.get('content-desc') == target]
+          if not nodes:
+              print("TEXT_NOT_FOUND:", target)
+              sys.exit(2)
+          b = nodes[0].attrib.get('bounds','')
+          m = re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', b)
+          if not m:
+              print("BAD_BOUNDS:", b)
+              sys.exit(3)
+          x1,y1,x2,y2 = map(int,m.groups())
+          x,y=(x1+x2)//2,(y1+y2)//2
+          print("TAP",target,x,y)
+          subprocess.check_call(['adb','shell','input','tap',str(x),str(y)])
+          PY
+            sleep 1
+          }
+
+          adb uninstall "$P" >/dev/null 2>&1 || true
+          adb install "$APK"
+          adb logcat -c
+          adb shell am start -W -n "$P/.MainActivity" | tee "$ART/start.txt"
+          sleep 5
+          PID="$(adb shell pidof "$P" | tr -d '\r' || true)"
+          echo "$PID" > "$ART/pid.txt"
+          test -n "$PID"
+
+          dump_ui home
+          grep -q 'لوحة المورد' "$ART/home.xml"
+          grep -q 'الرئيسية' "$ART/home.xml"
+          grep -q 'الطلبات' "$ART/home.xml"
+          grep -q 'المنتجات' "$ART/home.xml"
+          grep -q 'المخزون' "$ART/home.xml"
+          grep -q 'الحساب' "$ART/home.xml"
+
+          tap_text 'الطلبات'
+          dump_ui orders
+          grep -q 'استلام الطلبات ومتابعة التجهيز' "$ART/orders.xml"
+          grep -q 'قبول الطلب' "$ART/orders.xml"
+
+          tap_text 'قبول الطلب'
+          dump_ui order-accepted
+          grep -q 'بدء التجهيز' "$ART/order-accepted.xml"
+
+          tap_text 'المنتجات'
+          dump_ui products
+          grep -q 'الأسعار والتوفر وحالة العرض في المتجر' "$ART/products.xml"
+          grep -q 'إضافة منتج جديد' "$ART/products.xml"
+
+          tap_text 'المخزون'
+          dump_ui inventory
+          grep -q 'تعديل كميات المخزون محليًا في Gate 1' "$ART/inventory.xml"
+
+          tap_text 'الحساب'
+          dump_ui account
+          grep -q 'إعدادات المورد الأساسية' "$ART/account.xml"
+          grep -q 'SUP-0001' "$ART/account.xml"
+
+          adb logcat -d -b crash > "$ART/crash.log" || true
+          adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ResourceResolutionException|Caused by|$P" > "$ART/relevant.log" || true
+          if grep -q "$P" "$ART/crash.log"; then
+            cat "$ART/crash.log"
+            exit 1
+          fi
+
+          adb exec-out screencap -p > "$ART/final-screen.png"
+          echo GATE1_RUNTIME_PASS | tee "$ART/result.txt"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-gate1.sh"
+
+      - name: Gate1 runtime API29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-gate1.sh"
+
+      - name: Package Gate1
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$SRC/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk"             "$D/ANDAK-Supplier-v0.2.0-GATE1-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.2.0-GATE1-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.2.0-GATE1-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          cp /tmp/gate1-source.zip "$D/ANDAK-Supplier-v0.2.0-Gate1-Source.zip"
+          cp -r "$GITHUB_WORKSPACE/runtime-evidence" "$D/"
+          printf '%s\n'             'ANDAK Supplier Gate 1'             'applicationId=com.fush.market.supplier'             'versionCode=3'             'versionName=0.2.0'             'Source SHA-256=669465169a90bf3d4342f9e0ffc716ff44804ff311632f0b1f453049bf6d6d3d'             'Static checks=PASS'             'Build debug/release/AAB=PASS'             'Runtime navigation/interactions API29=PASS'             'Crash buffer=clean'             'Release signing=pending permanent-key signing outside public CI'             > "$D/GATE1-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.2.0-GATE1-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
