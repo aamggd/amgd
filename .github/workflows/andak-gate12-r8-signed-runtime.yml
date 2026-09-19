@@ -102,7 +102,8 @@ jobs:
             OIDC=$(cat /tmp/oidc.jwt)
           fi
           for R in A B C D; do
-            eval UID="${${R}_USER_ID:-}"
+            VARNAME="${R}_USER_ID"
+            UID="${!VARNAME:-}"
             if [ -n "$UID" ]; then
               curl -fsSL -X POST                 "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"                 -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json"                 --data "{"action":"cleanup","user_id":"$UID"}" >/dev/null || true
             fi
