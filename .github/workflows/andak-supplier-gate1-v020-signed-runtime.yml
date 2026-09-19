@@ -1,0 +1,109 @@
+name: ANDAK Supplier v0.2.0 Gate1 Signed Runtime
+on:
+  push:
+    branches: ['andak-supplier-gate1-v020']
+    paths: ['.github/workflows/andak-supplier-gate1-v020-signed-runtime.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o /tmp/cmd.zip
+          rm -rf /tmp/cmd; mkdir -p /tmp/cmd; unzip -q /tmp/cmd.zip -d /tmp/cmd; mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"; echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'build-tools;36.0.0'
+      - name: Download official signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/KLFmQEy2Z4yp'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.2.0-GATE1-OFFICIAL-SIGNED.apk"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/supplier-gate1.apk
+          echo '82246cc70f52355e94bf2f3eb2d1f98d5e03cccba9c1b4259b452d4a2b50ab9d  /tmp/supplier-gate1.apk' | sha256sum -c -
+          echo "APK=/tmp/supplier-gate1.apk" >> "$GITHUB_ENV"
+      - name: Verify official signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature.txt
+          grep -qi 'certificate SHA-256 digest: 84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' signature.txt
+          grep -q 'Number of signers: 1' signature.txt
+      - name: Write signed runtime test
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-signed.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          P=com.fush.market.supplier
+          E="$GITHUB_WORKSPACE/evidence"; mkdir -p "$E"
+          dump_ui(){ local n="$1"; adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true; adb pull /sdcard/window.xml "$E/$n.xml" >/dev/null 2>&1 || true; }
+          tap_text(){
+            local txt="$1"; dump_ui tap-source
+            python - "$E/tap-source.xml" "$txt" <<'PY'
+          import re,sys,subprocess,xml.etree.ElementTree as ET
+          path,target=sys.argv[1],sys.argv[2]
+          root=ET.parse(path).getroot()
+          nodes=[n for n in root.iter('node') if n.attrib.get('text')==target or n.attrib.get('content-desc')==target]
+          if not nodes: raise SystemExit("TEXT_NOT_FOUND "+target)
+          m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].attrib.get('bounds',''))
+          if not m: raise SystemExit("BAD_BOUNDS")
+          x1,y1,x2,y2=map(int,m.groups()); subprocess.check_call(['adb','shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)])
+          PY
+            sleep 1
+          }
+          adb uninstall "$P" >/dev/null 2>&1 || true
+          adb install "$APK" | tee "$E/install.txt"
+          adb logcat -c
+          adb shell am start -W -n "$P/.MainActivity" | tee "$E/start.txt"
+          sleep 5
+          PID=$(adb shell pidof "$P" | tr -d '\r' || true); echo "$PID" > "$E/pid.txt"; test -n "$PID"
+          dump_ui home; grep -q 'لوحة المورد' "$E/home.xml"
+          tap_text 'الطلبات'; dump_ui orders; grep -q 'قبول الطلب' "$E/orders.xml"
+          tap_text 'قبول الطلب'; dump_ui accepted; grep -q 'بدء التجهيز' "$E/accepted.xml"
+          tap_text 'المنتجات'; dump_ui products; grep -q 'إضافة منتج جديد' "$E/products.xml"
+          tap_text 'المخزون'; dump_ui inventory; grep -q 'مخزون منخفض' "$E/inventory.xml"
+          tap_text 'الحساب'; dump_ui account; grep -q 'SUP-0001' "$E/account.xml"
+          adb logcat -d -b crash > "$E/crash.log" || true
+          adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ResourceResolutionException|Caused by|$P" > "$E/relevant.log" || true
+          ! grep -q "$P" "$E/crash.log"
+          adb exec-out screencap -p > "$E/final-screen.png"
+          echo SIGNED_GATE1_RUNTIME_PASS | tee "$E/result.txt"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-signed.sh"
+      - name: Signed runtime API29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-signed.sh"
+      - name: Collect evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          test -f signature.txt && cp signature.txt evidence/
+          printf '%s\n' 'ANDAK Supplier Gate1 v0.2.0' 'Signed release runtime test' 'Package=com.fush.market.supplier' 'versionCode=3' 'Certificate SHA-256=84:C8:E9:4D:39:A2:FA:83:72:59:3F:FA:7D:75:B4:77:2B:FE:11:92:22:6B:F2:DD:0D:E5:97:06:FA:CF:F1:3E' > evidence/INFO.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v0.2.0-GATE1-SIGNED-RUNTIME-EVIDENCE
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 7
