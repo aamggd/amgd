@@ -1,0 +1,29 @@
+name: ANDAK Firestorage API Probe 3
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect share scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAGE='https://firestorage.ai/ja/f/Sjz2YeEiiC8D'
+          curl -fsSL "$PAGE" -o /tmp/page.html
+          grep -Eo 'src="[^"]+\.js"' /tmp/page.html | sed 's/^src="//;s/"$//' | sort -u > /tmp/js.txt
+          cat /tmp/js.txt
+          : > /tmp/all.js
+          while read -r p; do
+            if [[ "$p" == http* ]]; then u="$p"; else u="https://firestorage.ai$p"; fi
+            echo "FETCH $u"
+            curl -fsSL "$u" >> /tmp/all.js || true
+            printf '\n' >> /tmp/all.js
+          done < /tmp/js.txt
+          echo "ALL_JS_SIZE=$(wc -c </tmp/all.js)"
+          tr ';' '\n' < /tmp/all.js | grep -Ei '.{0,120}(download|api/|shareId|publicId|prepare|presign|signedUrl|storage).{0,220}' | head -300 || true

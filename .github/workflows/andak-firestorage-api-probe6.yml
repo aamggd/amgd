@@ -1,0 +1,42 @@
+name: ANDAK Firestorage API Probe 6
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-firestorage-api-probe6.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Decode public share resolver
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL 'https://firestorage.ai/ja/f/Sjz2YeEiiC8D' -o /tmp/page.html
+          grep -oE 'src="[^"]+\.js"' /tmp/page.html | sed 's/^src="//;s/"$//' | sort -u > /tmp/jsurls
+          : >/tmp/all.js
+          while read -r p; do curl -fsSL "https://firestorage.ai$p" >> /tmp/all.js || true; echo >> /tmp/all.js; done < /tmp/jsurls
+          python - <<'PY'
+          import re
+          s=open('/tmp/all.js','r',errors='ignore').read()
+          patterns=[
+            r'async function v\(',
+            r'function v\(',
+            r'let f=',
+            r'const f=',
+            r'B=/',
+            r'q\(window.location.pathname\)',
+            r'shareEndpoint',
+            r'cushionRedirecting',
+            r'/files\?maxResults=1000',
+            r'/files/\$\{e\.fileId\}/download'
+          ]
+          for p in patterns:
+              print("\n===== PATTERN",p,"=====")
+              for m in list(re.finditer(p,s))[:20]:
+                  a=max(0,m.start()-1600); b=min(len(s),m.end()+2200)
+                  print(s[a:b].replace('\n',' ')[:4000])
+                  print("\n---")
+          PY

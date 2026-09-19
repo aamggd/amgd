@@ -1,0 +1,100 @@
+name: ANDAK Supplier v0.1.1 Exact Package
+
+on:
+  push:
+    branches:
+      - 'andak-supplier-build-v011'
+    paths:
+      - '.github/workflows/andak-supplier-v011-exact-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Download exact fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARE='Sjz2YeEiiC8D'
+          LIST="$(curl -fsSL "https://api.firestorage.ai/prod/file/shares/$SHARE/files?maxResults=1000")"
+          FILE_ID="$(python -c 'import json,sys; print(json.load(sys.stdin)["files"][0]["fileId"])' <<<"$LIST")"
+          URL="$(curl -fsSL -X POST "https://api.firestorage.ai/prod/file/shares/$SHARE/files/$FILE_ID/download" | python -c 'import json,sys; print(json.load(sys.stdin)["downloadUrl"])')"
+          curl -fsSL "$URL" -o /tmp/fixed.zip
+          unzip -tq /tmp/fixed.zip
+          mkdir -p "$GITHUB_WORKSPACE/exact-fixed"
+          unzip -q /tmp/fixed.zip -d "$GITHUB_WORKSPACE/exact-fixed"
+          SRC="$GITHUB_WORKSPACE/exact-fixed/fush-market-generated"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+          sha256sum /tmp/fixed.zip > "$GITHUB_WORKSPACE/exact-source-sha256.txt"
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.market.supplier"' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'versionCode = 2' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'versionName = "0.1.1"' "$SRC/apps/supplier/build.gradle.kts"
+          grep -q 'logoRawRes = R.raw.andak_supplier_logo' "$SRC/apps/supplier/src/main/java/com/fush/market/supplier/MainActivity.kt"
+          grep -q 'android:icon="@mipmap/ic_launcher"' "$SRC/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' "$SRC/apps/supplier/src/main/AndroidManifest.xml"
+          echo EXACT_SOURCE_IDENTITY_PASS
+
+      - name: Build exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace
+
+      - name: Package exact release
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$SRC/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk"             "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          cp /tmp/fixed.zip "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-SOURCE-FIXED.zip"
+          cp "$GITHUB_WORKSPACE/exact-source-sha256.txt" "$D/"
+          printf '%s\n'             'ANDAK Supplier v0.1.1 exact official source'             'applicationId=com.fush.market.supplier'             'versionCode=2'             'versionName=0.1.1'             'Exact source identity=PASS'             'Release APK build=PASS'             'Release AAB build=PASS'             > "$D/EXACT-PACKAGE-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.1.1-EXACT-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,26 @@
+name: ANDAK Exact Source Download Probe
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-exact-source-download-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve exact source download
+        shell: bash
+        run: |
+          set -euo pipefail
+          API='https://api.firestorage.ai/prod/file/shares/Sjz2YeEiiC8D/files/01a0b7c12d8c77deaa878a9e1a98eedf/download'
+          code=$(curl -sS -X POST -D /tmp/h -o /tmp/r -w '%{http_code}' "$API")
+          echo "HTTP=$code"; sed -n '1,30p' /tmp/h; cat /tmp/r
+          python - <<'PY'
+          import json, pathlib
+          p=pathlib.Path('/tmp/r')
+          d=json.loads(p.read_text())
+          print("HAS_DOWNLOAD_URL", bool(d.get("downloadUrl")))
+          print("DOWNLOAD_URL_PREFIX", d.get("downloadUrl","")[:180])
+          PY

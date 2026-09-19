@@ -1,0 +1,40 @@
+name: ANDAK Firestorage Route Extract
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-firestorage-route-extract.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Extract route logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAGE='https://firestorage.ai/ja/f/Sjz2YeEiiC8D'
+          curl -fsSL "$PAGE" -o /tmp/page.html
+          grep -Eo 'src="[^"]+\.js"' /tmp/page.html | sed 's/^src="//;s/"$//' | sort -u > /tmp/js.txt
+          : >/tmp/all.js
+          while read -r p; do
+            [[ "$p" == http* ]] && u="$p" || u="https://firestorage.ai$p"
+            curl -fsSL "$u" >>/tmp/all.js || true
+            printf '\n' >>/tmp/all.js
+          done </tmp/js.txt
+          python3 - <<'PY'
+from pathlib import Path
+s=Path('/tmp/all.js').read_text(errors='ignore')
+for pat in ['shareEndpoint','requiresCushion','/shares/','api.firestorage.ai/prod/file/','function v()','function q(','B=','shareId']:
+    print('\n===== PATTERN',pat,'=====')
+    start=0
+    n=0
+    while True:
+        i=s.find(pat,start)
+        if i<0 or n>=12: break
+        print(s[max(0,i-700):i+1300])
+        print('\n---')
+        start=i+len(pat); n+=1
+PY

@@ -1,0 +1,105 @@
+name: ANDAK Admin Gate0 Baseline Diagnose
+
+on:
+  push:
+    branches: [ "andak-admin-gate0-v011" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.6.0"
+
+      - name: Inspect temporary logo transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L -sS "https://firestorage.ai/ja/f/r702uvv3-HR_" -o /tmp/firestorage-page
+          file /tmp/firestorage-page
+          wc -c /tmp/firestorage-page
+          grep -Eo 'https?[^" ]+|href="[^"]+|src="[^"]+' /tmp/firestorage-page | head -100 || true
+
+      - name: Decode baseline logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd fush-market-generated
+          cat core/ui/src/main/res/drawable/fush_logo.jpg.hex.* | tr -d '\n' | xxd -r -p > core/ui/src/main/res/drawable/fush_logo.jpg
+          file core/ui/src/main/res/drawable/fush_logo.jpg
+          stat -c%s core/ui/src/main/res/drawable/fush_logo.jpg
+          sha256sum core/ui/src/main/res/drawable/fush_logo.jpg
+          test "$(stat -c%s core/ui/src/main/res/drawable/fush_logo.jpg)" = "6654"
+          echo "37da9cd414d87425fecd2664315903e07e24a295871355389d2a2311978298f7  core/ui/src/main/res/drawable/fush_logo.jpg" | sha256sum -c -
+          rm -f core/ui/src/main/res/drawable/fush_logo.jpg.hex.* core/ui/src/main/res/drawable/fush_logo.jpg.b64
+
+      - name: Build baseline Admin debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          cd fush-market-generated
+          mkdir -p evidence
+          gradle --version | tee evidence/gradle-version.txt
+          gradle --no-daemon clean :apps:admin:assembleDebug --stacktrace 2>&1 | tee evidence/build-baseline.log
+          cp apps/admin/build/outputs/apk/debug/admin-debug.apk evidence/ANDAK-admin-v0.1.0-BASELINE-debug.apk
+          sha256sum evidence/ANDAK-admin-v0.1.0-BASELINE-debug.apk | tee evidence/apk-sha256.txt
+
+      - name: Runtime diagnose baseline on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set +e
+            cd fush-market-generated
+            mkdir -p evidence
+            APK="apps/admin/build/outputs/apk/debug/admin-debug.apk"
+            adb wait-for-device
+            adb logcat -c
+            adb install -r "$APK" > evidence/install-baseline.txt 2>&1
+            adb shell am force-stop com.fush.market.admin
+            adb shell am start -W -n com.fush.market.admin/.MainActivity > evidence/launch-baseline.txt 2>&1
+            sleep 15
+            adb shell pidof com.fush.market.admin > evidence/pid-baseline.txt 2>&1
+            adb shell dumpsys activity activities > evidence/dumpsys-activity-baseline.txt 2>&1
+            adb shell dumpsys package com.fush.market.admin > evidence/dumpsys-package-baseline.txt 2>&1
+            adb logcat -d -v threadtime > evidence/logcat-baseline.txt 2>&1
+            grep -n -A 40 -B 8 "FATAL EXCEPTION" evidence/logcat-baseline.txt > evidence/fatal-baseline.txt 2>&1 || true
+            adb exec-out screencap -p > evidence/baseline-screen.png 2>/dev/null || true
+            if adb shell pidof com.fush.market.admin | grep -q '[0-9]'; then
+              echo "BASELINE_PROCESS_ALIVE=YES" | tee evidence/baseline-result.txt
+            else
+              echo "BASELINE_PROCESS_ALIVE=NO" | tee evidence/baseline-result.txt
+            fi
+            if grep -q "FATAL EXCEPTION" evidence/logcat-baseline.txt; then
+              echo "BASELINE_FATAL_EXCEPTION=YES" | tee -a evidence/baseline-result.txt
+            else
+              echo "BASELINE_FATAL_EXCEPTION=NO" | tee -a evidence/baseline-result.txt
+            fi
+
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-admin-baseline-diagnostics
+          path: fush-market-generated/evidence
+          if-no-files-found: warn
+          retention-days: 7

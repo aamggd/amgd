@@ -1,0 +1,99 @@
+name: ANDAK Supplier v0.1.1 Official Signed Runtime
+
+on:
+  push:
+    branches:
+      - 'andak-supplier-build-v011'
+    paths:
+      - '.github/workflows/andak-supplier-v011-official-signed-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download permanently signed official APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/1A9xPByIKO0Z'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          DOWNLOAD_URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$DOWNLOAD_URL" -o /tmp/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk
+          echo 'a2527e4437acab06c64321ff1713fa0a59a3ed340fa00026bd92a8a36b8cc870  /tmp/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk' | shasum -a 256 -c -
+          echo "APK=/tmp/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk" >> "$GITHUB_ENV"
+
+      - name: Verify permanent signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$GITHUB_WORKSPACE/signature-verify.txt"
+          grep -qi 'certificate SHA-256 digest: 84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' "$GITHUB_WORKSPACE/signature-verify.txt"
+          grep -q 'Number of signers: 1' "$GITHUB_WORKSPACE/signature-verify.txt"
+          echo PERMANENT_SIGNATURE_PASS
+
+      - name: Write signed runtime test
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-signed.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          P=com.fush.market.supplier
+          adb uninstall "$P" >/dev/null 2>&1 || true
+          adb install "$APK"
+          adb logcat -c
+          adb shell am start -W -n "$P/.MainActivity" | tee "$GITHUB_WORKSPACE/signed-start.txt"
+          sleep 8
+          PID="$(adb shell pidof "$P" | tr -d '\r' || true)"
+          echo "$PID" > "$GITHUB_WORKSPACE/signed-pid.txt"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/signed-crash.log" || true
+          adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ResourceResolutionException|Caused by|$P" > "$GITHUB_WORKSPACE/signed-relevant.log" || true
+          test -n "$PID"
+          if grep -q "$P" "$GITHUB_WORKSPACE/signed-crash.log"; then
+            cat "$GITHUB_WORKSPACE/signed-crash.log"
+            exit 1
+          fi
+          adb exec-out screencap -p > "$GITHUB_WORKSPACE/signed-screen.png"
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+          adb pull /sdcard/window.xml "$GITHUB_WORKSPACE/signed-window.xml" >/dev/null 2>&1 || true
+          echo SIGNED_RELEASE_RUNTIME_PASS
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-signed.sh"
+
+      - name: Runtime signed release
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-signed.sh"
+
+      - name: Package evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          for f in signature-verify.txt signed-start.txt signed-pid.txt signed-crash.log signed-relevant.log signed-screen.png signed-window.xml; do
+            test -f "$GITHUB_WORKSPACE/$f" && cp "$GITHUB_WORKSPACE/$f" evidence/ || true
+          done
+          printf '%s\n'             'ANDAK Supplier v0.1.1 — Permanent Signed Runtime'             'applicationId=com.fush.market.supplier'             'versionCode=2'             'versionName=0.1.1'             'APK SHA-256=a2527e4437acab06c64321ff1713fa0a59a3ed340fa00026bd92a8a36b8cc870'             'Certificate SHA-256=84:C8:E9:4D:39:A2:FA:83:72:59:3F:FA:7D:75:B4:77:2B:FE:11:92:22:6B:F2:DD:0D:E5:97:06:FA:CF:F1:3E'             > evidence/RUNTIME-INFO.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED-RUNTIME-EVIDENCE
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7

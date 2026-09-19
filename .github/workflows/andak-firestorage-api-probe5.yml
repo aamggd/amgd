@@ -1,0 +1,36 @@
+name: ANDAK Firestorage API Probe 5
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-firestorage-api-probe5.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Discover share API
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL 'https://firestorage.ai/ja/f/Sjz2YeEiiC8D' -o /tmp/page.html
+          grep -oE 'src="[^"]+\.js"' /tmp/page.html | sed 's/^src="//;s/"$//' | sort -u > /tmp/jsurls
+          mkdir -p /tmp/js
+          i=0
+          while read -r p; do
+            i=$((i+1))
+            curl -fsSL "https://firestorage.ai$p" -o "/tmp/js/$i.js" || true
+          done < /tmp/jsurls
+          cat /tmp/js/*.js > /tmp/all.js
+          echo "JSCOUNT=$i SIZE=$(wc -c </tmp/all.js)"
+          python - <<'PY'
+          import re
+          s=open('/tmp/all.js','r',errors='ignore').read()
+          pats=['shareEndpoint','shareId','/files?maxResults','/download','cushion','api.firestorage.ai','resolve','share-password']
+          for p in pats:
+              print('\n###',p)
+              for m in list(re.finditer(re.escape(p),s,re.I))[:30]:
+                  a=max(0,m.start()-300); b=min(len(s),m.end()+500)
+                  print(s[a:b].replace('\n',' ')[:900])
+          PY
