@@ -5008,6 +5008,102 @@ grant execute on function public.andak_customer_account_snapshot_v2()
 to authenticated;
 EOF
 
+cat > "$ROOT/backend/supabase/migrations/007_andak_cloud_orders_support_notifications.sql" <<'EOF'
+create or replace function public.andak_customer_account_snapshot_v3()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_base jsonb;
+    v_support_tickets jsonb;
+    v_notifications jsonb;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    v_base := public.andak_customer_account_snapshot_v2();
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'ticket_number', t.ticket_number,
+                'category', t.category,
+                'status', t.status,
+                'message', t.message,
+                'created_at', t.created_at
+            )
+            order by t.created_at desc
+        ),
+        '[]'::jsonb
+    )
+    into v_support_tickets
+    from (
+        select *
+        from public.andak_support_tickets
+        where user_id = v_user_id
+        order by created_at desc
+        limit 20
+    ) t;
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'id', n.id,
+                'kind', n.kind,
+                'title', n.title,
+                'body', n.body,
+                'created_at', n.created_at
+            )
+            order by n.created_at desc
+        ),
+        '[]'::jsonb
+    )
+    into v_notifications
+    from (
+        select
+            'order:' || o.order_number as id,
+            'ORDER'::text as kind,
+            'طلب ' || o.order_number as title,
+            'حالة الطلب: ' || o.status as body,
+            o.created_at
+        from public.andak_orders o
+        where o.customer_user_id = v_user_id
+
+        union all
+
+        select
+            'support:' || t.ticket_number as id,
+            'SUPPORT'::text as kind,
+            'طلب دعم ' || t.ticket_number as title,
+            'حالة طلب الدعم: ' || t.status as body,
+            t.created_at
+        from public.andak_support_tickets t
+        where t.user_id = v_user_id
+
+        order by created_at desc
+        limit 30
+    ) n;
+
+    return v_base || jsonb_build_object(
+        'support_tickets', v_support_tickets,
+        'notifications', v_notifications
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_account_snapshot_v3() from public;
+grant execute on function public.andak_customer_account_snapshot_v3()
+to authenticated;
+
+-- This snapshot contains only the authenticated customer's master-order and support data.
+-- Supplier identity, supplier cost, allocations, and internal ledger fields are not returned.
+EOF
+
 cat > "$ROOT/backend/README.md" <<'EOF'
 # ANDAK backend handoff
 
@@ -5032,7 +5128,7 @@ cat > "$ROOT/README.md" <<'EOF'
 # ANDAK Customer v0.1.14 — Cloud Orders, Support & Notifications
 
 Application ID: com.fush.market.customer
-Version: 0.1.13 / versionCode 14
+Version: 0.1.14 / versionCode 15
 
 Implemented:
 - Customer home priorities: search, offers, categories, selected products, reorder placeholder.
@@ -5056,6 +5152,8 @@ Implemented:
 - Guest browsing remains available when authentication/backend is unavailable.
 - Authenticated cloud sync for saved addresses, notification preferences, and recent order references.
 - Cross-device cart restoration and favorites synchronization for authenticated customers.
+- Automatic cloud refresh when opening Orders, Support, or Notifications.
+- Cloud support-ticket history and account notification feed derived from the customer's own orders/support.
 - Merge-first sync prevents an empty new device from silently wiping cloud cart/favorites.
 - Authenticated support-ticket submission with a server-issued ticket number.
 - Supplier identity and supplier cost are not exposed to the customer.
