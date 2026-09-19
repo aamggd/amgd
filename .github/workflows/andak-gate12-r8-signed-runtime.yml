@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 R8 Signed Runtime
+name: ANDAK Supplier Gate12 R8 Final Signed Runtime
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -10,202 +10,63 @@ permissions:
   id-token: write
 
 jobs:
-  signed-runtime:
+  final:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
     steps:
-      - name: Download exact signed R8 APK
+      - name: Download exact APKs and test harnesses
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="M9XlIVMEnYs7"
-          NAME="ANDAK-Supplier-v1.3.2-GATE12-R8-FINAL-SIGNED2.apk"
-          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
-          FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
-          test -n "$FILE_ID" && test "$FILE_ID" != "null"
-          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
-          URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/supplier-r8-signed.apk"
-          echo "c0f03f2fc37b4b985de80dbe4c1f9f801ea74c7d4fbbe88a81cb8fafd9e20379  $GITHUB_WORKSPACE/supplier-r8-signed.apk" | sha256sum -c -
-
-      - name: Create isolated live supplier fixture through GitHub OIDC
-        shell: bash
-        run: |
-          set -euo pipefail
-          OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
-          test -n "$OIDC" && test "$OIDC" != "null"
-          mkdir -p "$GITHUB_WORKSPACE/runtime-evidence"
-          HTTP=$(curl -sS -o /tmp/fixture.json -w "%{http_code}" -X POST             "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"             -H "Authorization: Bearer $OIDC"             -H "Content-Type: application/json"             --data '{"action":"setup"}')
-          if [ "$HTTP" != "200" ]; then
-            jq -c '{error:(.error // "unknown")}' /tmp/fixture.json | tee "$GITHUB_WORKSPACE/runtime-evidence/fixture-error.json"
-            exit 21
-          fi
-          FIXTURE=$(cat /tmp/fixture.json)
-          EMAIL=$(jq -r '.email' <<<"$FIXTURE")
-          PASS=$(jq -r '.password' <<<"$FIXTURE")
-          USER_ID=$(jq -r '.user_id' <<<"$FIXTURE")
-          test -n "$EMAIL" && test "$EMAIL" != "null"
-          test -n "$PASS" && test "$PASS" != "null"
-          test -n "$USER_ID" && test "$USER_ID" != "null"
-          echo "::add-mask::$EMAIL"
-          echo "::add-mask::$PASS"
-          echo "::add-mask::$USER_ID"
-          echo "FIXTURE_EMAIL=$EMAIL" >> "$GITHUB_ENV"
-          echo "FIXTURE_PASSWORD=$PASS" >> "$GITHUB_ENV"
-          echo "FIXTURE_USER_ID=$USER_ID" >> "$GITHUB_ENV"
-
-      - name: Prepare runtime verification script
-        shell: bash
-        run: |
-          cat > "$GITHUB_WORKSPACE/ui_helper.py" <<'PY'
-          import sys, xml.etree.ElementTree as ET, re
-          mode=sys.argv[1]; path=sys.argv[2]
-          root=ET.parse(path).getroot()
-          nodes=list(root.iter('node'))
-          def center(b):
-              nums=list(map(int,re.findall(r'\d+',b or '')))
-              if len(nums)!=4: raise SystemExit(4)
-              return (nums[0]+nums[2])//2,(nums[1]+nums[3])//2
-          if mode=="tap":
-              target=sys.argv[3]
-              # Prefer an exact semantic/text match so a descriptive sentence
-              # containing the button label is never tapped instead of the button.
-              for exact in (True, False):
-                  for n in nodes:
-                      vals=(n.attrib.get('text',''),n.attrib.get('content-desc',''))
-                      matched=any((target==v) if exact else (target in v) for v in vals if v)
-                      if matched:
-                          print(*center(n.attrib.get('bounds','')))
-                          raise SystemExit(0)
-              raise SystemExit(2)
-          if mode=="assert":
-              target=sys.argv[3]
-              for n in nodes:
-                  vals=(n.attrib.get('text',''),n.attrib.get('content-desc',''))
-                  if any(target==v or target in v for v in vals if v):
-                      print("FOUND",target)
-                      raise SystemExit(0)
-              raise SystemExit(3)
-          if mode=="edits":
-              edits=[n for n in nodes if n.attrib.get('class')=='android.widget.EditText']
-              edits.sort(key=lambda n:center(n.attrib.get('bounds',''))[1])
-              if len(edits)<2: raise SystemExit(5)
-              for n in edits[:2]: print(*center(n.attrib.get('bounds','')))
-              raise SystemExit(0)
-          raise SystemExit(9)
-          PY
-
-          cat > "$GITHUB_WORKSPACE/runtime.sh" <<'BASH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          PKG="com.fush.market.supplier"
-          APK="$GITHUB_WORKSPACE/supplier-r8-signed.apk"
-          EVID="$GITHUB_WORKSPACE/runtime-evidence"
-          mkdir -p "$EVID"
-
-          dump_ui() {
-            local name="$1"
-            adb shell uiautomator dump /sdcard/window.xml >/dev/null
-            adb pull /sdcard/window.xml "$EVID/$name.xml" >/dev/null
+          getf() {
+            local SHARE="$1" NAME="$2" OUT="$3"
+            curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
+            local ID URL
+            ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
+            test -n "$ID" && test "$ID" != "null"
+            curl -fsSL -X POST "$API/shares/$SHARE/files/$ID/download" -o /tmp/download.json
+            URL=$(jq -r '.downloadUrl' /tmp/download.json)
+            test -n "$URL" && test "$URL" != "null"
+            curl -fL --retry 3 "$URL" -o "$OUT"
           }
-          tap_text() {
-            local text="$1" name="$2"
-            dump_ui "$name"
-            read -r x y < <(python "$GITHUB_WORKSPACE/ui_helper.py" tap "$EVID/$name.xml" "$text")
-            adb shell input tap "$x" "$y"
-            sleep 1
-          }
-          assert_text() {
-            local text="$1" name="$2"
-            dump_ui "$name"
-            python "$GITHUB_WORKSPACE/ui_helper.py" assert "$EVID/$name.xml" "$text"
-          }
-          package_fatal_check() {
-            adb logcat -d AndroidRuntime:E '*:S' > "$EVID/androidruntime.log" || true
-            if grep -F "$PKG" "$EVID/androidruntime.log"; then
-              echo "FATAL AndroidRuntime found for $PKG"
-              exit 40
-            fi
-          }
-
-          adb logcat -c
-          adb install -r "$APK" | tee "$EVID/install.txt"
-          grep -q "Success" "$EVID/install.txt"
-
-          adb shell dumpsys package "$PKG" > "$EVID/package.txt"
-          grep -q "versionName=1.3.2" "$EVID/package.txt"
-          grep -Eq "versionCode=16([^0-9]|$)" "$EVID/package.txt"
-
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-          sleep 5
-          adb shell screencap -p /sdcard/startup.png
-          adb pull /sdcard/startup.png "$EVID/startup.png" >/dev/null
-
-          sleep 30
-          PID=$(adb shell pidof "$PKG" | tr -d '\r')
-          test -n "$PID"
-          echo "startup_process_alive_after_30s=$PID" > "$EVID/runtime-summary.txt"
-          package_fatal_check
-
-          tap_text "تسجيل دخول المورد" "account-main-before-login"
-          dump_ui "login-screen"
-          mapfile -t edits < <(python "$GITHUB_WORKSPACE/ui_helper.py" edits "$EVID/login-screen.xml")
-          test "${#edits[@]}" -ge 2
-          read -r ex ey <<<"${edits[0]}"
-          read -r px py <<<"${edits[1]}"
-          adb shell input tap "$ex" "$ey"
-          adb shell input text "$FIXTURE_EMAIL"
-          sleep 1
-          adb shell input tap "$px" "$py"
-          adb shell input text "$FIXTURE_PASSWORD"
-          sleep 1
-          tap_text "تسجيل الدخول" "login-filled"
-          sleep 10
-
-          assert_text "المورد مسجل الدخول" "account-after-login"
-          assert_text "Gate12 Runtime Store" "account-after-login-store"
-          adb shell screencap -p /sdcard/logged-in.png
-          adb pull /sdcard/logged-in.png "$EVID/logged-in.png" >/dev/null
-
-          tap_text "الطلبات" "nav-orders"
-          sleep 3
-          assert_text "Runtime Customer" "orders-live"
-          tap_text "المنتجات" "nav-products"
-          sleep 3
-          assert_text "Runtime Product" "products-live"
-          tap_text "الحساب" "nav-account"
-          sleep 2
-          assert_text "المورد مسجل الدخول" "account-return"
-
-          adb shell am force-stop "$PKG"
-          sleep 2
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-          sleep 8
-          assert_text "المورد مسجل الدخول" "cold-relaunch-session-restored"
-          echo "cold_relaunch_session_restore=PASS" >> "$EVID/runtime-summary.txt"
-
-          adb shell input keyevent HOME
-          sleep 2
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-          sleep 3
-          PID=$(adb shell pidof "$PKG" | tr -d '\r')
-          test -n "$PID"
-          echo "home_resume=PASS" >> "$EVID/runtime-summary.txt"
-
-          for i in 1 2 3 4 5; do
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-            sleep 1
-          done
-          PID=$(adb shell pidof "$PKG" | tr -d '\r')
-          test -n "$PID"
-          echo "repeated_launch_5x=PASS" >> "$EVID/runtime-summary.txt"
-
-          package_fatal_check
-          adb logcat -d > "$EVID/logcat-full.txt"
-          echo "signed_apk_runtime=PASS" >> "$EVID/runtime-summary.txt"
-          BASH
+          getf "M9XlIVMEnYs7" "ANDAK-Supplier-v1.3.2-GATE12-R8-FINAL-SIGNED2.apk" "$GITHUB_WORKSPACE/r8.apk"
+          getf "A08rHZ8pD47s" "ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk" "$GITHUB_WORKSPACE/r7.apk"
+          getf "qnn2A2Fnt-14" "r8_backend_e2e.py" "$GITHUB_WORKSPACE/backend.py"
+          getf "VrRwtLr_-JlM" "r8_runtime_final.sh" "$GITHUB_WORKSPACE/runtime.sh"
+          getf "NDEVy3AaLK_a" "r8_verify_offline_sync.py" "$GITHUB_WORKSPACE/offline_verify.py"
           chmod +x "$GITHUB_WORKSPACE/runtime.sh"
+          echo "c0f03f2fc37b4b985de80dbe4c1f9f801ea74c7d4fbbe88a81cb8fafd9e20379  $GITHUB_WORKSPACE/r8.apk" | sha256sum -c -
+          echo "42bdd3878a64b65ca40457dd9966ac31ff872ff78f8f59f8a36f2dddec9b58b7  $GITHUB_WORKSPACE/r7.apk" | sha256sum -c -
+          mkdir -p "$GITHUB_WORKSPACE/runtime-evidence"
+
+      - name: Create four isolated live supplier fixtures with GitHub OIDC
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
+          test -n "$OIDC" && test "$OIDC" != "null"
+          echo "::add-mask::$OIDC"
+          for R in A B C D; do
+            curl -fsSL -X POST               "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"               -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json"               --data '{"action":"setup"}' > "/tmp/$R.json"
+            jq -e '.ok == true' "/tmp/$R.json" >/dev/null
+            for K in email password user_id supplier_id supplier_code expected_order expected_product expected_store_name; do
+              V=$(jq -r ".$K" "/tmp/$R.json")
+              test -n "$V" && test "$V" != "null"
+              echo "::add-mask::$V"
+              ENVK=$(echo "$K" | tr '[:lower:]' '[:upper:]')
+              echo "${R}_${ENVK}=$V" >> "$GITHUB_ENV"
+            done
+          done
+          printf '%s' "$OIDC" > /tmp/oidc.jwt
+
+      - name: Real-auth Backend RLS A/B and full Gate12 E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/backend.py"
+          test -s "$GITHUB_WORKSPACE/backend-e2e-evidence.json"
+          cp "$GITHUB_WORKSPACE/backend-e2e-evidence.json" "$GITHUB_WORKSPACE/runtime-evidence/"
 
       - name: Enable KVM
         shell: bash
@@ -214,7 +75,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run signed APK runtime matrix on Android 15
+      - name: Exact signed APK authenticated runtime on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -223,20 +84,35 @@ jobs:
           disable-animations: true
           script: bash "$GITHUB_WORKSPACE/runtime.sh"
 
-      - name: Cleanup isolated live supplier fixture
+      - name: Verify offline queued inventory reached server
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/offline_verify.py"
+          cp "$GITHUB_WORKSPACE/offline-server-confirmation.json" "$GITHUB_WORKSPACE/runtime-evidence/"
+
+      - name: Cleanup all temporary live supplier fixtures
         if: always()
         shell: bash
         run: |
           set +e
-          if [ -z "${FIXTURE_USER_ID:-}" ]; then exit 0; fi
-          OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
-          curl -fsSL -X POST             "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"             -H "Authorization: Bearer $OIDC"             -H "Content-Type: application/json"             --data "{\"action\":\"cleanup\",\"user_id\":\"${FIXTURE_USER_ID}\"}" >/dev/null
+          if [ ! -f /tmp/oidc.jwt ]; then
+            OIDC=$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=andak-gate12-r8-runtime" | jq -r '.value')
+          else
+            OIDC=$(cat /tmp/oidc.jwt)
+          fi
+          for R in A B C D; do
+            eval UID="${${R}_USER_ID:-}"
+            if [ -n "$UID" ]; then
+              curl -fsSL -X POST                 "https://bkbjtyacoiaheunweyuu.supabase.co/functions/v1/andak-gate12-r8-runtime-fixture"                 -H "Authorization: Bearer $OIDC" -H "Content-Type: application/json"                 --data "{"action":"cleanup","user_id":"$UID"}" >/dev/null || true
+            fi
+          done
 
-      - name: Upload signed runtime evidence
+      - name: Upload final Gate12 runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Supplier-Gate12-R8-Signed-Runtime
+          name: ANDAK-Supplier-Gate12-R8-Final-Closure-Evidence
           path: runtime-evidence/
           if-no-files-found: error
           retention-days: 2
