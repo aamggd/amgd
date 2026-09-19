@@ -1,37 +1,35 @@
-name: ANDAK Supplier Gate12 Build
+name: ANDAK Supplier Gate12 R8 Clean Build
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
 
 jobs:
-  build:
+  build_test:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 55
     permissions:
       contents: read
       actions: write
     steps:
-      - name: Download exact Gate12 source
+      - name: Download exact R8 source
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="CvNppFa2RmOo"
-          NAME="ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-Source.zip"
+          SHARE="MQ040qSM1T2v"
+          NAME="ANDAK-Supplier-v1.3.2-GATE12-R8-Source-PreBuild.zip"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
-          DOWNLOAD_URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          test -n "$DOWNLOAD_URL" && test "$DOWNLOAD_URL" != "null"
-          curl -fL --retry 3 "$DOWNLOAD_URL" -o /tmp/source.zip
+          URL=$(jq -r '.downloadUrl' /tmp/download.json)
+          curl -fL --retry 3 "$URL" -o /tmp/source.zip
           echo "source_sha256=$(sha256sum /tmp/source.zip | awk '{print $1}')"
           mkdir -p "$GITHUB_WORKSPACE/gate12"
           unzip -q /tmp/source.zip -d "$GITHUB_WORKSPACE/gate12"
-          find "$GITHUB_WORKSPACE/gate12" -maxdepth 3 -type f | sort | head -80
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -45,50 +43,98 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "ANDROID_HOME=$ANDROID_HOME"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"
-          fi
-          test -x "$SDKMANAGER"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"; fi
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-          "$ANDROID_HOME/platform-tools/adb" version
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" version
 
-      - name: Build Supplier Gate12 APK and AAB
+      - name: Generate and verify Gradle Wrapper
         working-directory: gate12
         shell: bash
         run: |
           set -euo pipefail
-          gradle --version
-          gradle --no-daemon :apps:supplier:clean :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/gate12-build.log"
+          gradle wrapper --gradle-version 9.6.0 --distribution-type bin
+          chmod +x gradlew
+          test -f gradlew
+          test -f gradlew.bat
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version | tee "$GITHUB_WORKSPACE/WRAPPER-VERIFY.txt"
 
-      - name: Verify build outputs
+      - name: Clean and unit tests
+        working-directory: gate12
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean
+          ./gradlew --no-daemon :apps:supplier:tasks --all > "$GITHUB_WORKSPACE/supplier-tasks.txt"
+          UNIT_TASK=$(grep -Eo 'test[A-Za-z0-9]*UnitTest' "$GITHUB_WORKSPACE/supplier-tasks.txt" | sort -u | head -1 || true)
+          echo "UNIT_TASK=$UNIT_TASK"
+          test -n "$UNIT_TASK"
+          ./gradlew --no-daemon ":apps:supplier:$UNIT_TASK" 2>&1 | tee "$GITHUB_WORKSPACE/unit-tests.log"
+          ./gradlew --no-daemon :apps:supplier:assembleDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/androidtest-compile.log"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Instrumentation tests API 35
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd "$GITHUB_WORKSPACE/gate12"
+            ./gradlew --no-daemon :apps:supplier:connectedDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/instrumentation-tests.log"
+
+      - name: Final clean release build with wrapper
+        working-directory: gate12
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean
+          ./gradlew --no-daemon :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/release-build.log"
+
+      - name: Package R8 build and wrapper source
         shell: bash
         run: |
           set -euo pipefail
           APK=$(find "$GITHUB_WORKSPACE/gate12/apps/supplier/build/outputs/apk/release" -name '*.apk' -type f | head -1)
           AAB=$(find "$GITHUB_WORKSPACE/gate12/apps/supplier/build/outputs/bundle/release" -name '*.aab' -type f | head -1)
-          test -f "$APK"
-          test -f "$AAB"
-          mkdir -p "$GITHUB_WORKSPACE/artifact/build-tools"
-          cp "$APK" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-UNSIGNED.apk"
-          cp "$AAB" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-UNSIGNED.aab"
-          cp "$GITHUB_WORKSPACE/gate12-build.log" "$GITHUB_WORKSPACE/artifact/BUILD-LOG.txt"
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" > "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt" || true
-          sha256sum "$GITHUB_WORKSPACE/artifact/"*.apk "$GITHUB_WORKSPACE/artifact/"*.aab > "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
+          test -f "$APK"; test -f "$AAB"
+          mkdir -p "$GITHUB_WORKSPACE/artifact/build-tools" "$GITHUB_WORKSPACE/artifact/test-evidence"
+          cp "$APK" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.2-GATE12-R8-UNSIGNED.apk"
+          cp "$AAB" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.2-GATE12-R8-UNSIGNED.aab"
+          cp "$GITHUB_WORKSPACE/WRAPPER-VERIFY.txt" "$GITHUB_WORKSPACE/artifact/test-evidence/"
+          cp "$GITHUB_WORKSPACE/unit-tests.log" "$GITHUB_WORKSPACE/artifact/test-evidence/"
+          cp "$GITHUB_WORKSPACE/androidtest-compile.log" "$GITHUB_WORKSPACE/artifact/test-evidence/"
+          cp "$GITHUB_WORKSPACE/instrumentation-tests.log" "$GITHUB_WORKSPACE/artifact/test-evidence/"
+          cp "$GITHUB_WORKSPACE/release-build.log" "$GITHUB_WORKSPACE/artifact/BUILD-LOG.txt"
+          cp "$GITHUB_WORKSPACE/supplier-tasks.txt" "$GITHUB_WORKSPACE/artifact/test-evidence/"
+          if [ -d "$GITHUB_WORKSPACE/gate12/apps/supplier/build/reports/tests" ]; then cp -R "$GITHUB_WORKSPACE/gate12/apps/supplier/build/reports/tests" "$GITHUB_WORKSPACE/artifact/test-evidence/unit-reports"; fi
+          if [ -d "$GITHUB_WORKSPACE/gate12/apps/supplier/build/reports/androidTests" ]; then cp -R "$GITHUB_WORKSPACE/gate12/apps/supplier/build/reports/androidTests" "$GITHUB_WORKSPACE/artifact/test-evidence/android-reports"; fi
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" > "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt"
+          sha256sum "$APK" "$AAB" > "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
           cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" "$GITHUB_WORKSPACE/artifact/build-tools/"
           cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" "$GITHUB_WORKSPACE/artifact/build-tools/"
           cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" "$GITHUB_WORKSPACE/artifact/build-tools/"
           chmod +x "$GITHUB_WORKSPACE/artifact/build-tools/apksigner" "$GITHUB_WORKSPACE/artifact/build-tools/zipalign"
-          cat "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
-          grep -E "package: name=|application-label" "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt" || true
+          cd "$GITHUB_WORKSPACE/gate12"
+          rm -rf .gradle apps/supplier/build core/ui/build
+          zip -qr "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.2-GATE12-R8-Source-With-Wrapper.zip" .
+          grep -RIn -E 'api_xersion|supplier_xcope' . > "$GITHUB_WORKSPACE/artifact/test-evidence/PROTOCOL-TYPO-SCAN.txt" || true
+          if [ -s "$GITHUB_WORKSPACE/artifact/test-evidence/PROTOCOL-TYPO-SCAN.txt" ]; then echo "Protocol typo found"; cat "$GITHUB_WORKSPACE/artifact/test-evidence/PROTOCOL-TYPO-SCAN.txt"; exit 8; fi
+          echo "ZERO MATCHES" > "$GITHUB_WORKSPACE/artifact/test-evidence/PROTOCOL-TYPO-SCAN.txt"
 
-      - name: Upload Gate12 build artifact
+      - name: Upload R8 build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Supplier-Gate12-Unsigned-Build
+          name: ANDAK-Supplier-Gate12-R8-Build-Test
           path: artifact/
           if-no-files-found: error
           retention-days: 1
