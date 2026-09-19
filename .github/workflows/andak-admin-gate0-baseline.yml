@@ -45,6 +45,7 @@ jobs:
           sha256sum core/ui/src/main/res/drawable/fush_logo.jpg
           test "$(stat -c%s core/ui/src/main/res/drawable/fush_logo.jpg)" = "6654"
           echo "37da9cd414d87425fecd2664315903e07e24a295871355389d2a2311978298f7  core/ui/src/main/res/drawable/fush_logo.jpg" | sha256sum -c -
+          rm -f core/ui/src/main/res/drawable/fush_logo.jpg.hex.* core/ui/src/main/res/drawable/fush_logo.jpg.b64
 
       - name: Build baseline Admin debug APK
         shell: bash
