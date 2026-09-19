@@ -11,9 +11,12 @@ jobs:
         run: |
           set -euxo pipefail
           BASE="https://firestorage.ai"
-          curl -L --fail --retry 3 -A "Mozilla/5.0" "$BASE/ja/f/Et-PEzejPO30" -o /tmp/page.html
+          curl -L --fail --retry 3 -A "Mozilla/5.0" "$BASE/ja/f/1ub5gOAXyS6s" -o /tmp/page.html
           CHUNK=$(grep -Eo 'src="/_next/static/chunks/app/\(files\)/ja/f/page-[^"]+\.js"' /tmp/page.html | head -1 | cut -d'"' -f2)
-          echo "chunk=$CHUNK"
-          curl -L --fail "$BASE$CHUNK" -o /tmp/chunk.js
+          ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe="/._-"))' "$CHUNK")
+          echo "chunk=$CHUNK encoded=$ENC"
+          curl -L --fail "$BASE$ENC" -o /tmp/chunk.js
           echo "chunk_bytes=$(wc -c < /tmp/chunk.js)"
-          grep -oE '.{0,120}(download|share|publicId|shareId|files|api/).{0,220}' /tmp/chunk.js | head -300 || true
+          cat /tmp/chunk.js | head -c 500
+          echo
+          grep -oE '.{0,160}(download|share|publicId|shareId|files|api/).{0,260}' /tmp/chunk.js | head -400 || true
