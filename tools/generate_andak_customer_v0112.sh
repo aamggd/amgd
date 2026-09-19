@@ -824,6 +824,12 @@ object AddressStore {
         }
     }
 
+    suspend fun replaceAll(context: Context, addresses: List<SavedAddress>) {
+        context.andakAddressDataStore.edit { prefs ->
+            prefs[addressesKey] = encode(addresses.take(10))
+        }
+    }
+
     private fun encode(addresses: List<SavedAddress>): String {
         val array = JSONArray()
         addresses.forEach { address ->
@@ -1481,6 +1487,8 @@ fun CustomerApp() {
             var supportDraft by rememberSaveable { mutableStateOf("") }
             var authSession by remember { mutableStateOf<AuthSession?>(null) }
             var authReady by remember { mutableStateOf(false) }
+            var accountSyncBusy by remember { mutableStateOf(false) }
+            var accountSyncMessage by rememberSaveable { mutableStateOf<String?>(null) }
             var lastReceipt by remember { mutableStateOf<OrderReceipt?>(null) }
             var selectedReceipt by remember { mutableStateOf<OrderReceipt?>(null) }
             var selectedOrderStatus by remember { mutableStateOf<OrderStatusResult?>(null) }
@@ -1557,6 +1565,35 @@ fun CustomerApp() {
                             catalogSource = "متصل بالكتالوج المركزي"
                         }
                     }
+                }
+            }
+
+            val syncAuthenticatedAccount: () -> Unit = sync@{
+                val session = authSession ?: return@sync
+                if (!AccountSyncGateway.isConfigured() || accountSyncBusy) return@sync
+                accountSyncBusy = true
+                accountSyncMessage = null
+                val localAddresses = savedAddresses.toList()
+                val localPreferences = customerPreferences
+                appScope.launch {
+                    AccountSyncGateway.pushAccount(session, localAddresses, localPreferences)
+                        .onSuccess {
+                            AccountSyncGateway.fetchSnapshot(session)
+                                .onSuccess { snapshot ->
+                                    AddressStore.replaceAll(context, snapshot.addresses)
+                                    SupportPreferencesStore.setOrderUpdates(context, snapshot.preferences.orderUpdates)
+                                    SupportPreferencesStore.setOffers(context, snapshot.preferences.offers)
+                                    snapshot.orders.forEach { OrderReceiptStore.upsert(context, it) }
+                                    accountSyncMessage = "تمت مزامنة الحساب بنجاح"
+                                }
+                                .onFailure { error ->
+                                    accountSyncMessage = "تم رفع البيانات، لكن تعذر جلب آخر نسخة: " + (error.message ?: "خطأ")
+                                }
+                        }
+                        .onFailure { error ->
+                            accountSyncMessage = "تعذرت مزامنة الحساب: " + (error.message ?: "خطأ")
+                        }
+                    accountSyncBusy = false
                 }
             }
 
@@ -1789,6 +1826,8 @@ fun CustomerApp() {
                             addresses = savedAddresses,
                             authSession = authSession,
                             authReady = authReady,
+                            syncBusy = accountSyncBusy,
+                            syncMessage = accountSyncMessage,
                             onSaveAddress = { address ->
                                 appScope.launch { AddressStore.upsert(context, address) }
                             },
@@ -1801,6 +1840,7 @@ fun CustomerApp() {
                             onSupport = { screen = CustomerScreen.SUPPORT },
                             onNotifications = { screen = CustomerScreen.NOTIFICATIONS },
                             onAuth = { screen = CustomerScreen.AUTH },
+                            onSync = syncAuthenticatedAccount,
                             onLogout = {
                                 val token = authSession?.accessToken.orEmpty()
                                 authSession = null
@@ -1834,6 +1874,7 @@ fun CustomerApp() {
                             onAuthenticated = { session ->
                                 SecureSessionStore.save(context, session)
                                 authSession = session
+                                accountSyncMessage = "تم تسجيل الدخول — يمكنك مزامنة حسابك الآن"
                                 screen = CustomerScreen.PROFILE
                             }
                         )
@@ -3027,12 +3068,15 @@ private fun ProfileScreen(
     addresses: List<SavedAddress>,
     authSession: AuthSession?,
     authReady: Boolean,
+    syncBusy: Boolean,
+    syncMessage: String?,
     onSaveAddress: (SavedAddress) -> Unit,
     onSetDefault: (String) -> Unit,
     onDeleteAddress: (String) -> Unit,
     onSupport: () -> Unit,
     onNotifications: () -> Unit,
     onAuth: () -> Unit,
+    onSync: () -> Unit,
     onLogout: () -> Unit
 ) {
     var showForm by rememberSaveable { mutableStateOf(false) }
@@ -3088,6 +3132,20 @@ private fun ProfileScreen(
                     } else {
                         Text(authSession.email.ifBlank { "حساب عميل" }, fontWeight = FontWeight.Bold)
                         Text("جلسة محفوظة بتشفير Android Keystore.", color = AndakMuted, fontSize = 11.sp)
+                        Button(
+                            onClick = onSync,
+                            enabled = !syncBusy && AccountSyncGateway.isConfigured(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (syncBusy) "جارٍ المزامنة…" else "مزامنة الحساب الآن")
+                        }
+                        if (!syncMessage.isNullOrBlank()) {
+                            Text(
+                                syncMessage,
+                                color = if (syncMessage.startsWith("تم")) AndakGreen else Color(0xFF7A5200),
+                                fontSize = 11.sp
+                            )
+                        }
                         OutlinedButton(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
                             Text("تسجيل الخروج")
                         }
