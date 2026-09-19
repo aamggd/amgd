@@ -3148,7 +3148,7 @@ private fun AuthScreen(
         }
 
         Text(
-            "لن يتم تضمين service-role key داخل التطبيق. يستخدم العميل Publishable/Anon key فقط، والجلسة المحلية مشفرة بمفتاح Android Keystore.",
+            "لن يتم تضمين أي مفتاح إداري حساس داخل التطبيق. يستخدم العميل Publishable/Anon key فقط، والجلسة المحلية مشفرة بمفتاح Android Keystore.",
             color = AndakMuted,
             fontSize = 11.sp
         )
