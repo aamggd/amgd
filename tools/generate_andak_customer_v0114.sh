@@ -3777,6 +3777,7 @@ private fun SupportScreen(
                     )
                 }
             }
+        }
         if (tickets.isNotEmpty()) {
             item {
                 Text("طلبات الدعم السابقة", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AndakDeepGreen)
