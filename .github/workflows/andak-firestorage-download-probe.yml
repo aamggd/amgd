@@ -1,0 +1,24 @@
+name: ANDAK Firestorage Download Probe
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-firestorage-download-probe.yml']
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/Sjz2YeEiiC8D'
+          echo '=== files ==='
+          curl -fsSL "$BASE/files?maxResults=1000" | tee /tmp/files.json
+          echo
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print(d["files"][0]["fileId"])')
+          echo "FILE_ID=$FILE_ID"
+          echo '=== download token ==='
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" | tee /tmp/dl.json
+          echo
