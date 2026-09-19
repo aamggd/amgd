@@ -23,6 +23,88 @@ jobs:
           curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-hotfix.apk"
           sha256sum "$GITHUB_WORKSPACE/andak-hotfix.apk"
 
+      - name: Prepare runtime test script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -u
+          PKG="com.fush.market.supplier"
+          APK="$GITHUB_WORKSPACE/andak-hotfix.apk"
+          LOG="$GITHUB_WORKSPACE/hotfix-runtime-logcat.txt"
+          RESULT="$GITHUB_WORKSPACE/hotfix-runtime-result.txt"
+          : > "$RESULT"
+
+          fail=0
+          echo "installing_exact_apk=$(sha256sum "$APK" | awk '{print $1}')" | tee -a "$RESULT"
+          if ! adb install "$APK"; then
+            echo "install=FAIL" | tee -a "$RESULT"
+            exit 10
+          fi
+          echo "install=PASS" | tee -a "$RESULT"
+          adb logcat -c
+
+          echo "=== COLD START 30s ===" | tee -a "$RESULT"
+          adb shell am force-stop "$PKG"
+          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+          sleep 30
+          PID1="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "cold_start_pid=$PID1" | tee -a "$RESULT"
+          [ -n "$PID1" ] || fail=1
+
+          echo "=== FORCE STOP + REOPEN ===" | tee -a "$RESULT"
+          adb shell am force-stop "$PKG"
+          sleep 2
+          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+          sleep 12
+          PID2="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "reopen_pid=$PID2" | tee -a "$RESULT"
+          [ -n "$PID2" ] || fail=1
+
+          echo "=== HOME + RESUME ===" | tee -a "$RESULT"
+          adb shell input keyevent KEYCODE_HOME
+          sleep 3
+          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+          sleep 8
+          PID3="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "resume_pid=$PID3" | tee -a "$RESULT"
+          [ -n "$PID3" ] || fail=1
+
+          echo "=== REPEATED LAUNCH x3 ===" | tee -a "$RESULT"
+          for i in 1 2 3; do
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+            sleep 3
+          done
+          PID4="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          echo "repeat_pid=$PID4" | tee -a "$RESULT"
+          [ -n "$PID4" ] || fail=1
+
+          adb logcat -d -v threadtime > "$LOG"
+          if grep -q "FATAL EXCEPTION" "$LOG"; then
+            echo "fatal_exception=YES" | tee -a "$RESULT"
+            grep -n -A100 -B25 -E "FATAL EXCEPTION|AndroidRuntime|Process: $PKG" "$LOG" | tail -500 || true
+            fail=1
+          else
+            echo "fatal_exception=NO" | tee -a "$RESULT"
+          fi
+
+          if grep -q "ClassNotFoundException: Didn't find class \"androidx.startup.InitializationProvider\"" "$LOG"; then
+            echo "startup_provider_crash=YES" | tee -a "$RESULT"
+            fail=1
+          else
+            echo "startup_provider_crash=NO" | tee -a "$RESULT"
+          fi
+
+          if [ "$fail" -eq 0 ]; then
+            echo "P0_RUNTIME=PASS" | tee -a "$RESULT"
+            exit 0
+          else
+            echo "P0_RUNTIME=FAIL" | tee -a "$RESULT"
+            exit 2
+          fi
+          BASH
+          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+
       - name: Enable KVM
         shell: bash
         run: |
@@ -30,71 +112,22 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Cold start, force-stop reopen, repeated launch
+      - name: Run exact signed hotfix
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            set -e
-            PKG=com.fush.market.supplier
-            APK="$GITHUB_WORKSPACE/andak-hotfix.apk"
-            LOG="$GITHUB_WORKSPACE/hotfix-runtime-logcat.txt"
+          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
 
-            adb install "$APK"
-            adb logcat -c
-
-            echo "=== COLD START ==="
-            adb shell am force-stop "$PKG"
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-            sleep 30
-            PID1=$(adb shell pidof "$PKG" || true)
-            echo "cold_start_pid=$PID1"
-            test -n "$PID1"
-
-            echo "=== FORCE STOP + REOPEN ==="
-            adb shell am force-stop "$PKG"
-            sleep 2
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-            sleep 12
-            PID2=$(adb shell pidof "$PKG" || true)
-            echo "reopen_pid=$PID2"
-            test -n "$PID2"
-
-            echo "=== HOME + RESUME ==="
-            adb shell input keyevent KEYCODE_HOME
-            sleep 3
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-            sleep 8
-            PID3=$(adb shell pidof "$PKG" || true)
-            echo "resume_pid=$PID3"
-            test -n "$PID3"
-
-            echo "=== REPEATED LAUNCH x3 ==="
-            for i in 1 2 3; do
-              adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
-              sleep 3
-            done
-            PID4=$(adb shell pidof "$PKG" || true)
-            echo "repeat_pid=$PID4"
-            test -n "$PID4"
-
-            adb logcat -d -v threadtime > "$LOG"
-            echo "=== FATAL CHECK ==="
-            grep -n -A80 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: $PKG" "$LOG" || true
-            if grep -q "FATAL EXCEPTION" "$LOG"; then
-              echo "P0_RUNTIME=FAIL"
-              exit 2
-            fi
-            echo "P0_RUNTIME=PASS"
-
-      - name: Upload hotfix runtime log
+      - name: Upload hotfix runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Supplier-v1.3.1-P0-Hotfix-Runtime-Log
-          path: hotfix-runtime-logcat.txt
+          name: ANDAK-Supplier-v1.3.1-P0-Hotfix-Runtime-Evidence
+          path: |
+            hotfix-runtime-logcat.txt
+            hotfix-runtime-result.txt
           if-no-files-found: warn
           retention-days: 1
