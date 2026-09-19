@@ -114,9 +114,11 @@ jobs:
       - name: Runtime launch test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 33
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
 
       - name: Align and package
@@ -132,12 +134,12 @@ jobs:
           cp /tmp/source.zip "$D/ANDAK-Customer-v0.1.6-Order Tracking-Source.zip"
           cat > "$D/BUILD-RESULT.txt" <<'EOF'
           ANDAK Customer v0.1.6
-          versionCode: 4
+          versionCode: 7
           applicationId: com.fush.market.customer
           Scope: Customer catalog + cart + catalog + atomic COD + persistent order receipts + secure tracking-token refresh
           Static gate: PASS
           Build: PASS
-          Runtime launch test: PASS on Android emulator API 35
+          Runtime launch test: PASS on Android emulator API 33
           Catalog + atomic order + secure tracking contracts are packaged. No production ANDAK Supabase project is configured in this build; local catalog/draft fallback remains active until the dedicated backend is approved.
           EOF
           (cd "$D" && sha256sum * > SHA256SUMS.txt)
