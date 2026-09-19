@@ -1001,6 +1001,8 @@ fun CustomerApp() {
             var catalogSource by rememberSaveable { mutableStateOf("كتالوج محلي تجريبي") }
             val orderReceipts = remember { mutableStateListOf<OrderReceipt>() }
             val savedAddresses = remember { mutableStateListOf<SavedAddress>() }
+            val favoriteIds = remember { mutableStateListOf<String>() }
+            val recentIds = remember { mutableStateListOf<String>() }
             var lastReceipt by remember { mutableStateOf<OrderReceipt?>(null) }
             var selectedReceipt by remember { mutableStateOf<OrderReceipt?>(null) }
             var selectedOrderStatus by remember { mutableStateOf<OrderStatusResult?>(null) }
@@ -1021,6 +1023,15 @@ fun CustomerApp() {
                 }
             }
 
+            LaunchedEffect(context) {
+                UserProductStateStore.observe(context).collect { state ->
+                    favoriteIds.clear()
+                    favoriteIds.addAll(state.favoriteIds)
+                    recentIds.clear()
+                    recentIds.addAll(state.recentIds)
+                }
+            }
+
             LaunchedEffect(Unit) {
                 if (BackendCatalogGateway.isConfigured()) {
                     BackendCatalogGateway.fetchCatalog().getOrNull()?.let { snapshot ->
@@ -1037,6 +1048,7 @@ fun CustomerApp() {
 
             val openProduct: (CatalogProduct) -> Unit = { product ->
                 selectedProductId = product.id
+                appScope.launch { UserProductStateStore.markViewed(context, product.id) }
                 screen = CustomerScreen.PRODUCT
             }
 
@@ -1052,6 +1064,8 @@ fun CustomerApp() {
                     when (screen) {
                         CustomerScreen.HOME -> HomeScreen(
                             cartCount = cart.sumOf { it.quantity },
+                            favoriteIds = favoriteIds.toSet(),
+                            recentIds = recentIds.toList(),
                             categories = catalogCategories,
                             products = catalogProducts,
                             catalogSource = catalogSource,
@@ -1064,7 +1078,8 @@ fun CustomerApp() {
                                 screen = CustomerScreen.CATALOG
                             },
                             onProduct = openProduct,
-                            onCart = { screen = CustomerScreen.CART }
+                            onCart = { screen = CustomerScreen.CART },
+                            onFavorites = { screen = CustomerScreen.FAVORITES }
                         )
                         CustomerScreen.CATALOG -> CatalogScreen(
                             categories = catalogCategories,
@@ -1078,6 +1093,14 @@ fun CustomerApp() {
                             },
                             onProduct = openProduct
                         )
+                        CustomerScreen.FAVORITES -> FavoritesScreen(
+                            products = catalogProducts,
+                            favoriteIds = favoriteIds.toSet(),
+                            onProduct = openProduct,
+                            onToggleFavorite = { productId ->
+                                appScope.launch { UserProductStateStore.toggleFavorite(context, productId) }
+                            }
+                        )
                         CustomerScreen.PRODUCT -> {
                             val product = catalogProducts.firstOrNull { it.id == selectedProductId }
                             if (product == null) {
@@ -1086,7 +1109,11 @@ fun CustomerApp() {
                                 ProductScreen(
                                     product = product,
                                     cartCount = cart.sumOf { it.quantity },
+                                    isFavorite = favoriteIds.contains(product.id),
                                     onBack = { screen = CustomerScreen.CATALOG },
+                                    onToggleFavorite = {
+                                        appScope.launch { UserProductStateStore.toggleFavorite(context, product.id) }
+                                    },
                                     onAddToCart = { variantId ->
                                         val index = cart.indexOfFirst { it.productId == product.id && it.variantId == variantId }
                                         if (index >= 0) {
@@ -1237,6 +1264,10 @@ fun CustomerApp() {
                         )
                         CustomerScreen.PROFILE -> ProfileScreen(
                             addresses = savedAddresses,
+                            favoritesCount = favoriteIds.size,
+                            recentCount = recentIds.size,
+                            onOpenFavorites = { screen = CustomerScreen.FAVORITES },
+                            onClearRecent = { appScope.launch { UserProductStateStore.clearRecent(context) } },
                             onSaveAddress = { address ->
                                 appScope.launch { AddressStore.upsert(context, address) }
                             },
