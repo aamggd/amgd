@@ -3804,7 +3804,6 @@ private fun SupportScreen(
                 }
             }
         }
-        }
     }
 }
 
