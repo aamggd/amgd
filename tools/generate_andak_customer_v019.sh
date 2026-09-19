@@ -1288,6 +1288,8 @@ fun CustomerApp() {
 @Composable
 private fun HomeScreen(
     cartCount: Int,
+    favoriteIds: Set<String>,
+    recentIds: List<String>,
     categories: List<CatalogCategory>,
     products: List<CatalogProduct>,
     catalogSource: String,
@@ -1296,14 +1298,15 @@ private fun HomeScreen(
     onSearchSubmit: () -> Unit,
     onCategory: (String) -> Unit,
     onProduct: (CatalogProduct) -> Unit,
-    onCart: () -> Unit
+    onCart: () -> Unit,
+    onFavorites: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item { CustomerHeader(cartCount = cartCount, onCart = onCart) }
+        item { CustomerHeader(cartCount = cartCount, favoriteCount = favoriteIds.size, onFavorites = onFavorites, onCart = onCart) }
         item {
             Surface(color = if (catalogSource.startsWith("متصل")) AndakGreen.copy(alpha = 0.10f) else Color(0xFFFFF4D6), shape = RoundedCornerShape(12.dp)) {
                 Text(catalogSource, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if (catalogSource.startsWith("متصل")) AndakGreen else Color(0xFF7A5200), fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -1339,6 +1342,24 @@ private fun HomeScreen(
             Spacer(Modifier.height(10.dp))
             ProductGridStatic(products.filter { it.featured }.take(6), onProduct)
         }
+        if (favoriteIds.isNotEmpty()) {
+            item {
+                SectionTitle("المفضلة", "عرض الكل") { onFavorites() }
+                Spacer(Modifier.height(10.dp))
+                ProductGridStatic(
+                    products.filter { favoriteIds.contains(it.id) }.take(4),
+                    onProduct
+                )
+            }
+        }
+        val recentProducts = recentIds.mapNotNull { id -> products.firstOrNull { it.id == id } }.take(4)
+        if (recentProducts.isNotEmpty()) {
+            item {
+                SectionTitle("شاهدتها مؤخراً", "المفضلة") { onFavorites() }
+                Spacer(Modifier.height(10.dp))
+                ProductGridStatic(recentProducts, onProduct)
+            }
+        }
         item {
             Surface(color = Color.White, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
@@ -1356,7 +1377,12 @@ private fun HomeScreen(
 }
 
 @Composable
-private fun CustomerHeader(cartCount: Int, onCart: () -> Unit) {
+private fun CustomerHeader(
+    cartCount: Int,
+    favoriteCount: Int,
+    onFavorites: () -> Unit,
+    onCart: () -> Unit
+) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         AndakLogo(size = 58.dp)
         Spacer(Modifier.width(10.dp))
@@ -1364,6 +1390,23 @@ private fun CustomerHeader(cartCount: Int, onCart: () -> Unit) {
             Text("عندك", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = AndakDeepGreen)
             Text("كل السوق عندك", fontSize = 13.sp, color = AndakGreen)
         }
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color.White,
+            modifier = Modifier.clickable(onClick = onFavorites)
+        ) {
+            Row(
+                Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(if (favoriteCount > 0) "♥" else "♡", fontSize = 19.sp, color = if (favoriteCount > 0) Color(0xFFB3261E) else AndakMuted)
+                if (favoriteCount > 0) {
+                    Spacer(Modifier.width(5.dp))
+                    Text(favoriteCount.toString(), fontWeight = FontWeight.Bold, color = Color(0xFFB3261E))
+                }
+            }
+        }
+        Spacer(Modifier.width(8.dp))
         Surface(
             shape = RoundedCornerShape(14.dp),
             color = Color.White,
@@ -1623,7 +1666,9 @@ private fun EmptyCatalog(query: String, onClear: () -> Unit) {
 private fun ProductScreen(
     product: CatalogProduct,
     cartCount: Int,
+    isFavorite: Boolean,
     onBack: () -> Unit,
+    onToggleFavorite: () -> Unit,
     onAddToCart: (String) -> Unit,
     onCart: () -> Unit
 ) {
@@ -1639,6 +1684,9 @@ private fun ProductScreen(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack) { Text("‹ رجوع") }
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = onToggleFavorite) {
+                    Text(if (isFavorite) "♥ محفوظ" else "♡ للمفضلة", color = if (isFavorite) Color(0xFFB3261E) else AndakMuted)
+                }
                 TextButton(onClick = onCart) {
                     Text("🛒 " + if (cartCount > 0) cartCount.toString() else "")
                 }
@@ -2448,6 +2496,10 @@ private fun OrderTimeline(currentStatus: String) {
 @Composable
 private fun ProfileScreen(
     addresses: List<SavedAddress>,
+    favoritesCount: Int,
+    recentCount: Int,
+    onOpenFavorites: () -> Unit,
+    onClearRecent: () -> Unit,
     onSaveAddress: (SavedAddress) -> Unit,
     onSetDefault: (String) -> Unit,
     onDeleteAddress: (String) -> Unit
@@ -2475,6 +2527,22 @@ private fun ProfileScreen(
         item {
             Text("حسابي", fontSize = 27.sp, fontWeight = FontWeight.Bold, color = AndakDeepGreen)
             Text("العناوين وإعدادات الحساب المحلية", color = AndakMuted, fontSize = 12.sp)
+        }
+
+        item {
+            Surface(color = Color.White, shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("التسوق الشخصي", fontWeight = FontWeight.Bold, color = AndakDeepGreen)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onOpenFavorites, modifier = Modifier.weight(1f)) {
+                            Text("♥ المفضلة " + favoritesCount)
+                        }
+                        OutlinedButton(onClick = onClearRecent, enabled = recentCount > 0, modifier = Modifier.weight(1f)) {
+                            Text("مسح المشاهدة " + recentCount)
+                        }
+                    }
+                }
+            }
         }
 
         item {
