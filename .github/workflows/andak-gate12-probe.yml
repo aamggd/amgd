@@ -53,7 +53,7 @@ jobs:
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-          adb version
+          "$ANDROID_HOME/platform-tools/adb" version
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" version
 
       - name: Build Supplier Gate12 APK and AAB
