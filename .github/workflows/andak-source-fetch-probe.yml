@@ -1,0 +1,27 @@
+name: ANDAK Source Fetch Probe
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-source-fetch-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe firestorage share
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://firestorage.ai/ja/f/Sjz2YeEiiC8D'
+          curl -L -D /tmp/headers.txt -o /tmp/body "$URL"
+          echo '--- headers ---'
+          sed -n '1,80p' /tmp/headers.txt
+          echo '--- file ---'
+          file /tmp/body
+          wc -c /tmp/body
+          echo '--- candidate urls ---'
+          strings /tmp/body | grep -Eo 'https?://[^"'"'"' <>]+' | grep -Ei 'zip|download|file|api|storage' | head -80 || true
+          echo '--- text head ---'
+          head -c 4000 /tmp/body | sed 's/</\n</g' | head -120 || true
