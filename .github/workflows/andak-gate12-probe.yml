@@ -6,17 +6,17 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe Firestorage Next client
+      - name: Probe all Firestorage Next chunks
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           BASE="https://firestorage.ai"
-          curl -L --fail --retry 3 -A "Mozilla/5.0" "$BASE/ja/f/1ub5gOAXyS6s" -o /tmp/page.html
-          CHUNK=$(grep -Eo 'src="/_next/static/chunks/app/\(files\)/ja/f/page-[^"]+\.js"' /tmp/page.html | head -1 | cut -d'"' -f2)
-          ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe="/._-"))' "$CHUNK")
-          echo "chunk=$CHUNK encoded=$ENC"
-          curl -L --fail "$BASE$ENC" -o /tmp/chunk.js
-          echo "chunk_bytes=$(wc -c < /tmp/chunk.js)"
-          cat /tmp/chunk.js | head -c 500
-          echo
-          grep -oE '.{0,160}(download|share|publicId|shareId|files|api/).{0,260}' /tmp/chunk.js | head -400 || true
+          curl -LsS --fail -A "Mozilla/5.0" "$BASE/ja/f/1ub5gOAXyS6s" -o /tmp/page.html
+          grep -Eo 'src="[^"]+\.js"' /tmp/page.html | cut -d'"' -f2 | sort -u > /tmp/chunks.txt
+          while IFS= read -r CHUNK; do
+            ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe="/._-"))' "$CHUNK")
+            OUT="/tmp/$(echo "$CHUNK" | tr '/()' '___')"
+            curl -LsS --fail "$BASE$ENC" -o "$OUT" || continue
+            echo "=== $CHUNK bytes=$(wc -c < "$OUT") ==="
+            grep -oE '.{0,180}(/api/|download|presign|signed|shareId|publicId|folder|fileId|objectKey|storage).{0,300}' "$OUT" | head -150 || true
+          done < /tmp/chunks.txt
