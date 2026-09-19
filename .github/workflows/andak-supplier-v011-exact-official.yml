@@ -1,0 +1,181 @@
+name: ANDAK Supplier v0.1.1 Exact Official Gate0
+
+on:
+  push:
+    branches:
+      - 'andak-supplier-build-v011'
+    paths:
+      - '.github/workflows/andak-supplier-v011-exact-official.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate0-exact:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Download exact baseline and exact fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          get_share_file() {
+            local share="$1"
+            local out="$2"
+            local list api file_id url
+            list="$(curl -fsSL "https://api.firestorage.ai/prod/file/shares/$share/files?maxResults=1000")"
+            file_id="$(python -c 'import json,sys; print(json.load(sys.stdin)["files"][0]["fileId"])' <<<"$list")"
+            api="https://api.firestorage.ai/prod/file/shares/$share/files/$file_id/download"
+            url="$(curl -fsSL -X POST "$api" | python -c 'import json,sys; print(json.load(sys.stdin)["downloadUrl"])')"
+            curl -fsSL "$url" -o "$out"
+            unzip -tq "$out"
+          }
+          get_share_file '2dkKXlGR-nfd' /tmp/baseline.zip
+          get_share_file 'Sjz2YeEiiC8D' /tmp/fixed.zip
+          rm -rf "$GITHUB_WORKSPACE/exact-baseline" "$GITHUB_WORKSPACE/exact-fixed"
+          mkdir -p "$GITHUB_WORKSPACE/exact-baseline" "$GITHUB_WORKSPACE/exact-fixed"
+          unzip -q /tmp/baseline.zip -d "$GITHUB_WORKSPACE/exact-baseline"
+          unzip -q /tmp/fixed.zip -d "$GITHUB_WORKSPACE/exact-fixed"
+          BASE="$GITHUB_WORKSPACE/exact-baseline/fush-market-generated"
+          FIX="$GITHUB_WORKSPACE/exact-fixed/fush-market-generated"
+          test -f "$BASE/apps/supplier/build.gradle.kts"
+          test -f "$FIX/apps/supplier/build.gradle.kts"
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "FIX=$FIX" >> "$GITHUB_ENV"
+          sha256sum /tmp/baseline.zip /tmp/fixed.zip | tee "$GITHUB_WORKSPACE/source-zip-sha256.txt"
+
+      - name: Static exact-source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.market.supplier"' "$BASE/apps/supplier/build.gradle.kts"
+          grep -q 'versionCode = 1' "$BASE/apps/supplier/build.gradle.kts"
+          grep -q 'versionName = "0.1.0"' "$BASE/apps/supplier/build.gradle.kts"
+          grep -q 'applicationId = "com.fush.market.supplier"' "$FIX/apps/supplier/build.gradle.kts"
+          grep -q 'versionCode = 2' "$FIX/apps/supplier/build.gradle.kts"
+          grep -q 'versionName = "0.1.1"' "$FIX/apps/supplier/build.gradle.kts"
+          grep -q 'android:icon="@mipmap/ic_launcher"' "$FIX/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' "$FIX/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q 'android:supportsRtl="true"' "$FIX/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q '<string name="app_name">عندك للمورد</string>' "$FIX/apps/supplier/src/main/res/values/strings.xml"
+          grep -q 'logoRawRes = R.raw.andak_supplier_logo' "$FIX/apps/supplier/src/main/java/com/fush/market/supplier/MainActivity.kt"
+          grep -q 'SafeRawLogo' "$FIX/core/ui/src/main/java/com/fush/market/core/ui/AndakApp.kt"
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            test -f "$FIX/apps/supplier/src/main/res/mipmap-$d/ic_launcher.webp"
+            test -f "$FIX/apps/supplier/src/main/res/mipmap-$d/ic_launcher_round.webp"
+            test -f "$FIX/apps/supplier/src/main/res/mipmap-$d/ic_launcher_foreground.webp"
+          done
+          echo STATIC_EXACT_SOURCE_PASS
+
+      - name: Build exact baseline and exact fixed
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$BASE" && gradle :apps:supplier:assembleDebug --no-daemon --stacktrace)
+          (cd "$FIX" && gradle :apps:supplier:assembleDebug :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace)
+          cd "$GITHUB_WORKSPACE/exact-fixed"
+          zip -qr /tmp/ANDAK-Supplier-v0.1.1-OFFICIAL-SOURCE-FIXED-VERIFIED.zip fush-market-generated
+
+      - name: Prepare runtime test
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/exact-runtime.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          PKG='com.fush.market.supplier'
+
+          adb uninstall "$PKG" >/dev/null 2>&1 || true
+          adb install "$BASE/apps/supplier/build/outputs/apk/debug/supplier-debug.apk"
+          adb logcat -c
+          adb shell am start -W -n "$PKG/.MainActivity" > "$GITHUB_WORKSPACE/exact-baseline-start.txt" 2>&1 || true
+          sleep 6
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/exact-baseline-crash.log" || true
+          adb logcat -d | grep -E 'AndroidRuntime|FATAL EXCEPTION|ResourceResolutionException|Caused by|com.fush.market.supplier|fush_logo' > "$GITHUB_WORKSPACE/exact-baseline-relevant.log" || true
+          grep -q 'FATAL EXCEPTION: main' "$GITHUB_WORKSPACE/exact-baseline-crash.log"
+          grep -q 'ResourceResolutionException' "$GITHUB_WORKSPACE/exact-baseline-crash.log"
+          grep -q 'fush_logo.jpg' "$GITHUB_WORKSPACE/exact-baseline-crash.log"
+          grep -q 'NullPointerException' "$GITHUB_WORKSPACE/exact-baseline-crash.log"
+          echo BASELINE_CRASH_REPRODUCED_PASS > "$GITHUB_WORKSPACE/exact-baseline-result.txt"
+
+          adb uninstall "$PKG" >/dev/null 2>&1 || true
+          adb install "$FIX/apps/supplier/build/outputs/apk/debug/supplier-debug.apk"
+          adb logcat -c
+          adb shell am start -W -n "$PKG/.MainActivity" > "$GITHUB_WORKSPACE/exact-fixed-start.txt" 2>&1 || true
+          sleep 8
+          PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          printf '%s\n' "$PID" > "$GITHUB_WORKSPACE/exact-fixed-pid.txt"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/exact-fixed-crash.log" || true
+          adb logcat -d | grep -E 'AndroidRuntime|FATAL EXCEPTION|Caused by|com.fush.market.supplier' > "$GITHUB_WORKSPACE/exact-fixed-relevant.log" || true
+          adb shell dumpsys activity activities > "$GITHUB_WORKSPACE/exact-fixed-activities.txt" || true
+          adb exec-out screencap -p > "$GITHUB_WORKSPACE/exact-fixed-screen.png" || true
+          test -n "$PID"
+          if grep -q "$PKG" "$GITHUB_WORKSPACE/exact-fixed-crash.log"; then
+            echo 'FATAL: fixed exact source crashed'
+            exit 1
+          fi
+          grep -q "$PKG/.MainActivity" "$GITHUB_WORKSPACE/exact-fixed-activities.txt"
+          echo FIXED_RUNTIME_PASS > "$GITHUB_WORKSPACE/exact-fixed-result.txt"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/exact-runtime.sh"
+
+      - name: Runtime API 29 exact source
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/exact-runtime.sh"
+
+      - name: Package exact official outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist-exact"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$FIX/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk"             "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-ALIGNED-UNSIGNED.apk"
+          cp "$FIX/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.1.1-OFFICIAL-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          cp /tmp/ANDAK-Supplier-v0.1.1-OFFICIAL-SOURCE-FIXED-VERIFIED.zip "$D/"
+          cp "$GITHUB_WORKSPACE"/source-zip-sha256.txt "$D/"
+          cp "$GITHUB_WORKSPACE"/exact-baseline-{start.txt,crash.log,relevant.log,result.txt} "$D/"
+          cp "$GITHUB_WORKSPACE"/exact-fixed-{start.txt,pid.txt,crash.log,relevant.log,activities.txt,result.txt,screen.png} "$D/"
+          printf '%s\n'             'ANDAK Supplier v0.1.1 — EXACT OFFICIAL SOURCE'             'applicationId=com.fush.market.supplier'             'versionCode=2'             'versionName=0.1.1'             'Static exact-source gate=PASS'             'Baseline startup crash reproduced=PASS'             'Root exception=androidx.compose.ui.res.ResourceResolutionException'             'Root caused by=java.lang.NullPointerException while loading res/drawable/fush_logo.jpg'             'Exact fixed source build=PASS'             'Exact fixed source runtime API29=PASS'             'Fixed crash buffer=clean'             'Permanent signing=performed outside public CI'             > "$D/GATE0-EXACT-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.1.1-EXACT-OFFICIAL-GATE0-PASS
+          path: dist-exact/
+          if-no-files-found: error
+          retention-days: 7
