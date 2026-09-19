@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EMAIL="andak-g10-${GITHUB_RUN_ID}@example.com"
+          EMAIL="andak.g10.${GITHUB_RUN_ID}@gmail.com"
           PASSWORD="G10aA$(openssl rand -hex 14)"
           echo "::add-mask::$PASSWORD"
           echo "TEST_EMAIL=$EMAIL" >> "$GITHUB_ENV"
