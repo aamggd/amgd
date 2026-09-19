@@ -51,8 +51,15 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL -X POST             'https://bkbjtyacoiaheunweyuu.supabase.co/rest/v1/rpc/andak_backend_status'             -H 'apikey: sb_publishable_-DaXGQuwuWK_oRFLNU-uxg_-q5LDAnY'             -H 'Content-Type: application/json' -d '{}' > backend-health.json
-          grep -q '"status":"ok"' backend-health.json
-          grep -q '"supplier_scope":"supplier:self"' backend-health.json
+          python - <<'PY'
+          import json
+          d=json.load(open('backend-health.json'))
+          assert d['status']=='ok'
+          assert d['supplier_scope']=='supplier:self'
+          assert d['auth_required'] is True
+          assert d['customer_pii_excluded'] is True
+          print('GATE9_RUNTIME_BACKEND_HEALTH_PASS')
+          PY
 
       - name: Signed Gate9 runtime API29
         uses: reactivecircus/android-emulator-runner@v2
