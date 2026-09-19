@@ -400,10 +400,7 @@ object BackendCatalogGateway {
             connection.connectTimeout = 8000
             connection.readTimeout = 10000
             connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
-            connection.setRequestProperty(
-            "Authorization",
-            "Bearer " + (bearer?.takeIf { it.isNotBlank() } ?: BuildConfig.ANDAK_SUPABASE_KEY)
-        )
+            connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
             connection.setRequestProperty("Accept", "application/json")
             try {
                 val code = connection.responseCode
@@ -645,7 +642,10 @@ object BackendOrderGateway {
         connection.connectTimeout = 10000
         connection.readTimeout = 15000
         connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
-        connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
+        connection.setRequestProperty(
+            "Authorization",
+            "Bearer " + (bearer?.takeIf { it.isNotBlank() } ?: BuildConfig.ANDAK_SUPABASE_KEY)
+        )
         connection.setRequestProperty("Content-Type", "application/json")
         connection.setRequestProperty("Accept", "application/json")
 
