@@ -57,7 +57,7 @@ import androidx.compose.ui.unit.dp
 E
 else
  mkdir -p "$ROOT/core/ui/src/main/res/raw" "$ROOT/apps/supplier/src/main/res/drawable-nodpi" "$ROOT/apps/supplier/src/main/res/mipmap-anydpi-v26"
- cp "$GITHUB_WORKSPACE/assets/andak_logo.png" "$ROOT/core/ui/src/main/res/raw/andak_supplier_logo.png"; cp "$GITHUB_WORKSPACE/assets/andak_logo.png" "$ROOT/apps/supplier/src/main/res/drawable-nodpi/andak_launcher_source.png"
+ cp "$GITHUB_WORKSPACE/assets/andak_logo.jpg" "$ROOT/core/ui/src/main/res/raw/andak_supplier_logo.jpg"; cp "$GITHUB_WORKSPACE/assets/andak_logo.jpg" "$ROOT/apps/supplier/src/main/res/drawable-nodpi/andak_launcher_source.jpg"
  cat > "$ROOT/apps/supplier/src/main/res/values/colors.xml" <<'E'
 <resources><color name="andak_launcher_background">#006B57</color></resources>
 E
@@ -65,7 +65,7 @@ E
 from PIL import Image
 from pathlib import Path
 import sys
-r=Path(sys.argv[1]); im=Image.open(r/'apps/supplier/src/main/res/drawable-nodpi/andak_launcher_source.png').convert('RGBA')
+r=Path(sys.argv[1]); im=Image.open(r/'apps/supplier/src/main/res/drawable-nodpi/andak_launcher_source.jpg').convert('RGBA')
 for d,n in {'mdpi':48,'hdpi':72,'xhdpi':96,'xxhdpi':144,'xxxhdpi':192}.items():
  p=r/f'apps/supplier/src/main/res/mipmap-{d}';p.mkdir(parents=True,exist_ok=True);x=im.resize((n,n),Image.Resampling.LANCZOS);x.save(p/'ic_launcher.png');x.save(p/'ic_launcher_round.png')
 for d,n in {'mdpi':108,'hdpi':162,'xhdpi':216,'xxhdpi':324,'xxxhdpi':432}.items():
