@@ -361,6 +361,119 @@ object CatalogSeed {
 }
 EOF
 
+
+cat > "$ROOT/apps/customer/src/main/java/com/fush/market/customer/BackendCatalog.kt" <<'EOF'
+package com.fush.market.customer
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import java.net.HttpURLConnection
+import java.net.URL
+
+data class BackendCatalogSnapshot(
+    val categories: List<CatalogCategory>,
+    val products: List<CatalogProduct>
+)
+
+object BackendCatalogGateway {
+    fun isConfigured(): Boolean =
+        BuildConfig.ANDAK_SUPABASE_URL.isNotBlank() && BuildConfig.ANDAK_SUPABASE_KEY.isNotBlank()
+
+    suspend fun fetchCatalog(): Result<BackendCatalogSnapshot> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(isConfigured()) { "Supabase endpoint is not configured" }
+            val endpoint = BuildConfig.ANDAK_SUPABASE_URL.trimEnd('/') +
+                "/rest/v1/andak_customer_catalog_v1?select=*&order=category_sort.asc,product_sort.asc,variant_sort.asc"
+
+            val connection = URL(endpoint).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 8000
+            connection.readTimeout = 10000
+            connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
+            connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
+            connection.setRequestProperty("Accept", "application/json")
+            try {
+                val code = connection.responseCode
+                if (code !in 200..299) {
+                    val message = connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    error("Catalog HTTP " + code + " " + message)
+                }
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                parseCatalog(JSONArray(body))
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
+    private fun parseCatalog(rows: JSONArray): BackendCatalogSnapshot {
+        val categories = linkedMapOf<String, CatalogCategory>()
+        data class Row(
+            val productId: String,
+            val categoryId: String,
+            val brand: String,
+            val productName: String,
+            val emoji: String,
+            val description: String,
+            val featured: Boolean,
+            val variant: ProductVariant
+        )
+        val parsedRows = mutableListOf<Row>()
+
+        for (index in 0 until rows.length()) {
+            val row = rows.getJSONObject(index)
+            val categoryId = row.getString("category_id")
+            categories.putIfAbsent(
+                categoryId,
+                CatalogCategory(
+                    id = categoryId,
+                    name = row.getString("category_name"),
+                    emoji = row.optString("category_emoji", "🛍️")
+                )
+            )
+            val availability = when (row.optString("availability").uppercase()) {
+                "OUT" -> Availability.OUT
+                "LIMITED" -> Availability.LIMITED
+                else -> Availability.AVAILABLE
+            }
+            parsedRows += Row(
+                productId = row.getString("product_id"),
+                categoryId = categoryId,
+                brand = row.optString("brand_name", ""),
+                productName = row.getString("product_name"),
+                emoji = row.optString("product_emoji", "📦"),
+                description = row.optString("description", ""),
+                featured = row.optBoolean("featured", false),
+                variant = ProductVariant(
+                    id = row.getString("variant_id"),
+                    label = row.getString("variant_label"),
+                    unit = row.getString("unit_name"),
+                    priceYER = row.getLong("price_yer"),
+                    availability = availability
+                )
+            )
+        }
+
+        val products = parsedRows.groupBy { it.productId }.map { (productId, group) ->
+            val first = group.first()
+            CatalogProduct(
+                id = productId,
+                categoryId = first.categoryId,
+                brand = first.brand,
+                name = first.productName,
+                emoji = first.emoji,
+                description = first.description,
+                variants = group.map { it.variant },
+                featured = first.featured
+            )
+        }
+
+        return BackendCatalogSnapshot(categories.values.toList(), products)
+    }
+}
+EOF
+
 cat > "$ROOT/apps/customer/src/main/java/com/fush/market/customer/MainActivity.kt" <<'EOF'
 package com.fush.market.customer
 
