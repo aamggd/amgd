@@ -1,0 +1,73 @@
+name: ANDAK Supplier v0.9.0 Gate8 Signed Runtime
+
+on:
+  push:
+    branches: ['andak-supplier-gate8-v090']
+    paths:
+      - '.github/workflows/andak-supplier-gate8-v090-signed-runtime.yml'
+      - 'tools/andak_gate8_signed_runtime.sh'
+      - 'tools/andak_gate4_tap_text.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: macos-15-intel
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download signed Gate8 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/JKrWdB-9EEXc'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.9.0-GATE8-OFFICIAL-SIGNED.apk"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/gate8.apk
+          echo '616c1becb6f87ba2d1f4230059008bec0c7e1dd88bfebc914bad65d7e86bc435  /tmp/gate8.apk' | shasum -a 256 -c -
+          echo "APK=/tmp/gate8.apk" >> "$GITHUB_ENV"
+
+      - name: Verify official signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature-verify.txt
+          grep -qi 'certificate SHA-256 digest: 84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' signature-verify.txt
+          grep -q 'Number of signers: 1' signature-verify.txt
+
+      - name: Signed Gate8 runtime API29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/tools/andak_gate8_signed_runtime.sh"
+
+      - name: Package evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          test -f signature-verify.txt && cp signature-verify.txt evidence/
+          printf '%s\n'             'ANDAK Supplier Gate8 v0.9.0 — Signed Runtime'             'applicationId=com.fush.market.supplier'             'versionCode=10'             'versionName=0.9.0'             'APK SHA-256=616c1becb6f87ba2d1f4230059008bec0c7e1dd88bfebc914bad65d7e86bc435'             'Certificate SHA-256=84:C8:E9:4D:39:A2:FA:83:72:59:3F:FA:7D:75:B4:77:2B:FE:11:92:22:6B:F2:DD:0D:E5:97:06:FA:CF:F1:3E'             'Live backend=PASS'             'Invalid-credential Auth rejection=TESTED'             'Unauthenticated Sync Queue safe block=TESTED'             'Positive supplier sign-in requires a provisioned supplier test account'             > evidence/INFO.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v0.9.0-GATE8-SIGNED-RUNTIME-EVIDENCE
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
