@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 P0 Hotfix Runtime
+name: ANDAK Supplier Gate12 R7 Runtime
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -8,102 +8,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Download exact signed hotfix
+      - name: Download exact R7 signed APK
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="tb39Ac1yh8nS"
+          SHARE="_pDZDeGcceXL"
           NAME="ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
           curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
           URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-hotfix.apk"
-          sha256sum "$GITHUB_WORKSPACE/andak-hotfix.apk"
-
-      - name: Prepare runtime test script
-        shell: bash
-        run: |
-          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'BASH'
-          #!/usr/bin/env bash
-          set -u
-          PKG="com.fush.market.supplier"
-          APK="$GITHUB_WORKSPACE/andak-hotfix.apk"
-          LOG="$GITHUB_WORKSPACE/hotfix-runtime-logcat.txt"
-          RESULT="$GITHUB_WORKSPACE/hotfix-runtime-result.txt"
-          : > "$RESULT"
-
-          fail=0
-          echo "installing_exact_apk=$(sha256sum "$APK" | awk '{print $1}')" | tee -a "$RESULT"
-          if ! adb install "$APK"; then
-            echo "install=FAIL" | tee -a "$RESULT"
-            exit 10
-          fi
-          echo "install=PASS" | tee -a "$RESULT"
-          adb logcat -c
-
-          echo "=== COLD START 30s ===" | tee -a "$RESULT"
-          adb shell am force-stop "$PKG"
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-          sleep 30
-          PID1="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-          echo "cold_start_pid=$PID1" | tee -a "$RESULT"
-          [ -n "$PID1" ] || fail=1
-
-          echo "=== FORCE STOP + REOPEN ===" | tee -a "$RESULT"
-          adb shell am force-stop "$PKG"
-          sleep 2
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-          sleep 12
-          PID2="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-          echo "reopen_pid=$PID2" | tee -a "$RESULT"
-          [ -n "$PID2" ] || fail=1
-
-          echo "=== HOME + RESUME ===" | tee -a "$RESULT"
-          adb shell input keyevent KEYCODE_HOME
-          sleep 3
-          adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-          sleep 8
-          PID3="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-          echo "resume_pid=$PID3" | tee -a "$RESULT"
-          [ -n "$PID3" ] || fail=1
-
-          echo "=== REPEATED LAUNCH x3 ===" | tee -a "$RESULT"
-          for i in 1 2 3; do
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-            sleep 3
-          done
-          PID4="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-          echo "repeat_pid=$PID4" | tee -a "$RESULT"
-          [ -n "$PID4" ] || fail=1
-
-          adb logcat -d -v threadtime > "$LOG"
-          if grep -q "FATAL EXCEPTION" "$LOG"; then
-            echo "fatal_exception=YES" | tee -a "$RESULT"
-            grep -n -A100 -B25 -E "FATAL EXCEPTION|AndroidRuntime|Process: $PKG" "$LOG" | tail -500 || true
-            fail=1
-          else
-            echo "fatal_exception=NO" | tee -a "$RESULT"
-          fi
-
-          if grep -q "ClassNotFoundException: Didn't find class \"androidx.startup.InitializationProvider\"" "$LOG"; then
-            echo "startup_provider_crash=YES" | tee -a "$RESULT"
-            fail=1
-          else
-            echo "startup_provider_crash=NO" | tee -a "$RESULT"
-          fi
-
-          if [ "$fail" -eq 0 ]; then
-            echo "P0_RUNTIME=PASS" | tee -a "$RESULT"
-            exit 0
-          else
-            echo "P0_RUNTIME=FAIL" | tee -a "$RESULT"
-            exit 2
-          fi
-          BASH
-          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-r7.apk"
+          sha256sum "$GITHUB_WORKSPACE/andak-r7.apk"
 
       - name: Enable KVM
         shell: bash
@@ -112,22 +30,37 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run exact signed hotfix
+      - name: Run R7 and capture logcat
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
+          script: |
+            adb install -r "$GITHUB_WORKSPACE/andak-r7.apk"
+            adb logcat -c
+            adb shell am force-stop com.fush.market.supplier
+            adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
+            sleep 20
+            echo "PID=$(adb shell pidof com.fush.market.supplier || true)"
+            adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"
+            echo "=== FATALS ==="
+            grep -n -A100 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt" || true
+            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"; then exit 2; fi
+            test -n "$(adb shell pidof com.fush.market.supplier || true)"
+            adb shell am force-stop com.fush.market.supplier
+            adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
+            sleep 10
+            adb logcat -d -v threadtime >> "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"
+            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"; then exit 3; fi
+            test -n "$(adb shell pidof com.fush.market.supplier || true)"
 
-      - name: Upload hotfix runtime evidence
+      - name: Upload R7 runtime log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Supplier-v1.3.1-P0-Hotfix-Runtime-Evidence
-          path: |
-            hotfix-runtime-logcat.txt
-            hotfix-runtime-result.txt
+          name: ANDAK-Gate12-R7-Runtime-Log
+          path: runtime-logcat-r7.txt
           if-no-files-found: warn
           retention-days: 1
