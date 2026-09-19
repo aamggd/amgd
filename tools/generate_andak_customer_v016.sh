@@ -2322,6 +2322,126 @@ to anon, authenticated;
 -- The security-definer RPC is the only write path in this phase.
 EOF
 
+cat > "$ROOT/backend/supabase/migrations/003_andak_order_tracking_rpc.sql" <<'EOF'
+alter table public.andak_orders
+    add column if not exists tracking_token uuid not null default gen_random_uuid();
+
+create unique index if not exists ux_andak_orders_tracking_token
+    on public.andak_orders(tracking_token);
+
+create or replace function public.andak_create_order_v2(
+    p_request_id uuid,
+    p_customer_name text,
+    p_phone text,
+    p_city text,
+    p_neighborhood text,
+    p_address_details text,
+    p_note text,
+    p_lines jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+    v_result jsonb;
+    v_tracking_token uuid;
+begin
+    v_result := public.andak_create_order_v1(
+        p_request_id,
+        p_customer_name,
+        p_phone,
+        p_city,
+        p_neighborhood,
+        p_address_details,
+        p_note,
+        p_lines
+    );
+
+    select tracking_token
+    into v_tracking_token
+    from public.andak_orders
+    where id = (v_result ->> 'order_id')::uuid;
+
+    return v_result || jsonb_build_object(
+        'tracking_token', v_tracking_token
+    );
+end;
+$;
+
+revoke all on function public.andak_create_order_v2(uuid,text,text,text,text,text,text,jsonb) from public;
+grant execute on function public.andak_create_order_v2(uuid,text,text,text,text,text,text,jsonb)
+to anon, authenticated;
+
+create or replace function public.andak_get_order_status_v1(
+    p_tracking_token uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+    v_order public.andak_orders%rowtype;
+    v_lines jsonb;
+begin
+    if p_tracking_token is null then
+        raise exception 'tracking_token_required';
+    end if;
+
+    select *
+    into v_order
+    from public.andak_orders
+    where tracking_token = p_tracking_token;
+
+    if not found then
+        raise exception 'order_not_found';
+    end if;
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'product_name', p.name_ar,
+                'variant_label', v.label_ar,
+                'unit_name', v.unit_name_ar,
+                'quantity', ol.quantity,
+                'unit_price_yer', ol.unit_price_yer,
+                'line_total_yer', ol.line_total_yer
+            )
+            order by ol.id
+        ),
+        '[]'::jsonb
+    )
+    into v_lines
+    from public.andak_order_lines ol
+    join public.andak_product_variants v on v.id = ol.variant_id
+    join public.andak_products p on p.id = v.product_id
+    where ol.order_id = v_order.id;
+
+    return jsonb_build_object(
+        'order_number', v_order.order_number,
+        'status', v_order.status,
+        'payment_method', v_order.payment_method,
+        'subtotal_yer', v_order.subtotal_yer,
+        'delivery_fee_yer', v_order.delivery_fee_yer,
+        'total_yer', v_order.total_yer,
+        'city', v_order.city,
+        'neighborhood', v_order.neighborhood,
+        'created_at', v_order.created_at,
+        'lines', v_lines
+    );
+end;
+$;
+
+revoke all on function public.andak_get_order_status_v1(uuid) from public;
+grant execute on function public.andak_get_order_status_v1(uuid)
+to anon, authenticated;
+
+-- Tracking uses a high-entropy UUID possession token.
+-- No supplier identity, supplier cost, allocation, or internal ledger data is returned.
+EOF
+
 cat > "$ROOT/backend/README.md" <<'EOF'
 # ANDAK backend handoff
 
