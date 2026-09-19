@@ -114,7 +114,7 @@ jobs:
             python - "$E/switch-source.xml" <<'PY'
           import re,sys,subprocess,xml.etree.ElementTree as ET
           root=ET.parse(sys.argv[1]).getroot()
-          nodes=[n for n in root.iter('node') if 'Switch' in n.attrib.get('class','')]
+          nodes=[n for n in root.iter('node') if n.attrib.get('checkable')=='true' or n.attrib.get('checked') in ('true','false')]
           if not nodes: raise SystemExit("SWITCH_NOT_FOUND")
           m=re.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',nodes[0].attrib.get('bounds',''))
           x1,y1,x2,y2=map(int,m.groups())
