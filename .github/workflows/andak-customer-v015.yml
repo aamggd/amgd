@@ -3,7 +3,7 @@ name: ANDAK Customer v0.1.5 Atomic Order RPC
 on:
   push:
     branches:
-      - 'fush-market/customer-v0.1.5-backend-contract'
+      - 'fush-market/customer-v0.1.5-order-rpc'
   workflow_dispatch:
 
 permissions:
