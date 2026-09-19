@@ -9,7 +9,8 @@ mkdir -p \
   "$ROOT/core/ui/src/main/res/values" \
   "$ROOT/apps/customer/src/main/java/com/fush/market/customer" \
   "$ROOT/apps/customer/src/main/res/drawable" \
-  "$ROOT/apps/customer/src/main/res/values"
+  "$ROOT/apps/customer/src/main/res/values" \
+  "$ROOT/backend/supabase/migrations"
 
 cp "$GITHUB_WORKSPACE/assets/andak_logo.png" "$ROOT/core/ui/src/main/res/raw/fush_logo.png"
 
