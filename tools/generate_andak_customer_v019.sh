@@ -2494,6 +2494,75 @@ private fun OrderTimeline(currentStatus: String) {
 }
 
 @Composable
+private fun FavoritesScreen(
+    products: List<CatalogProduct>,
+    favoriteIds: Set<String>,
+    onProduct: (CatalogProduct) -> Unit,
+    onToggleFavorite: (String) -> Unit
+) {
+    val favorites = products.filter { favoriteIds.contains(it.id) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "المفضلة",
+                modifier = Modifier.weight(1f),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = AndakDeepGreen
+            )
+            Text(favorites.size.toString(), color = AndakMuted)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        if (favorites.isEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 70.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("♡", fontSize = 58.sp, color = AndakMuted)
+                Spacer(Modifier.height(8.dp))
+                Text("لا توجد منتجات في المفضلة", fontWeight = FontWeight.Bold)
+                Text("افتح أي منتج واضغط «للمفضلة».", color = AndakMuted, fontSize = 13.sp)
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 14.dp)
+            ) {
+                items(favorites, key = { it.id }) { product ->
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Column {
+                            Box {
+                                ProductCard(
+                                    product = product,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = onProduct
+                                )
+                                TextButton(
+                                    onClick = { onToggleFavorite(product.id) },
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                ) {
+                                    Text("♥", color = Color(0xFFB3261E), fontSize = 20.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProfileScreen(
     addresses: List<SavedAddress>,
     favoritesCount: Int,
@@ -3249,6 +3318,8 @@ Implemented:
 - Reorder action that maps server order variants back into the current cart when available.
 - Local customer profile with saved addresses, default-address selection, and delete.
 - Checkout can select/prefill a saved address.
+- Persistent product favorites with dedicated favorites screen.
+- Persistent recently viewed products with home-page section and clear-history action.
 - Supplier identity and supplier cost are not exposed to the customer.
 
 This build contains the customer catalog gateway plus an atomic/idempotent COD order gateway. When a dedicated ANDAK Supabase URL and publishable key are configured, checkout calls andak_create_order_v1. Without backend configuration the app saves a clearly labeled local draft only.
