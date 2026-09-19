@@ -45,13 +45,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE='https://api.firestorage.ai/dev/file/shares/A5Wl_ZstsKLg'
+          BASE='https://api.firestorage.ai/dev/file/shares/5iuwO7ZhupVX'
           curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
-          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.2.0-Gate1-Source.zip"][0])')
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.2.0-Gate1-Source-R2.zip"][0])')
           curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
           DOWNLOAD_URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
           curl -fL "$DOWNLOAD_URL" -o /tmp/gate1-source.zip
-          echo '669465169a90bf3d4342f9e0ffc716ff44804ff311632f0b1f453049bf6d6d3d  /tmp/gate1-source.zip' | sha256sum -c -
+          echo 'e79f76dd470d615746797f1d131014138ee98198f2449f231880f8e268ca5dda  /tmp/gate1-source.zip' | sha256sum -c -
           mkdir -p "$GITHUB_WORKSPACE/source"
           unzip -q /tmp/gate1-source.zip -d "$GITHUB_WORKSPACE/source"
           SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1)
