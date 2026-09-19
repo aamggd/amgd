@@ -80,16 +80,16 @@ jobs:
           cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.1.1-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
           cp /tmp/ANDAK-Supplier-v0.1.1-Source.zip "$D/"
-          cat > "$D/BUILD-RESULT.txt" <<'EOF'
-ANDAK Supplier v0.1.1
-versionCode: 2
-applicationId: com.fush.market.supplier
-Static gate: PASS
-Release APK build: PASS
-Release AAB build: PASS
-Signing: pending local permanent-key signing
-Runtime: handled in separate Gate0 runtime workflow
-EOF
+          printf '%s\n' \
+            'ANDAK Supplier v0.1.1' \
+            'versionCode: 2' \
+            'applicationId: com.fush.market.supplier' \
+            'Static gate: PASS' \
+            'Release APK build: PASS' \
+            'Release AAB build: PASS' \
+            'Signing: pending local permanent-key signing' \
+            'Runtime: handled in separate Gate0 runtime workflow' \
+            > "$D/BUILD-RESULT.txt"
           (cd "$D" && sha256sum * > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
