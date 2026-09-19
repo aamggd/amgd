@@ -51,6 +51,11 @@ test -n "$PID"
 dump_ui home
 grep -q 'لوحة المورد' "$E/home.xml"
 
+# Create one local operation while unauthenticated so the Sync Queue is exercised.
+tap_text_scroll 'حالة المتجر'
+dump_ui home-offline
+grep -q 'المتجر متوقف مؤقتًا' "$E/home-offline.xml"
+
 # Backend must still be live.
 tap_text_scroll 'الحساب'
 assert_text_scroll 'تسجيل الدخول مطلوب للمزامنة' auth-card
@@ -75,10 +80,8 @@ if grep -q 'المورد مسجل الدخول' "$E/login-rejected.xml"; then
   exit 1
 fi
 
-# Return and verify unauthenticated queue remains safely blocked.
+# Return and verify the queued unauthenticated operation remains safely blocked.
 tap_text_scroll 'العودة إلى الحساب'
-tap_text_scroll 'حالة المتجر'
-tap_text_scroll 'الحساب'
 tap_text_scroll 'مركز المزامنة'
 assert_text_scroll 'Backend ANDAK متصل' backend-online
 tap_text_scroll 'محاولة المزامنة'
