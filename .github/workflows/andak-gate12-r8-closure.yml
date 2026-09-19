@@ -1,0 +1,121 @@
+name: ANDAK Supplier Gate12 R8 Closure
+on:
+  push:
+    branches: [andak-supplier-gate12-ci-temp]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Download R8 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.firestorage.ai/dev/file"
+          SHARE="__IbfDouxNYq"
+          NAME="andak_supplier_gate12_r8_source_prebuild.zip"
+          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
+          test -n "$FILE_ID" && test "$FILE_ID" != "null"
+          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(jq -r '.downloadUrl' /tmp/download.json)
+          curl -fL --retry 3 "$URL" -o /tmp/r8.zip
+          mkdir -p "$GITHUB_WORKSPACE/r8"
+          unzip -q /tmp/r8.zip -d "$GITHUB_WORKSPACE/r8"
+          sha256sum /tmp/r8.zip
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Set up Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -1)"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Generate mandatory Gradle Wrapper
+        working-directory: r8
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version 9.6.0 --distribution-type bin
+          chmod +x gradlew
+          test -f gradlew
+          test -f gradlew.bat
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          grep -q "gradle-9.6.0-bin.zip" gradle/wrapper/gradle-wrapper.properties
+          ./gradlew --version
+
+      - name: Protocol key static gate
+        working-directory: r8
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RInE 'Api_xersion|Supplier_xcope|api_xersion|supplier_xcope' apps/supplier/src backend; then
+            echo "Legacy protocol typo found"; exit 2
+          fi
+          grep -RIn '"api_version"' apps/supplier/src/main backend
+          grep -RIn '"supplier_scope"' apps/supplier/src/main backend
+
+      - name: Clean unit test and release build
+        working-directory: r8
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon clean :apps:supplier:test :apps:supplier:assembleDebug :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/r8-build-test.log"
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Instrumentation tests on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            cd "$GITHUB_WORKSPACE/r8"
+            ./gradlew --no-daemon :apps:supplier:connectedDebugAndroidTest 2>&1 | tee "$GITHUB_WORKSPACE/r8-androidtest.log"
+
+      - name: Collect build and test artifacts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/out/test-results" "$GITHUB_WORKSPACE/out/schemas"
+          if [ -f "$GITHUB_WORKSPACE/r8-build-test.log" ]; then cp "$GITHUB_WORKSPACE/r8-build-test.log" "$GITHUB_WORKSPACE/out/"; fi
+          if [ -f "$GITHUB_WORKSPACE/r8-androidtest.log" ]; then cp "$GITHUB_WORKSPACE/r8-androidtest.log" "$GITHUB_WORKSPACE/out/"; fi
+          find "$GITHUB_WORKSPACE/r8/apps/supplier/build/outputs/apk/release" -name '*.apk' -type f -exec cp {} "$GITHUB_WORKSPACE/out/ANDAK-Supplier-v1.3.2-GATE12-R8-UNSIGNED.apk" \; 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/r8/apps/supplier/build/outputs/bundle/release" -name '*.aab' -type f -exec cp {} "$GITHUB_WORKSPACE/out/ANDAK-Supplier-v1.3.2-GATE12-R8-UNSIGNED.aab" \; 2>/dev/null || true
+          if [ -d "$GITHUB_WORKSPACE/r8/apps/supplier/build/test-results" ]; then cp -R "$GITHUB_WORKSPACE/r8/apps/supplier/build/test-results/." "$GITHUB_WORKSPACE/out/test-results/"; fi
+          if [ -d "$GITHUB_WORKSPACE/r8/apps/supplier/build/outputs/androidTest-results" ]; then cp -R "$GITHUB_WORKSPACE/r8/apps/supplier/build/outputs/androidTest-results" "$GITHUB_WORKSPACE/out/"; fi
+          if [ -d "$GITHUB_WORKSPACE/r8/apps/supplier/schemas" ]; then cp -R "$GITHUB_WORKSPACE/r8/apps/supplier/schemas/." "$GITHUB_WORKSPACE/out/schemas/"; fi
+          (cd "$GITHUB_WORKSPACE/r8" && zip -qr "$GITHUB_WORKSPACE/out/ANDAK-Supplier-v1.3.2-GATE12-R8-Source-With-Wrapper.zip" . -x '*/build/*' '.gradle/*')
+          sha256sum "$GITHUB_WORKSPACE/out/"*.apk "$GITHUB_WORKSPACE/out/"*.aab "$GITHUB_WORKSPACE/out/"*Source*.zip > "$GITHUB_WORKSPACE/out/SHA256-BUILD.txt" 2>/dev/null || true
+
+      - name: Upload R8 closure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-Gate12-R8-Closure
+          path: out/
+          if-no-files-found: error
+          retention-days: 2
