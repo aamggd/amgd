@@ -1,0 +1,127 @@
+name: ANDAK Supplier v0.1.1 Launcher Visual
+
+on:
+  push:
+    branches:
+      - 'andak-supplier-build-v011'
+    paths:
+      - '.github/workflows/andak-supplier-v011-launcher-visual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  launcher-visual:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Download final signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARE='XHFFgV5QhLZv'
+          EXPECTED='a2527e4437acab06c64321ff1713fa0a59a3ed340fa00026bd92a8a36b8cc870'
+          LIST="$(curl -fsSL "https://api.firestorage.ai/prod/file/shares/$SHARE/files?maxResults=1000")"
+          FILE_ID="$(python -c 'import json,sys; print(json.load(sys.stdin)["files"][0]["fileId"])' <<<"$LIST")"
+          URL="$(curl -fsSL -X POST "https://api.firestorage.ai/prod/file/shares/$SHARE/files/$FILE_ID/download" | python -c 'import json,sys; print(json.load(sys.stdin)["downloadUrl"])')"
+          curl -fsSL "$URL" -o "$GITHUB_WORKSPACE/final.apk"
+          test "$(sha256sum "$GITHUB_WORKSPACE/final.apk" | awk '{print $1}')" = "$EXPECTED"
+
+      - name: Prepare launcher visual script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/launcher-visual.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/final.apk"
+          PKG='com.fush.market.supplier'
+          LABEL='عندك للمورد'
+          adb uninstall "$PKG" >/dev/null 2>&1 || true
+          adb install "$APK" > "$GITHUB_WORKSPACE/launcher-install.txt"
+          grep -q Success "$GITHUB_WORKSPACE/launcher-install.txt"
+          adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" > "$GITHUB_WORKSPACE/launcher-resolve.txt"
+          grep -q "$PKG/.MainActivity" "$GITHUB_WORKSPACE/launcher-resolve.txt"
+          adb shell am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
+          sleep 2
+          adb shell input swipe 540 1750 540 300 700 || true
+          sleep 3
+          FOUND=0
+          : > "$GITHUB_WORKSPACE/launcher-ui-all.txt"
+          for i in 0 1 2 3 4 5 6 7 8 9; do
+            adb shell uiautomator dump /sdcard/launcher.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/launcher.xml "$GITHUB_WORKSPACE/launcher-$i.xml" >/dev/null 2>&1 || true
+            if test -f "$GITHUB_WORKSPACE/launcher-$i.xml"; then
+              cat "$GITHUB_WORKSPACE/launcher-$i.xml" >> "$GITHUB_WORKSPACE/launcher-ui-all.txt"
+              if grep -q "$LABEL" "$GITHUB_WORKSPACE/launcher-$i.xml"; then
+                adb exec-out screencap -p > "$GITHUB_WORKSPACE/launcher-icon-visible.png"
+                echo "$i" > "$GITHUB_WORKSPACE/launcher-found-page.txt"
+                FOUND=1
+                break
+              fi
+            fi
+            adb shell input swipe 540 1550 540 450 500 || true
+            sleep 2
+          done
+          if [ "$FOUND" -ne 1 ]; then
+            echo "Launcher label not found visually; collecting fallback installed-resource evidence."
+            adb shell dumpsys package "$PKG" > "$GITHUB_WORKSPACE/launcher-package-dump.txt"
+            adb exec-out screencap -p > "$GITHUB_WORKSPACE/launcher-fallback-screen.png" || true
+            exit 2
+          fi
+          echo LAUNCHER_VISUAL_PASS > "$GITHUB_WORKSPACE/launcher-result.txt"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/launcher-visual.sh"
+
+      - name: Launcher visual API 29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/launcher-visual.sh"
+
+      - name: Package launcher evidence
+        shell: bash
+        if: always()
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/launcher-evidence"
+          mkdir -p "$D"
+          for f in launcher-install.txt launcher-resolve.txt launcher-ui-all.txt launcher-icon-visible.png launcher-found-page.txt launcher-result.txt launcher-package-dump.txt launcher-fallback-screen.png; do
+            test -f "$GITHUB_WORKSPACE/$f" && cp "$GITHUB_WORKSPACE/$f" "$D/$f" || true
+          done
+          (cd "$D" && sha256sum * > SHA256SUMS.txt || true)
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v0.1.1-LAUNCHER-VISUAL-EVIDENCE
+          path: launcher-evidence/
+          if-no-files-found: error
+          retention-days: 7
