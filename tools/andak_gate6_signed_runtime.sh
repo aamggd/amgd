@@ -78,7 +78,7 @@ assert_text_scroll 'حالة المتجر' sync-queue-item
 # Attempt sync: item must remain safe locally and become blocked, not falsely synced.
 tap_text_scroll 'محاولة المزامنة'
 assert_text_scroll 'محجوبة — الخادم غير مهيأ' sync-blocked
-assert_text_scroll 'العمليات محفوظة محليًا ولن تُفقد' sync-notice
+assert_text_scroll 'الآن — الخادم المركزي غير مهيأ' sync-last-attempt
 
 # Relaunch and verify Sync Queue persistence.
 launch_app
