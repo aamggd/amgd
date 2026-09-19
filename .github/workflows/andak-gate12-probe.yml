@@ -62,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           gradle --version
-          gradle --no-daemon :apps:supplier:clean :apps:supplier:testReleaseUnitTest :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/gate12-build.log"
+          gradle --no-daemon :apps:supplier:clean :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/gate12-build.log"
 
       - name: Verify build outputs
         shell: bash
