@@ -1617,27 +1617,69 @@ fun CustomerApp() {
                 if (!AccountSyncGateway.isConfigured() || accountSyncBusy) return@sync
                 accountSyncBusy = true
                 accountSyncMessage = null
+
                 val localAddresses = savedAddresses.toList()
                 val localPreferences = customerPreferences
+                val localCart = cart.toList()
+                val localFavorites = favoriteProductIds.toList()
+                val hasMeaningfulLocalData =
+                    localAddresses.isNotEmpty() || localCart.isNotEmpty() || localFavorites.isNotEmpty()
+
                 appScope.launch {
-                    AccountSyncGateway.pushAccount(session, localAddresses, localPreferences)
-                        .onSuccess {
-                            AccountSyncGateway.fetchSnapshot(session)
-                                .onSuccess { snapshot ->
-                                    AddressStore.replaceAll(context, snapshot.addresses)
-                                    SupportPreferencesStore.setOrderUpdates(context, snapshot.preferences.orderUpdates)
-                                    SupportPreferencesStore.setOffers(context, snapshot.preferences.offers)
-                                    snapshot.orders.forEach { OrderReceiptStore.upsert(context, it) }
-                                    accountSyncMessage = "تمت مزامنة الحساب بنجاح"
+                    AccountSyncGateway.fetchSnapshot(session)
+                        .onSuccess { cloud ->
+                            val mergedAddresses = linkedMapOf<String, SavedAddress>()
+                            cloud.addresses.forEach { mergedAddresses[it.id] = it }
+                            localAddresses.forEach { mergedAddresses[it.id] = it }
+
+                            val mergedCartByVariant = linkedMapOf<String, CartLine>()
+                            (cloud.cart + localCart).forEach { line ->
+                                val current = mergedCartByVariant[line.variantId]
+                                if (current == null || line.quantity > current.quantity) {
+                                    mergedCartByVariant[line.variantId] = line
                                 }
-                                .onFailure { error ->
-                                    accountSyncMessage = "تم رفع البيانات، لكن تعذر جلب آخر نسخة: " + (error.message ?: "خطأ")
-                                }
+                            }
+
+                            val mergedFavorites = (cloud.favorites + localFavorites).distinct()
+                            val mergedPreferences =
+                                if (hasMeaningfulLocalData) localPreferences else cloud.preferences
+
+                            AccountSyncGateway.pushAccount(
+                                session = session,
+                                addresses = mergedAddresses.values.toList(),
+                                preferences = mergedPreferences,
+                                cart = mergedCartByVariant.values.toList(),
+                                favorites = mergedFavorites
+                            ).onSuccess {
+                                val mergedCart = mergedCartByVariant.values.toList()
+                                val mergedAddressList = mergedAddresses.values.toList()
+
+                                AddressStore.replaceAll(context, mergedAddressList)
+                                SupportPreferencesStore.setOrderUpdates(context, mergedPreferences.orderUpdates)
+                                SupportPreferencesStore.setOffers(context, mergedPreferences.offers)
+                                LocalCommerceStore.saveCart(context, mergedCart)
+                                LocalCommerceStore.saveFavorites(context, mergedFavorites)
+
+                                cart.clear()
+                                cart.addAll(mergedCart)
+                                favoriteProductIds.clear()
+                                favoriteProductIds.addAll(mergedFavorites)
+                                cloud.orders.forEach { OrderReceiptStore.upsert(context, it) }
+                                accountSyncMessage = "تمت مزامنة السلة والمفضلة والحساب بين الأجهزة"
+                            }.onFailure { error ->
+                                accountSyncMessage = "تعذر رفع البيانات المدمجة: " + (error.message ?: "خطأ")
+                            }
                         }
                         .onFailure { error ->
-                            accountSyncMessage = "تعذرت مزامنة الحساب: " + (error.message ?: "خطأ")
+                            accountSyncMessage = "تعذر جلب بيانات الحساب: " + (error.message ?: "خطأ")
                         }
                     accountSyncBusy = false
+                }
+            }
+
+            LaunchedEffect(authSession?.userId, localCommerceLoaded) {
+                if (authSession != null && localCommerceLoaded && AccountSyncGateway.isConfigured()) {
+                    syncAuthenticatedAccount()
                 }
             }
 
