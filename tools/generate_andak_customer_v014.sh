@@ -531,7 +531,24 @@ fun CustomerApp() {
             var selectedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
             var searchQuery by rememberSaveable { mutableStateOf("") }
             val cart = remember { mutableStateListOf<CartLine>() }
+            val catalogCategories = remember { mutableStateListOf<CatalogCategory>().apply { addAll(CatalogSeed.categories) } }
+            val catalogProducts = remember { mutableStateListOf<CatalogProduct>().apply { addAll(CatalogSeed.products) } }
+            var catalogSource by rememberSaveable { mutableStateOf("كتالوج محلي تجريبي") }
             var lastDraftRef by rememberSaveable { mutableStateOf<String?>(null) }
+
+            LaunchedEffect(Unit) {
+                if (BackendCatalogGateway.isConfigured()) {
+                    BackendCatalogGateway.fetchCatalog().getOrNull()?.let { snapshot ->
+                        if (snapshot.categories.isNotEmpty() && snapshot.products.isNotEmpty()) {
+                            catalogCategories.clear()
+                            catalogCategories.addAll(snapshot.categories)
+                            catalogProducts.clear()
+                            catalogProducts.addAll(snapshot.products)
+                            catalogSource = "متصل بالكتالوج المركزي"
+                        }
+                    }
+                }
+            }
 
             val openProduct: (CatalogProduct) -> Unit = { product ->
                 selectedProductId = product.id
@@ -550,6 +567,9 @@ fun CustomerApp() {
                     when (screen) {
                         CustomerScreen.HOME -> HomeScreen(
                             cartCount = cart.sumOf { it.quantity },
+                            categories = catalogCategories,
+                            products = catalogProducts,
+                            catalogSource = catalogSource,
                             searchQuery = searchQuery,
                             onSearchChange = { searchQuery = it },
                             onSearchSubmit = { screen = CustomerScreen.CATALOG },
@@ -562,6 +582,8 @@ fun CustomerApp() {
                             onCart = { screen = CustomerScreen.CART }
                         )
                         CustomerScreen.CATALOG -> CatalogScreen(
+                            categories = catalogCategories,
+                            products = catalogProducts,
                             initialCategoryId = selectedCategoryId,
                             initialQuery = searchQuery,
                             onBackHome = {
@@ -572,7 +594,7 @@ fun CustomerApp() {
                             onProduct = openProduct
                         )
                         CustomerScreen.PRODUCT -> {
-                            val product = CatalogSeed.products.firstOrNull { it.id == selectedProductId }
+                            val product = catalogProducts.firstOrNull { it.id == selectedProductId }
                             if (product == null) {
                                 screen = CustomerScreen.HOME
                             } else {
@@ -594,6 +616,7 @@ fun CustomerApp() {
                             }
                         }
                         CustomerScreen.CART -> CartScreen(
+                            products = catalogProducts,
                             cart = cart,
                             onContinueShopping = { screen = CustomerScreen.CATALOG },
                             onQuantity = { line, delta ->
@@ -606,6 +629,7 @@ fun CustomerApp() {
                             onCheckout = { screen = CustomerScreen.CHECKOUT }
                         )
                         CustomerScreen.CHECKOUT -> CheckoutScreen(
+                            products = catalogProducts,
                             cart = cart,
                             onBack = { screen = CustomerScreen.CART },
                             onSaveDraft = { ref ->
@@ -639,6 +663,9 @@ fun CustomerApp() {
 @Composable
 private fun HomeScreen(
     cartCount: Int,
+    categories: List<CatalogCategory>,
+    products: List<CatalogProduct>,
+    catalogSource: String,
     searchQuery: String,
     onSearchChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
@@ -652,6 +679,11 @@ private fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { CustomerHeader(cartCount = cartCount, onCart = onCart) }
+        item {
+            Surface(color = if (catalogSource.startsWith("متصل")) AndakGreen.copy(alpha = 0.10f) else Color(0xFFFFF4D6), shape = RoundedCornerShape(12.dp)) {
+                Text(catalogSource, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = if (catalogSource.startsWith("متصل")) AndakGreen else Color(0xFF7A5200), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+        }
         item {
             SearchBox(
                 value = searchQuery,
@@ -672,7 +704,7 @@ private fun HomeScreen(
             SectionTitle("الأقسام", "عرض الكل") { onCategory("") }
             Spacer(Modifier.height(10.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(CatalogSeed.categories) { category ->
+                items(categories) { category ->
                     CategoryCard(category = category) { onCategory(category.id) }
                 }
             }
@@ -680,7 +712,7 @@ private fun HomeScreen(
         item {
             SectionTitle("منتجات مختارة", "تصفح الكتالوج") { onSearchSubmit() }
             Spacer(Modifier.height(10.dp))
-            ProductGridStatic(CatalogSeed.products.filter { it.featured }.take(6), onProduct)
+            ProductGridStatic(products.filter { it.featured }.take(6), onProduct)
         }
         item {
             Surface(color = Color.White, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
@@ -839,6 +871,8 @@ private fun ProductCard(
 
 @Composable
 private fun CatalogScreen(
+    categories: List<CatalogCategory>,
+    products: List<CatalogProduct>,
     initialCategoryId: String?,
     initialQuery: String,
     onBackHome: () -> Unit,
@@ -850,7 +884,7 @@ private fun CatalogScreen(
     var visibleCount by rememberSaveable { mutableIntStateOf(6) }
 
     val filtered = remember(selectedCategory, query, sort) {
-        val base = CatalogSeed.products.filter { product ->
+        val base = products.filter { product ->
             (selectedCategory.isBlank() || product.categoryId == selectedCategory) &&
                 (query.isBlank() || product.name.contains(query, true) || product.brand.contains(query, true))
         }
@@ -881,7 +915,7 @@ private fun CatalogScreen(
                     visibleCount = 6
                 }
             }
-            items(CatalogSeed.categories) { category ->
+            items(categories) { category ->
                 FilterButton(category.name, selectedCategory == category.id) {
                     selectedCategory = category.id
                     visibleCount = 6
@@ -1046,13 +1080,14 @@ private fun ProductScreen(
 
 @Composable
 private fun CartScreen(
+    products: List<CatalogProduct>,
     cart: List<CartLine>,
     onContinueShopping: () -> Unit,
     onQuantity: (CartLine, Int) -> Unit,
     onCheckout: () -> Unit
 ) {
     val expanded = cart.mapNotNull { line ->
-        val product = CatalogSeed.products.firstOrNull { it.id == line.productId } ?: return@mapNotNull null
+        val product = products.firstOrNull { it.id == line.productId } ?: return@mapNotNull null
         val variant = product.variants.firstOrNull { it.id == line.variantId } ?: return@mapNotNull null
         Triple(line, product, variant)
     }
@@ -1148,6 +1183,7 @@ private fun CartScreen(
 
 @Composable
 private fun CheckoutScreen(
+    products: List<CatalogProduct>,
     cart: List<CartLine>,
     onBack: () -> Unit,
     onSaveDraft: (String) -> Unit
@@ -1160,7 +1196,7 @@ private fun CheckoutScreen(
     var note by rememberSaveable { mutableStateOf("") }
 
     val expanded = cart.mapNotNull { line ->
-        val product = CatalogSeed.products.firstOrNull { it.id == line.productId } ?: return@mapNotNull null
+        val product = products.firstOrNull { it.id == line.productId } ?: return@mapNotNull null
         val variant = product.variants.firstOrNull { it.id == line.variantId } ?: return@mapNotNull null
         Triple(line, product, variant)
     }
