@@ -1459,6 +1459,143 @@ private fun availabilityColor(value: Availability): Color = when (value) {
 }
 EOF
 
+
+cat > "$ROOT/backend/supabase/migrations/001_andak_customer_catalog_contract.sql" <<'EOF'
+create table if not exists public.andak_categories (
+    id uuid primary key default gen_random_uuid(),
+    name_ar text not null,
+    emoji text,
+    sort_order integer not null default 0,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.andak_brands (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.andak_products (
+    id uuid primary key default gen_random_uuid(),
+    category_id uuid not null references public.andak_categories(id),
+    brand_id uuid references public.andak_brands(id),
+    name_ar text not null,
+    description_ar text,
+    emoji text,
+    featured boolean not null default false,
+    sort_order integer not null default 0,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.andak_product_variants (
+    id uuid primary key default gen_random_uuid(),
+    product_id uuid not null references public.andak_products(id) on delete cascade,
+    label_ar text not null,
+    unit_name_ar text not null,
+    barcode text,
+    retail_price_yer bigint not null check (retail_price_yer >= 0),
+    sort_order integer not null default 0,
+    is_active boolean not null default true,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists public.andak_supplier_inventory (
+    id uuid primary key default gen_random_uuid(),
+    supplier_id uuid not null,
+    variant_id uuid not null references public.andak_product_variants(id) on delete cascade,
+    available_qty numeric(18,3) not null default 0 check (available_qty >= 0),
+    supplier_cost_yer bigint not null check (supplier_cost_yer >= 0),
+    updated_at timestamptz not null default now(),
+    unique (supplier_id, variant_id)
+);
+
+alter table public.andak_categories enable row level security;
+alter table public.andak_brands enable row level security;
+alter table public.andak_products enable row level security;
+alter table public.andak_product_variants enable row level security;
+alter table public.andak_supplier_inventory enable row level security;
+
+create or replace view public.andak_customer_catalog_v1
+with (security_invoker = true)
+as
+select
+    c.id::text as category_id,
+    c.name_ar as category_name,
+    coalesce(c.emoji, '🛍️') as category_emoji,
+    c.sort_order as category_sort,
+    p.id::text as product_id,
+    coalesce(b.name, '') as brand_name,
+    p.name_ar as product_name,
+    coalesce(p.emoji, '📦') as product_emoji,
+    coalesce(p.description_ar, '') as description,
+    p.featured,
+    p.sort_order as product_sort,
+    v.id::text as variant_id,
+    v.label_ar as variant_label,
+    v.unit_name_ar as unit_name,
+    v.retail_price_yer as price_yer,
+    v.sort_order as variant_sort,
+    case
+        when coalesce(sum(si.available_qty), 0) <= 0 then 'OUT'
+        when coalesce(sum(si.available_qty), 0) < 5 then 'LIMITED'
+        else 'AVAILABLE'
+    end as availability
+from public.andak_categories c
+join public.andak_products p on p.category_id = c.id and p.is_active = true
+left join public.andak_brands b on b.id = p.brand_id and b.is_active = true
+join public.andak_product_variants v on v.product_id = p.id and v.is_active = true
+left join public.andak_supplier_inventory si on si.variant_id = v.id
+where c.is_active = true
+group by
+    c.id, c.name_ar, c.emoji, c.sort_order,
+    p.id, b.name, p.name_ar, p.emoji, p.description_ar, p.featured, p.sort_order,
+    v.id, v.label_ar, v.unit_name_ar, v.retail_price_yer, v.sort_order;
+
+grant select on public.andak_customer_catalog_v1 to anon, authenticated;
+
+drop policy if exists andak_categories_customer_read on public.andak_categories;
+create policy andak_categories_customer_read on public.andak_categories
+for select to anon, authenticated using (is_active = true);
+
+drop policy if exists andak_brands_customer_read on public.andak_brands;
+create policy andak_brands_customer_read on public.andak_brands
+for select to anon, authenticated using (is_active = true);
+
+drop policy if exists andak_products_customer_read on public.andak_products;
+create policy andak_products_customer_read on public.andak_products
+for select to anon, authenticated using (is_active = true);
+
+drop policy if exists andak_variants_customer_read on public.andak_product_variants;
+create policy andak_variants_customer_read on public.andak_product_variants
+for select to anon, authenticated using (is_active = true);
+
+-- No direct customer SELECT policy on supplier inventory.
+-- The public view exposes aggregate availability only and omits supplier IDs/cost.
+EOF
+
+cat > "$ROOT/backend/README.md" <<'EOF'
+# ANDAK backend handoff
+
+The Android customer app now contains a Supabase catalog gateway.
+
+This package does not automatically modify the currently connected FUSH-ERP production database.
+That database already contains ERP production tables, so the ANDAK marketplace schema should be
+applied only to a dedicated ANDAK Supabase project or an explicitly approved development branch.
+
+Android Gradle properties:
+- andakSupabaseUrl
+- andakSupabaseKey
+
+Only a publishable or anon key may be embedded in Android. Never embed a service-role key.
+
+When configured, the app reads public.andak_customer_catalog_v1.
+If the endpoint is unavailable or not configured, the local demo catalog remains active and
+the app labels the source as local.
+EOF
+
 cat > "$ROOT/README.md" <<'EOF'
 # ANDAK Customer v0.1.4 — Checkout Draft Step
 
@@ -1476,5 +1613,5 @@ Implemented:
 - Local order-draft confirmation screen; no false server submission.
 - Supplier identity and supplier cost are not exposed to the customer.
 
-This build still uses local demo catalog data. Production Supabase catalog/RLS and atomic server-side order creation are not connected yet.
+This build contains a Supabase customer-catalog gateway and a backend migration contract. Remote loading is enabled only when a dedicated ANDAK Supabase URL and publishable key are configured; otherwise the app clearly uses the local demo catalog. Atomic server-side order creation is still intentionally not enabled.
 EOF
