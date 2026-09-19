@@ -61,7 +61,10 @@ jobs:
           grep -q 'versionName = "0.1.4"' "$SRC/apps/customer/build.gradle.kts"
           ! grep -R --line-number -E 'supplier_id|supplier cost|تكلفة المورد' "$SRC/apps/customer/src/main" || exit 1
           grep -q 'CatalogScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
-          grep -q 'Backend CatalogScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
+          grep -q 'CheckoutScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
+          grep -q 'BackendCatalogGateway' "$SRC/apps/customer/src/main/java/com/fush/market/customer/BackendCatalog.kt"
+          grep -q 'andak_customer_catalog_v1' "$SRC/backend/supabase/migrations/001_andak_customer_catalog_contract.sql"
+          grep -q 'uses-permission android:name="android.permission.INTERNET"' "$SRC/apps/customer/src/main/AndroidManifest.xml"
           grep -q 'ProductScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'CartScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           echo STATIC_GATE_PASS
