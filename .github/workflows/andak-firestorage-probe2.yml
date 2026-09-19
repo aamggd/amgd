@@ -1,0 +1,20 @@
+name: ANDAK Firestorage API Probe 2
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect download route
+        shell: bash
+        run: |
+          set -euo pipefail
+          JS='https://firestorage.ai/_next/static/chunks/app/(files)/ja/f/page-4d19ae0a4ce39d79.js'
+          curl -fsSL "$JS" -o /tmp/page.js
+          echo "SIZE=$(wc -c </tmp/page.js)"
+          tr ';' '\n' < /tmp/page.js | grep -Ei 'download|api/|shareId|publicId|prepare|files/' | head -200 || true
