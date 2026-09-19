@@ -96,19 +96,42 @@ jobs:
           tap_text 'المنتجات'
           dump_ui products
           grep -q 'إضافة المنتجات ومتابعة موافقة الإدارة والأسعار' "$E/products.xml"
-          grep -q 'بانتظار موافقة الإدارة' "$E/products.xml"
-          grep -q 'تعديل سعر قيد المراجعة' "$E/products.xml"
+          grep -q '+ إضافة منتج جديد' "$E/products.xml"
+          grep -q 'مراجعة' "$E/products.xml"
+          grep -q 'تعديل سعر' "$E/products.xml"
 
+          tap_text 'مراجعة'
+          dump_ui pending-approval
+          grep -q 'مياه معدنية كرتون' "$E/pending-approval.xml"
+          grep -q 'بانتظار موافقة الإدارة' "$E/pending-approval.xml"
+
+          tap_text 'تعديل سعر'
+          dump_ui pending-price
+          grep -q 'عسل سدر 500 جم' "$E/pending-price.xml"
+          grep -q 'تعديل سعر قيد المراجعة' "$E/pending-price.xml"
+
+          tap_text 'الكل'
           tap_text '+ إضافة منتج جديد'
           dump_ui add-product
           grep -q 'بيانات المورد التي سترسل للإدارة للمراجعة' "$E/add-product.xml"
-          grep -q 'الكمية المخصصة لمنصة عندك' "$E/add-product.xml"
-          tap_text 'إلغاء'
+          adb shell input swipe 540 1500 540 450 450
+          sleep 1
+          dump_ui add-product-scroll
+          grep -q 'الكمية المخصصة لمنصة عندك' "$E/add-product-scroll.xml"
+          adb shell input keyevent 4
+          sleep 1
 
+          tap_text 'معتمد'
+          adb shell input swipe 540 1500 540 650 450
+          sleep 1
+          dump_ui approved-scrolled
+          grep -q 'طلب تعديل السعر' "$E/approved-scrolled.xml"
           tap_text 'طلب تعديل السعر'
           dump_ui price-update
           grep -q 'سيبقى السعر الحالي ظاهرًا للعملاء حتى اعتماد السعر الجديد من الإدارة' "$E/price-update.xml"
-          tap_text 'إلغاء'
+          grep -q 'السعر الجديد ر.ي' "$E/price-update.xml"
+          adb shell input keyevent 4
+          sleep 1
 
           adb logcat -d -b crash > "$E/crash.log" || true
           adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime|ResourceResolutionException|Caused by|$P" > "$E/relevant.log" || true
