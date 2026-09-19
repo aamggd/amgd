@@ -174,8 +174,8 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        buildConfigField("String", "ANDAK_SUPABASE_URL", "\"\${andakSupabaseUrl}\"")
-        buildConfigField("String", "ANDAK_SUPABASE_KEY", "\"\${andakSupabaseKey}\"")
+        buildConfigField("String", "ANDAK_SUPABASE_URL", "\"${andakSupabaseUrl}\"")
+        buildConfigField("String", "ANDAK_SUPABASE_KEY", "\"${andakSupabaseKey}\"")
     }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
