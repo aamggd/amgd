@@ -1850,6 +1850,7 @@ fun CustomerApp() {
                         )
                         CustomerScreen.SUPPORT -> SupportScreen(
                             draft = supportDraft,
+                            authSession = authSession,
                             onDraftChange = { supportDraft = it },
                             onSaveDraft = {
                                 val snapshot = supportDraft
@@ -3471,12 +3472,16 @@ private fun NotificationsScreen(
 @Composable
 private fun SupportScreen(
     draft: String,
+    authSession: AuthSession?,
     onDraftChange: (String) -> Unit,
     onSaveDraft: () -> Unit,
     onBack: () -> Unit
 ) {
     var category by rememberSaveable { mutableStateOf("الطلبات") }
     var savedNotice by rememberSaveable { mutableStateOf(false) }
+    var sending by rememberSaveable { mutableStateOf(false) }
+    var ticketNotice by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -3535,11 +3540,44 @@ private fun SupportScreen(
                     ) {
                         Text("حفظ المسودة")
                     }
+                    if (authSession != null && AccountSyncGateway.isConfigured()) {
+                        OutlinedButton(
+                            onClick = {
+                                sending = true
+                                ticketNotice = null
+                                scope.launch {
+                                    AccountSyncGateway.createSupportTicket(authSession, category, draft)
+                                        .onSuccess { ticket ->
+                                            ticketNotice = "تم إرسال الطلب للدعم: " + ticket.ticketNumber
+                                            savedNotice = false
+                                        }
+                                        .onFailure { error ->
+                                            ticketNotice = "تعذر الإرسال: " + (error.message ?: "خطأ")
+                                        }
+                                    sending = false
+                                }
+                            },
+                            enabled = draft.trim().length >= 10 && !sending,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (sending) "جارٍ الإرسال…" else "إرسال للدعم")
+                        }
+                    }
                     if (savedNotice) {
                         Text("تم حفظ المسودة محليًا على الجهاز.", color = AndakGreen, fontSize = 12.sp)
                     }
+                    if (!ticketNotice.isNullOrBlank()) {
+                        Text(
+                            ticketNotice.orEmpty(),
+                            color = if (ticketNotice.orEmpty().startsWith("تم")) AndakGreen else Color(0xFFB3261E),
+                            fontSize = 12.sp
+                        )
+                    }
                     Text(
-                        "لم يتم إرسال الرسالة إلى الخادم في هذا الإصدار. سنفعّل الإرسال عند ربط Backend المخصص للدعم.",
+                        if (authSession != null && AccountSyncGateway.isConfigured())
+                            "يمكن إرسال الرسالة الآن إلى Backend الحساب باستخدام جلسة العميل."
+                        else
+                            "سجّل الدخول واربط Backend الرسمي لإرسال رسالة الدعم؛ ويمكنك حفظها محليًا الآن.",
                         color = AndakMuted,
                         fontSize = 11.sp
                     )
