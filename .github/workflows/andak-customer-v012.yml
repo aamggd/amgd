@@ -42,43 +42,15 @@ jobs:
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
           "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Download source package
+      - name: Generate source package
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import html, json, re, urllib.request, sys
-          share = "https://firestorage.ai/ja/f/tLIvpp_gfOV-"
-          headers = {"User-Agent":"Mozilla/5.0"}
-          page = urllib.request.urlopen(urllib.request.Request(share, headers=headers), timeout=30).read().decode("utf-8","ignore")
-          open("/tmp/firestorage-page.html","w").write(page)
-          text = html.unescape(page).replace("\\u0026","&").replace("\\/","/")
-          urls = re.findall(r'https?://[^"\'<> ]+', text)
-          # Prefer obvious raw/download URLs first.
-          ranked = sorted(set(urls), key=lambda u: (
-              0 if "download" in u.lower() else 1,
-              0 if ".zip" in u.lower() else 1,
-              len(u)
-          ))
-          for u in ranked:
-              try:
-                  req = urllib.request.Request(u, headers={**headers, "Referer": share})
-                  data = urllib.request.urlopen(req, timeout=30).read()
-                  if data.startswith(b"PK\x03\x04"):
-                      open("/tmp/source.zip","wb").write(data)
-                      print("SOURCE_ZIP_BYTES", len(data))
-                      sys.exit(0)
-              except Exception:
-                  pass
-          print(page[:5000])
-          raise SystemExit("Could not resolve source ZIP from Firestorage share")
-          PY
-          rm -rf "$GITHUB_WORKSPACE/srcpkg"
-          mkdir -p "$GITHUB_WORKSPACE/srcpkg"
-          unzip -q /tmp/source.zip -d "$GITHUB_WORKSPACE/srcpkg"
-          SRC="$(find "$GITHUB_WORKSPACE/srcpkg" -maxdepth 2 -type d -name 'ANDAK-Customer-v0.1.2-Catalog-Source' | head -1)"
-          test -n "$SRC"
+          SRC="$GITHUB_WORKSPACE/andak-customer-v012"
+          bash "$GITHUB_WORKSPACE/tools/generate_andak_customer_v012.sh" "$SRC"
           echo "SRC=$SRC" >> "$GITHUB_ENV"
+          cd "$GITHUB_WORKSPACE"
+          zip -qr /tmp/source.zip andak-customer-v012
 
       - name: Static Gate checks
         shell: bash
