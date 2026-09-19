@@ -400,7 +400,10 @@ object BackendCatalogGateway {
             connection.connectTimeout = 8000
             connection.readTimeout = 10000
             connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
-            connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
+            connection.setRequestProperty(
+            "Authorization",
+            "Bearer " + (bearer?.takeIf { it.isNotBlank() } ?: BuildConfig.ANDAK_SUPABASE_KEY)
+        )
             connection.setRequestProperty("Accept", "application/json")
             try {
                 val code = connection.responseCode
@@ -549,6 +552,7 @@ object BackendOrderGateway {
     suspend fun createCodOrder(
         customer: OrderCustomerInput,
         lines: List<OrderLineInput>,
+        accessToken: String? = null,
         requestId: String = UUID.randomUUID().toString()
     ): Result<CreateOrderResult> = withContext(Dispatchers.IO) {
         runCatching {
@@ -574,7 +578,7 @@ object BackendOrderGateway {
                 .put("p_note", customer.note.trim())
                 .put("p_lines", lineArray)
 
-            val body = postRpc("andak_create_order_v2", payload)
+            val body = postRpc("andak_create_order_v3", payload, accessToken)
             val result = JSONObject(body)
             CreateOrderResult(
                 orderId = result.getString("order_id"),
@@ -631,7 +635,7 @@ object BackendOrderGateway {
             }
         }
 
-    private fun postRpc(functionName: String, payload: JSONObject): String {
+    private fun postRpc(functionName: String, payload: JSONObject, bearer: String? = null): String {
         val endpoint = BuildConfig.ANDAK_SUPABASE_URL.trimEnd('/') +
             "/rest/v1/rpc/" + functionName
 
@@ -1485,6 +1489,7 @@ fun CustomerApp() {
                             products = catalogProducts,
                             cart = cart,
                             savedAddresses = savedAddresses,
+                            authSession = authSession,
                             onBack = { screen = CustomerScreen.CART },
                             onCompleted = { receipt ->
                                 lastReceipt = receipt
@@ -2206,6 +2211,7 @@ private fun CheckoutScreen(
     products: List<CatalogProduct>,
     cart: List<CartLine>,
     savedAddresses: List<SavedAddress>,
+    authSession: AuthSession?,
     onBack: () -> Unit,
     onCompleted: (OrderReceipt) -> Unit
 ) {
@@ -2426,7 +2432,8 @@ private fun CheckoutScreen(
                                     addressDetails = addressDetails,
                                     note = note
                                 ),
-                                lines = orderLines
+                                lines = orderLines,
+                                accessToken = authSession?.accessToken
                             )
                             submitting = false
                             result.onSuccess { created ->
@@ -3881,6 +3888,108 @@ to anon, authenticated;
 
 -- Tracking uses a high-entropy UUID possession token.
 -- No supplier identity, supplier cost, allocation, or internal ledger data is returned.
+EOF
+
+cat > "$ROOT/backend/supabase/migrations/004_andak_customer_auth_profile.sql" <<'EOF'
+create table if not exists public.andak_customer_profiles (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    display_name text,
+    phone text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table public.andak_customer_profiles enable row level security;
+
+drop policy if exists andak_customer_profile_select_own on public.andak_customer_profiles;
+create policy andak_customer_profile_select_own
+on public.andak_customer_profiles
+for select to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists andak_customer_profile_insert_own on public.andak_customer_profiles;
+create policy andak_customer_profile_insert_own
+on public.andak_customer_profiles
+for insert to authenticated
+with check (user_id = auth.uid());
+
+drop policy if exists andak_customer_profile_update_own on public.andak_customer_profiles;
+create policy andak_customer_profile_update_own
+on public.andak_customer_profiles
+for update to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+alter table public.andak_orders
+    add column if not exists customer_user_id uuid references auth.users(id);
+
+create index if not exists ix_andak_orders_customer_user
+    on public.andak_orders(customer_user_id, created_at desc);
+
+create or replace function public.andak_create_order_v3(
+    p_request_id uuid,
+    p_customer_name text,
+    p_phone text,
+    p_city text,
+    p_neighborhood text,
+    p_address_details text,
+    p_note text,
+    p_lines jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_result jsonb;
+    v_user_id uuid;
+begin
+    v_user_id := auth.uid();
+
+    v_result := public.andak_create_order_v2(
+        p_request_id,
+        p_customer_name,
+        p_phone,
+        p_city,
+        p_neighborhood,
+        p_address_details,
+        p_note,
+        p_lines
+    );
+
+    if v_user_id is not null then
+        update public.andak_orders
+        set customer_user_id = v_user_id
+        where id = (v_result ->> 'order_id')::uuid
+          and (customer_user_id is null or customer_user_id = v_user_id);
+
+        insert into public.andak_customer_profiles(user_id, display_name, phone)
+        values (v_user_id, trim(p_customer_name), trim(p_phone))
+        on conflict (user_id) do update
+        set display_name = excluded.display_name,
+            phone = excluded.phone,
+            updated_at = now();
+    end if;
+
+    return v_result || jsonb_build_object(
+        'customer_user_id', v_user_id
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_create_order_v3(uuid,text,text,text,text,text,text,jsonb) from public;
+grant execute on function public.andak_create_order_v3(uuid,text,text,text,text,text,text,jsonb)
+to anon, authenticated;
+
+-- Authenticated customers can read only their own master orders.
+drop policy if exists andak_orders_customer_read_own on public.andak_orders;
+create policy andak_orders_customer_read_own
+on public.andak_orders
+for select to authenticated
+using (customer_user_id = auth.uid());
+
+-- Direct writes remain blocked. Order creation still goes through the server RPC.
 EOF
 
 cat > "$ROOT/backend/README.md" <<'EOF'
