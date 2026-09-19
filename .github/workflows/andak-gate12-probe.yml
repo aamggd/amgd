@@ -1,0 +1,17 @@
+name: ANDAK Gate12 Firestorage Probe
+on:
+  push:
+    branches: [andak-supplier-gate12-ci-temp]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe share page
+        shell: bash
+        run: |
+          set -euxo pipefail
+          URL="https://firestorage.ai/ja/f/Et-PEzejPO30"
+          curl -L --fail --retry 3 -A "Mozilla/5.0" "$URL" -o /tmp/page.html
+          echo "bytes=$(wc -c < /tmp/page.html)"
+          grep -Eo 'href="[^"]+"|action="[^"]+"|https?://[^"< ]+' /tmp/page.html | head -200 || true
+          grep -iE 'download|andak_supplier_gate12_exact_ci|source.zip|LSZe3pCyrw3NrMLO|Et-PEzejPO30' /tmp/page.html | head -200 || true
