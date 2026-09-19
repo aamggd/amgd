@@ -16,8 +16,8 @@ jobs:
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="S3ODQCQUbm6i"
-          NAME="andak_supplier_gate12_exact_ci_r5.zip"
+          SHARE="CvNppFa2RmOo"
+          NAME="ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-Source.zip"
           curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
           FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
           test -n "$FILE_ID" && test "$FILE_ID" != "null"
@@ -73,8 +73,8 @@ jobs:
           test -f "$APK"
           test -f "$AAB"
           mkdir -p "$GITHUB_WORKSPACE/artifact/build-tools"
-          cp "$APK" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.0-GATE12-UNSIGNED.apk"
-          cp "$AAB" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.0-GATE12-UNSIGNED.aab"
+          cp "$APK" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-UNSIGNED.apk"
+          cp "$AAB" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-UNSIGNED.aab"
           cp "$GITHUB_WORKSPACE/gate12-build.log" "$GITHUB_WORKSPACE/artifact/BUILD-LOG.txt"
           "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" > "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt" || true
           sha256sum "$GITHUB_WORKSPACE/artifact/"*.apk "$GITHUB_WORKSPACE/artifact/"*.aab > "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
