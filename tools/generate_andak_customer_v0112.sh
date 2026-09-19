@@ -4263,6 +4263,313 @@ using (customer_user_id = auth.uid());
 -- Direct writes remain blocked. Order creation still goes through the server RPC.
 EOF
 
+cat > "$ROOT/backend/supabase/migrations/005_andak_customer_account_sync.sql" <<'EOF'
+create table if not exists public.andak_customer_addresses (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    client_id uuid not null,
+    label text not null,
+    full_name text not null,
+    phone text not null,
+    city text not null,
+    neighborhood text not null,
+    details text not null,
+    is_default boolean not null default false,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (user_id, client_id)
+);
+
+create table if not exists public.andak_customer_preferences (
+    user_id uuid primary key references auth.users(id) on delete cascade,
+    order_updates boolean not null default true,
+    offers boolean not null default false,
+    updated_at timestamptz not null default now()
+);
+
+create sequence if not exists public.andak_support_ticket_seq start 1;
+
+create table if not exists public.andak_support_tickets (
+    id uuid primary key default gen_random_uuid(),
+    ticket_number text not null unique,
+    user_id uuid not null references auth.users(id) on delete cascade,
+    category text not null,
+    message text not null,
+    status text not null default 'OPEN',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+alter table public.andak_customer_addresses enable row level security;
+alter table public.andak_customer_preferences enable row level security;
+alter table public.andak_support_tickets enable row level security;
+
+drop policy if exists andak_customer_addresses_own on public.andak_customer_addresses;
+create policy andak_customer_addresses_own
+on public.andak_customer_addresses
+for all to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists andak_customer_preferences_own on public.andak_customer_preferences;
+create policy andak_customer_preferences_own
+on public.andak_customer_preferences
+for all to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists andak_support_tickets_own on public.andak_support_tickets;
+create policy andak_support_tickets_own
+on public.andak_support_tickets
+for select to authenticated
+using (user_id = auth.uid());
+
+create or replace function public.andak_customer_sync_v1(
+    p_addresses jsonb,
+    p_order_updates boolean,
+    p_offers boolean
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_row jsonb;
+    v_client_id uuid;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    insert into public.andak_customer_preferences(user_id, order_updates, offers, updated_at)
+    values (
+        v_user_id,
+        coalesce(p_order_updates, true),
+        coalesce(p_offers, false),
+        now()
+    )
+    on conflict (user_id) do update
+    set order_updates = excluded.order_updates,
+        offers = excluded.offers,
+        updated_at = now();
+
+    if p_addresses is null or jsonb_typeof(p_addresses) <> 'array' then
+        p_addresses := '[]'::jsonb;
+    end if;
+
+    for v_row in select value from jsonb_array_elements(p_addresses)
+    loop
+        v_client_id := nullif(v_row ->> 'client_id', '')::uuid;
+        if v_client_id is null then
+            continue;
+        end if;
+
+        insert into public.andak_customer_addresses(
+            user_id, client_id, label, full_name, phone, city,
+            neighborhood, details, is_default, updated_at
+        )
+        values (
+            v_user_id,
+            v_client_id,
+            coalesce(nullif(trim(v_row ->> 'label'), ''), 'عنوان'),
+            coalesce(v_row ->> 'full_name', ''),
+            coalesce(v_row ->> 'phone', ''),
+            coalesce(v_row ->> 'city', ''),
+            coalesce(v_row ->> 'neighborhood', ''),
+            coalesce(v_row ->> 'details', ''),
+            coalesce((v_row ->> 'is_default')::boolean, false),
+            now()
+        )
+        on conflict (user_id, client_id) do update
+        set label = excluded.label,
+            full_name = excluded.full_name,
+            phone = excluded.phone,
+            city = excluded.city,
+            neighborhood = excluded.neighborhood,
+            details = excluded.details,
+            is_default = excluded.is_default,
+            updated_at = now();
+    end loop;
+
+    delete from public.andak_customer_addresses a
+    where a.user_id = v_user_id
+      and not exists (
+          select 1
+          from jsonb_array_elements(p_addresses) x
+          where nullif(x ->> 'client_id', '') is not null
+            and (x ->> 'client_id')::uuid = a.client_id
+      );
+
+    if exists (
+        select 1 from public.andak_customer_addresses
+        where user_id = v_user_id and is_default = true
+    ) then
+        update public.andak_customer_addresses a
+        set is_default = false,
+            updated_at = now()
+        where a.user_id = v_user_id
+          and a.is_default = true
+          and a.id <> (
+              select id
+              from public.andak_customer_addresses
+              where user_id = v_user_id and is_default = true
+              order by updated_at desc, id
+              limit 1
+          );
+    end if;
+
+    return jsonb_build_object(
+        'status', 'SYNCED',
+        'address_count', (
+            select count(*) from public.andak_customer_addresses where user_id = v_user_id
+        )
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_sync_v1(jsonb,boolean,boolean) from public;
+grant execute on function public.andak_customer_sync_v1(jsonb,boolean,boolean)
+to authenticated;
+
+create or replace function public.andak_customer_account_snapshot_v1()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_addresses jsonb;
+    v_preferences jsonb;
+    v_orders jsonb;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'id', a.id,
+                'client_id', a.client_id,
+                'label', a.label,
+                'full_name', a.full_name,
+                'phone', a.phone,
+                'city', a.city,
+                'neighborhood', a.neighborhood,
+                'details', a.details,
+                'is_default', a.is_default
+            )
+            order by a.is_default desc, a.updated_at desc
+        ),
+        '[]'::jsonb
+    )
+    into v_addresses
+    from public.andak_customer_addresses a
+    where a.user_id = v_user_id;
+
+    select jsonb_build_object(
+        'order_updates', coalesce(p.order_updates, true),
+        'offers', coalesce(p.offers, false)
+    )
+    into v_preferences
+    from public.andak_customer_preferences p
+    where p.user_id = v_user_id;
+
+    if v_preferences is null then
+        v_preferences := jsonb_build_object('order_updates', true, 'offers', false);
+    end if;
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'order_number', o.order_number,
+                'tracking_token', o.tracking_token,
+                'status', o.status,
+                'total_yer', o.total_yer,
+                'created_at', o.created_at
+            )
+            order by o.created_at desc
+        ),
+        '[]'::jsonb
+    )
+    into v_orders
+    from (
+        select *
+        from public.andak_orders
+        where customer_user_id = v_user_id
+        order by created_at desc
+        limit 30
+    ) o;
+
+    return jsonb_build_object(
+        'addresses', v_addresses,
+        'preferences', v_preferences,
+        'orders', v_orders
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_account_snapshot_v1() from public;
+grant execute on function public.andak_customer_account_snapshot_v1()
+to authenticated;
+
+create or replace function public.andak_customer_support_ticket_v1(
+    p_category text,
+    p_message text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_ticket_id uuid;
+    v_ticket_number text;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    if length(trim(coalesce(p_message, ''))) < 10 then
+        raise exception 'support_message_too_short';
+    end if;
+
+    v_ticket_number :=
+        'SUP-' || to_char(clock_timestamp(), 'YYMMDD') || '-' ||
+        lpad(nextval('public.andak_support_ticket_seq')::text, 6, '0');
+
+    insert into public.andak_support_tickets(
+        ticket_number, user_id, category, message, status
+    )
+    values (
+        v_ticket_number,
+        v_user_id,
+        coalesce(nullif(trim(p_category), ''), 'أخرى'),
+        trim(p_message),
+        'OPEN'
+    )
+    returning id into v_ticket_id;
+
+    return jsonb_build_object(
+        'ticket_id', v_ticket_id,
+        'ticket_number', v_ticket_number,
+        'status', 'OPEN'
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_support_ticket_v1(text,text) from public;
+grant execute on function public.andak_customer_support_ticket_v1(text,text)
+to authenticated;
+EOF
+
 cat > "$ROOT/backend/README.md" <<'EOF'
 # ANDAK backend handoff
 
@@ -4287,7 +4594,7 @@ cat > "$ROOT/README.md" <<'EOF'
 # ANDAK Customer v0.1.12 — Account Cloud Sync
 
 Application ID: com.fush.market.customer
-Version: 0.1.6 / versionCode 7
+Version: 0.1.12 / versionCode 13
 
 Implemented:
 - Customer home priorities: search, offers, categories, selected products, reorder placeholder.
@@ -4309,6 +4616,8 @@ Implemented:
 - Supabase Auth email/password sign-in and sign-up gateway, enabled only when the ANDAK backend is configured.
 - Access/refresh session persistence encrypted with Android Keystore (AES-GCM).
 - Guest browsing remains available when authentication/backend is unavailable.
+- Authenticated cloud sync for saved addresses, notification preferences, and recent order references.
+- Authenticated support-ticket submission with a server-issued ticket number.
 - Supplier identity and supplier cost are not exposed to the customer.
 
 This build contains the customer catalog gateway plus an atomic/idempotent COD order gateway. When a dedicated ANDAK Supabase URL and publishable key are configured, checkout calls andak_create_order_v1. Without backend configuration the app saves a clearly labeled local draft only.
