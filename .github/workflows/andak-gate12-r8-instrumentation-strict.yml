@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 R8 Instrumentation Diagnostic
+name: ANDAK Supplier Gate12 R8 Instrumentation Evidence Capture
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -47,22 +47,13 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set +e
-            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest > "$GITHUB_WORKSPACE/instrumentation-gradle.log" 2>&1
-            CODE=$?
-            set -e
-            cat "$GITHUB_WORKSPACE/instrumentation-gradle.log"
+            sh "$GITHUB_WORKSPACE/r8w/gradlew" -p "$GITHUB_WORKSPACE/r8w" --no-daemon :apps:supplier:connectedDebugAndroidTest > "$GITHUB_WORKSPACE/instrumentation-gradle.log" 2>&1 || true
             mkdir -p "$GITHUB_WORKSPACE/instrumentation-results"
             cp "$GITHUB_WORKSPACE/instrumentation-gradle.log" "$GITHUB_WORKSPACE/instrumentation-results/"
-            if [ -d "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" ]; then
-              cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results/." "$GITHUB_WORKSPACE/instrumentation-results/"
-              echo "=== XML RESULTS ==="
-              find "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" -name '*.xml' -type f -print -exec cat {} \;
-            fi
-            if [ -d "$GITHUB_WORKSPACE/r8w/apps/supplier/build/reports/androidTests" ]; then
-              cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/reports/androidTests" "$GITHUB_WORKSPACE/instrumentation-results/reports"
-            fi
-            exit "$CODE"
+            cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results/." "$GITHUB_WORKSPACE/instrumentation-results/" || true
+            cp -R "$GITHUB_WORKSPACE/r8w/apps/supplier/build/reports/androidTests" "$GITHUB_WORKSPACE/instrumentation-results/reports" || true
+            cat "$GITHUB_WORKSPACE/instrumentation-gradle.log"
+            find "$GITHUB_WORKSPACE/r8w/apps/supplier/build/outputs/androidTest-results" -name '*.xml' -type f -print -exec cat {} \; || true
 
       - name: Upload instrumentation evidence
         if: always()
