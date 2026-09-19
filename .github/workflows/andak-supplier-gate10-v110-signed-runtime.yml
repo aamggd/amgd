@@ -1,0 +1,73 @@
+name: ANDAK Supplier v1.1.0 Gate10 Signed Runtime
+
+on:
+  push:
+    branches: ['andak-supplier-gate10-v110']
+    paths:
+      - '.github/workflows/andak-supplier-gate10-v110-signed-runtime.yml'
+      - 'tools/andak_gate10_signed_runtime.sh'
+      - 'tools/andak_gate4_tap_text.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: macos-15-intel
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download signed Gate10 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/o7Ez860PIhES'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v1.1.0-GATE10-OFFICIAL-SIGNED.apk"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/gate10.apk
+          echo 'c677535cb3a791de9ffc74cdb84c858f9d09450806118c904344737cacc5e9e8  /tmp/gate10.apk' | shasum -a 256 -c -
+          echo "APK=/tmp/gate10.apk" >> "$GITHUB_ENV"
+
+      - name: Verify official signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signature-verify.txt
+          grep -qi 'certificate SHA-256 digest: 84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' signature-verify.txt
+          grep -q 'Number of signers: 1' signature-verify.txt
+
+      - name: Signed Gate10 runtime API29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/tools/andak_gate10_signed_runtime.sh"
+
+      - name: Package evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p evidence
+          test -f signature-verify.txt && cp signature-verify.txt evidence/
+          printf '%s\n'             'ANDAK Supplier Gate10 v1.1.0 — Signed Runtime'             'applicationId=com.fush.market.supplier'             'versionCode=12'             'versionName=1.1.0'             'APK SHA-256=c677535cb3a791de9ffc74cdb84c858f9d09450806118c904344737cacc5e9e8'             'Unauthenticated safety boundary=RUNTIME TESTED'             > evidence/INFO.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ANDAK-Supplier-v1.1.0-GATE10-SIGNED-RUNTIME-EVIDENCE
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
