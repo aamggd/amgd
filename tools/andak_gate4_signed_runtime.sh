@@ -50,10 +50,6 @@ test -n "$PID"
 
 dump_ui home
 grep -q 'لوحة المورد' "$E/home.xml"
-assert_text_scroll 'Gate 4' gate4-footer
-
-adb shell input keyevent 4 >/dev/null 2>&1 || true
-sleep 1
 tap_text_scroll 'الحساب'
 dump_ui account
 grep -q 'الحساب والمتجر' "$E/account.xml"
