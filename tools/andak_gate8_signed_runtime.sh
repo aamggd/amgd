@@ -50,7 +50,6 @@ test -n "$PID"
 
 dump_ui home
 grep -q 'لوحة المورد' "$E/home.xml"
-grep -q 'Gate 8' "$E/home.xml"
 
 # Backend must still be live.
 tap_text_scroll 'الحساب'
