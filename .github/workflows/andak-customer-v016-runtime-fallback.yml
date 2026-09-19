@@ -1,0 +1,104 @@
+name: ANDAK Customer v0.1.6 Runtime Fallback
+
+on:
+  push:
+    branches:
+      - 'fush-market/customer-v0.1.6-order-tracking'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Generate and build debug
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/andak-customer-v016"
+          bash "$GITHUB_WORKSPACE/tools/generate_andak_customer_v016.sh" "$SRC"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+          cd "$SRC"
+          gradle :apps:customer:assembleDebug --no-daemon --stacktrace
+
+      - name: Write runtime script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$SRC/apps/customer/build/outputs/apk/debug/customer-debug.apk"
+          adb wait-for-device
+          adb install -r "$APK"
+          adb logcat -c
+          adb shell am force-stop com.fush.market.customer || true
+          adb shell am start -W -n com.fush.market.customer/.MainActivity
+          sleep 8
+          PID="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
+          echo "PID=$PID"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/runtime-crash.log" || true
+          cat "$GITHUB_WORKSPACE/runtime-crash.log"
+          test -n "$PID"
+          if grep -q 'com.fush.market.customer' "$GITHUB_WORKSPACE/runtime-crash.log"; then
+            echo "FATAL: customer crash detected"
+            exit 1
+          fi
+          adb shell am force-stop com.fush.market.customer
+          adb shell am start -W -n com.fush.market.customer/.MainActivity
+          sleep 5
+          PID2="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
+          echo "PID2=$PID2"
+          test -n "$PID2"
+          echo "RUNTIME_V016_PASS"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+
+      - name: Runtime launch on software emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86
+          profile: pixel_2
+          disable-linux-hw-accel: true
+          emulator-boot-timeout: 420
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
+
+      - name: Upload runtime evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Customer-v0.1.6-RUNTIME-PASS
+          path: runtime-crash.log
+          if-no-files-found: error
+          retention-days: 7
