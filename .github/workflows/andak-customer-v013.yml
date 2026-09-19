@@ -3,7 +3,7 @@ name: ANDAK Customer v0.1.3 Checkout
 on:
   push:
     branches:
-      - 'fush-market/customer-v0.1.3-catalog'
+      - 'fush-market/customer-v0.1.3-checkout'
   workflow_dispatch:
 
 permissions:
@@ -58,8 +58,9 @@ jobs:
           set -euo pipefail
           grep -q 'applicationId = "com.fush.market.customer"' "$SRC/apps/customer/build.gradle.kts"
           grep -q 'versionCode = 4' "$SRC/apps/customer/build.gradle.kts"
-          grep -q 'versionName = "0.1.2"' "$SRC/apps/customer/build.gradle.kts"
+          grep -q 'versionName = "0.1.3"' "$SRC/apps/customer/build.gradle.kts"
           ! grep -R --line-number -E 'supplier_id|supplier cost|تكلفة المورد' "$SRC/apps/customer/src/main" || exit 1
+          grep -q 'CatalogScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'CheckoutScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'ProductScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'CartScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
