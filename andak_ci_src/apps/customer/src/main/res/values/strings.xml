@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">عندك</string>
+    <string name="customer_role_label">واجهة العميل</string>
+    <string name="gate0_build_label">Gate 0 • v0.1.1</string>
+</resources>
