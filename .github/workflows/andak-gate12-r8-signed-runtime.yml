@@ -56,6 +56,11 @@ jobs:
               echo "::add-mask::$V"
               ENVK=$(echo "$K" | tr '[:lower:]' '[:upper:]')
               echo "${R}_${ENVK}=$V" >> "$GITHUB_ENV"
+              case "$K" in
+                expected_order) echo "${R}_ORDER=$V" >> "$GITHUB_ENV" ;;
+                expected_product) echo "${R}_PRODUCT=$V" >> "$GITHUB_ENV" ;;
+                expected_store_name) echo "${R}_STORE=$V" >> "$GITHUB_ENV" ;;
+              esac
             done
           done
           printf '%s' "$OIDC" > /tmp/oidc.jwt
