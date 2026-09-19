@@ -4656,6 +4656,224 @@ grant execute on function public.andak_customer_support_ticket_v1(text,text)
 to authenticated;
 EOF
 
+cat > "$ROOT/backend/supabase/migrations/006_andak_customer_cloud_cart_favorites.sql" <<'EOF'
+create table if not exists public.andak_customer_cart (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    variant_id uuid not null references public.andak_product_variants(id) on delete cascade,
+    product_id uuid not null references public.andak_products(id) on delete cascade,
+    quantity integer not null check (quantity > 0),
+    updated_at timestamptz not null default now(),
+    primary key (user_id, variant_id)
+);
+
+create table if not exists public.andak_customer_favorites (
+    user_id uuid not null references auth.users(id) on delete cascade,
+    product_id uuid not null references public.andak_products(id) on delete cascade,
+    updated_at timestamptz not null default now(),
+    primary key (user_id, product_id)
+);
+
+alter table public.andak_customer_cart enable row level security;
+alter table public.andak_customer_favorites enable row level security;
+
+drop policy if exists andak_customer_cart_own on public.andak_customer_cart;
+create policy andak_customer_cart_own
+on public.andak_customer_cart
+for all to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+drop policy if exists andak_customer_favorites_own on public.andak_customer_favorites;
+create policy andak_customer_favorites_own
+on public.andak_customer_favorites
+for all to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create or replace function public.andak_customer_sync_v2(
+    p_addresses jsonb,
+    p_order_updates boolean,
+    p_offers boolean,
+    p_cart jsonb,
+    p_favorites jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_result jsonb;
+    v_row jsonb;
+    v_variant_id uuid;
+    v_product_id uuid;
+    v_quantity integer;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    v_result := public.andak_customer_sync_v1(
+        p_addresses,
+        p_order_updates,
+        p_offers
+    );
+
+    if p_cart is null or jsonb_typeof(p_cart) <> 'array' then
+        p_cart := '[]'::jsonb;
+    end if;
+
+    for v_row in select value from jsonb_array_elements(p_cart)
+    loop
+        v_variant_id := nullif(v_row ->> 'variant_id', '')::uuid;
+        v_product_id := nullif(v_row ->> 'product_id', '')::uuid;
+        v_quantity := greatest(coalesce((v_row ->> 'quantity')::integer, 0), 0);
+
+        if v_variant_id is null or v_product_id is null or v_quantity <= 0 then
+            continue;
+        end if;
+
+        if not exists (
+            select 1
+            from public.andak_product_variants v
+            where v.id = v_variant_id
+              and v.product_id = v_product_id
+              and v.is_active = true
+        ) then
+            continue;
+        end if;
+
+        insert into public.andak_customer_cart(
+            user_id, variant_id, product_id, quantity, updated_at
+        )
+        values (
+            v_user_id, v_variant_id, v_product_id, v_quantity, now()
+        )
+        on conflict (user_id, variant_id) do update
+        set product_id = excluded.product_id,
+            quantity = excluded.quantity,
+            updated_at = now();
+    end loop;
+
+    delete from public.andak_customer_cart c
+    where c.user_id = v_user_id
+      and not exists (
+          select 1
+          from jsonb_array_elements(p_cart) x
+          where nullif(x ->> 'variant_id', '') is not null
+            and (x ->> 'variant_id')::uuid = c.variant_id
+      );
+
+    if p_favorites is null or jsonb_typeof(p_favorites) <> 'array' then
+        p_favorites := '[]'::jsonb;
+    end if;
+
+    for v_row in select value from jsonb_array_elements(p_favorites)
+    loop
+        v_product_id := nullif(v_row #>> '{}', '')::uuid;
+        if v_product_id is null then
+            continue;
+        end if;
+
+        if not exists (
+            select 1
+            from public.andak_products p
+            where p.id = v_product_id
+              and p.is_active = true
+        ) then
+            continue;
+        end if;
+
+        insert into public.andak_customer_favorites(
+            user_id, product_id, updated_at
+        )
+        values (
+            v_user_id, v_product_id, now()
+        )
+        on conflict (user_id, product_id) do update
+        set updated_at = now();
+    end loop;
+
+    delete from public.andak_customer_favorites f
+    where f.user_id = v_user_id
+      and not exists (
+          select 1
+          from jsonb_array_elements(p_favorites) x
+          where nullif(x #>> '{}', '') is not null
+            and (x #>> '{}')::uuid = f.product_id
+      );
+
+    return v_result || jsonb_build_object(
+        'cart_count', (
+            select count(*) from public.andak_customer_cart where user_id = v_user_id
+        ),
+        'favorite_count', (
+            select count(*) from public.andak_customer_favorites where user_id = v_user_id
+        )
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_sync_v2(jsonb,boolean,boolean,jsonb,jsonb) from public;
+grant execute on function public.andak_customer_sync_v2(jsonb,boolean,boolean,jsonb,jsonb)
+to authenticated;
+
+create or replace function public.andak_customer_account_snapshot_v2()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $fn$
+declare
+    v_user_id uuid;
+    v_base jsonb;
+    v_cart jsonb;
+    v_favorites jsonb;
+begin
+    v_user_id := auth.uid();
+    if v_user_id is null then
+        raise exception 'authentication_required';
+    end if;
+
+    v_base := public.andak_customer_account_snapshot_v1();
+
+    select coalesce(
+        jsonb_agg(
+            jsonb_build_object(
+                'product_id', c.product_id,
+                'variant_id', c.variant_id,
+                'quantity', c.quantity
+            )
+            order by c.updated_at desc
+        ),
+        '[]'::jsonb
+    )
+    into v_cart
+    from public.andak_customer_cart c
+    where c.user_id = v_user_id;
+
+    select coalesce(
+        jsonb_agg(f.product_id::text order by f.updated_at desc),
+        '[]'::jsonb
+    )
+    into v_favorites
+    from public.andak_customer_favorites f
+    where f.user_id = v_user_id;
+
+    return v_base || jsonb_build_object(
+        'cart', v_cart,
+        'favorites', v_favorites
+    );
+end;
+$fn$;
+
+revoke all on function public.andak_customer_account_snapshot_v2() from public;
+grant execute on function public.andak_customer_account_snapshot_v2()
+to authenticated;
+EOF
+
 cat > "$ROOT/backend/README.md" <<'EOF'
 # ANDAK backend handoff
 
@@ -4680,7 +4898,7 @@ cat > "$ROOT/README.md" <<'EOF'
 # ANDAK Customer v0.1.13 — Cross-Device Cart & Favorites
 
 Application ID: com.fush.market.customer
-Version: 0.1.12 / versionCode 13
+Version: 0.1.13 / versionCode 14
 
 Implemented:
 - Customer home priorities: search, offers, categories, selected products, reorder placeholder.
@@ -4703,6 +4921,8 @@ Implemented:
 - Access/refresh session persistence encrypted with Android Keystore (AES-GCM).
 - Guest browsing remains available when authentication/backend is unavailable.
 - Authenticated cloud sync for saved addresses, notification preferences, and recent order references.
+- Cross-device cart restoration and favorites synchronization for authenticated customers.
+- Merge-first sync prevents an empty new device from silently wiping cloud cart/favorites.
 - Authenticated support-ticket submission with a server-issued ticket number.
 - Supplier identity and supplier cost are not exposed to the customer.
 
