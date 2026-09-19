@@ -1,0 +1,84 @@
+name: ANDAK Supplier v0.6.0 Gate5 Package
+
+on:
+  push:
+    branches: ['andak-supplier-gate5-v060']
+    paths: ['.github/workflows/andak-supplier-gate5-v060-package.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '9.6.0' }
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o /tmp/cmd.zip
+          rm -rf /tmp/cmd; mkdir -p /tmp/cmd; unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Exact Gate5 R2 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.firestorage.ai/dev/file/shares/bRNNm0o63v0D'
+          curl -fsSL "$BASE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(python -c 'import json; d=json.load(open("/tmp/files.json")); print([x["fileId"] for x in d["files"] if x["fileName"]=="ANDAK-Supplier-v0.6.0-Gate5-Source-R2.zip"][0])')
+          curl -fsSL -X POST "$BASE/files/$FILE_ID/download" -o /tmp/download.json
+          URL=$(python -c 'import json; print(json.load(open("/tmp/download.json"))["downloadUrl"])')
+          curl -fL "$URL" -o /tmp/source.zip
+          echo '7931ddb5d128599cb4ed4efafeed9fb6605ee7c1277e5e2d5ca5c6b65ffdcf0d  /tmp/source.zip' | sha256sum -c -
+          mkdir source; unzip -q /tmp/source.zip -d source
+          SRC=$(find "$GITHUB_WORKSPACE/source" -mindepth 1 -maxdepth 1 -type d | head -1); echo "SRC=$SRC" >> "$GITHUB_ENV"
+
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          B="$SRC/apps/supplier/build.gradle.kts"; A="$SRC/apps/supplier/src/main/java/com/fush/market/supplier/SupplierApp.kt"
+          grep -q 'versionCode = 7' "$B"; grep -q 'versionName = "0.6.0"' "$B"
+          grep -q 'contentDescription = "حالة المتجر"' "$A"
+          grep -q 'getSharedPreferences("andak_supplier_gate5"' "$A"
+          grep -q 'إعدادات المتجر' "$A"; grep -q 'المساعدة والدعم' "$A"
+
+      - name: Build release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"; mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$SRC/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk" "$D/ANDAK-Supplier-v0.6.0-GATE5-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.6.0-GATE5-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp /tmp/source.zip "$D/ANDAK-Supplier-v0.6.0-Gate5-Source-R2.zip"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.6.0-GATE5-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          printf '%s\n' 'ANDAK Supplier Gate5 v0.6.0 R2' 'Package build=PASS' 'applicationId=com.fush.market.supplier' 'versionCode=7' 'versionName=0.6.0' > "$D/PACKAGE-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.6.0-GATE5-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
