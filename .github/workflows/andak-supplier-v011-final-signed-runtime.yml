@@ -1,0 +1,126 @@
+name: ANDAK Supplier v0.1.1 Final Signed Runtime
+
+on:
+  push:
+    branches:
+      - 'andak-supplier-build-v011'
+    paths:
+      - '.github/workflows/andak-supplier-v011-final-signed-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-runtime:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Download exact final signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARE='XHFFgV5QhLZv'
+          EXPECTED='a2527e4437acab06c64321ff1713fa0a59a3ed340fa00026bd92a8a36b8cc870'
+          LIST="$(curl -fsSL "https://api.firestorage.ai/prod/file/shares/$SHARE/files?maxResults=1000")"
+          FILE_ID="$(python -c 'import json,sys; print(json.load(sys.stdin)["files"][0]["fileId"])' <<<"$LIST")"
+          URL="$(curl -fsSL -X POST "https://api.firestorage.ai/prod/file/shares/$SHARE/files/$FILE_ID/download" | python -c 'import json,sys; print(json.load(sys.stdin)["downloadUrl"])')"
+          curl -fsSL "$URL" -o "$GITHUB_WORKSPACE/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk"
+          ACTUAL="$(sha256sum "$GITHUB_WORKSPACE/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk" | awk '{print $1}')"
+          echo "EXPECTED=$EXPECTED"
+          echo "ACTUAL=$ACTUAL"
+          test "$ACTUAL" = "$EXPECTED"
+
+      - name: Verify final signed APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee "$GITHUB_WORKSPACE/final-signature-verify.txt"
+          grep -q 'Verified using v1 scheme (JAR signing): true' "$GITHUB_WORKSPACE/final-signature-verify.txt"
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' "$GITHUB_WORKSPACE/final-signature-verify.txt"
+          grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' "$GITHUB_WORKSPACE/final-signature-verify.txt"
+          grep -qi '84c8e94d39a2fa8372593ffa7d75b4772bfe1192226bf2dd0de59706facff13e' "$GITHUB_WORKSPACE/final-signature-verify.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" | tee "$GITHUB_WORKSPACE/final-aapt-badging.txt"
+          grep -q "package: name='com.fush.market.supplier' versionCode='2' versionName='0.1.1'" "$GITHUB_WORKSPACE/final-aapt-badging.txt"
+          grep -q "application-label:'عندك للمورد'" "$GITHUB_WORKSPACE/final-aapt-badging.txt"
+
+      - name: Prepare final signed runtime
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/final-signed-runtime.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$GITHUB_WORKSPACE/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk"
+          PKG='com.fush.market.supplier'
+          adb uninstall "$PKG" >/dev/null 2>&1 || true
+          adb install "$APK" | tee "$GITHUB_WORKSPACE/final-install.txt"
+          grep -q 'Success' "$GITHUB_WORKSPACE/final-install.txt"
+          adb shell dumpsys package "$PKG" > "$GITHUB_WORKSPACE/final-package-dump.txt"
+          grep -q 'versionCode=2' "$GITHUB_WORKSPACE/final-package-dump.txt"
+          grep -q 'versionName=0.1.1' "$GITHUB_WORKSPACE/final-package-dump.txt"
+          adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" > "$GITHUB_WORKSPACE/final-launcher-resolve.txt"
+          grep -q "$PKG/.MainActivity" "$GITHUB_WORKSPACE/final-launcher-resolve.txt"
+          adb logcat -c
+          adb shell am start -W -n "$PKG/.MainActivity" > "$GITHUB_WORKSPACE/final-start.txt" 2>&1 || true
+          sleep 8
+          PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+          printf '%s\n' "$PID" > "$GITHUB_WORKSPACE/final-pid.txt"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/final-crash.log" || true
+          adb logcat -d | grep -E 'AndroidRuntime|FATAL EXCEPTION|Caused by|com.fush.market.supplier' > "$GITHUB_WORKSPACE/final-relevant.log" || true
+          adb shell dumpsys activity activities > "$GITHUB_WORKSPACE/final-activities.txt" || true
+          adb exec-out screencap -p > "$GITHUB_WORKSPACE/final-screen.png" || true
+          test -n "$PID"
+          if grep -q "$PKG" "$GITHUB_WORKSPACE/final-crash.log"; then
+            echo 'FATAL: final signed APK crashed'
+            exit 1
+          fi
+          grep -q "$PKG/.MainActivity" "$GITHUB_WORKSPACE/final-activities.txt"
+          echo FINAL_SIGNED_RUNTIME_PASS > "$GITHUB_WORKSPACE/final-runtime-result.txt"
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/final-signed-runtime.sh"
+
+      - name: Runtime final signed APK API 29
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/final-signed-runtime.sh"
+
+      - name: Package signed runtime evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/signed-evidence"
+          mkdir -p "$D"
+          cp "$GITHUB_WORKSPACE"/final-{signature-verify.txt,aapt-badging.txt,install.txt,package-dump.txt,launcher-resolve.txt,start.txt,pid.txt,crash.log,relevant.log,activities.txt,screen.png,runtime-result.txt} "$D/"
+          sha256sum "$GITHUB_WORKSPACE/ANDAK-Supplier-v0.1.1-OFFICIAL-SIGNED.apk" > "$D/final-apk-sha256.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-v0.1.1-FINAL-SIGNED-RUNTIME-PASS
+          path: signed-evidence/
+          if-no-files-found: error
+          retention-days: 7
