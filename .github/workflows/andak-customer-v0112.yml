@@ -1,0 +1,158 @@
+name: ANDAK Customer v0.1.12 Account Cloud Sync
+
+on:
+  push:
+    branches:
+      - 'fush-market/customer-v0.1.12-auth-account'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip" -o /tmp/cmd.zip
+          rm -rf /tmp/cmd && mkdir -p /tmp/cmd
+          unzip -q /tmp/cmd.zip -d /tmp/cmd
+          mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Generate source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/andak-customer-v0112"
+          bash "$GITHUB_WORKSPACE/tools/generate_andak_customer_v0112.sh" "$SRC"
+          echo "SRC=$SRC" >> "$GITHUB_ENV"
+          cd "$GITHUB_WORKSPACE"
+          zip -qr /tmp/ANDAK-Customer-v0.1.12-Source.zip andak-customer-v0112
+
+      - name: Static gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'applicationId = "com.fush.market.customer"' "$SRC/apps/customer/build.gradle.kts"
+          grep -q 'versionCode = 13' "$SRC/apps/customer/build.gradle.kts"
+          grep -q 'versionName = "0.1.12"' "$SRC/apps/customer/build.gradle.kts"
+          grep -q 'AuthScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
+          grep -q 'BackendAuthGateway' "$SRC/apps/customer/src/main/java/com/fush/market/customer/AuthGateway.kt"
+          grep -q 'AndroidKeyStore' "$SRC/apps/customer/src/main/java/com/fush/market/customer/SecureSessionStore.kt"
+          grep -q 'AES/GCM/NoPadding' "$SRC/apps/customer/src/main/java/com/fush/market/customer/SecureSessionStore.kt"
+          grep -q 'andak_customer_profiles' "$SRC/backend/supabase/migrations/004_andak_customer_auth_profile.sql"
+          grep -q 'AccountSyncGateway' "$SRC/apps/customer/src/main/java/com/fush/market/customer/AccountSyncGateway.kt"
+          grep -q 'andak_customer_sync_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
+          grep -q 'andak_customer_account_snapshot_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
+          grep -q 'andak_customer_support_ticket_v1' "$SRC/backend/supabase/migrations/005_andak_customer_account_sync.sql"
+          grep -q 'مزامنة الحساب الآن' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
+          grep -q 'andak_create_order_v3' "$SRC/backend/supabase/migrations/004_andak_customer_auth_profile.sql"
+          grep -q 'customer_user_id = auth.uid()' "$SRC/backend/supabase/migrations/004_andak_customer_auth_profile.sql"
+          ! grep -R --line-number -E 'service[_-]?role' "$SRC/apps/customer/src/main" || exit 1
+          echo STATIC_GATE_PASS
+
+      - name: Build debug release and AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:customer:assembleDebug :apps:customer:assembleRelease :apps:customer:bundleRelease --no-daemon --stacktrace
+
+      - name: Write runtime script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$SRC/apps/customer/build/outputs/apk/debug/customer-debug.apk"
+          adb wait-for-device
+          adb install -r "$APK"
+          adb logcat -c
+          adb shell am force-stop com.fush.market.customer || true
+          adb shell am start -W -n com.fush.market.customer/.MainActivity
+          sleep 8
+          PID="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
+          echo "PID=$PID"
+          adb logcat -d -b crash > "$GITHUB_WORKSPACE/runtime-crash.log" || true
+          cat "$GITHUB_WORKSPACE/runtime-crash.log"
+          test -n "$PID"
+          if grep -q 'com.fush.market.customer' "$GITHUB_WORKSPACE/runtime-crash.log"; then
+            echo "FATAL: customer crash detected"
+            exit 1
+          fi
+          adb shell am force-stop com.fush.market.customer
+          adb shell am start -W -n com.fush.market.customer/.MainActivity
+          sleep 5
+          PID2="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
+          echo "PID2=$PID2"
+          test -n "$PID2"
+          echo RUNTIME_V0112_PASS
+          EOF
+          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
+
+      - name: Runtime launch on software emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86
+          profile: pixel_2
+          disable-linux-hw-accel: true
+          emulator-boot-timeout: 420
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
+
+      - name: Align and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$SRC/apps/customer/build/outputs/apk/release/customer-release-unsigned.apk"             "$D/ANDAK-Customer-v0.1.12-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/customer/build/outputs/bundle/release/customer-release.aab" "$D/ANDAK-Customer-v0.1.12-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp "$GITHUB_WORKSPACE/runtime-crash.log" "$D/runtime-crash.log"
+          cp /tmp/ANDAK-Customer-v0.1.12-Source.zip "$D/ANDAK-Customer-v0.1.12-Source.zip"
+          cat > "$D/BUILD-RESULT.txt" <<'EOF'
+          ANDAK Customer v0.1.12
+          versionCode: 12
+          versionName: 0.1.11
+          applicationId: com.fush.market.customer
+          Scope: authenticated account sync + cloud addresses/preferences/orders + support tickets
+          Static gate: PASS
+          Debug build: PASS
+          Release APK build: PASS
+          AAB build: PASS
+          Runtime launch/relaunch: PASS on Android API 29 software emulator
+          Backend note: auth/profile/order-owner contracts packaged only; no production Supabase project modified.
+          EOF
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Customer-v0.1.12-RUNTIME-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
