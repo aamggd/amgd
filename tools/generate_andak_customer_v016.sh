@@ -509,7 +509,30 @@ data class CreateOrderResult(
     val subtotalYER: Long,
     val deliveryFeeYER: Long,
     val totalYER: Long,
-    val requestId: String
+    val requestId: String,
+    val trackingToken: String
+)
+
+data class OrderStatusLine(
+    val productName: String,
+    val variantLabel: String,
+    val unitName: String,
+    val quantity: Double,
+    val unitPriceYER: Long,
+    val lineTotalYER: Long
+)
+
+data class OrderStatusResult(
+    val orderNumber: String,
+    val status: String,
+    val paymentMethod: String,
+    val subtotalYER: Long,
+    val deliveryFeeYER: Long,
+    val totalYER: Long,
+    val city: String,
+    val neighborhood: String,
+    val createdAt: String,
+    val lines: List<OrderStatusLine>
 )
 
 object BackendOrderGateway {
@@ -543,49 +566,173 @@ object BackendOrderGateway {
                 .put("p_note", customer.note.trim())
                 .put("p_lines", lineArray)
 
-            val endpoint = BuildConfig.ANDAK_SUPABASE_URL.trimEnd('/') +
-                "/rest/v1/rpc/andak_create_order_v1"
+            val body = postRpc("andak_create_order_v2", payload)
+            val result = JSONObject(body)
+            CreateOrderResult(
+                orderId = result.getString("order_id"),
+                orderNumber = result.getString("order_number"),
+                status = result.getString("status"),
+                subtotalYER = result.getLong("subtotal_yer"),
+                deliveryFeeYER = result.getLong("delivery_fee_yer"),
+                totalYER = result.getLong("total_yer"),
+                requestId = result.optString("request_id", requestId),
+                trackingToken = result.getString("tracking_token")
+            )
+        }
+    }
 
-            val connection = URL(endpoint).openConnection() as HttpURLConnection
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
-            connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
-            connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
-            connection.setRequestProperty("Content-Type", "application/json")
-            connection.setRequestProperty("Accept", "application/json")
+    suspend fun fetchOrderStatus(trackingToken: String): Result<OrderStatusResult> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(isConfigured()) { "ANDAK backend is not configured" }
+                require(trackingToken.isNotBlank()) { "Tracking token is required" }
 
-            try {
-                connection.outputStream.use { output ->
-                    output.write(payload.toString().toByteArray(Charsets.UTF_8))
-                }
-
-                val code = connection.responseCode
-                val body = if (code in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-
-                if (code !in 200..299) {
-                    error("Order RPC HTTP " + code + " " + body)
-                }
-
+                val payload = JSONObject().put("p_tracking_token", trackingToken)
+                val body = postRpc("andak_get_order_status_v1", payload)
                 val result = JSONObject(body)
-                CreateOrderResult(
-                    orderId = result.getString("order_id"),
+                val rawLines = result.optJSONArray("lines") ?: JSONArray()
+                val lines = buildList {
+                    for (index in 0 until rawLines.length()) {
+                        val row = rawLines.getJSONObject(index)
+                        add(
+                            OrderStatusLine(
+                                productName = row.optString("product_name", ""),
+                                variantLabel = row.optString("variant_label", ""),
+                                unitName = row.optString("unit_name", ""),
+                                quantity = row.optDouble("quantity", 0.0),
+                                unitPriceYER = row.optLong("unit_price_yer", 0L),
+                                lineTotalYER = row.optLong("line_total_yer", 0L)
+                            )
+                        )
+                    }
+                }
+
+                OrderStatusResult(
                     orderNumber = result.getString("order_number"),
                     status = result.getString("status"),
-                    subtotalYER = result.getLong("subtotal_yer"),
-                    deliveryFeeYER = result.getLong("delivery_fee_yer"),
-                    totalYER = result.getLong("total_yer"),
-                    requestId = result.optString("request_id", requestId)
+                    paymentMethod = result.optString("payment_method", "COD"),
+                    subtotalYER = result.optLong("subtotal_yer", 0L),
+                    deliveryFeeYER = result.optLong("delivery_fee_yer", 0L),
+                    totalYER = result.optLong("total_yer", 0L),
+                    city = result.optString("city", ""),
+                    neighborhood = result.optString("neighborhood", ""),
+                    createdAt = result.optString("created_at", ""),
+                    lines = lines
                 )
-            } finally {
-                connection.disconnect()
             }
         }
+
+    private fun postRpc(functionName: String, payload: JSONObject): String {
+        val endpoint = BuildConfig.ANDAK_SUPABASE_URL.trimEnd('/') +
+            "/rest/v1/rpc/" + functionName
+
+        val connection = URL(endpoint).openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.connectTimeout = 10000
+        connection.readTimeout = 15000
+        connection.setRequestProperty("apikey", BuildConfig.ANDAK_SUPABASE_KEY)
+        connection.setRequestProperty("Authorization", "Bearer " + BuildConfig.ANDAK_SUPABASE_KEY)
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Accept", "application/json")
+
+        try {
+            connection.outputStream.use { output ->
+                output.write(payload.toString().toByteArray(Charsets.UTF_8))
+            }
+            val code = connection.responseCode
+            val body = if (code in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            }
+            if (code !in 200..299) {
+                error("RPC " + functionName + " HTTP " + code + " " + body)
+            }
+            return body
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
+EOF
+
+cat > "$ROOT/apps/customer/src/main/java/com/fush/market/customer/OrderReceiptStore.kt" <<'EOF'
+package com.fush.market.customer
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
+
+private val Context.andakOrderDataStore by preferencesDataStore(name = "andak_order_receipts")
+
+data class OrderReceipt(
+    val reference: String,
+    val serverCreated: Boolean,
+    val trackingToken: String,
+    val status: String,
+    val totalYER: Long,
+    val createdAtMillis: Long
+)
+
+object OrderReceiptStore {
+    private val receiptsKey = stringPreferencesKey("receipts_json")
+
+    fun observe(context: Context): Flow<List<OrderReceipt>> =
+        context.andakOrderDataStore.data.map { prefs ->
+            decode(prefs[receiptsKey].orEmpty())
+        }
+
+    suspend fun upsert(context: Context, receipt: OrderReceipt) {
+        context.andakOrderDataStore.edit { prefs ->
+            val current = decode(prefs[receiptsKey].orEmpty()).toMutableList()
+            val index = current.indexOfFirst { it.reference == receipt.reference }
+            if (index >= 0) current[index] = receipt else current.add(0, receipt)
+            prefs[receiptsKey] = encode(current.take(30))
+        }
+    }
+
+    private fun encode(receipts: List<OrderReceipt>): String {
+        val array = JSONArray()
+        receipts.forEach { receipt ->
+            array.put(
+                JSONObject()
+                    .put("reference", receipt.reference)
+                    .put("serverCreated", receipt.serverCreated)
+                    .put("trackingToken", receipt.trackingToken)
+                    .put("status", receipt.status)
+                    .put("totalYER", receipt.totalYER)
+                    .put("createdAtMillis", receipt.createdAtMillis)
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decode(raw: String): List<OrderReceipt> {
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val row = array.getJSONObject(index)
+                    add(
+                        OrderReceipt(
+                            reference = row.optString("reference", ""),
+                            serverCreated = row.optBoolean("serverCreated", false),
+                            trackingToken = row.optString("trackingToken", ""),
+                            status = row.optString("status", if (row.optBoolean("serverCreated", false)) "PENDING_CONFIRMATION" else "DRAFT_LOCAL"),
+                            totalYER = row.optLong("totalYER", 0L),
+                            createdAtMillis = row.optLong("createdAtMillis", 0L)
+                        )
+                    )
+                }
+            }.filter { it.reference.isNotBlank() }
+        }.getOrDefault(emptyList())
     }
 }
 EOF
