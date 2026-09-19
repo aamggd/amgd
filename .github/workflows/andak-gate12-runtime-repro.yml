@@ -1,4 +1,4 @@
-name: ANDAK Supplier Gate12 R7 Runtime
+name: ANDAK Supplier Gate12 R7 Upgrade Test
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
@@ -8,20 +8,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Download exact R7 signed APK
+      - name: Download v1.3.0 and R7 v1.3.1
         shell: bash
         run: |
           set -euo pipefail
           API="https://api.firestorage.ai/dev/file"
-          SHARE="_pDZDeGcceXL"
-          NAME="ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk"
-          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
-          FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
-          test -n "$FILE_ID" && test "$FILE_ID" != "null"
-          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
-          URL=$(jq -r '.downloadUrl' /tmp/download.json)
-          curl -fL --retry 3 "$URL" -o "$GITHUB_WORKSPACE/andak-r7.apk"
-          sha256sum "$GITHUB_WORKSPACE/andak-r7.apk"
+          download_share () {
+            SHARE="$1"
+            NAME="$2"
+            OUT="$3"
+            curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
+            FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
+            test -n "$FILE_ID" && test "$FILE_ID" != "null"
+            curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
+            URL=$(jq -r '.downloadUrl' /tmp/download.json)
+            curl -fL --retry 3 "$URL" -o "$OUT"
+          }
+          download_share "_WnjY8OlknwQ" "ANDAK-Supplier-v1.3.0-GATE12-FINAL-SIGNED.apk" "$GITHUB_WORKSPACE/old.apk"
+          download_share "_pDZDeGcceXL" "ANDAK-Supplier-v1.3.1-GATE12-P0-HOTFIX-R7-FINAL-SIGNED.apk" "$GITHUB_WORKSPACE/r7.apk"
+          sha256sum "$GITHUB_WORKSPACE/old.apk" "$GITHUB_WORKSPACE/r7.apk"
 
       - name: Enable KVM
         shell: bash
@@ -30,7 +35,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Run R7 and capture logcat
+      - name: Upgrade old APK to R7 and verify
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -38,29 +43,26 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            adb install -r "$GITHUB_WORKSPACE/andak-r7.apk"
+            set -e
+            adb install "$GITHUB_WORKSPACE/old.apk"
+            adb shell dumpsys package com.fush.market.supplier | grep -E "versionCode|versionName" | head
+            adb install -r "$GITHUB_WORKSPACE/r7.apk"
+            adb shell dumpsys package com.fush.market.supplier | grep -E "versionCode|versionName" | head
             adb logcat -c
             adb shell am force-stop com.fush.market.supplier
             adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
             sleep 20
             echo "PID=$(adb shell pidof com.fush.market.supplier || true)"
-            adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"
-            echo "=== FATALS ==="
-            grep -n -A100 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt" || true
-            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"; then exit 2; fi
-            test -n "$(adb shell pidof com.fush.market.supplier || true)"
-            adb shell am force-stop com.fush.market.supplier
-            adb shell monkey -p com.fush.market.supplier -c android.intent.category.LAUNCHER 1 || true
-            sleep 10
-            adb logcat -d -v threadtime >> "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"
-            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/runtime-logcat-r7.txt"; then exit 3; fi
+            adb logcat -d -v threadtime > "$GITHUB_WORKSPACE/upgrade-runtime-logcat.txt"
+            grep -n -A100 -B20 -E "FATAL EXCEPTION|AndroidRuntime|Process: com.fush.market.supplier" "$GITHUB_WORKSPACE/upgrade-runtime-logcat.txt" || true
+            if grep -q "FATAL EXCEPTION" "$GITHUB_WORKSPACE/upgrade-runtime-logcat.txt"; then exit 2; fi
             test -n "$(adb shell pidof com.fush.market.supplier || true)"
 
-      - name: Upload R7 runtime log
+      - name: Upload upgrade log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Gate12-R7-Runtime-Log
-          path: runtime-logcat-r7.txt
+          name: ANDAK-Gate12-R7-Upgrade-Log
+          path: upgrade-runtime-logcat.txt
           if-no-files-found: warn
           retention-days: 1
