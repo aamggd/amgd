@@ -85,7 +85,10 @@ launch_app
 tap_text_scroll 'الحساب'
 tap_text_scroll 'مركز المزامنة'
 assert_text_scroll 'محجوبة — الخادم غير مهيأ' sync-persisted
-tap_text_scroll 'العودة إلى الحساب'
+
+# Relaunch to avoid depending on a scrolled return button.
+launch_app
+tap_text_scroll 'الحساب'
 
 # Notification center: 3 seeded + sync warning = 4 unread.
 tap_text_scroll 'الإشعارات (4)'
