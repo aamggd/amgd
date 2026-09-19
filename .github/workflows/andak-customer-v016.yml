@@ -86,40 +86,14 @@ jobs:
           cd "$SRC"
           gradle :apps:customer:assembleDebug :apps:customer:assembleRelease :apps:customer:bundleRelease --no-daemon --stacktrace
 
-      - name: Write runtime test
+      - name: Record runtime status
         shell: bash
         run: |
-          cat > "$GITHUB_WORKSPACE/runtime-test.sh" <<'EOF'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          APK="$SRC/apps/customer/build/outputs/apk/debug/customer-debug.apk"
-          test -f "$APK"
-          adb install -r "$APK"
-          adb logcat -c
-          adb shell am start -W -n com.fush.market.customer/.MainActivity
-          sleep 5
-          PID="$(adb shell pidof com.fush.market.customer | tr -d '\r' || true)"
-          echo "PID=$PID"
-          adb logcat -d -b crash > "$GITHUB_WORKSPACE/runtime-crash.log" || true
-          cat "$GITHUB_WORKSPACE/runtime-crash.log"
-          test -n "$PID"
-          if grep -q 'com.fush.market.customer' "$GITHUB_WORKSPACE/runtime-crash.log"; then
-            echo "FATAL: customer crash detected"
-            exit 1
-          fi
-          echo RUNTIME_SMOKE_PASS
+          cat > "$GITHUB_WORKSPACE/runtime-crash.log" <<'EOF'
+          Runtime verification is delegated to the macOS emulator workflow because Linux hosted
+          emulator boot failed at the infrastructure layer before APK installation.
+          This file is not a Runtime PASS.
           EOF
-          chmod +x "$GITHUB_WORKSPACE/runtime-test.sh"
-
-      - name: Runtime launch test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 33
-          arch: x86_64
-          profile: pixel_2
-          emulator-boot-timeout: 300
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: bash "$GITHUB_WORKSPACE/runtime-test.sh"
 
       - name: Align and package
         shell: bash
@@ -139,14 +113,14 @@ jobs:
           Scope: Customer catalog + cart + catalog + atomic COD + persistent order receipts + secure tracking-token refresh
           Static gate: PASS
           Build: PASS
-          Runtime launch test: PASS on Android emulator API 33
+          Runtime launch test: PENDING — macOS emulator workflow
           Catalog + atomic order + secure tracking contracts are packaged. No production ANDAK Supabase project is configured in this build; local catalog/draft fallback remains active until the dedicated backend is approved.
           EOF
           (cd "$D" && sha256sum * > SHA256SUMS.txt)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ANDAK-Customer-v0.1.6-ORDER-TRACKING-RUNTIME-PASS
+          name: ANDAK-Customer-v0.1.6-BUILD-PASS-RUNTIME-PENDING
           path: dist/
           if-no-files-found: error
           retention-days: 7
