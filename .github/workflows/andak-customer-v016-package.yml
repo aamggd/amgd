@@ -60,8 +60,87 @@ jobs:
           grep -q 'OrdersScreen' "$SRC/apps/customer/src/main/java/com/fush/market/customer/CustomerApp.kt"
           grep -q 'OrderReceiptStore' "$SRC/apps/customer/src/main/java/com/fush/market/customer/OrderReceiptStore.kt"
           grep -q 'andak_get_order_status_v1' "$SRC/backend/supabase/migrations/003_andak_order_tracking_rpc.sql"
-          grep -Fq 'as $$' "$SRC/backend/supabase/migrations/002_andak_atomic_order_rpc.sql"
+          grep -Fq 'as $fn "$SRC/backend/supabase/migrations/002_andak_atomic_order_rpc.sql"
           grep -Fq 'as $$' "$SRC/backend/supabase/migrations/003_andak_order_tracking_rpc.sql"
+          echo STATIC_GATE_PASS
+
+      - name: Build Release APK and AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:customer:assembleRelease :apps:customer:bundleRelease --no-daemon --stacktrace
+
+      - name: Align and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$SRC/apps/customer/build/outputs/apk/release/customer-release-unsigned.apk"             "$D/ANDAK-Customer-v0.1.6-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/customer/build/outputs/bundle/release/customer-release.aab"             "$D/ANDAK-Customer-v0.1.6-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp /tmp/ANDAK-Customer-v0.1.6-Source.zip "$D/ANDAK-Customer-v0.1.6-Source.zip"
+          cat > "$D/BUILD-RESULT.txt" <<'EOF'
+          ANDAK Customer v0.1.6
+          versionCode: 7
+          applicationId: com.fush.market.customer
+          Scope: catalog + checkout + atomic order contract + persistent order receipts + tracking refresh
+          Static gate: PASS
+          Release APK build: PASS
+          Release AAB build: PASS
+          Runtime status: NOT VERIFIED in this package workflow.
+          Previous runtime attempts were blocked by GitHub emulator boot timeout, not by a compile/build failure.
+          EOF
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Customer-v0.1.6-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+ "$SRC/backend/supabase/migrations/002_andak_atomic_order_rpc.sql"
+          grep -Fq 'as $fn "$SRC/backend/supabase/migrations/003_andak_order_tracking_rpc.sql"
+          echo STATIC_GATE_PASS
+
+      - name: Build Release APK and AAB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$SRC"
+          gradle :apps:customer:assembleRelease :apps:customer:bundleRelease --no-daemon --stacktrace
+
+      - name: Align and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4             "$SRC/apps/customer/build/outputs/apk/release/customer-release-unsigned.apk"             "$D/ANDAK-Customer-v0.1.6-ALIGNED-UNSIGNED.apk"
+          cp "$SRC/apps/customer/build/outputs/bundle/release/customer-release.aab"             "$D/ANDAK-Customer-v0.1.6-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"
+          cp /tmp/ANDAK-Customer-v0.1.6-Source.zip "$D/ANDAK-Customer-v0.1.6-Source.zip"
+          cat > "$D/BUILD-RESULT.txt" <<'EOF'
+          ANDAK Customer v0.1.6
+          versionCode: 7
+          applicationId: com.fush.market.customer
+          Scope: catalog + checkout + atomic order contract + persistent order receipts + tracking refresh
+          Static gate: PASS
+          Release APK build: PASS
+          Release AAB build: PASS
+          Runtime status: NOT VERIFIED in this package workflow.
+          Previous runtime attempts were blocked by GitHub emulator boot timeout, not by a compile/build failure.
+          EOF
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Customer-v0.1.6-PACKAGE-PASS
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+ "$SRC/backend/supabase/migrations/003_andak_order_tracking_rpc.sql"
           echo STATIC_GATE_PASS
 
       - name: Build Release APK and AAB
