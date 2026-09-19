@@ -6,12 +6,14 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe share page
+      - name: Probe Firestorage Next client
         shell: bash
         run: |
           set -euxo pipefail
-          URL="https://firestorage.ai/ja/f/Et-PEzejPO30"
-          curl -L --fail --retry 3 -A "Mozilla/5.0" "$URL" -o /tmp/page.html
-          echo "bytes=$(wc -c < /tmp/page.html)"
-          grep -Eo 'href="[^"]+"|action="[^"]+"|https?://[^"< ]+' /tmp/page.html | head -200 || true
-          grep -iE 'download|andak_supplier_gate12_exact_ci|source.zip|LSZe3pCyrw3NrMLO|Et-PEzejPO30' /tmp/page.html | head -200 || true
+          BASE="https://firestorage.ai"
+          curl -L --fail --retry 3 -A "Mozilla/5.0" "$BASE/ja/f/Et-PEzejPO30" -o /tmp/page.html
+          CHUNK=$(grep -Eo 'src="/_next/static/chunks/app/\(files\)/ja/f/page-[^"]+\.js"' /tmp/page.html | head -1 | cut -d'"' -f2)
+          echo "chunk=$CHUNK"
+          curl -L --fail "$BASE$CHUNK" -o /tmp/chunk.js
+          echo "chunk_bytes=$(wc -c < /tmp/chunk.js)"
+          grep -oE '.{0,120}(download|share|publicId|shareId|files|api/).{0,220}' /tmp/chunk.js | head -300 || true
