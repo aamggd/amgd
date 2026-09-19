@@ -1,22 +1,89 @@
-name: ANDAK Gate12 Firestorage Probe
+name: ANDAK Supplier Gate12 Build
 on:
   push:
     branches: [andak-supplier-gate12-ci-temp]
+
 jobs:
-  probe:
+  build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     steps:
-      - name: Probe all Firestorage Next chunks
+      - name: Download exact Gate12 source
         shell: bash
         run: |
           set -euo pipefail
-          BASE="https://firestorage.ai"
-          curl -LsS --fail -A "Mozilla/5.0" "$BASE/ja/f/1ub5gOAXyS6s" -o /tmp/page.html
-          grep -Eo 'src="[^"]+\.js"' /tmp/page.html | cut -d'"' -f2 | sort -u > /tmp/chunks.txt
-          while IFS= read -r CHUNK; do
-            ENC=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe="/._-"))' "$CHUNK")
-            OUT="/tmp/$(echo "$CHUNK" | tr '/()' '___')"
-            curl -LsS --fail "$BASE$ENC" -o "$OUT" || continue
-            echo "=== $CHUNK bytes=$(wc -c < "$OUT") ==="
-            grep -oE '.{0,180}(/api/|download|presign|signed|shareId|publicId|folder|fileId|objectKey|storage).{0,300}' "$OUT" | head -150 || true
-          done < /tmp/chunks.txt
+          API="https://api.firestorage.ai/dev/file"
+          SHARE="1ub5gOAXyS6s"
+          NAME="andak_supplier_gate12_exact_ci.zip"
+          curl -fsSL "$API/shares/$SHARE/files?maxResults=1000" -o /tmp/files.json
+          FILE_ID=$(jq -r --arg n "$NAME" '.files[] | select(.fileName==$n) | .fileId' /tmp/files.json | head -1)
+          test -n "$FILE_ID" && test "$FILE_ID" != "null"
+          curl -fsSL -X POST "$API/shares/$SHARE/files/$FILE_ID/download" -o /tmp/download.json
+          DOWNLOAD_URL=$(jq -r '.downloadUrl' /tmp/download.json)
+          test -n "$DOWNLOAD_URL" && test "$DOWNLOAD_URL" != "null"
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o /tmp/source.zip
+          echo "source_sha256=$(sha256sum /tmp/source.zip | awk '{print $1}')"
+          mkdir -p "$GITHUB_WORKSPACE/gate12"
+          unzip -q /tmp/source.zip -d "$GITHUB_WORKSPACE/gate12"
+          find "$GITHUB_WORKSPACE/gate12" -maxdepth 3 -type f | sort | head -80
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Ensure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          adb version
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" version
+
+      - name: Build Supplier Gate12 APK and AAB
+        working-directory: gate12
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --version
+          gradle --no-daemon :apps:supplier:clean :apps:supplier:testReleaseUnitTest :apps:supplier:assembleRelease :apps:supplier:bundleRelease 2>&1 | tee "$GITHUB_WORKSPACE/gate12-build.log"
+
+      - name: Verify build outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find "$GITHUB_WORKSPACE/gate12/apps/supplier/build/outputs/apk/release" -name '*.apk' -type f | head -1)
+          AAB=$(find "$GITHUB_WORKSPACE/gate12/apps/supplier/build/outputs/bundle/release" -name '*.aab' -type f | head -1)
+          test -f "$APK"
+          test -f "$AAB"
+          mkdir -p "$GITHUB_WORKSPACE/artifact/build-tools"
+          cp "$APK" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.0-GATE12-UNSIGNED.apk"
+          cp "$AAB" "$GITHUB_WORKSPACE/artifact/ANDAK-Supplier-v1.3.0-GATE12-UNSIGNED.aab"
+          cp "$GITHUB_WORKSPACE/gate12-build.log" "$GITHUB_WORKSPACE/artifact/BUILD-LOG.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$APK" > "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt" || true
+          sha256sum "$GITHUB_WORKSPACE/artifact/"*.apk "$GITHUB_WORKSPACE/artifact/"*.aab > "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" "$GITHUB_WORKSPACE/artifact/build-tools/"
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" "$GITHUB_WORKSPACE/artifact/build-tools/"
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" "$GITHUB_WORKSPACE/artifact/build-tools/"
+          chmod +x "$GITHUB_WORKSPACE/artifact/build-tools/apksigner" "$GITHUB_WORKSPACE/artifact/build-tools/zipalign"
+          cat "$GITHUB_WORKSPACE/artifact/SHA256-UNSIGNED.txt"
+          grep -E "package: name=|application-label" "$GITHUB_WORKSPACE/artifact/AAPT2-BADGING.txt" || true
+
+      - name: Upload Gate12 build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ANDAK-Supplier-Gate12-Unsigned-Build
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 1
