@@ -1,0 +1,91 @@
+name: ANDAK Supplier v0.1.1 Gate0 Runtime
+on:
+  push:
+    branches: ['andak-supplier-build-v011']
+    paths: ['.github/workflows/andak-supplier-gate0-v011.yml','tools/generate_andak_supplier_gate0.sh']
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  gate0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '9.6.0' }
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pillow
+          SDK="$HOME/android-sdk"; mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip -o /tmp/cmd.zip
+          rm -rf /tmp/cmd; mkdir /tmp/cmd; unzip -q /tmp/cmd.zip -d /tmp/cmd; mv /tmp/cmd/cmdline-tools "$SDK/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"; echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Generate and static gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$GITHUB_WORKSPACE/supplier-base"; FIX="$GITHUB_WORKSPACE/supplier-fix"; echo "BASE=$BASE" >> "$GITHUB_ENV"; echo "FIX=$FIX" >> "$GITHUB_ENV"
+          bash tools/generate_andak_supplier_gate0.sh baseline "$BASE"; bash tools/generate_andak_supplier_gate0.sh fixed "$FIX"
+          grep -q 'applicationId="com.fush.market.supplier"' "$FIX/apps/supplier/build.gradle.kts"
+          grep -q 'versionCode=2' "$FIX/apps/supplier/build.gradle.kts"; grep -q 'versionName="0.1.1"' "$FIX/apps/supplier/build.gradle.kts"
+          grep -q 'android:roundIcon="@mipmap/ic_launcher_round"' "$FIX/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q 'android:supportsRtl="true"' "$FIX/apps/supplier/src/main/AndroidManifest.xml"
+          grep -q SafeLogo "$FIX/core/ui/src/main/java/com/fush/market/core/ui/AndakApp.kt"
+          ! grep -q painterResource "$FIX/core/ui/src/main/java/com/fush/market/core/ui/AndakApp.kt"
+          for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do test -f "$FIX/apps/supplier/src/main/res/mipmap-$d/ic_launcher.png"; done
+          (cd "$GITHUB_WORKSPACE" && zip -qr /tmp/ANDAK-Supplier-v0.1.1-Tested-Source.zip supplier-fix)
+          echo STATIC_GATE_PASS
+      - name: Build baseline and fixed
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$BASE" && gradle :apps:supplier:assembleDebug --no-daemon --stacktrace)
+          (cd "$FIX" && gradle :apps:supplier:assembleDebug :apps:supplier:assembleRelease :apps:supplier:bundleRelease --no-daemon --stacktrace)
+      - name: Runtime script
+        shell: bash
+        run: |
+          cat > "$GITHUB_WORKSPACE/runtime.sh" <<'E'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          P=com.fush.market.supplier
+          run_one(){ N="$1"; A="$2"; adb uninstall "$P" >/dev/null 2>&1 || true; adb install "$A"; adb logcat -c; adb shell am start -W -n "$P/.MainActivity" > "$GITHUB_WORKSPACE/$N-start.txt" 2>&1 || true; sleep 6; adb shell pidof "$P" | tr -d '\r' > "$GITHUB_WORKSPACE/$N-pid.txt" || true; adb logcat -d -b crash > "$GITHUB_WORKSPACE/$N-crash.log" || true; adb logcat -d | grep -E "AndroidRuntime|$P|FATAL EXCEPTION|Caused by" > "$GITHUB_WORKSPACE/$N-relevant.log" || true; }
+          run_one baseline "$BASE/apps/supplier/build/outputs/apk/debug/supplier-debug.apk"
+          if grep -q "$P" "$GITHUB_WORKSPACE/baseline-crash.log"; then echo YES > "$GITHUB_WORKSPACE/baseline-reproduced.txt"; else echo NO > "$GITHUB_WORKSPACE/baseline-reproduced.txt"; fi
+          run_one fixed "$FIX/apps/supplier/build/outputs/apk/debug/supplier-debug.apk"
+          test -s "$GITHUB_WORKSPACE/fixed-pid.txt"
+          ! grep -q "$P" "$GITHUB_WORKSPACE/fixed-crash.log"
+          adb exec-out screencap -p > "$GITHUB_WORKSPACE/fixed-screen.png"
+          adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true; adb pull /sdcard/window.xml "$GITHUB_WORKSPACE/fixed-window.xml" >/dev/null 2>&1 || true
+          echo RUNTIME_SMOKE_PASS
+          E
+          chmod +x "$GITHUB_WORKSPACE/runtime.sh"
+      - name: Runtime API 33
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash "$GITHUB_WORKSPACE/runtime.sh"
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          D="$GITHUB_WORKSPACE/dist"; mkdir -p "$D"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 "$FIX/apps/supplier/build/outputs/apk/release/supplier-release-unsigned.apk" "$D/ANDAK-Supplier-v0.1.1-ALIGNED-UNSIGNED.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "$D/ANDAK-Supplier-v0.1.1-ALIGNED-UNSIGNED.apk" > "$D/aapt-badging.txt"
+          cp "$FIX/apps/supplier/build/outputs/bundle/release/supplier-release.aab" "$D/ANDAK-Supplier-v0.1.1-UNSIGNED.aab"
+          cp "$ANDROID_HOME/build-tools/36.0.0/lib/apksigner.jar" "$D/apksigner.jar"; cp /tmp/ANDAK-Supplier-v0.1.1-Tested-Source.zip "$D/"
+          cp "$GITHUB_WORKSPACE"/{baseline-start.txt,baseline-pid.txt,baseline-crash.log,baseline-relevant.log,baseline-reproduced.txt,fixed-start.txt,fixed-pid.txt,fixed-crash.log,fixed-relevant.log,fixed-screen.png} "$D/"
+          test -f "$GITHUB_WORKSPACE/fixed-window.xml" && cp "$GITHUB_WORKSPACE/fixed-window.xml" "$D/" || true
+          printf 'ANDAK Supplier v0.1.1\napplicationId=com.fush.market.supplier\nversionCode=2\nversionName=0.1.1\nStatic=PASS\nBuild=PASS\nRuntime debug API33=PASS\nBaseline crash reproduced=%s\nFixed crash buffer=clean\nSigning=outside public CI\n' "$(cat "$GITHUB_WORKSPACE/baseline-reproduced.txt")" > "$D/BUILD-RESULT.txt"
+          (cd "$D" && sha256sum * > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with: { name: ANDAK-Supplier-v0.1.1-GATE0-RUNTIME-PASS, path: dist/, if-no-files-found: error, retention-days: 7 }
