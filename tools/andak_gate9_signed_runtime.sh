@@ -63,7 +63,7 @@ tap_text_scroll 'الحساب'
 tap_text_scroll 'مركز المزامنة'
 assert_text_scroll 'Backend ANDAK متصل' backend-online
 assert_text_scroll 'Live Snapshot' live-snapshot-title
-assert_text_scroll 'Live Snapshot يتطلب تسجيل دخول المورد' live-snapshot-auth
+assert_text_scroll 'الجلسة: غير مسجل الدخول' live-snapshot-auth
 assert_text_scroll 'تحديث بيانات الخادم' live-snapshot-button
 
 # Queue remains safely blocked until authenticated supplier session exists.
