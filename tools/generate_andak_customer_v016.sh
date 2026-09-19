@@ -773,6 +773,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -794,12 +795,21 @@ fun CustomerApp() {
             var selectedProductId by rememberSaveable { mutableStateOf<String?>(null) }
             var selectedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
             var searchQuery by rememberSaveable { mutableStateOf("") }
+            val context = LocalContext.current
+            val appScope = rememberCoroutineScope()
             val cart = remember { mutableStateListOf<CartLine>() }
             val catalogCategories = remember { mutableStateListOf<CatalogCategory>().apply { addAll(CatalogSeed.categories) } }
             val catalogProducts = remember { mutableStateListOf<CatalogProduct>().apply { addAll(CatalogSeed.products) } }
             var catalogSource by rememberSaveable { mutableStateOf("كتالوج محلي تجريبي") }
-            var lastDraftRef by rememberSaveable { mutableStateOf<String?>(null) }
-            var lastOrderWasServer by rememberSaveable { mutableStateOf(false) }
+            val orderReceipts = remember { mutableStateListOf<OrderReceipt>() }
+            var lastReceipt by remember { mutableStateOf<OrderReceipt?>(null) }
+
+            LaunchedEffect(context) {
+                OrderReceiptStore.observe(context).collect { saved ->
+                    orderReceipts.clear()
+                    orderReceipts.addAll(saved)
+                }
+            }
 
             LaunchedEffect(Unit) {
                 if (BackendCatalogGateway.isConfigured()) {
@@ -897,24 +907,40 @@ fun CustomerApp() {
                             products = catalogProducts,
                             cart = cart,
                             onBack = { screen = CustomerScreen.CART },
-                            onCompleted = { ref, serverCreated ->
-                                lastDraftRef = ref
-                                lastOrderWasServer = serverCreated
+                            onCompleted = { receipt ->
+                                lastReceipt = receipt
+                                appScope.launch {
+                                    OrderReceiptStore.upsert(context, receipt)
+                                }
                                 screen = CustomerScreen.CONFIRMATION
                             }
                         )
                         CustomerScreen.CONFIRMATION -> ConfirmationScreen(
-                            reference = lastDraftRef.orEmpty(),
-                            serverCreated = lastOrderWasServer,
+                            receipt = lastReceipt,
                             onContinueShopping = {
                                 cart.clear()
                                 screen = CustomerScreen.HOME
                             },
                             onViewOrders = { screen = CustomerScreen.ORDERS }
                         )
-                        CustomerScreen.ORDERS -> PlaceholderScreen(
-                            "طلباتي",
-                            "ستظهر هنا الطلبات النشطة والسابقة بعد ربط خدمة الطلبات."
+                        CustomerScreen.ORDERS -> OrdersScreen(
+                            receipts = orderReceipts,
+                            onRefresh = { receipt ->
+                                if (receipt.serverCreated && receipt.trackingToken.isNotBlank() && BackendOrderGateway.isConfigured()) {
+                                    appScope.launch {
+                                        BackendOrderGateway.fetchOrderStatus(receipt.trackingToken)
+                                            .onSuccess { status ->
+                                                OrderReceiptStore.upsert(
+                                                    context,
+                                                    receipt.copy(
+                                                        status = status.status,
+                                                        totalYER = status.totalYER
+                                                    )
+                                                )
+                                            }
+                                    }
+                                }
+                            }
                         )
                         CustomerScreen.PROFILE -> PlaceholderScreen(
                             "حسابي",
@@ -1453,7 +1479,7 @@ private fun CheckoutScreen(
     products: List<CatalogProduct>,
     cart: List<CartLine>,
     onBack: () -> Unit,
-    onCompleted: (String, Boolean) -> Unit
+    onCompleted: (OrderReceipt) -> Unit
 ) {
     var fullName by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
@@ -1603,8 +1629,18 @@ private fun CheckoutScreen(
                 onClick = {
                     submitError = null
                     if (!BackendOrderGateway.isConfigured()) {
-                        val suffix = (System.currentTimeMillis() % 1000000L).toString().padStart(6, '0')
-                        onCompleted("DRAFT-" + suffix, false)
+                        val now = System.currentTimeMillis()
+                        val suffix = (now % 1000000L).toString().padStart(6, '0')
+                        onCompleted(
+                            OrderReceipt(
+                                reference = "DRAFT-" + suffix,
+                                serverCreated = false,
+                                trackingToken = "",
+                                status = "DRAFT_LOCAL",
+                                totalYER = total,
+                                createdAtMillis = now
+                            )
+                        )
                     } else {
                         submitting = true
                         val orderLines = expanded.map { triple ->
@@ -1627,7 +1663,16 @@ private fun CheckoutScreen(
                             )
                             submitting = false
                             result.onSuccess { created ->
-                                onCompleted(created.orderNumber, true)
+                                onCompleted(
+                                    OrderReceipt(
+                                        reference = created.orderNumber,
+                                        serverCreated = true,
+                                        trackingToken = created.trackingToken,
+                                        status = created.status,
+                                        totalYER = created.totalYER,
+                                        createdAtMillis = System.currentTimeMillis()
+                                    )
+                                )
                             }.onFailure { error ->
                                 submitError = "تعذر إنشاء الطلب: " + (error.message ?: "خطأ غير معروف")
                             }
@@ -1666,11 +1711,12 @@ private fun CheckoutScreen(
 
 @Composable
 private fun ConfirmationScreen(
-    reference: String,
-    serverCreated: Boolean,
+    receipt: OrderReceipt?,
     onContinueShopping: () -> Unit,
     onViewOrders: () -> Unit
 ) {
+    val serverCreated = receipt?.serverCreated == true
+    val reference = receipt?.reference.orEmpty()
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
