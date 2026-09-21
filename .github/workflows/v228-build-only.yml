@@ -1,0 +1,80 @@
+name: V228 Build Only
+
+on:
+  push:
+    branches: [ci-v228-cloud-sync-hotfix-20260921]
+    paths:
+      - '.github/workflows/v228-build-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download source
+        shell: bash
+        env:
+          SHARE_ID: q020g723DQyY
+          EXPECTED_SHA256: 68d88053b8d203f2c9080607d969ff7eaabfd68f8d87a0b700f1d93b517558fb
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          print((d.get('files') or [])[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source.zip -d src
+      - name: Build APK and AAB only
+        working-directory: src
+        shell: bash
+        run: |
+          gradle --no-daemon assembleRelease bundleRelease
+      - name: Collect
+        shell: bash
+        run: |
+          mkdir out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          cp "$APK" out/FUSH_ERP_Mobile_v228-CloudSyncHotfix-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v228-CloudSyncHotfix-UNSIGNED.aab
+          cp source.zip out/FushERP-Mobile-v228-CloudSyncHotfix-Source-R2.zip
+          sha256sum out/* > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v228-build-only
+          path: out
+          if-no-files-found: error
