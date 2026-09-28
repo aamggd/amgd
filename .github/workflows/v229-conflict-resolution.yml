@@ -43,8 +43,8 @@ jobs:
       - name: Download source
         shell: bash
         env:
-          SHARE_ID: OSGXtKsDkusF
-          EXPECTED_SHA256: 913661dbf3c4e66ad418fc76ae7b4685a78678a246acb7a5fbc6e21dfefcfe08
+          SHARE_ID: UE_wtYjahoRs
+          EXPECTED_SHA256: a80d5433356f892a38061eee710a4895f95f0e6d8136fa7f585f35181e020a90
         run: |
           set -euxo pipefail
           API_BASE='https://api.firestorage.ai/dev/file'
@@ -95,7 +95,7 @@ jobs:
           test -n "$AAB"
           cp "$APK" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.apk
           cp "$AAB" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.aab
-          cp source.zip out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R1.zip
+          cp source.zip out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip
           cp v229-build.log out/
           cp src/V229_CONFLICT_RESOLUTION_HOTFIX.md out/
           sha256sum out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.apk out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.aab out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R1.zip > out/SHA256SUMS.txt
