@@ -1,0 +1,40 @@
+name: Export Android Signing Tools Complete
+
+on:
+  push:
+    branches: [ci-v230-sign-tools-20260928]
+    paths:
+      - '.github/workflows/export-android-sign-tools-complete.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        shell: bash
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0"
+      - name: Package complete signing tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/build-tools-36.0.0
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" out/build-tools-36.0.0/
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/build-tools-36.0.0/
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" out/build-tools-36.0.0/
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib64" out/build-tools-36.0.0/
+          chmod +x out/build-tools-36.0.0/apksigner out/build-tools-36.0.0/zipalign
+          tar -C out -czf out/android-signing-tools-36-complete.tgz build-tools-36.0.0
+          sha256sum out/android-signing-tools-36-complete.tgz > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-signing-tools-36-complete
+          path: out
+          if-no-files-found: error
