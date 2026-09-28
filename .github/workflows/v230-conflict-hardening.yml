@@ -1,0 +1,149 @@
+name: V230 Conflict Resolution Hardening
+
+on:
+  push:
+    branches: [ci-v230-hardening-20260928]
+    paths:
+      - '.github/workflows/v230-conflict-hardening.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download v230 source R1
+        shell: bash
+        env:
+          SHARE_ID: iw0YVp5Dty_g
+          EXPECTED_SHA256: fa8841d5cb97e9c44a4560ddbc79e7e41ea09f55070601d4273af1693afd2b3f
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source-r1.zip
+          echo "$EXPECTED_SHA256  source-r1.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source-r1.zip -d src
+      - name: Apply v230 cursor safety hardening
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/app/src/main/java/com/fush/erp/cloud/InventoryProductionCloudSyncEngine.kt')
+          s=p.read_text()
+          s=s.replace('deviceInfo = "ANDROID_CLOUD_SYNC_V229",','deviceInfo = "ANDROID_CLOUD_SYNC_V230",')
+          old='            store.markOutboundCursor(localUser.id, now)\n            sync(localUser, session, cloudRole)'
+          new='''            // Do not advance the global outbound cursor here. The next sync first observes
+            // that the resolved lot is equal on both sides, while still preserving any other
+            // local movements after the previous cursor so they cannot be skipped.
+            sync(localUser, session, cloudRole)'''
+          if old not in s:
+              raise SystemExit('expected v229 cursor sequence not found')
+          p.write_text(s.replace(old,new))
+          PY
+          cat > src/app/src/test/java/com/fush/erp/cloud/InventoryConflictResolutionV230ContractTest.kt <<'EOF'
+          package com.fush.erp.cloud
+
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import java.io.File
+
+          class InventoryConflictResolutionV230ContractTest {
+              @Test fun singleLotResolutionDoesNotAdvanceGlobalOutboundCursorBeforeResync() {
+                  val source = locate("app/src/main/java/com/fush/erp/cloud/InventoryProductionCloudSyncEngine.kt").readText()
+                  val start = source.indexOf("suspend fun resolveConflict(")
+                  val end = source.indexOf("private suspend fun publishAll", start)
+                  require(start >= 0 && end > start)
+                  val body = source.substring(start, end)
+                  assertFalse(body.contains("store.markOutboundCursor(localUser.id, now)"))
+                  assertTrue(body.contains("sync(localUser, session, cloudRole)"))
+              }
+
+              private fun locate(path: String): File {
+                  var dir = File(System.getProperty("user.dir"))
+                  repeat(5) {
+                      val candidate = File(dir, path)
+                      if (candidate.exists()) return candidate
+                      dir = dir.parentFile ?: return@repeat
+                  }
+                  error("Unable to locate $path from ${System.getProperty("user.dir")}")
+              }
+          }
+          EOF
+      - name: Static gates
+        shell: bash
+        working-directory: src
+        run: |
+          set -euxo pipefail
+          grep -q 'versionCode = 230' app/build.gradle.kts
+          grep -q 'versionName = "0.15.4.181-conflict-resolution-hardening"' app/build.gradle.kts
+          grep -q 'applicationId = "com.fush.erp.recovery"' app/build.gradle.kts
+          python3 tools/test_v228_cloud_sync_hotfix.py
+          ! grep -A70 'suspend fun resolveConflict(' app/src/main/java/com/fush/erp/cloud/InventoryProductionCloudSyncEngine.kt | grep -q 'markOutboundCursor(localUser.id, now)'
+      - name: Full unit tests and release build
+        working-directory: src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease
+      - name: Collect exact tested source and binaries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" out/FUSH_ERP_Mobile_v230-ConflictResolutionHardening-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v230-ConflictResolutionHardening-UNSIGNED.aab
+          (cd src && zip -qr ../out/FushERP-Mobile-v230-ConflictResolutionHardening-Source-R2.zip . -x '*/build/*' '.gradle/*')
+          cp -R src/app/build/reports/tests/testDebugUnitTest out/unit-test-report
+          sha256sum out/*.apk out/*.aab out/*.zip > out/SHA256SUMS.txt
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v230-hardening
+          path: out
+          if-no-files-found: error
