@@ -98,7 +98,7 @@ jobs:
           cp source.zip out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip
           cp v229-build.log out/
           cp src/V229_CONFLICT_RESOLUTION_HOTFIX.md out/
-          sha256sum out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.apk out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.aab out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R1.zip > out/SHA256SUMS.txt
+          sha256sum out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.apk out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.aab out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip > out/SHA256SUMS.txt
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
