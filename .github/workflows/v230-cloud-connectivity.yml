@@ -98,19 +98,19 @@ jobs:
           cp v230-targeted-tests.log out/
           cp v230-full-unit-tests.log out/
           cp v230-release-build.log out/
-          cat > out/V230_GATE_STATUS.txt <<'EOF'
-V230 final gate:
-- v225 regression static gate: PASS required
-- v227 regression static gate: PASS required
-- v228 regression static gate: PASS required
-- v229 regression static gate: PASS required
-- v230 connectivity static gate: PASS required
-- CloudNetworkDiagnosticsV230Test: PASS required
-- Full debug unit suite: PASS required
-- assembleRelease: PASS required
-- bundleRelease: PASS required
-- No Room schema change.
-EOF
+          printf '%s\n' \
+            'V230 final gate:' \
+            '- v225 regression static gate: PASS required' \
+            '- v227 regression static gate: PASS required' \
+            '- v228 regression static gate: PASS required' \
+            '- v229 regression static gate: PASS required' \
+            '- v230 connectivity static gate: PASS required' \
+            '- CloudNetworkDiagnosticsV230Test: PASS required' \
+            '- Full debug unit suite: PASS required' \
+            '- assembleRelease: PASS required' \
+            '- bundleRelease: PASS required' \
+            '- No Room schema change.' \
+            > out/V230_GATE_STATUS.txt
           sha256sum out/* > out/SHA256SUMS-v230.txt
       - uses: actions/upload-artifact@v4
         with:
