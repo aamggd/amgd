@@ -1,0 +1,110 @@
+name: V229 R3 Production Gate
+
+on:
+  push:
+    branches: [ci-v229-r3-production-gate-20260928]
+    paths:
+      - '.github/workflows/v229-r3-production-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download exact R3 source
+        shell: bash
+        env:
+          SHARE_ID: u4hWUyB9t6M8
+          EXPECTED_SHA256: 22d32aaf6203e5ba923d6737e94d736c07156c9f5c648c40557549bf54feed64
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json')); files=d.get('files') or []
+          if len(files) != 1: raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -q source.zip -d src
+
+      - name: Static gates
+        working-directory: src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/test_v225_backend_hardening.py
+          python3 tools/test_v227_local_ai_actions.py
+          python3 tools/test_v228_cloud_sync_hotfix.py
+          python3 tools/test_v229_conflict_resolution_hotfix.py
+
+      - name: Full JVM regression
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest 2>&1 | tee ../v229-r3-full-unit.log
+
+      - name: Release APK and AAB
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease bundleRelease 2>&1 | tee ../v229-r3-release-build.log
+
+      - name: Package outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"; test -n "$AAB"
+          cp "$APK" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R3-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R3-UNSIGNED.aab
+          cp source.zip out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R3.zip
+          cp v229-r3-full-unit.log out/
+          cp v229-r3-release-build.log out/
+          cat > out/V229_R3_PRODUCTION_GATE.txt <<'EOF'
+          V229 R3 Production Gate
+          Static v225/v227/v228/v229 gates: PASS
+          Full JVM unit suite: PASS required by workflow
+          assembleRelease: PASS required by workflow
+          bundleRelease: PASS required by workflow
+          Exact source SHA-256: 22d32aaf6203e5ba923d6737e94d736c07156c9f5c648c40557549bf54feed64
+          EOF
+          sha256sum out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R3-UNSIGNED.apk                     out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R3-UNSIGNED.aab                     out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R3.zip > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v229-R3-PRODUCTION-GATE
+          path: out
+          if-no-files-found: error
