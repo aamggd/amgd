@@ -1,0 +1,44 @@
+name: Export Android Build Tools 36
+
+on:
+  push:
+    branches: [ci-v229-sign-tools-20260928]
+    paths:
+      - '.github/workflows/export-android-build-tools-36.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;36.0.0"
+      - name: Package tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out/build-tools-36.0.0
+          cp "$ANDROID_HOME/build-tools/36.0.0/apksigner" out/build-tools-36.0.0/
+          cp "$ANDROID_HOME/build-tools/36.0.0/zipalign" out/build-tools-36.0.0/
+          cp -R "$ANDROID_HOME/build-tools/36.0.0/lib" out/build-tools-36.0.0/
+          chmod +x out/build-tools-36.0.0/apksigner out/build-tools-36.0.0/zipalign
+          tar -C out -czf out/android-build-tools-36-signing.tgz build-tools-36.0.0
+          sha256sum out/android-build-tools-36-signing.tgz > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-build-tools-36-signing
+          path: |
+            out/android-build-tools-36-signing.tgz
+            out/SHA256SUMS.txt
+          if-no-files-found: error
