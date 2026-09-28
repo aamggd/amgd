@@ -1,0 +1,117 @@
+name: V234 Final Gate
+
+on:
+  push:
+    branches: [ci-v234-final-r1-20260929]
+    paths:
+      - '.github/workflows/v234-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download v233 baseline
+        env:
+          SHARE_ID: ZqV780QdVDj3
+          EXPECTED_SHA256: 1673a7aa68d3687c07e33a178a1dfc9755c9cc8f7f8b61595fd169505f0967bd
+        run: |
+          set -euo pipefail
+          API=https://api.firestorage.ai/dev/file
+          curl -fLsS "$API/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          ID=$(python3 -c "import json;print(json.load(open('files.json'))['files'][0]['fileId'])")
+          curl -fLsS -X POST "$API/shares/$SHARE_ID/files/$ID/download" -o d.json
+          URL=$(python3 -c "import json;print(json.load(open('d.json'))['downloadUrl'])")
+          curl -fL "$URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -q source.zip -d src
+      - name: Apply v234 hotfix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          r=Path('src')
+          p=r/'app/build.gradle.kts'
+          s=p.read_text().replace('versionCode = 233','versionCode = 234').replace('0.15.4.184-sync-all-preflight-resilience','0.15.4.185-sync-all-crash-guard')
+          p.write_text(s)
+          p=r/'app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt'
+          s=p.read_text()
+          s=s.replace('import kotlinx.coroutines.launch\n','import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.launch\n')
+          marker='when (val result = repository.syncAllCompanyData(user))'
+          pos=s.index(marker)
+          launch=s.rfind('scope.launch {',0,pos)
+          if launch<0: raise SystemExit('sync-all launch not found')
+          s=s[:launch]+'showAdvancedSyncDetails = false\n                            '+s[launch:]
+          pos=s.index(marker,launch)
+          launch=s.rfind('scope.launch {',0,pos)
+          body_start=launch+len('scope.launch {')
+          depth=1; i=body_start
+          while i<len(s) and depth:
+              if s[i]=='{': depth+=1
+              elif s[i]=='}': depth-=1
+              i+=1
+          if depth: raise SystemExit('unbalanced sync-all coroutine')
+          body_end=i-1
+          body=s[body_start:body_end]
+          body=body.replace('\n                                busy = false\n','\n')
+          wrapped='''\n                                try {'''+body+'''\n                                } catch (cancelled: CancellationException) {\n                                    throw cancelled\n                                } catch (error: Exception) {\n                                    messageIsError = true\n                                    val safe = error.message?.takeIf { it.isNotBlank() }?.take(500) ?: error::class.java.simpleName\n                                    message = "تم منع تعطل التطبيق أثناء مزامنة الكل. الخطأ: $safe"\n                                } finally {\n                                    busy = false\n                                }\n                            '''
+          s=s[:body_start]+wrapped+s[body_end:]
+          for a,b in {
+            'salesConflicts.forEach { conflict ->':'salesConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict ->',
+            'purchaseConflicts.forEach { conflict -> PurchaseConflictCard(conflict) }':'purchaseConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict -> PurchaseConflictCard(conflict) }',
+            'supplierPaymentsTreasuryConflicts.forEach { conflict -> SupplierPaymentsTreasuryConflictCard(conflict) }':'supplierPaymentsTreasuryConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict -> SupplierPaymentsTreasuryConflictCard(conflict) }',
+            'inventoryProductionConflicts.forEach { conflict ->':'inventoryProductionConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict ->',
+            'accountingConflicts.forEach { conflict ->':'accountingConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict ->',
+            'salesAuxiliaryConflicts.forEach { conflict ->':'salesAuxiliaryConflicts.take(MAX_VISIBLE_CONFLICTS).forEach { conflict ->',
+          }.items(): s=s.replace(a,b)
+          s=s.replace('\n\n@Composable\nprivate fun SalesAuxiliaryConflictCard(','\n\nprivate const val MAX_VISIBLE_CONFLICTS = 20\n\n@Composable\nprivate fun SalesAuxiliaryConflictCard(',1)
+          p.write_text(s)
+          p=r/'tools/test_v233_sync_all_preflight_resilience.py'
+          s=p.read_text().replace('assert "versionCode = 233" in build','import re\nversion_match = re.search(r"versionCode\\s*=\\s*(\\d+)", build)\nassert version_match and int(version_match.group(1)) >= 233')
+          p.write_text(s)
+          p=r/'tools/test_v228_cloud_sync_hotfix.py'
+          s=p.read_text().replace("or 'sync-all-preflight-resilience' in build","or 'sync-all-preflight-resilience' in build or 'sync-all-crash-guard' in build")
+          p.write_text(s)
+          PY
+      - name: Static gates
+        working-directory: src
+        run: |
+          python3 tools/test_v228_cloud_sync_hotfix.py
+          python3 tools/test_v233_sync_all_preflight_resilience.py
+          grep -q 'versionCode = 234' app/build.gradle.kts
+          grep -q 'catch (error: Exception)' app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt
+          grep -q 'MAX_VISIBLE_CONFLICTS = 20' app/src/main/java/com/fush/erp/ui/screens/CloudSyncScreen.kt
+      - name: Unit tests
+        working-directory: src
+        run: gradle --no-daemon testDebugUnitTest
+      - name: Release build
+        working-directory: src
+        run: gradle --no-daemon assembleRelease bundleRelease
+      - name: Package
+        run: |
+          mkdir -p out
+          cp src/app/build/outputs/apk/release/*.apk out/FUSH_ERP_Mobile_v234-SyncAllCrashGuard-UNSIGNED.apk
+          cp src/app/build/outputs/bundle/release/*.aab out/FUSH_ERP_Mobile_v234-SyncAllCrashGuard-UNSIGNED.aab
+          (cd src && zip -qr ../out/FushERP-Mobile-v234-SyncAllCrashGuard-Source-R1-BUILT.zip . -x 'app/build/*' '.gradle/*')
+          sha256sum out/* > out/SHA256SUMS-V234.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v234-FINAL-GATE
+          path: out
+          if-no-files-found: error
