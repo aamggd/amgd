@@ -1,0 +1,47 @@
+name: Inspect v229 Policy Definitions
+
+on:
+  push:
+    branches: [ci-v229-inspect-gated-source-20260928]
+    paths:
+      - '.github/workflows/v229-inspect-policies.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download source
+        shell: bash
+        env:
+          SHARE_ID: nsGlOxu4yCV_
+          EXPECTED_SHA256: f27b988087b0e31d41ca5bbebd2c056d33f52b4003defd198f061140c5d93e6b
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json')); print((d.get('files') or [])[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -q source.zip -d src
+      - name: Print definitions
+        shell: bash
+        run: |
+          echo '=== MATCHES ==='
+          grep -R -n -B 8 -A 90 "ShipmentLifecycleConflictPolicy\|AccountingJournalCollisionPolicy\|ShipmentLifecycleResolution" src/app/src/main/java/com/fush/erp/cloud || true
+          echo '=== TEST DEPS ==='
+          grep -n -A 8 -B 4 "testImplementation" src/app/build.gradle.kts || true
