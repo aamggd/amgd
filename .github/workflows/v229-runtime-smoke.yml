@@ -1,0 +1,78 @@
+name: V229 Runtime Smoke
+
+on:
+  push:
+    branches: [ci-v229-runtime-smoke-20260928]
+    paths:
+      - '.github/workflows/v229-runtime-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download final signed APK
+        shell: bash
+        env:
+          SHARE_ID: XKEAq5jXJa8U
+          EXPECTED_SHA256: 252dfefdccaaf71894e8765237c31493394d0dfb6a238f2f25e512a589d6d552
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json')); files=d.get('files') or []
+          if len(files)!=1: raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o final.apk
+          echo "$EXPECTED_SHA256  final.apk" | sha256sum -c -
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+      - name: Install and launch on Android emulator
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            set -euxo pipefail
+            adb install -r final.apk
+            adb logcat -c
+            adb shell monkey -p com.fush.erp.recovery -c android.intent.category.LAUNCHER 1
+            sleep 8
+            adb shell pidof com.fush.erp.recovery | tee app-pid.txt || true
+            adb shell dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | tee resumed.txt || true
+            adb logcat -d -v threadtime > runtime-logcat.txt
+            if grep -E 'FATAL EXCEPTION|Process: com\.fush\.erp\.recovery.*has died|AndroidRuntime.*FATAL' runtime-logcat.txt; then
+              echo 'Runtime fatal detected'
+              exit 1
+            fi
+            test -s app-pid.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FUSH-ERP-v229-RUNTIME-SMOKE
+          path: |
+            app-pid.txt
+            resumed.txt
+            runtime-logcat.txt
+          if-no-files-found: warn
