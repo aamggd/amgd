@@ -80,6 +80,11 @@ jobs:
           if old not in s:
               raise SystemExit('expected v229 cursor sequence not found')
           p.write_text(s.replace(old,new))
+          q=Path('src/app/src/main/java/com/fush/erp/cloud/SalesAuxiliaryCloudSyncEngine.kt')
+          t=q.read_text()
+          t=t.replace('val localRank = shipmentStatusRank(', 'val localRank = ConflictResolutionPolicies.shipmentStatusRank(')
+          t=t.replace('val cloudRank = shipmentStatusRank(', 'val cloudRank = ConflictResolutionPolicies.shipmentStatusRank(')
+          q.write_text(t)
           PY
           cat > src/app/src/test/java/com/fush/erp/cloud/InventoryConflictResolutionV230ContractTest.kt <<'EOF'
           package com.fush.erp.cloud
