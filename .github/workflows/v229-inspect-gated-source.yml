@@ -1,0 +1,56 @@
+name: Inspect v229 Gated Source
+
+on:
+  push:
+    branches: [ci-v229-inspect-gated-source-20260928]
+    paths:
+      - '.github/workflows/v229-inspect-gated-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download gated source
+        shell: bash
+        env:
+          SHARE_ID: nsGlOxu4yCV_
+          EXPECTED_SHA256: f27b988087b0e31d41ca5bbebd2c056d33f52b4003defd198f061140c5d93e6b
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          files=d.get('files') or []
+          if len(files) != 1: raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source.zip -d src
+      - name: Print v229 test and policy source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          find src -type f | grep -E 'ConflictResolutionPoliciesV229|build.gradle.kts' | sort
+          echo '=== TEST ==='
+          find src -type f -name 'ConflictResolutionPoliciesV229Test.kt' -exec cat {} \;
+          echo '=== POLICY ==='
+          find src -type f -name 'ConflictResolutionPoliciesV229.kt' -exec cat {} \;
+          echo '=== BUILD TEST DEPS ==='
+          grep -n "testImplementation" src/app/build.gradle.kts || true
