@@ -1,0 +1,98 @@
+name: V229 Build Only
+
+on:
+  push:
+    branches: [ci-v229-conflict-resolution-hotfix-20260928]
+    paths:
+      - '.github/workflows/v229-build-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download v229 source
+        shell: bash
+        env:
+          SHARE_ID: UOVjZkdo5WGN
+          EXPECTED_SHA256: a80d5433356f892a38061eee710a4895f95f0e6d8136fa7f585f35181e020a90
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source.zip -d src
+
+      - name: Static hotfix gate
+        working-directory: src
+        shell: bash
+        run: python3 tools/test_v229_conflict_resolution_hotfix.py
+
+      - name: Build APK and AAB
+        working-directory: src
+        shell: bash
+        run: gradle --no-daemon assembleRelease bundleRelease
+
+      - name: Collect build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-UNSIGNED.aab
+          cp source.zip out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip
+          cp src/supabase/V229_CONFLICT_RESOLUTION_HOTFIX.sql out/
+          sha256sum out/* > out/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v229-build-only
+          path: out
+          if-no-files-found: error
