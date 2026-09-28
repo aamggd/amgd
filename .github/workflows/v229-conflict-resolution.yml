@@ -43,8 +43,8 @@ jobs:
       - name: Download source
         shell: bash
         env:
-          SHARE_ID: nsGlOxu4yCV_
-          EXPECTED_SHA256: f27b988087b0e31d41ca5bbebd2c056d33f52b4003defd198f061140c5d93e6b
+          SHARE_ID: OSGXtKsDkusF
+          EXPECTED_SHA256: 913661dbf3c4e66ad418fc76ae7b4685a78678a246acb7a5fbc6e21dfefcfe08
         run: |
           set -euxo pipefail
           API_BASE='https://api.firestorage.ai/dev/file'
@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon testDebugUnitTest --tests com.fush.erp.cloud.ConflictResolutionPoliciesV229Test assembleRelease bundleRelease 2>&1 | tee ../v229-build.log
+          gradle --no-daemon testDebugUnitTest --tests com.fush.erp.domain.V229ConflictResolutionPolicyTest assembleRelease bundleRelease 2>&1 | tee ../v229-build.log
 
       - name: Collect
         shell: bash
