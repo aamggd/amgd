@@ -1,0 +1,31 @@
+name: Export Gradle 9.4.1
+
+on:
+  push:
+    branches: [ci-export-gradle-941-20260929]
+    paths:
+      - '.github/workflows/export-gradle-941.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Copy distribution
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          cp /home/runner/work/_temp/.gradle-actions/gradle-installations/downloads/gradle-9.4.1-bin.zip out/
+          sha256sum out/gradle-9.4.1-bin.zip > out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gradle-9.4.1-bin
+          path: out
+          if-no-files-found: error
