@@ -54,7 +54,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            set -euxo pipefail
+            set -eu
             adb install -r final.apk
             adb logcat -c
             adb shell monkey -p com.fush.erp.recovery -c android.intent.category.LAUNCHER 1
