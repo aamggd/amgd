@@ -1,0 +1,78 @@
+name: V229 Full Unit Test Gate
+
+on:
+  push:
+    branches: [ci-v229-full-tests-20260928]
+    paths:
+      - '.github/workflows/v229-full-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download exact gated source
+        shell: bash
+        env:
+          SHARE_ID: nsGlOxu4yCV_
+          EXPECTED_SHA256: f27b988087b0e31d41ca5bbebd2c056d33f52b4003defd198f061140c5d93e6b
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json')); print((d.get('files') or [])[0]['fileId'])
+          PY
+          )
+          curl -fLsS -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -q source.zip -d src
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/app/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          dep='    testImplementation("org.json:json:20240303")\n'
+          if 'org.json:json:' not in s:
+              anchor='    testImplementation(libs.junit)\n'
+              if anchor not in s: raise SystemExit('JUnit dependency anchor missing')
+              p.write_text(s.replace(anchor, anchor+dep), encoding='utf-8')
+          PY
+      - name: Run full debug unit test suite
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest 2>&1 | tee ../v229-full-unit-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: V229-FULL-UNIT-TEST-LOG
+          path: v229-full-unit-tests.log
+          if-no-files-found: warn
