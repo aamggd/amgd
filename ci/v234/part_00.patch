@@ -1,0 +1,9 @@
+diff --git a/v233_base_compare/app/build.gradle.kts b/v233_fix/app/build.gradle.kts
+index fcd86ae..4f23804 100644
+--- a/v233_base_compare/app/build.gradle.kts
++++ b/v233_fix/app/build.gradle.kts
+@@ -16,2 +16,2 @@ android {
+-        versionCode = 233
+-        versionName = "0.15.4.184-sync-all-preflight-resilience"
++        versionCode = 234
++        versionName = "0.15.4.185-sync-all-crash-guard"
