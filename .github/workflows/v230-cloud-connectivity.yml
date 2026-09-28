@@ -1,0 +1,119 @@
+name: V230 Cloud Connectivity Final Gate
+
+on:
+  push:
+    branches: [ci-v230-cloud-connectivity-20260928]
+    paths:
+      - '.github/workflows/v230-cloud-connectivity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+      - name: Download exact v230 source
+        shell: bash
+        env:
+          SHARE_ID: cVQgyLV0I8-Y
+          EXPECTED_SHA256: f7d81f2cddb28f239ae9bf9e5bb2e37cd9e07d91988a2bc98d9816780051254b
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json')); files=d.get('files') or []
+          if len(files)!=1: raise SystemExit(f'expected 1 file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json'))['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source.zip
+          echo "$EXPECTED_SHA256  source.zip" | sha256sum -c -
+          unzip -q source.zip -d src
+      - name: Static gates
+        working-directory: src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/test_v225_backend_hardening.py
+          python3 tools/test_v227_local_ai_actions.py
+          python3 tools/test_v228_cloud_sync_hotfix.py
+          python3 tools/test_v229_conflict_resolution_hotfix.py
+          python3 tools/test_v230_cloud_connectivity_diagnostics.py
+      - name: Targeted v230 tests
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest --tests com.fush.erp.cloud.CloudNetworkDiagnosticsV230Test 2>&1 | tee ../v230-targeted-tests.log
+      - name: Full debug unit test suite
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest 2>&1 | tee ../v230-full-unit-tests.log
+      - name: Release build
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease bundleRelease 2>&1 | tee ../v230-release-build.log
+      - name: Package outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"; test -n "$AAB"
+          cp "$APK" out/FUSH_ERP_Mobile_v230-CloudConnectivityDiagnostics-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v230-CloudConnectivityDiagnostics-UNSIGNED.aab
+          (cd src && zip -qr ../out/FushERP-Mobile-v230-CloudConnectivityDiagnostics-Source-R1-BUILT.zip . -x 'app/build/*' '.gradle/*')
+          cp v230-targeted-tests.log out/
+          cp v230-full-unit-tests.log out/
+          cp v230-release-build.log out/
+          cat > out/V230_GATE_STATUS.txt <<'EOF'
+V230 final gate:
+- v225 regression static gate: PASS required
+- v227 regression static gate: PASS required
+- v228 regression static gate: PASS required
+- v229 regression static gate: PASS required
+- v230 connectivity static gate: PASS required
+- CloudNetworkDiagnosticsV230Test: PASS required
+- Full debug unit suite: PASS required
+- assembleRelease: PASS required
+- bundleRelease: PASS required
+- No Room schema change.
+EOF
+          sha256sum out/* > out/SHA256SUMS-v230.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v230-CLOUD-CONNECTIVITY-FINAL-GATE
+          path: out
+          if-no-files-found: error
