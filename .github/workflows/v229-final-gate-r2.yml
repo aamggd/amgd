@@ -1,0 +1,146 @@
+name: V229 Final Gate R2
+
+on:
+  push:
+    branches: [ci-v229-final-gate-r2-20260928]
+    paths:
+      - '.github/workflows/v229-final-gate-r2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Gradle 9.4.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+
+      - name: Download gated v229 source
+        shell: bash
+        env:
+          SHARE_ID: nsGlOxu4yCV_
+          EXPECTED_SHA256: f27b988087b0e31d41ca5bbebd2c056d33f52b4003defd198f061140c5d93e6b
+        run: |
+          set -euxo pipefail
+          API_BASE='https://api.firestorage.ai/dev/file'
+          curl -fLsS --retry 3 "$API_BASE/shares/$SHARE_ID/files?maxResults=1000" -o files.json
+          FILE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open('files.json', encoding='utf-8'))
+          files=d.get('files') or []
+          if len(files) != 1:
+              raise SystemExit(f'expected one source file, got {len(files)}')
+          print(files[0]['fileId'])
+          PY
+          )
+          curl -fLsS --retry 3 -X POST "$API_BASE/shares/$SHARE_ID/files/$FILE_ID/download" -o download.json
+          DOWNLOAD_URL=$(python3 - <<'PY'
+          import json
+          print(json.load(open('download.json', encoding='utf-8'))['downloadUrl'])
+          PY
+          )
+          curl -fL --retry 3 "$DOWNLOAD_URL" -o source-r1.zip
+          echo "$EXPECTED_SHA256  source-r1.zip" | sha256sum -c -
+          mkdir src
+          unzip -q source-r1.zip -d src
+
+      - name: Fix JVM JSON test runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/app/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          dep='    testImplementation("org.json:json:20240303")\n'
+          if 'org.json:json:' not in s:
+              needle='    testImplementation(libs.junit)\n'
+              if needle not in s:
+                  raise SystemExit('JUnit dependency anchor not found')
+              s=s.replace(needle, needle+dep)
+              p.write_text(s, encoding='utf-8')
+          PY
+          grep -n "org.json:json" src/app/build.gradle.kts
+
+      - name: Static gates
+        working-directory: src
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python3 tools/test_v225_backend_hardening.py
+          python3 tools/test_v227_local_ai_actions.py
+          python3 tools/test_v228_cloud_sync_hotfix.py
+          python3 tools/test_v229_conflict_resolution_hotfix.py
+
+      - name: Targeted v229 conflict tests
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest --tests com.fush.erp.cloud.ConflictResolutionPoliciesV229Test 2>&1 | tee ../v229-targeted-tests.log
+
+      - name: Release build
+        working-directory: src
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease bundleRelease 2>&1 | tee ../v229-release-build.log
+
+      - name: Package exact R2 source and outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p out
+          APK=$(find src/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -1)
+          AAB=$(find src/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -1)
+          test -n "$APK"
+          test -n "$AAB"
+          cp "$APK" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R2-UNSIGNED.apk
+          cp "$AAB" out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R2-UNSIGNED.aab
+          (cd src && zip -qr ../out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip . -x 'app/build/*' '.gradle/*')
+          cp v229-targeted-tests.log out/
+          cp v229-release-build.log out/
+          cat > out/V229_R2_GATE_STATUS.txt <<'EOF'
+          V229 R2 final gate
+          - v225 backend hardening static gate: PASS
+          - v227 local AI static gate: PASS
+          - v228 cloud sync static gate: PASS
+          - v229 conflict resolution static gate: PASS
+          - ConflictResolutionPoliciesV229Test: PASS required
+          - assembleRelease: PASS required
+          - bundleRelease: PASS required
+          - JVM test runtime uses org.json:json:20240303 as testImplementation only.
+          EOF
+          sha256sum out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R2-UNSIGNED.apk                     out/FUSH_ERP_Mobile_v229-ConflictResolutionHotfix-R2-UNSIGNED.aab                     out/FushERP-Mobile-v229-ConflictResolutionHotfix-Source-R2.zip                     > out/SHA256SUMS.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUSH-ERP-v229-FINAL-GATE-R2
+          path: out
+          if-no-files-found: error
