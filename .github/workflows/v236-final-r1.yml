@@ -34,7 +34,7 @@ jobs:
       - name: Download exact v236 source
         shell: bash
         env:
-          SHARE_ID: kcR1HlKCjXmieNQt
+          SHARE_ID: VGLn_r2uo00y
           EXPECTED_SHA256: 37bd55fd2deec1ff7b5a8cbea9e310ff85617f9d6fbd46b6aa795f30406905da
         run: |
           set -euxo pipefail
