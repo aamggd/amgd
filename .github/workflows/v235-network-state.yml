@@ -92,7 +92,7 @@ jobs:
           s=p.read_text().replace('assert "versionCode = 233" in build','import re\nversion_match = re.search(r"versionCode\\s*=\\s*(\\d+)", build)\nassert version_match and int(version_match.group(1)) >= 233')
           p.write_text(s)
           p=r/'tools/test_v228_cloud_sync_hotfix.py'
-          s=p.read_text().replace("or 'sync-all-preflight-resilience' in build","or 'sync-all-preflight-resilience' in build or 'sync-all-crash-guard' in build")
+          s=p.read_text().replace("or 'sync-all-preflight-resilience' in build","or 'sync-all-preflight-resilience' in build or 'sync-all-crash-guard' in build or 'network-state-permission-hotfix' in build")
           p.write_text(s)
           PY
       - name: Static gates
